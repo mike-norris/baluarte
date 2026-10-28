@@ -1,0 +1,26 @@
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.pyc
+coverage/
+
+# Local-only files that must never reach the public repo
+.DS_Store
+.idea/
+.vscode/
+.claude/
+CLAUDE.local.md
+*.local.md
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+*.log
