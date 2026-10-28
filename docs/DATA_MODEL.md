@@ -38,7 +38,7 @@ Delivery is at least once: handlers must be idempotent. Jobs are never deleted b
 
 ## Audit digests
 
-`audit_event.details_digest` is the SHA-256 of `details` serialised as canonical JSON: keys sorted, no insignificant whitespace, UTF-8 (`baluarte.audit.details_digest`).
+`audit_event.details_digest` is the SHA-256 of `details` serialised as canonical JSON: keys sorted, no insignificant whitespace, UTF-8 (`baluarte.audit.details_digest`). Details are redacted before they are hashed, and each committed event is mirrored to the `baluarte.audit` log stream (see [SECURITY.md](SECURITY.md#audit-trail)).
 
 ## Migrations
 

@@ -48,6 +48,7 @@ For evaluation only, `--set devDatabase.enabled=true` runs a single PostgreSQL p
 | `database.host`, `database.port`, `database.name`, `database.user` | `""`, `5432`, `baluarte`, `baluarte` | External PostgreSQL; `host` is required unless `devDatabase.enabled` |
 | `database.existingSecret`, `database.passwordKey` | `""`, `password` | Secret holding the database password |
 | `database.sslMode` | `require` | libpq `sslmode`; use `verify-full` with a trusted CA where possible |
+| `logging.level`, `logging.format` | `INFO`, `json` | Log level and format for the API, worker and migration Job; secrets are redacted |
 | `migrations.waitTimeoutSeconds` | `120` | How long the migration Job waits for PostgreSQL |
 | `devDatabase.enabled` | `false` | Single-pod PostgreSQL for evaluation and CI |
 | `auth.oidc.issuer`, `auth.oidc.clientId` | `""` | OIDC provider and client. Empty issuer leaves sign-in off: protected endpoints answer 503 |

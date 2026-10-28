@@ -39,6 +39,7 @@ spec:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
           env:
             {{- include "baluarte.databaseEnv" . | nindent 12 }}
+            {{- include "baluarte.loggingEnv" . | nindent 12 }}
             {{- with include "baluarte.authEnv" . | trim }}
             {{- . | nindent 12 }}
             {{- end }}

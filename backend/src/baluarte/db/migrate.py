@@ -17,6 +17,7 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.exc import OperationalError
 
 from baluarte.config import ConfigurationError, database_url
+from baluarte.settings import configure_logging_from_env
 
 logger = logging.getLogger("baluarte.migrate")
 
@@ -65,7 +66,7 @@ def main(argv: list[str] | None = None) -> int:
         help="seconds to wait for the database to accept connections (default 60)",
     )
     args = parser.parse_args(argv)
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    configure_logging_from_env()
 
     try:
         engine = create_engine(database_url(), connect_args={"connect_timeout": 5})

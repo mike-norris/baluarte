@@ -41,6 +41,7 @@ spec:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
           env:
             {{- include "baluarte.databaseEnv" . | nindent 12 }}
+            {{- include "baluarte.loggingEnv" . | nindent 12 }}
             - name: BALUARTE_WORKER_POLL_SECONDS
               value: {{ .Values.worker.pollSeconds | quote }}
             - name: BALUARTE_WORKER_LEASE_SECONDS

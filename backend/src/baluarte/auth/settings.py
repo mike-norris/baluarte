@@ -4,14 +4,12 @@ Authentication is either fully configured or not configured at all. A partial co
 a ConfigurationError, so a typo never leaves the API running with weaker checks.
 """
 
-import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import timedelta
-from pathlib import Path
 from urllib.parse import urlsplit
 
 from baluarte.auth.roles import Role
-from baluarte.config import ConfigurationError
+from baluarte.settings import ConfigurationError, env, read_secret
 
 LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 CALLBACK_PATH = "/api/v1/auth/callback"
@@ -29,7 +27,7 @@ class AuthSettings:
     public_url: str
     issuer: str
     client_id: str
-    client_secret: str | None
+    client_secret: str | None = field(repr=False)
     scopes: str
     roles_claim: str
     group_roles: dict[Role, frozenset[str]]
@@ -55,10 +53,6 @@ class AuthSettings:
         return "__Host-baluarte_login" if self.secure_cookies else "baluarte_login"
 
 
-def _env(name: str) -> str:
-    return os.environ.get(name, "").strip()
-
-
 def _public_url(raw: str) -> str:
     parts = urlsplit(raw)
     if parts.scheme not in ("https", "http") or not parts.hostname:
@@ -78,7 +72,7 @@ def _issuer(raw: str) -> str:
 
 
 def _minutes(name: str, default: int) -> timedelta:
-    raw = _env(name)
+    raw = env(name)
     try:
         value = int(raw) if raw else default
     except ValueError as exc:
@@ -90,32 +84,24 @@ def _minutes(name: str, default: int) -> timedelta:
 
 def load_auth_settings() -> AuthSettings | None:
     """Return the settings, or None when authentication is not configured at all."""
-    present = [name for name in _REQUIRED if _env(name)]
+    present = [name for name in _REQUIRED if env(name)]
     if not present:
         return None
     if len(present) != len(_REQUIRED):
         missing = ", ".join(name for name in _REQUIRED if name not in present)
         raise ConfigurationError(f"Authentication is partially configured; missing {missing}")
 
-    client_secret = None
-    secret_file = _env("BALUARTE_OIDC_CLIENT_SECRET_FILE")
-    if secret_file:
-        try:
-            client_secret = Path(secret_file).read_text(encoding="utf-8").strip()
-        except OSError as exc:
-            raise ConfigurationError("BALUARTE_OIDC_CLIENT_SECRET_FILE cannot be read") from exc
-        if not client_secret:
-            raise ConfigurationError("BALUARTE_OIDC_CLIENT_SECRET_FILE is empty")
+    client_secret = read_secret("BALUARTE_OIDC_CLIENT_SECRET")
 
     group_roles = {
-        role: frozenset(group.strip() for group in _env(name).split(",") if group.strip())
+        role: frozenset(group.strip() for group in env(name).split(",") if group.strip())
         for role, name in _GROUP_VARIABLES.items()
     }
     if not any(group_roles.values()):
         names = ", ".join(_GROUP_VARIABLES.values())
         raise ConfigurationError(f"No groups are mapped to roles; set at least one of {names}")
 
-    scopes = _env("BALUARTE_OIDC_SCOPES") or "openid profile email"
+    scopes = env("BALUARTE_OIDC_SCOPES") or "openid profile email"
     if "openid" not in scopes.split():
         raise ConfigurationError("BALUARTE_OIDC_SCOPES must include openid")
 
@@ -127,12 +113,12 @@ def load_auth_settings() -> AuthSettings | None:
         )
 
     return AuthSettings(
-        public_url=_public_url(_env("BALUARTE_PUBLIC_URL")),
-        issuer=_issuer(_env("BALUARTE_OIDC_ISSUER")),
-        client_id=_env("BALUARTE_OIDC_CLIENT_ID"),
+        public_url=_public_url(env("BALUARTE_PUBLIC_URL")),
+        issuer=_issuer(env("BALUARTE_OIDC_ISSUER")),
+        client_id=env("BALUARTE_OIDC_CLIENT_ID"),
         client_secret=client_secret,
         scopes=scopes,
-        roles_claim=_env("BALUARTE_OIDC_ROLES_CLAIM") or "groups",
+        roles_claim=env("BALUARTE_OIDC_ROLES_CLAIM") or "groups",
         group_roles=group_roles,
         session_idle=idle,
         session_lifetime=lifetime,

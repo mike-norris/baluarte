@@ -62,6 +62,12 @@ worker=$("${kubectl[@]}" get pod -l app.kubernetes.io/component=worker -o jsonpa
 "${kubectl[@]}" exec "$worker" -- baluarte-worker healthcheck || fail "worker heartbeat is stale"
 echo "ok  worker healthy (heartbeat)"
 
+for component in api worker; do
+  logs=$("${kubectl[@]}" logs -l "app.kubernetes.io/component=$component" --tail=50)
+  grep -q '"logger": "baluarte' <<<"$logs" || fail "$component logs are not structured JSON: $logs"
+done
+echo "ok  api and worker log JSON lines"
+
 helm upgrade "$release" "$chart" \
   --kube-context "kind-$cluster" --namespace "$namespace" \
   --reuse-values --set web.replicaCount=2 --wait --timeout 120s >/dev/null

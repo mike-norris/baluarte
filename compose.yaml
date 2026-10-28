@@ -8,12 +8,15 @@ x-hardening: &hardening
   security_opt: ["no-new-privileges:true"]
   tmpfs: [/tmp]
 
-x-database-env: &database-env
+x-app-env: &app-env
   BALUARTE_DATABASE_URL: postgresql://baluarte@db:5432/baluarte
   BALUARTE_DATABASE_PASSWORD_FILE: /run/secrets/postgres_password
+  # JSON lines (default) or text; secrets are redacted in both.
+  BALUARTE_LOG_LEVEL: ${BALUARTE_LOG_LEVEL:-INFO}
+  BALUARTE_LOG_FORMAT: ${BALUARTE_LOG_FORMAT:-json}
 
 x-database: &database
-  environment: *database-env
+  environment: *app-env
   secrets: [postgres_password]
 
 services:
@@ -48,7 +51,7 @@ services:
     <<: [*hardening, *database]
     image: baluarte-app:dev
     environment:
-      <<: *database-env
+      <<: *app-env
       # OIDC sign-in, read from the shell or a .env file. Until it is configured, sign-in and
       # every protected endpoint answer 503. See backend/README.md.
       BALUARTE_PUBLIC_URL: ${BALUARTE_PUBLIC_URL:-}

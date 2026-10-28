@@ -50,3 +50,20 @@ def test_unreadable_password_file_is_a_configuration_error(
 
     with pytest.raises(ConfigurationError, match="cannot be read"):
         database_url()
+
+
+def test_rejects_password_in_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BALUARTE_DATABASE_URL", "postgresql://baluarte:inline-secret@db/baluarte")
+    monkeypatch.delenv("BALUARTE_DATABASE_PASSWORD_FILE", raising=False)
+
+    with pytest.raises(ConfigurationError, match="must not contain a password") as raised:
+        database_url()
+    assert "inline-secret" not in str(raised.value)
+
+
+def test_rejects_password_in_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BALUARTE_DATABASE_URL", "postgresql://baluarte@db/baluarte")
+    monkeypatch.setenv("BALUARTE_DATABASE_PASSWORD", "inline-secret")
+
+    with pytest.raises(ConfigurationError, match="BALUARTE_DATABASE_PASSWORD_FILE instead"):
+        database_url()

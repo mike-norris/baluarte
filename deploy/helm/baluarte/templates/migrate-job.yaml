@@ -37,6 +37,7 @@ spec:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
           env:
             {{- include "baluarte.databaseEnv" . | nindent 12 }}
+            {{- include "baluarte.loggingEnv" . | nindent 12 }}
           resources:
             {{- toYaml .Values.migrations.resources | nindent 12 }}
           volumeMounts:
