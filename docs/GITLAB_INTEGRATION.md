@@ -42,6 +42,23 @@ A failed detection replaces the stored snapshot, so an earlier `ok` is never sho
 
 The probes have been run only against the scripted responses in `tests/gitlab_fake.py`. The capability matrix of real GitLab versions and tiers is still to be filled in from live instances.
 
+## Group discovery
+
+The `gitlab.discover_groups` worker job (queued by `POST /api/v1/gitlab/groups/discover`) lists `GET /groups?all_available=true&order_by=id&sort=asc`, which returns every group the token can see, nested subgroups included. `parent_gitlab_id` records the hierarchy. A subgroup can be visible while its parent is not, so a parent ID may have no row.
+
+- **Pagination:** list endpoints are read with `per_page=100`, following the `Link: rel="next"` header until it is absent. GitLab sends that header for both offset and keyset pagination. A next link outside the configured API URL is refused, so the token is never sent to another host. A link that repeats, or more than 100,000 pages, is an error.
+- **Storage:** each page is upserted on `(instance_id, gitlab_id)` and committed on its own. A renamed or moved group keeps its row and `first_seen_at`; `last_seen_at` is the last time a listing returned it.
+- **Reconciliation:** this runs only after the listing completes. Each previously `active` group the listing did not return is looked up with `GET /groups/:id`:
+  - 200: stays `active`.
+  - 401 or 403: `inaccessible` (it exists, but the token may not read it).
+  - 404: `missing`. GitLab answers 404 both for deleted groups and for groups hidden from the token, so `missing` does not prove deletion.
+  - Any other failure leaves the row unchanged.
+
+  A group that is listed again becomes `active`.
+- **Failures:** if the listing fails part way, pages already stored are kept, nothing is marked `missing` or `inaccessible`, and the job retries (up to five attempts). The job error holds the safe client message, for example `group discovery failed: GitLab rejected the token (401)`.
+
+Groups are read with `GET /api/v1/gitlab/groups`. Collection freshness and per-resource error tracking are BAL-015.
+
 ## Reliability
 
 Handle pagination, rate limits, 401/403, 404, 429, 5xx, timeouts, network partitions, and deleted resources. Do not conflate inaccessible with deleted. Reconcile periodically; system hooks/webhooks are optional accelerators, not the only source of truth. Verify signatures/secrets on any incoming hooks.

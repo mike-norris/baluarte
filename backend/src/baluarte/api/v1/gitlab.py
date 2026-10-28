@@ -2,10 +2,10 @@
 
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Annotated
+from typing import Annotated, Literal
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from baluarte import audit
 from baluarte.auth.dependencies import Principal, database, require
 from baluarte.auth.roles import Permission
-from baluarte.db.models import GitLabInstance
+from baluarte.db.models import GitLabGroup, GitLabInstance
 from baluarte.integrations.gitlab.capabilities import CapabilitySnapshot
 from baluarte.integrations.gitlab.client import GitLabClient
 from baluarte.integrations.gitlab.diagnostics import (
@@ -21,7 +21,7 @@ from baluarte.integrations.gitlab.diagnostics import (
     not_configured,
     run_diagnostics,
 )
-from baluarte.integrations.gitlab.jobs import DETECT_CAPABILITIES
+from baluarte.integrations.gitlab.jobs import DETECT_CAPABILITIES, DISCOVER_GROUPS
 from baluarte.integrations.gitlab.settings import load_gitlab_settings
 from baluarte.jobs import queue
 from baluarte.settings import ConfigurationError
@@ -141,37 +141,121 @@ def read_instance(
     )
 
 
-class RefreshQueued(BaseModel):
+class JobQueued(BaseModel):
     job_id: int
 
 
-@router.post(
-    "/capabilities/refresh",
-    status_code=status.HTTP_202_ACCEPTED,
-    response_model=RefreshQueued,
-    summary="Queue capability detection",
-    description="Runs in the worker. Requests within the same minute share one job. Requires the "
-    "`X-CSRF-Token` header.",
-    responses={409: {"description": "GitLab is not configured"}},
-)
-def refresh_capabilities(
-    principal: Annotated[Principal, Depends(require(Permission.SETTINGS_MANAGE))],
-    db: Annotated[Session, Depends(database)],
-) -> RefreshQueued:
+def _queue(db: Session, principal: Principal, kind: str, action: str, attempts: int) -> JobQueued:
+    """Queue a GitLab job once per minute and audit the request."""
     url = _configured_url()
     if url is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "GitLab is not configured")
     minute = datetime.now(UTC).strftime("%Y%m%dT%H%M")
-    job_id = queue.enqueue(
-        db, DETECT_CAPABILITIES, f"{DETECT_CAPABILITIES}:{minute}", max_attempts=3
-    )
+    job_id = queue.enqueue(db, kind, f"{kind}:{minute}", max_attempts=attempts)
     audit.record(
         db,
         actor=principal.actor,
-        action="gitlab.capabilities_refresh_requested",
+        action=action,
         resource_type="gitlab_instance",
         resource_id=url,
         details={"job_id": job_id},
     )
     db.commit()
-    return RefreshQueued(job_id=job_id)
+    return JobQueued(job_id=job_id)
+
+
+_QUEUED_DOC = (
+    "Runs in the worker. Requests within the same minute share one job. Requires the "
+    "`X-CSRF-Token` header."
+)
+
+
+@router.post(
+    "/capabilities/refresh",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=JobQueued,
+    summary="Queue capability detection",
+    description=_QUEUED_DOC,
+    responses={409: {"description": "GitLab is not configured"}},
+)
+def refresh_capabilities(
+    principal: Annotated[Principal, Depends(require(Permission.SETTINGS_MANAGE))],
+    db: Annotated[Session, Depends(database)],
+) -> JobQueued:
+    return _queue(db, principal, DETECT_CAPABILITIES, "gitlab.capabilities_refresh_requested", 3)
+
+
+@router.post(
+    "/groups/discover",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=JobQueued,
+    summary="Queue group and subgroup discovery",
+    description=_QUEUED_DOC,
+    responses={409: {"description": "GitLab is not configured"}},
+)
+def discover_groups(
+    principal: Annotated[Principal, Depends(require(Permission.SETTINGS_MANAGE))],
+    db: Annotated[Session, Depends(database)],
+) -> JobQueued:
+    return _queue(db, principal, DISCOVER_GROUPS, "gitlab.group_discovery_requested", 5)
+
+
+class GroupOut(BaseModel):
+    id: int
+    gitlab_id: int
+    parent_gitlab_id: int | None
+    full_path: str
+    name: str
+    visibility: str | None
+    state: str
+    first_seen_at: datetime
+    last_seen_at: datetime
+
+
+class GroupPage(BaseModel):
+    items: list[GroupOut]
+    next_after_id: int | None
+
+
+def _like(text: str) -> str:
+    return "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+
+
+@router.get(
+    "/groups",
+    response_model=GroupPage,
+    summary="Discovered groups and subgroups",
+    description="Groups of the configured instance in ID order. `state` is `active`, "
+    "`inaccessible` (exists, but the token may not read it) or `missing` (deleted or hidden "
+    "from the token). `last_seen_at` is when discovery last listed the group.",
+)
+def list_groups(
+    _: Annotated[Principal, Depends(require(Permission.INVENTORY_READ))],
+    db: Annotated[Session, Depends(database)],
+    state: Annotated[Literal["active", "missing", "inaccessible"] | None, Query()] = None,
+    search: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
+    parent_gitlab_id: Annotated[int | None, Query(gt=0)] = None,
+    after_id: Annotated[int | None, Query(gt=0)] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+) -> GroupPage:
+    url = _configured_url()
+    if url is None:
+        return GroupPage(items=[], next_after_id=None)
+    statement = (
+        select(GitLabGroup)
+        .join(GitLabInstance, GitLabInstance.id == GitLabGroup.instance_id)
+        .where(GitLabInstance.base_url == url)
+        .order_by(GitLabGroup.id)
+        .limit(limit + 1)
+    )
+    if state is not None:
+        statement = statement.where(GitLabGroup.state == state)
+    if search is not None:
+        statement = statement.where(GitLabGroup.full_path.ilike(_like(search), escape="\\"))
+    if parent_gitlab_id is not None:
+        statement = statement.where(GitLabGroup.parent_gitlab_id == parent_gitlab_id)
+    if after_id is not None:
+        statement = statement.where(GitLabGroup.id > after_id)
+    rows = db.scalars(statement).all()
+    items = [GroupOut.model_validate(row, from_attributes=True) for row in rows[:limit]]
+    return GroupPage(items=items, next_after_id=items[-1].id if len(rows) > limit else None)
