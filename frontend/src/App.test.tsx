@@ -1,10 +1,11 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { navItems } from "./navigation";
 import { routes } from "./routes";
+import { signedIn } from "./test/api";
 
 function renderAt(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
@@ -13,18 +14,26 @@ function renderAt(path: string) {
 }
 
 describe("navigation", () => {
-  it("lists every section in the primary nav", () => {
+  beforeEach(() => {
+    signedIn();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("lists every section in the primary nav", async () => {
     renderAt("/");
 
-    const nav = screen.getByRole("navigation", { name: "Primary" });
+    const nav = await screen.findByRole("navigation", { name: "Primary" });
     const links = within(nav).getAllByRole("link");
     expect(links.map((link) => link.textContent)).toEqual(navItems.map((item) => item.label));
   });
 
-  it("marks only the current section with aria-current", () => {
+  it("marks only the current section with aria-current", async () => {
     renderAt("/inventory");
 
-    const nav = screen.getByRole("navigation", { name: "Primary" });
+    const nav = await screen.findByRole("navigation", { name: "Primary" });
     expect(within(nav).getByRole("link", { name: "Inventory" })).toHaveAttribute(
       "aria-current",
       "page",
@@ -38,16 +47,16 @@ describe("navigation", () => {
     const user = userEvent.setup();
     const router = renderAt("/");
 
-    await user.click(screen.getByRole("link", { name: "Findings" }));
+    await user.click(await screen.findByRole("link", { name: "Findings" }));
 
     expect(router.state.location.pathname).toBe("/findings");
     expect(screen.getByRole("heading", { level: 1, name: "Findings" })).toBeInTheDocument();
   });
 
-  it.each(navItems)("renders a page heading for $label", ({ path, label }) => {
+  it.each(navItems)("renders a page heading for $label", async ({ path, label }) => {
     renderAt(path);
 
-    expect(screen.getByRole("heading", { level: 1, name: label })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: label })).toBeInTheDocument();
   });
 
   it("shows a not-found page for unknown paths", () => {

@@ -51,6 +51,9 @@ echo "ok  web /"
 curl -fsS http://127.0.0.1:8080/inventory | grep -q '<div id="root">' || fail "SPA deep link not served"
 echo "ok  web /inventory (SPA fallback)"
 
+curl -fsS 'http://127.0.0.1:8080/sign-in?error=expired' | grep -q '<div id="root">' || fail "sign-in page not served"
+echo "ok  web /sign-in (sign-in error landing page)"
+
 headers=$(curl -fsSI http://127.0.0.1:8080/ | tr -d '\r')
 grep -qi '^content-security-policy:' <<<"$headers" || fail "missing Content-Security-Policy"
 grep -qi '^server: nginx$' <<<"$headers" || fail "nginx version exposed in Server header"
