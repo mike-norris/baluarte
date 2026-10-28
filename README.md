@@ -21,12 +21,14 @@ Planning foundation; **no application implementation yet**. See the [roadmap](do
 Requires Docker with Compose v2. The stack is for development only; it binds to 127.0.0.1 and is not a production configuration.
 
 ```sh
-mkdir -p secrets && (umask 077 && openssl rand -base64 32 > secrets/postgres_password)
+mkdir -p secrets && (umask 022 && openssl rand -base64 32 > secrets/postgres_password)
 docker compose up -d --build --wait
 ```
 
 - Web UI: http://127.0.0.1:8080
-- API health: http://127.0.0.1:8000/api/v1/health
+- API health: http://127.0.0.1:8000/api/v1/health (readiness, including migrations: `/api/v1/ready`)
+
+The `migrate` service applies database migrations before the API starts. The password file must be readable by the containers' non-root users, so it is created world-readable; keep it in a single-user development checkout only.
 
 Stop with `docker compose down` (add `-v` to delete the database volume). `deploy/compose/smoke-test.sh` builds, checks and removes a throwaway copy of the stack. For Kubernetes, see the [Helm chart](deploy/helm/baluarte/README.md). For backend and frontend development without containers, see [backend/README.md](backend/README.md) and [frontend/README.md](frontend/README.md).
 

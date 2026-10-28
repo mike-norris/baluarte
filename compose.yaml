@@ -8,6 +8,12 @@ x-hardening: &hardening
   security_opt: ["no-new-privileges:true"]
   tmpfs: [/tmp]
 
+x-database: &database
+  environment:
+    BALUARTE_DATABASE_URL: postgresql://baluarte@db:5432/baluarte
+    BALUARTE_DATABASE_PASSWORD_FILE: /run/secrets/postgres_password
+  secrets: [postgres_password]
+
 services:
   db:
     image: postgres:17-alpine
@@ -25,13 +31,23 @@ services:
       timeout: 3s
       retries: 10
 
-  api:
-    <<: *hardening
+  # One-shot: applies migrations, then exits. Safe to re-run.
+  migrate:
+    <<: [*hardening, *database]
     build: ./backend
     image: baluarte-app:dev
+    command: ["baluarte-migrate", "--timeout", "60"]
+    restart: "no"
     depends_on:
       db:
         condition: service_healthy
+
+  api:
+    <<: [*hardening, *database]
+    image: baluarte-app:dev
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "127.0.0.1:8000:8000"
 

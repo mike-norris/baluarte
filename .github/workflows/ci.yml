@@ -21,6 +21,24 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: baluarte
+          # Throwaway database in an ephemeral CI container, reachable only from this job.
+          POSTGRES_PASSWORD: ci-only-not-a-secret
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U baluarte"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      BALUARTE_TEST_DATABASE_URL: postgresql://baluarte:ci-only-not-a-secret@127.0.0.1:5432/postgres
+      BALUARTE_REQUIRE_DB_TESTS: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -68,17 +86,20 @@ jobs:
         with:
           persist-credentials: false
       - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
-      - run: helm lint --strict deploy/helm/baluarte
-      - name: Render optional features
-        run: >-
-          helm template ci deploy/helm/baluarte
-          --set ingress.enabled=true
-          --set 'ingress.tls[0].secretName=ci-tls'
-          --set 'ingress.tls[0].hosts[0]=baluarte.example.internal'
-          --set global.imageRegistry=registry.example.internal/baluarte
-          --set api.podDisruptionBudget.enabled=true
-          --set web.podDisruptionBudget.enabled=true
-          > /dev/null
+      - name: Lint and render each CI values file
+        run: |
+          for values in deploy/helm/baluarte/ci/*-values.yaml; do
+            echo "::group::$values"
+            helm lint --strict deploy/helm/baluarte -f "$values"
+            helm template ci deploy/helm/baluarte -f "$values" > /dev/null
+            echo "::endgroup::"
+          done
+      - name: Rendering without a database must fail
+        run: |
+          if helm template ci deploy/helm/baluarte > /dev/null 2>&1; then
+            echo "chart rendered without database configuration" >&2
+            exit 1
+          fi
 
   images:
     name: Build and scan ${{ matrix.image }} image

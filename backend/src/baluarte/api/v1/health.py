@@ -1,7 +1,7 @@
 """Liveness endpoint.
 
-Reports only that the process is serving requests. It does not check PostgreSQL or GitLab;
-a separate readiness check is added once the database layer exists.
+Reports only that the process is serving requests. It does not check PostgreSQL or GitLab,
+so a database outage does not restart the container; see /api/v1/ready for that.
 """
 
 from typing import Literal

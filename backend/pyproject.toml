@@ -10,7 +10,10 @@ readme = "README.md"
 license = "MPL-2.0"
 requires-python = ">=3.12"
 dependencies = [
+  "alembic>=1.20",
   "fastapi>=0.162",
+  "psycopg[binary]>=3.3",
+  "sqlalchemy>=2.1",
   "uvicorn[standard]>=0.54",
 ]
 
@@ -22,12 +25,16 @@ dev = [
   "ruff>=0.17",
 ]
 
+[project.scripts]
+baluarte-migrate = "baluarte.db.migrate:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/baluarte"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"
+markers = ["db: requires PostgreSQL (set BALUARTE_TEST_DATABASE_URL)"]
 
 [tool.ruff]
 line-length = 100
@@ -37,7 +44,9 @@ target-version = "py312"
 select = ["E", "F", "W", "I", "B", "UP", "S", "ASYNC", "RUF"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]
+"tests/**" = ["S101", "S105", "S106"]
+# Generated migrations keep long SQL literals on one line.
+"src/baluarte/db/migrations/versions/**" = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"

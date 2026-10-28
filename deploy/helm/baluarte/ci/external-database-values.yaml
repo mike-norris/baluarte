@@ -1,0 +1,17 @@
+database:
+  host: postgresql.example.internal
+  existingSecret: baluarte-database
+  sslMode: verify-full
+ingress:
+  enabled: true
+  tls:
+    - secretName: baluarte-tls
+      hosts: [baluarte.example.internal]
+global:
+  imageRegistry: registry.example.internal/baluarte
+api:
+  podDisruptionBudget:
+    enabled: true
+web:
+  podDisruptionBudget:
+    enabled: true
