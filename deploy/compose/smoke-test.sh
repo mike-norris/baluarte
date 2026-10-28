@@ -16,7 +16,8 @@ trap cleanup EXIT
 
 if [[ ! -f secrets/postgres_password ]]; then
   mkdir -p secrets
-  (umask 077 && openssl rand -base64 32 > secrets/postgres_password)
+  # Readable by the non-root API container on Linux bind mounts; dev-only secret.
+  (umask 022 && openssl rand -base64 32 > secrets/postgres_password)
   created_secret=true
 fi
 
@@ -27,6 +28,13 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 body=$(curl -fsS http://127.0.0.1:8000/api/v1/health) || fail "API health unreachable"
 grep -q '"status":"ok"' <<<"$body" || fail "API health body: $body"
 echo "ok  api /api/v1/health"
+
+body=$(curl -fsS http://127.0.0.1:8000/api/v1/ready) || fail "API not ready: $(curl -sS http://127.0.0.1:8000/api/v1/ready)"
+grep -q '"status":"ready"' <<<"$body" || fail "ready body: $body"
+echo "ok  api /api/v1/ready (database migrated)"
+
+[[ $(docker inspect -f '{{.State.ExitCode}}' "$("${compose[@]}" ps -aq migrate)") == 0 ]] || fail "migrate did not exit 0"
+echo "ok  migrate exited 0"
 
 body=$(curl -fsS http://127.0.0.1:8080/api/v1/health) || fail "API via web proxy unreachable"
 grep -q '"status":"ok"' <<<"$body" || fail "proxied health body: $body"

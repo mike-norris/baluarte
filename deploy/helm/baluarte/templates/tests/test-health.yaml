@@ -43,5 +43,8 @@ spec:
               body = json.loads(fetch(url))
               assert body["status"] == "ok", (url, body)
               print("ok", url)
+          body = json.loads(fetch(api + "/api/v1/ready"))
+          assert body["status"] == "ready", body
+          print("ok", api + "/api/v1/ready")
           assert '<div id="root">' in fetch(web + "/inventory"), "SPA fallback not served"
           print("ok web SPA fallback")

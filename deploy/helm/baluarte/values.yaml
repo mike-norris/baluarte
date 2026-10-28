@@ -1,6 +1,6 @@
 # Default values for the Baluarte chart.
-# Initial chart: API and web only. PostgreSQL settings, the migration Job and the worker
-# are added with the database (BAL-007) and job (BAL-009) work.
+# Set either database.host (external PostgreSQL, recommended) or devDatabase.enabled.
+# The worker Deployment is added with job processing (BAL-009).
 
 global:
   # Prefix applied to both images, e.g. "registry.example.internal/baluarte". Empty uses the bare repository.
@@ -76,6 +76,51 @@ web:
   podDisruptionBudget:
     enabled: false
     minAvailable: 1
+
+# External PostgreSQL. The password is read from an existing Secret; the chart never stores it.
+database:
+  host: ""
+  port: 5432
+  name: baluarte
+  user: baluarte
+  # libpq sslmode: disable, allow, prefer, require, verify-ca or verify-full.
+  sslMode: require
+  existingSecret: ""
+  passwordKey: password
+
+# Runs baluarte-migrate as a Job for every install and upgrade. The API reports ready only
+# once the schema is at the latest revision.
+migrations:
+  # Seconds to wait for the database to accept connections.
+  waitTimeoutSeconds: 120
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
+# Single-pod PostgreSQL for evaluation and CI only: no backups, no high availability.
+# A random password is generated on install and kept across upgrades.
+devDatabase:
+  enabled: false
+  image:
+    repository: postgres
+    tag: "17-alpine"
+    pullPolicy: IfNotPresent
+  # postgres user in the Alpine image.
+  runAsUser: 70
+  storage:
+    size: 1Gi
+    storageClassName: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
 
 # Exposes the web Service; the web pod proxies /api to the API Service.
 ingress:

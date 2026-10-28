@@ -30,12 +30,15 @@ spec:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
         runAsUser: {{ .Values.api.runAsUser }}
         runAsGroup: {{ .Values.api.runAsUser }}
+        fsGroup: {{ .Values.api.runAsUser }}
       containers:
         - name: api
           image: {{ include "baluarte.image" (dict "ctx" . "image" .Values.api.image) | quote }}
           imagePullPolicy: {{ .Values.api.image.pullPolicy }}
           securityContext:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          env:
+            {{- include "baluarte.databaseEnv" . | nindent 12 }}
           ports:
             - name: http
               containerPort: 8000
@@ -45,9 +48,10 @@ spec:
               port: http
             periodSeconds: 10
             timeoutSeconds: 3
+          # Ready only when PostgreSQL is reachable and migrated.
           readinessProbe:
             httpGet:
-              path: /api/v1/health
+              path: /api/v1/ready
               port: http
             periodSeconds: 5
             timeoutSeconds: 3
@@ -56,10 +60,12 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            {{- include "baluarte.databaseVolumeMount" . | nindent 12 }}
       volumes:
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi
+        {{- include "baluarte.databaseVolume" . | nindent 8 }}
       {{- with .Values.api.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
