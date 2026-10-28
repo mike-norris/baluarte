@@ -5,6 +5,9 @@
   misconfigured or hostile endpoint cannot have the token forwarded to another host.
 - 429, 502, 503, 504, timeouts and connection errors are retried a bounded number of times
   with exponential backoff, honouring ``Retry-After`` up to a cap.
+- ``paginate`` follows the ``Link: rel="next"`` header, which GitLab sends for both offset and
+  keyset pagination, and refuses a next-page URL outside the configured API so the token is
+  never sent elsewhere.
 - Failures raise a GitLabError subclass whose message is safe to store and show: it never
   contains the token, response bodies or query strings.
 """
@@ -12,7 +15,7 @@
 import logging
 import ssl
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any
 
 import httpx
@@ -26,6 +29,9 @@ RETRY_STATUSES = frozenset({429, 502, 503, 504})
 MAX_ATTEMPTS = 3
 BACKOFF_SECONDS = 0.5
 MAX_RETRY_AFTER_SECONDS = 30.0
+PER_PAGE = 100
+# Guards against a next link that never ends: 100,000 pages of 100 items.
+MAX_PAGES = 100_000
 
 
 class GitLabError(Exception):
@@ -96,6 +102,7 @@ class GitLabClient:
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._sleep = sleep
+        self._api_prefix = settings.api_url + "/"
         self._http = httpx.Client(
             base_url=settings.api_url,
             headers={
@@ -119,7 +126,8 @@ class GitLabClient:
 
     def get(self, path: str, params: dict[str, Any] | None = None) -> httpx.Response:
         """GET ``path`` (relative to /api/v4) and return a 2xx response, or raise GitLabError."""
-        endpoint = path.split("?", 1)[0]
+        # Next-page links are absolute; messages and logs use the API-relative path.
+        endpoint = path.split("?", 1)[0].removeprefix(self._api_prefix[:-1])
         for attempt in range(1, MAX_ATTEMPTS + 1):
             delay = BACKOFF_SECONDS * 2 ** (attempt - 1)
             try:
@@ -150,7 +158,35 @@ class GitLabClient:
         raise AssertionError("unreachable")  # pragma: no cover
 
     def get_json(self, path: str, params: dict[str, Any] | None = None) -> Any:
-        response = self.get(path, params)
+        return self._json(self.get(path, params), path)
+
+    def paginate(
+        self, path: str, params: dict[str, Any] | None = None
+    ) -> Iterator[list[dict[str, Any]]]:
+        """Yield each page of a list endpoint, following ``rel="next"`` links to the end."""
+        url: str = path
+        query: dict[str, Any] | None = {"per_page": PER_PAGE, **(params or {})}
+        seen: set[str] = set()
+        for _page in range(MAX_PAGES):
+            response = self.get(url, query)
+            items = self._json(response, path)
+            if not isinstance(items, list) or not all(isinstance(i, dict) for i in items):
+                raise InvalidResponse(f"GET {path} did not return a list of objects")
+            yield items
+            following = response.links.get("next", {}).get("url")
+            if not following:
+                return
+            if not following.startswith(self._api_prefix):
+                raise InvalidResponse(f"GET {path}: next-page link points outside the GitLab API")
+            if following in seen:
+                raise InvalidResponse(f"GET {path}: next-page link repeats")
+            seen.add(following)
+            # The next link carries every query parameter, including the cursor.
+            url, query = following, None
+        raise InvalidResponse(f"GET {path}: more than {MAX_PAGES} pages")
+
+    @staticmethod
+    def _json(response: httpx.Response, path: str) -> Any:
         try:
             return response.json()
         except ValueError as exc:

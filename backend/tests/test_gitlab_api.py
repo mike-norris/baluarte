@@ -1,13 +1,14 @@
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from gitlab_fake import TOKEN, URL, FakeGitLab
+from gitlab_fake import TOKEN, URL, FakeGitLab, group, paged
 from gitlab_fake import settings as fake_settings
 from oidc_fake import make_settings
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
 from baluarte.api.v1.gitlab import gitlab_transport
@@ -18,9 +19,10 @@ from baluarte.auth.dependencies import (
     database_engine,
 )
 from baluarte.auth.roles import Role
-from baluarte.db.models import AuditEvent, CollectionJob
+from baluarte.db.models import AuditEvent, CollectionJob, GitLabGroup
 from baluarte.integrations.gitlab.capabilities import detect, record_snapshot
 from baluarte.integrations.gitlab.client import GitLabClient
+from baluarte.integrations.gitlab.groups import discover_groups
 from baluarte.main import create_app
 
 pytestmark = pytest.mark.db
@@ -243,3 +245,114 @@ def test_refresh_without_configuration(
     )
 
     assert response.status_code == 409
+
+
+def seed_groups(engine: Engine) -> None:
+    fake = FakeGitLab()
+    fake.set(
+        "/groups",
+        paged(
+            "/groups",
+            [
+                [
+                    group(1, "platform"),
+                    group(2, "platform/back_end", 1),
+                    group(3, "platform/frontend", 1),
+                    group(4, "security"),
+                ]
+            ],
+        ),
+    )
+    discover_groups(GitLabClient(fake_settings(), transport=fake.transport), engine, URL)
+    with Session(engine) as db:
+        db.execute(update(GitLabGroup).where(GitLabGroup.gitlab_id == 4).values(state="missing"))
+        db.commit()
+
+
+def group_paths(response: Any) -> list[str]:
+    return [item["full_path"] for item in response.json()["items"]]
+
+
+@pytest.mark.parametrize("role", [Role.ADMIN, Role.ANALYST, Role.AUDITOR])
+def test_groups_are_listed_for_every_role(
+    migrated_engine: Engine, gitlab_env: None, role: Role
+) -> None:
+    seed_groups(migrated_engine)
+
+    response = client_as(migrated_engine, FakeGitLab(), role).get("/api/v1/gitlab/groups")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert group_paths(response) == [
+        "platform",
+        "platform/back_end",
+        "platform/frontend",
+        "security",
+    ]
+    assert body["items"][1]["parent_gitlab_id"] == 1
+    assert body["items"][3]["state"] == "missing"
+    assert body["next_after_id"] is None
+
+
+def test_group_filters_and_paging(migrated_engine: Engine, gitlab_env: None) -> None:
+    seed_groups(migrated_engine)
+    client = client_as(migrated_engine, FakeGitLab(), Role.ANALYST)
+
+    missing = client.get("/api/v1/gitlab/groups", params={"state": "missing"})
+    children = client.get("/api/v1/gitlab/groups", params={"parent_gitlab_id": 1})
+    # "_" is matched literally, not as a single-character wildcard.
+    underscore = client.get("/api/v1/gitlab/groups", params={"search": "K_E"})
+    first = client.get("/api/v1/gitlab/groups", params={"limit": 3}).json()
+    rest = client.get(
+        "/api/v1/gitlab/groups", params={"limit": 3, "after_id": first["next_after_id"]}
+    )
+
+    assert group_paths(missing) == ["security"]
+    assert group_paths(children) == ["platform/back_end", "platform/frontend"]
+    assert group_paths(underscore) == ["platform/back_end"]
+    assert len(first["items"]) == 3
+    assert group_paths(rest) == ["security"]
+    assert rest.json()["next_after_id"] is None
+
+
+def test_groups_when_not_configured(
+    migrated_engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("BALUARTE_GITLAB_URL", raising=False)
+
+    body = (
+        client_as(migrated_engine, FakeGitLab(), Role.ANALYST).get("/api/v1/gitlab/groups").json()
+    )
+
+    assert body == {"items": [], "next_after_id": None}
+
+
+@pytest.mark.parametrize("params", [{"state": "deleted"}, {"limit": 501}, {"search": ""}])
+def test_group_listing_rejects_invalid_parameters(
+    migrated_engine: Engine, gitlab_env: None, params: dict[str, object]
+) -> None:
+    response = client_as(migrated_engine, FakeGitLab(), Role.ANALYST).get(
+        "/api/v1/gitlab/groups", params=params
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("role", "status"), [(Role.ADMIN, 202), (Role.ANALYST, 403), (Role.AUDITOR, 403)]
+)
+def test_group_discovery_is_queued_by_admins(
+    migrated_engine: Engine, gitlab_env: None, role: Role, status: int
+) -> None:
+    client = client_as(migrated_engine, FakeGitLab(), role)
+
+    responses = [client.post("/api/v1/gitlab/groups/discover") for _ in range(2)]
+
+    assert [response.status_code for response in responses] == [status, status]
+    if status == 202:
+        assert responses[0].json() == responses[1].json()
+        with Session(migrated_engine) as db:
+            [job] = db.scalars(select(CollectionJob)).all()
+            actions = set(db.scalars(select(AuditEvent.action)))
+        assert (job.kind, job.max_attempts) == ("gitlab.discover_groups", 5)
+        assert actions == {"gitlab.group_discovery_requested"}

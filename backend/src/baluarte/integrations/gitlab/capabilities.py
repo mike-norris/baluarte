@@ -17,7 +17,6 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from baluarte.db.models import GitLabInstance
@@ -28,6 +27,7 @@ from baluarte.integrations.gitlab.client import (
     NotFound,
     Unauthorized,
 )
+from baluarte.integrations.gitlab.instances import instance_for
 
 ProbeStatus = Literal["supported", "forbidden", "not_found", "error", "skipped"]
 
@@ -164,10 +164,7 @@ def record_snapshot(db: Session, base_url: str, snapshot: CapabilitySnapshot) ->
     A failed detection replaces the previous snapshot, so a stale "ok" is never shown; the
     last detected version and edition are kept because they remain true until seen otherwise.
     """
-    instance = db.scalars(select(GitLabInstance).where(GitLabInstance.base_url == base_url)).first()
-    if instance is None:
-        instance = GitLabInstance(base_url=base_url)
-        db.add(instance)
+    instance = instance_for(db, base_url)
     if snapshot.version is not None:
         instance.version = snapshot.version
         instance.edition = snapshot.edition

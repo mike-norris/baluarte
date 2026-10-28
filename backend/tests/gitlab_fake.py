@@ -97,3 +97,31 @@ class FakeGitLab:
 
 def settings(url: str = URL) -> GitLabSettings:
     return GitLabSettings(url=url, token=TOKEN, timeout_seconds=5.0)
+
+
+def paged(path: str, pages: list[list[dict[str, Any]]], base: str = URL) -> Reply:
+    """Serve ``pages`` with ``page`` query parameters and GitLab-style ``Link`` headers."""
+
+    def reply(request: httpx.Request) -> httpx.Response:
+        number = int(request.url.params.get("page", "1"))
+        headers = {}
+        if number < len(pages):
+            following = f"{base}/api/v4{path}?page={number + 1}&per_page=100"
+            headers["Link"] = (
+                f'<{following}>; rel="next", <{base}/api/v4{path}?page=1>; rel="first"'
+            )
+        return httpx.Response(200, json=pages[number - 1], headers=headers)
+
+    return reply
+
+
+def group(
+    gitlab_id: int, full_path: str, parent: int | None = None, **extra: Any
+) -> dict[str, Any]:
+    return {
+        "id": gitlab_id,
+        "full_path": full_path,
+        "name": full_path.rsplit("/", 1)[-1],
+        "parent_id": parent,
+        "visibility": "private",
+    } | extra

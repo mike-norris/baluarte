@@ -2,7 +2,7 @@ import ssl
 
 import httpx
 import pytest
-from gitlab_fake import TOKEN, FakeGitLab, settings
+from gitlab_fake import TOKEN, FakeGitLab, paged, settings
 
 from baluarte.integrations.gitlab.client import (
     MAX_RETRY_AFTER_SECONDS,
@@ -149,3 +149,69 @@ def test_non_json_body() -> None:
 
     with pytest.raises(InvalidResponse, match="did not return JSON"):
         client(fake).get_json("/version")
+
+
+def test_paginate_follows_next_links() -> None:
+    fake = FakeGitLab()
+    fake.set("/groups", paged("/groups", [[{"id": 1}, {"id": 2}], [{"id": 3}], [{"id": 4}]]))
+
+    pages = list(client(fake).paginate("/groups", {"all_available": "true"}))
+
+    assert pages == [[{"id": 1}, {"id": 2}], [{"id": 3}], [{"id": 4}]]
+    first, second, _third = fake.requests
+    assert first.url.params["per_page"] == "100"
+    assert first.url.params["all_available"] == "true"
+    assert str(second.url) == "https://gitlab.example.test/api/v4/groups?page=2&per_page=100"
+
+
+def test_paginate_single_page_without_link() -> None:
+    fake = FakeGitLab()
+    fake.json("/groups", body=[])
+
+    assert list(client(fake).paginate("/groups")) == [[]]
+
+
+def test_paginate_refuses_a_next_link_to_another_host() -> None:
+    fake = FakeGitLab()
+    fake.set("/groups", paged("/groups", [[{"id": 1}], [{"id": 2}]], base="https://evil.example"))
+
+    with pytest.raises(InvalidResponse, match="outside the GitLab API"):
+        list(client(fake).paginate("/groups"))
+    assert {request.url.host for request in fake.requests} == {"gitlab.example.test"}
+
+
+def test_paginate_refuses_a_repeating_link() -> None:
+    fake = FakeGitLab()
+    loop = "https://gitlab.example.test/api/v4/groups?page=2"
+    fake.set("/groups", httpx.Response(200, json=[], headers={"Link": f'<{loop}>; rel="next"'}))
+
+    with pytest.raises(InvalidResponse, match="repeats"):
+        list(client(fake).paginate("/groups"))
+
+
+@pytest.mark.parametrize("body", [{"id": 1}, [1, 2]])
+def test_paginate_requires_a_list_of_objects(body: object) -> None:
+    fake = FakeGitLab()
+    fake.json("/groups", body=body)
+
+    with pytest.raises(InvalidResponse, match="list of objects"):
+        list(client(fake).paginate("/groups"))
+
+
+def test_paginate_error_on_a_later_page_names_the_relative_path() -> None:
+    pages = paged("/groups", [[{"id": 1}], [{"id": 2}]])
+
+    def second_fails(request: httpx.Request) -> httpx.Response:
+        if request.url.params.get("page") == "2":
+            return httpx.Response(403)
+        assert callable(pages)
+        return pages(request)
+
+    fake = FakeGitLab()
+    fake.set("/groups", second_fails)
+    iterator = client(fake).paginate("/groups")
+
+    assert next(iterator) == [{"id": 1}]
+    with pytest.raises(Forbidden) as raised:
+        next(iterator)
+    assert str(raised.value) == "the token may not read /groups (403)"
