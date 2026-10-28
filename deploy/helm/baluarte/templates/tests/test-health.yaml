@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ printf "%s-test-health" (include "baluarte.fullname" .) | trunc 63 | trimSuffix "-" }}
+  labels:
+    {{- include "baluarte.labels" . | nindent 4 }}
+    app.kubernetes.io/component: test
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  securityContext:
+    {{- toYaml .Values.podSecurityContext | nindent 4 }}
+    runAsUser: {{ .Values.api.runAsUser }}
+  containers:
+    # Reuses the app image (it has Python) to avoid pulling an extra test image.
+    - name: health
+      image: {{ include "baluarte.image" (dict "ctx" . "image" .Values.api.image) | quote }}
+      imagePullPolicy: {{ .Values.api.image.pullPolicy }}
+      securityContext:
+        {{- toYaml .Values.containerSecurityContext | nindent 8 }}
+      command:
+        - python
+        - -c
+        - |
+          import json, time, urllib.request
+
+          # Service routing can lag Deployment readiness right after install; retry briefly.
+          def fetch(url):
+              for attempt in range(10):
+                  try:
+                      return urllib.request.urlopen(url, timeout=5).read().decode()
+                  except OSError:
+                      if attempt == 9:
+                          raise
+                      time.sleep(2)
+
+          api = "http://{{ include "baluarte.apiName" . }}:{{ .Values.api.service.port }}"
+          web = "http://{{ include "baluarte.webName" . }}:{{ .Values.web.service.port }}"
+          for url in (api + "/api/v1/health", web + "/api/v1/health"):
+              body = json.loads(fetch(url))
+              assert body["status"] == "ok", (url, body)
+              print("ok", url)
+          assert '<div id="root">' in fetch(web + "/inventory"), "SPA fallback not served"
+          print("ok web SPA fallback")
