@@ -181,3 +181,42 @@ https://{{ .Values.ingress.host }}
 - name: BALUARTE_LOG_FORMAT
   value: {{ .Values.logging.format | quote }}
 {{- end }}
+
+{{- define "baluarte.gitlabEnv" -}}
+{{- with .Values.gitlab }}
+{{- if .url }}
+{{- if not (hasPrefix "https://" .url) }}
+{{- fail "gitlab.url must be an https URL" }}
+{{- end }}
+{{- if not .existingSecret }}
+{{- fail "gitlab.existingSecret is required when gitlab.url is set" }}
+{{- end }}
+- name: BALUARTE_GITLAB_URL
+  value: {{ .url | quote }}
+- name: BALUARTE_GITLAB_TOKEN_FILE
+  value: /var/run/secrets/baluarte/gitlab/token
+- name: BALUARTE_GITLAB_TIMEOUT_SECONDS
+  value: {{ .timeoutSeconds | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- define "baluarte.gitlabVolumeMount" -}}
+{{- if .Values.gitlab.url }}
+- name: gitlab-token
+  mountPath: /var/run/secrets/baluarte/gitlab
+  readOnly: true
+{{- end }}
+{{- end }}
+
+{{- define "baluarte.gitlabVolume" -}}
+{{- if .Values.gitlab.url }}
+- name: gitlab-token
+  secret:
+    secretName: {{ .Values.gitlab.existingSecret }}
+    defaultMode: 0440
+    items:
+      - key: {{ .Values.gitlab.tokenKey }}
+        path: token
+{{- end }}
+{{- end }}

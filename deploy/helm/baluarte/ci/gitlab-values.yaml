@@ -1,0 +1,7 @@
+# Renders the GitLab connection (no cluster resources are created for the token Secret).
+devDatabase:
+  enabled: true
+gitlab:
+  url: https://gitlab.example.test
+  existingSecret: baluarte-gitlab
+  timeoutSeconds: 20

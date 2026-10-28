@@ -111,6 +111,17 @@ jobs:
             fi
           done
 
+      - name: Rendering with invalid GitLab settings must fail
+        run: |
+          base=(-f deploy/helm/baluarte/ci/dev-database-values.yaml)
+          for extra in "--set gitlab.url=https://gitlab.example.internal" "--set gitlab.url=http://gitlab.example.internal --set gitlab.existingSecret=s"; do
+            # shellcheck disable=SC2086
+            if helm template ci deploy/helm/baluarte "${base[@]}" $extra > /dev/null 2>&1; then
+              echo "chart rendered with invalid GitLab settings: $extra" >&2
+              exit 1
+            fi
+          done
+
   images:
     name: Build and scan ${{ matrix.image }} image
     runs-on: ubuntu-24.04

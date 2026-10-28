@@ -10,6 +10,7 @@ from baluarte.auth.dependencies import Principal, auth_settings, require
 from baluarte.auth.roles import Permission, Role
 from baluarte.auth.settings import AuthSettings
 from baluarte.config import database_url
+from baluarte.integrations.gitlab.settings import load_gitlab_settings
 from baluarte.settings import ConfigurationError, load_logging_settings
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -43,10 +44,17 @@ class AuthenticationInfo(BaseModel):
     session_lifetime_minutes: int
 
 
+class GitLabInfo(BaseModel):
+    url: str
+    token: SecretState
+    timeout_seconds: float
+
+
 class SettingsInfo(BaseModel):
     version: str
     logging: LoggingInfo | None
     database: DatabaseInfo | None
+    gitlab: GitLabInfo | None
     authentication: AuthenticationInfo
 
 
@@ -79,10 +87,24 @@ def read_settings(
         )
     except ConfigurationError:
         database = None
+    try:
+        gitlab_settings = load_gitlab_settings()
+    except ConfigurationError:
+        gitlab_settings = None
+    gitlab = (
+        GitLabInfo(
+            url=gitlab_settings.url,
+            token=_state(gitlab_settings.token),
+            timeout_seconds=gitlab_settings.timeout_seconds,
+        )
+        if gitlab_settings
+        else None
+    )
     return SettingsInfo(
         version=__version__,
         logging=logging_info,
         database=database,
+        gitlab=gitlab,
         authentication=AuthenticationInfo(
             public_url=auth.public_url,
             issuer=auth.issuer,

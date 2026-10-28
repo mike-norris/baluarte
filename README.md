@@ -32,7 +32,7 @@ Sign-in uses OIDC and is off by default: the web UI says sign-in is not configur
 
 The `migrate` service applies database migrations before the API and `worker` start. The password file must be readable by the containers' non-root users, so it is created world-readable; keep it in a single-user development checkout only.
 
-Stop with `docker compose down` (add `-v` to delete the database volume). `deploy/compose/smoke-test.sh` builds, checks and removes a throwaway copy of the stack. For Kubernetes, see the [Helm chart](deploy/helm/baluarte/README.md). For backend and frontend development without containers, see [backend/README.md](backend/README.md) and [frontend/README.md](frontend/README.md).
+To connect GitLab, follow the steps at the top of `deploy/compose/gitlab.yaml`. Stop with `docker compose down` (add `-v` to delete the database volume). `deploy/compose/smoke-test.sh` builds, checks and removes a throwaway copy of the stack. For Kubernetes, see the [Helm chart](deploy/helm/baluarte/README.md). For backend and frontend development without containers, see [backend/README.md](backend/README.md) and [frontend/README.md](frontend/README.md).
 
 ## License
 
