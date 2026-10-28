@@ -28,7 +28,7 @@ docker compose up -d --build --wait
 - Web UI: http://127.0.0.1:8080
 - API health: http://127.0.0.1:8000/api/v1/health
 
-Stop with `docker compose down` (add `-v` to delete the database volume). `deploy/compose/smoke-test.sh` builds, checks and removes a throwaway copy of the stack. For backend and frontend development without containers, see [backend/README.md](backend/README.md) and [frontend/README.md](frontend/README.md).
+Stop with `docker compose down` (add `-v` to delete the database volume). `deploy/compose/smoke-test.sh` builds, checks and removes a throwaway copy of the stack. For Kubernetes, see the [Helm chart](deploy/helm/baluarte/README.md). For backend and frontend development without containers, see [backend/README.md](backend/README.md) and [frontend/README.md](frontend/README.md).
 
 ## License
 

@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "baluarte.webName" . }}
+  labels:
+    {{- include "baluarte.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+data:
+  # Replaces the image's Compose default so /api/ reaches this release's API Service.
+  api-upstream.conf: |
+    proxy_pass http://{{ include "baluarte.apiName" . }}:{{ .Values.api.service.port }};

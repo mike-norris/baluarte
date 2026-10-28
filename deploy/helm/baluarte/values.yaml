@@ -1,0 +1,87 @@
+# Default values for the Baluarte chart.
+# Initial chart: API and web only. PostgreSQL settings, the migration Job and the worker
+# are added with the database (BAL-007) and job (BAL-009) work.
+
+global:
+  # Prefix applied to both images, e.g. "registry.example.internal/baluarte". Empty uses the bare repository.
+  imageRegistry: ""
+
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+api:
+  image:
+    repository: baluarte-app
+    # Defaults to the chart appVersion.
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  # Matches the UID baked into the image.
+  runAsUser: 10001
+  service:
+    port: 8000
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podDisruptionBudget:
+    enabled: false
+    minAvailable: 1
+
+web:
+  image:
+    repository: baluarte-web
+    tag: ""
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  # nginx-unprivileged UID.
+  runAsUser: 101
+  service:
+    type: ClusterIP
+    port: 8080
+  resources:
+    requests:
+      cpu: 50m
+      memory: 32Mi
+    limits:
+      memory: 64Mi
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podDisruptionBudget:
+    enabled: false
+    minAvailable: 1
+
+# Exposes the web Service; the web pod proxies /api to the API Service.
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: baluarte.example.internal
+  # e.g. [{ secretName: baluarte-tls, hosts: [baluarte.example.internal] }]
+  tls: []

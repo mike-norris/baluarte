@@ -11,6 +11,7 @@ RUN npm run build
 FROM nginxinc/nginx-unprivileged:1.29-alpine
 COPY nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY nginx/security-headers.conf /etc/nginx/security-headers.conf
+COPY nginx/api-upstream.conf /etc/nginx/api-upstream.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \

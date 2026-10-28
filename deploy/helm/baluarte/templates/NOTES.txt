@@ -1,0 +1,11 @@
+Baluarte {{ .Chart.AppVersion }} is installed as release "{{ .Release.Name }}".
+
+{{- if .Values.ingress.enabled }}
+Open: http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.host }}
+{{- else }}
+No Ingress is enabled. To reach the UI locally:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "baluarte.webName" . }} 8080:{{ .Values.web.service.port }}
+  open http://127.0.0.1:8080
+{{- end }}
+
+Check the release with: helm test {{ .Release.Name }} -n {{ .Release.Namespace }}
