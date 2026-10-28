@@ -18,6 +18,13 @@ updates:
     groups:
       frontend-dev:
         dependency-type: development
+    ignore:
+      # eslint-plugin-jsx-a11y 6.x only declares ESLint <= 9 as a peer, so
+      # ESLint 10 fails `npm ci`. Remove once jsx-a11y supports ESLint 10.
+      - dependency-name: eslint
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@eslint/js"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: docker
     directories: [/backend, /frontend]
     schedule:
