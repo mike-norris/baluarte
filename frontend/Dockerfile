@@ -8,7 +8,11 @@ COPY . .
 RUN npm run build
 
 # Static files only; runs as non-root on port 8080.
-FROM nginxinc/nginx-unprivileged:1.29-alpine
+FROM nginxinc/nginx-unprivileged:1.30-alpine
+# Pick up Alpine security fixes released after the base image was built.
+USER root
+RUN apk upgrade --no-cache
+USER 101
 COPY nginx/default.conf /etc/nginx/conf.d/default.conf
 COPY nginx/security-headers.conf /etc/nginx/security-headers.conf
 COPY nginx/api-upstream.conf /etc/nginx/api-upstream.conf
