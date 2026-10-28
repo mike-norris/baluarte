@@ -1,6 +1,6 @@
 # Data model
 
-Implemented in `backend/src/baluarte/db/models.py`; migration `0001` creates it. All primary keys are `bigint` identity columns, all timestamps are `timestamptz` (UTC instants), and status-like columns are `text` with CHECK constraints rather than PostgreSQL enum types. SHA-256 digests are stored as 64-character lowercase hex and checked by constraint.
+Implemented in `backend/src/baluarte/db/models.py`; migrations `0001` (inventory, policy and evidence) and `0002` (users and sessions) create it. All primary keys are `bigint` identity columns, all timestamps are `timestamptz` (UTC instants), and status-like columns are `text` with CHECK constraints rather than PostgreSQL enum types. SHA-256 digests are stored as 64-character lowercase hex and checked by constraint.
 
 | Table | Key fields | Notes |
 |---|---|---|
@@ -15,10 +15,17 @@ Implemented in `backend/src/baluarte/db/models.py`; migration `0001` creates it.
 | finding | id, project_id, policy_id, rule_id, latest_evaluation_id, severity, state, first_seen_at, last_seen_at, resolved_at | Unique `(project_id, policy_id, rule_id)`; state `open`, `resolved`, `excepted` |
 | audit_event | id, actor, action, resource_type, resource_id, details, details_digest, occurred_at | Administrative trace |
 | export_job | id, requested_by, scope, period_start, period_end, status, manifest_digest | Auditable exports; period must be ordered |
+| app_user | id, issuer, subject, email, display_name, created_at, last_login_at | Unique `(issuer, subject)`; created on first sign-in |
+| user_session | id, token_digest (unique), user_id, roles, created_at, last_seen_at, expires_at, revoked_at | SHA-256 of the session cookie, never the cookie itself; roles limited to `admin`, `analyst`, `auditor` and non-empty |
+| oidc_login | state_digest (primary key), nonce, code_verifier, return_to, expires_at | Sign-ins sent to the identity provider; single use, expire after 10 minutes |
 
 ## Immutability
 
 Database triggers reject `UPDATE` on `observation` and `evaluation`, and both `UPDATE` and `DELETE` on `audit_event`. Deletes of observations and evaluations remain possible so the retention design (BAL-029) can expire them. These triggers stop accidental or application-level changes; they do not stop a database superuser, so integrity still depends on protected digests (see [SECURITY.md](SECURITY.md)).
+
+## Audit digests
+
+`audit_event.details_digest` is the SHA-256 of `details` serialised as canonical JSON: keys sorted, no insignificant whitespace, UTF-8 (`baluarte.audit.details_digest`).
 
 ## Migrations
 

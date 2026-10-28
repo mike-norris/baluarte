@@ -40,6 +40,11 @@ body=$(curl -fsS http://127.0.0.1:8080/api/v1/health) || fail "API via web proxy
 grep -q '"status":"ok"' <<<"$body" || fail "proxied health body: $body"
 echo "ok  web proxy /api/v1/health"
 
+# Deny by default: without OIDC configured, protected endpoints must not answer 200.
+status=$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/v1/auth/me)
+[[ $status == 503 ]] || fail "unconfigured /api/v1/auth/me returned $status, expected 503"
+echo "ok  web proxy /api/v1/auth/me refused without OIDC (503)"
+
 curl -fsS http://127.0.0.1:8080/ | grep -q '<div id="root">' || fail "web index not served"
 echo "ok  web /"
 

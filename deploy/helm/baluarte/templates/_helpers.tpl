@@ -105,3 +105,72 @@ app.kubernetes.io/component: {{ .component }}
       - key: {{ ternary "password" .Values.database.passwordKey .Values.devDatabase.enabled }}
         path: password
 {{- end }}
+
+{{- define "baluarte.publicUrl" -}}
+{{- if .Values.auth.publicUrl -}}
+{{- .Values.auth.publicUrl -}}
+{{- else if .Values.ingress.enabled -}}
+https://{{ .Values.ingress.host }}
+{{- end -}}
+{{- end }}
+
+{{- define "baluarte.authEnabled" -}}
+{{- if .Values.auth.oidc.issuer }}true{{ end -}}
+{{- end }}
+
+{{- define "baluarte.authEnv" -}}
+{{- if include "baluarte.authEnabled" . }}
+{{- $oidc := .Values.auth.oidc }}
+{{- $publicUrl := include "baluarte.publicUrl" . }}
+{{- if not (hasPrefix "https://" $publicUrl) }}
+{{- fail "auth.publicUrl must be an https origin (or enable ingress so it can be derived)" }}
+{{- end }}
+{{- if not (or $oidc.adminGroups $oidc.analystGroups $oidc.auditorGroups) }}
+{{- fail "auth.oidc needs at least one of adminGroups, analystGroups or auditorGroups" }}
+{{- end }}
+- name: BALUARTE_PUBLIC_URL
+  value: {{ $publicUrl | quote }}
+- name: BALUARTE_OIDC_ISSUER
+  value: {{ $oidc.issuer | quote }}
+- name: BALUARTE_OIDC_CLIENT_ID
+  value: {{ required "auth.oidc.clientId is required when auth.oidc.issuer is set" $oidc.clientId | quote }}
+- name: BALUARTE_OIDC_SCOPES
+  value: {{ $oidc.scopes | quote }}
+- name: BALUARTE_OIDC_ROLES_CLAIM
+  value: {{ $oidc.rolesClaim | quote }}
+- name: BALUARTE_OIDC_ADMIN_GROUPS
+  value: {{ join "," $oidc.adminGroups | quote }}
+- name: BALUARTE_OIDC_ANALYST_GROUPS
+  value: {{ join "," $oidc.analystGroups | quote }}
+- name: BALUARTE_OIDC_AUDITOR_GROUPS
+  value: {{ join "," $oidc.auditorGroups | quote }}
+- name: BALUARTE_SESSION_IDLE_MINUTES
+  value: {{ .Values.auth.session.idleMinutes | quote }}
+- name: BALUARTE_SESSION_LIFETIME_MINUTES
+  value: {{ .Values.auth.session.lifetimeMinutes | quote }}
+{{- if $oidc.existingSecret }}
+- name: BALUARTE_OIDC_CLIENT_SECRET_FILE
+  value: /var/run/secrets/baluarte/oidc/client-secret
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- define "baluarte.authVolumeMount" -}}
+{{- if and (include "baluarte.authEnabled" .) .Values.auth.oidc.existingSecret }}
+- name: oidc-client-secret
+  mountPath: /var/run/secrets/baluarte/oidc
+  readOnly: true
+{{- end }}
+{{- end }}
+
+{{- define "baluarte.authVolume" -}}
+{{- if and (include "baluarte.authEnabled" .) .Values.auth.oidc.existingSecret }}
+- name: oidc-client-secret
+  secret:
+    secretName: {{ .Values.auth.oidc.existingSecret }}
+    defaultMode: 0440
+    items:
+      - key: {{ .Values.auth.oidc.clientSecretKey }}
+        path: client-secret
+{{- end }}
+{{- end }}

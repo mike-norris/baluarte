@@ -8,10 +8,12 @@ x-hardening: &hardening
   security_opt: ["no-new-privileges:true"]
   tmpfs: [/tmp]
 
+x-database-env: &database-env
+  BALUARTE_DATABASE_URL: postgresql://baluarte@db:5432/baluarte
+  BALUARTE_DATABASE_PASSWORD_FILE: /run/secrets/postgres_password
+
 x-database: &database
-  environment:
-    BALUARTE_DATABASE_URL: postgresql://baluarte@db:5432/baluarte
-    BALUARTE_DATABASE_PASSWORD_FILE: /run/secrets/postgres_password
+  environment: *database-env
   secrets: [postgres_password]
 
 services:
@@ -45,6 +47,17 @@ services:
   api:
     <<: [*hardening, *database]
     image: baluarte-app:dev
+    environment:
+      <<: *database-env
+      # OIDC sign-in, read from the shell or a .env file. Until it is configured, sign-in and
+      # every protected endpoint answer 503. See backend/README.md.
+      BALUARTE_PUBLIC_URL: ${BALUARTE_PUBLIC_URL:-}
+      BALUARTE_OIDC_ISSUER: ${BALUARTE_OIDC_ISSUER:-}
+      BALUARTE_OIDC_CLIENT_ID: ${BALUARTE_OIDC_CLIENT_ID:-}
+      BALUARTE_OIDC_ROLES_CLAIM: ${BALUARTE_OIDC_ROLES_CLAIM:-}
+      BALUARTE_OIDC_ADMIN_GROUPS: ${BALUARTE_OIDC_ADMIN_GROUPS:-}
+      BALUARTE_OIDC_ANALYST_GROUPS: ${BALUARTE_OIDC_ANALYST_GROUPS:-}
+      BALUARTE_OIDC_AUDITOR_GROUPS: ${BALUARTE_OIDC_AUDITOR_GROUPS:-}
     depends_on:
       migrate:
         condition: service_completed_successfully

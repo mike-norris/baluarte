@@ -23,7 +23,7 @@ from sqlalchemy import (
     func,
     text,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from baluarte.db.base import Base
@@ -37,6 +37,7 @@ TARGET_TYPES = ("instance", "group", "project")
 SEVERITIES = ("low", "medium", "high", "critical")
 FINDING_STATES = ("open", "resolved", "excepted")
 EXPORT_STATES = ("queued", "running", "succeeded", "failed")
+ROLES = ("admin", "analyst", "auditor")
 
 
 def one_of(column: str, values: Iterable[str]) -> CheckConstraint:
@@ -284,3 +285,61 @@ class ExportJob(Base):
     error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = utc_now()
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AppUser(Base):
+    """A person who has signed in through OIDC, identified by issuer and subject."""
+
+    __tablename__ = "app_user"
+    __table_args__ = (UniqueConstraint("issuer", "subject"),)
+
+    id: Mapped[int] = pk()
+    issuer: Mapped[str] = mapped_column(Text)
+    subject: Mapped[str] = mapped_column(Text)
+    email: Mapped[str | None] = mapped_column(Text)
+    display_name: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = utc_now()
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class UserSession(Base):
+    """Server-side browser session. Only the SHA-256 digest of the cookie value is stored.
+
+    Roles are resolved from identity provider claims at sign-in and fixed for the session.
+    """
+
+    __tablename__ = "user_session"
+    __table_args__ = (
+        sha256_hex("token_digest"),
+        CheckConstraint(
+            f"cardinality(roles) > 0 AND roles <@ ARRAY[{', '.join(map(repr, ROLES))}]::text[]",
+            name="roles_allowed",
+        ),
+        CheckConstraint("expires_at > created_at", name="expires_after_created"),
+    )
+
+    id: Mapped[int] = pk()
+    token_digest: Mapped[str] = mapped_column(Text, unique=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), index=True)
+    roles: Mapped[list[str]] = mapped_column(ARRAY(Text))
+    created_at: Mapped[datetime] = utc_now()
+    last_seen_at: Mapped[datetime] = utc_now()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class OidcLogin(Base):
+    """A sign-in that has been sent to the identity provider and not yet completed.
+
+    Keyed by the SHA-256 digest of the ``state`` parameter; each row is used at most once.
+    """
+
+    __tablename__ = "oidc_login"
+    __table_args__ = (sha256_hex("state_digest"),)
+
+    state_digest: Mapped[str] = mapped_column(Text, primary_key=True)
+    nonce: Mapped[str] = mapped_column(Text)
+    code_verifier: Mapped[str] = mapped_column(Text)
+    return_to: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = utc_now()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)

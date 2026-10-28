@@ -1,9 +1,29 @@
-"""Version 1 of the HTTP API, mounted at /api/v1."""
+"""Version 1 of the HTTP API, mounted at /api/v1.
 
-from fastapi import APIRouter
+Deny by default: routers included in ``protected`` require a signed-in session. Only probes and
+the sign-in redirects are public.
+"""
 
-from baluarte.api.v1 import health, ready
+from fastapi import APIRouter, Depends
+
+from baluarte.api.v1 import auth, health, ready
+from baluarte.auth.dependencies import current_principal
+
+public = APIRouter()
+public.include_router(health.router)
+public.include_router(ready.router)
+public.include_router(auth.public_router)
+
+protected = APIRouter(
+    dependencies=[Depends(current_principal)],
+    responses={
+        401: {"description": "No valid session"},
+        403: {"description": "Missing permission, or CSRF check failed on a state change"},
+        503: {"description": "Authentication or the database is not configured"},
+    },
+)
+protected.include_router(auth.router)
 
 router = APIRouter(prefix="/api/v1")
-router.include_router(health.router)
-router.include_router(ready.router)
+router.include_router(public)
+router.include_router(protected)

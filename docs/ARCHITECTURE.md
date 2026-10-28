@@ -30,4 +30,4 @@ Docker Compose for local/small on-prem installs; Helm for Kubernetes. Prefer ext
 
 ## Architecture decision records
 
-Create `docs/architecture/ADR-XXXX-*.md` when changing foundational choices. Accepted decisions are indexed in [docs/architecture](architecture/README.md): modular monolith, PostgreSQL job queue, read-only v0.1, single GitLab instance, no cloud dependency.
+Create `docs/architecture/ADR-XXXX-*.md` when changing foundational choices. Accepted decisions are indexed in [docs/architecture](architecture/README.md): modular monolith, PostgreSQL job queue, read-only v0.1, single GitLab instance, no cloud dependency, server-side OIDC sessions.
