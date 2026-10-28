@@ -64,7 +64,21 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
 
-  # The worker service (same image, different command) is added with job processing in BAL-009.
+  # Background jobs: same image as the API, different command. SIGTERM finishes the current job.
+  worker:
+    <<: [*hardening, *database]
+    image: baluarte-app:dev
+    command: ["baluarte-worker"]
+    stop_grace_period: 60s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "baluarte-worker", "healthcheck"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
 
   web:
     <<: *hardening

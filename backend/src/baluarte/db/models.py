@@ -114,12 +114,25 @@ class GitLabProject(Base):
 
 
 class CollectionJob(Base):
+    """Background job, leased by workers. See baluarte.jobs and ADR-0002."""
+
     __tablename__ = "collection_job"
     __table_args__ = (
         Index("ix_collection_job_claimable", "state", "run_after"),
+        Index(
+            "ix_collection_job_lease",
+            "lease_until",
+            postgresql_where=text("state = 'running'"),
+        ),
         one_of("state", JOB_STATES),
         CheckConstraint("attempt >= 0", name="attempt_non_negative"),
         CheckConstraint("max_attempts >= 1", name="max_attempts_positive"),
+        CheckConstraint("attempt <= max_attempts", name="attempt_within_max"),
+        CheckConstraint(
+            "(state = 'running') = (lease_owner IS NOT NULL)"
+            " AND (state = 'running') = (lease_until IS NOT NULL)",
+            name="lease_iff_running",
+        ),
     )
 
     id: Mapped[int] = pk()

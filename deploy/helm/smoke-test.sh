@@ -33,6 +33,7 @@ helm install "$release" "$chart" \
   -f "$chart/ci/dev-database-values.yaml" \
   --set api.image.tag="$tag" --set web.image.tag="$tag" \
   --set api.podDisruptionBudget.enabled=true --set web.podDisruptionBudget.enabled=true \
+  --set worker.podDisruptionBudget.enabled=true \
   --wait --timeout 300s
 echo "ok  helm install"
 
@@ -44,7 +45,7 @@ helm test "$release" --kube-context "kind-$cluster" --namespace "$namespace" --l
 
 password=$("${kubectl[@]}" get secret "$release-postgresql" -o jsonpath='{.data.password}')
 
-for component in api web; do
+for component in api web worker; do
   pod=$("${kubectl[@]}" get pod -l "app.kubernetes.io/component=$component" -o jsonpath='{.items[0].metadata.name}')
   uid=$("${kubectl[@]}" exec "$pod" -- id -u)
   [[ "$uid" != "0" ]] || fail "$component runs as root"
@@ -54,8 +55,12 @@ for component in api web; do
   echo "ok  $component runs as uid $uid with a read-only root filesystem"
 done
 
-[[ $("${kubectl[@]}" get pdb -o name | wc -l) -eq 2 ]] || fail "expected 2 PodDisruptionBudgets"
+[[ $("${kubectl[@]}" get pdb -o name | wc -l) -eq 3 ]] || fail "expected 3 PodDisruptionBudgets"
 echo "ok  PodDisruptionBudgets created"
+
+worker=$("${kubectl[@]}" get pod -l app.kubernetes.io/component=worker -o jsonpath='{.items[0].metadata.name}')
+"${kubectl[@]}" exec "$worker" -- baluarte-worker healthcheck || fail "worker heartbeat is stale"
+echo "ok  worker healthy (heartbeat)"
 
 helm upgrade "$release" "$chart" \
   --kube-context "kind-$cluster" --namespace "$namespace" \

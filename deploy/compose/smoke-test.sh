@@ -59,11 +59,21 @@ grep -qi '^content-security-policy:' <<<"$headers" || fail "missing Content-Secu
 grep -qi '^server: nginx$' <<<"$headers" || fail "nginx version exposed in Server header"
 echo "ok  web security headers"
 
-for service in api web; do
+for service in api web worker; do
   uid=$("${compose[@]}" exec -T "$service" id -u)
   [[ "$uid" != "0" ]] || fail "$service runs as root"
   echo "ok  $service runs as uid $uid"
 done
+
+[[ $(docker inspect -f '{{.State.Health.Status}}' "$("${compose[@]}" ps -q worker)") == healthy ]] \
+  || fail "worker is not healthy"
+echo "ok  worker healthy (heartbeat)"
+
+worker_id=$("${compose[@]}" ps -q worker)
+"${compose[@]}" stop -t 30 worker >/dev/null
+[[ $(docker inspect -f '{{.State.ExitCode}}' "$worker_id") == 0 ]] || fail "worker did not exit cleanly on SIGTERM"
+docker logs "$worker_id" 2>&1 | grep -q "received SIGTERM" || fail "worker did not handle SIGTERM"
+echo "ok  worker stops cleanly on SIGTERM"
 
 "${compose[@]}" exec -T db pg_isready -U baluarte -d baluarte >/dev/null || fail "database not ready"
 echo "ok  db ready"

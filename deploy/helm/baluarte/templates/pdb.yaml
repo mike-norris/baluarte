@@ -1,4 +1,4 @@
-{{- range $component := list "api" "web" }}
+{{- range $component := list "api" "web" "worker" }}
 {{- $cfg := index $.Values $component }}
 {{- if $cfg.podDisruptionBudget.enabled }}
 ---

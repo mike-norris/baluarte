@@ -21,6 +21,7 @@ class Permission(StrEnum):
     POLICY_WRITE = "policy:write"
     SETTINGS_MANAGE = "settings:manage"
     AUDIT_LOG_READ = "audit_log:read"
+    JOBS_READ = "jobs:read"
 
 
 _READ = frozenset({Permission.INVENTORY_READ, Permission.FINDINGS_READ, Permission.EVIDENCE_READ})

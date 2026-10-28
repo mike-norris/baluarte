@@ -29,6 +29,7 @@ Roles come from the identity provider's groups claim (`BALUARTE_OIDC_*_GROUPS`);
 | `evidence:export` | yes | no | yes |
 | `audit_log:read` | yes | no | yes |
 | `settings:manage` | yes | no | no |
+| `jobs:read` | yes | no | no |
 
 Sign-in, failed sign-in (with a reason code) and sign-out are written to `audit_event`. Callbacks that do not match a sign-in started by the same browser are logged but not audited, so anonymous requests cannot grow the append-only audit table. Rate limiting of the sign-in endpoints is not built yet; apply it at the ingress.
 

@@ -1,6 +1,5 @@
 # Default values for the Baluarte chart.
 # Set either database.host (external PostgreSQL, recommended) or devDatabase.enabled.
-# The worker Deployment is added with job processing (BAL-009).
 
 global:
   # Prefix applied to both images, e.g. "registry.example.internal/baluarte". Empty uses the bare repository.
@@ -41,6 +40,29 @@ api:
   resources:
     requests:
       cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+  podAnnotations: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podDisruptionBudget:
+    enabled: false
+    minAvailable: 1
+
+# Background job worker. Uses the api image and runAsUser; no Service.
+worker:
+  replicaCount: 1
+  # Seconds between polls when the queue is empty.
+  pollSeconds: 5
+  # A job whose worker stops renewing its lease for this long is retried elsewhere.
+  leaseSeconds: 300
+  # Time to finish the current job after SIGTERM before the pod is killed.
+  terminationGracePeriodSeconds: 60
+  resources:
+    requests:
+      cpu: 50m
       memory: 128Mi
     limits:
       memory: 256Mi
