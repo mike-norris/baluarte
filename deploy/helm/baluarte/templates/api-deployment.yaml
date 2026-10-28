@@ -43,6 +43,9 @@ spec:
             {{- with include "baluarte.authEnv" . | trim }}
             {{- . | nindent 12 }}
             {{- end }}
+            {{- with include "baluarte.gitlabEnv" . | trim }}
+            {{- . | nindent 12 }}
+            {{- end }}
           ports:
             - name: http
               containerPort: 8000
@@ -68,12 +71,18 @@ spec:
             {{- with include "baluarte.authVolumeMount" . | trim }}
             {{- . | nindent 12 }}
             {{- end }}
+            {{- with include "baluarte.gitlabVolumeMount" . | trim }}
+            {{- . | nindent 12 }}
+            {{- end }}
       volumes:
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi
         {{- include "baluarte.databaseVolume" . | nindent 8 }}
         {{- with include "baluarte.authVolume" . | trim }}
+        {{- . | nindent 8 }}
+        {{- end }}
+        {{- with include "baluarte.gitlabVolume" . | trim }}
         {{- . | nindent 8 }}
         {{- end }}
       {{- with .Values.api.nodeSelector }}

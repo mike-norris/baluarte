@@ -44,6 +44,12 @@ echo "ok  web proxy /api/v1/health"
 status=$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/v1/auth/me)
 [[ $status == 503 ]] || fail "unconfigured /api/v1/auth/me returned $status, expected 503"
 echo "ok  web proxy /api/v1/auth/me refused without OIDC (503)"
+status=$(curl -sS -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8080/api/v1/gitlab/diagnostics)
+[[ $status == 503 ]] || fail "unconfigured POST /api/v1/gitlab/diagnostics returned $status, expected 503"
+echo "ok  web proxy /api/v1/gitlab/diagnostics refused without OIDC (503)"
+BALUARTE_GITLAB_URL=https://gitlab.example.test docker compose -f compose.yaml -f deploy/compose/gitlab.yaml config -q \
+  || fail "GitLab Compose override does not render"
+echo "ok  GitLab Compose override renders"
 
 # Structured logs, with OAuth parameters in access-log query strings redacted.
 curl -sS -o /dev/null 'http://127.0.0.1:8080/api/v1/auth/callback?code=SMOKECODE123&state=SMOKESTATE456'

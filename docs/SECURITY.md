@@ -28,7 +28,7 @@ Roles come from the identity provider's groups claim (`BALUARTE_OIDC_*_GROUPS`);
 | `policy:write` | yes | yes | no |
 | `evidence:export` | yes | no | yes |
 | `audit_log:read` | yes | no | yes |
-| `settings:manage` | yes | no | no |
+| `settings:manage` (includes running GitLab diagnostics) | yes | no | no |
 | `jobs:read` | yes | no | no |
 
 Sign-in, failed sign-in (with a reason code) and sign-out are written to `audit_event`. Callbacks that do not match a sign-in started by the same browser are logged but not audited, so anonymous requests cannot grow the append-only audit table. Rate limiting of the sign-in endpoints is not built yet; apply it at the ingress.
@@ -39,6 +39,13 @@ Sign-in, failed sign-in (with a reason code) and sign-out are written to `audit_
 - All processes log one JSON object per line to stdout (`BALUARTE_LOG_FORMAT=text` for development). Uvicorn's loggers are routed through the same handler.
 - Every log line is redacted after formatting: values of secrets read from files, credentials in URLs, `Bearer`/`Basic` credentials, GitLab tokens (`glpat-` and other `gl*-` prefixes), JWTs, and the values of sensitive parameters (`private_token`, `access_token`, `token`, `password`, `secret`, `client_secret`, `code`, `state`, ...). This covers the authorization code and state in the OIDC callback's access-log line. Redaction is pattern-based defence in depth; code must still avoid logging secrets.
 - Background job errors store only messages written for storage; unexpected exceptions are recorded by type name.
+
+## GitLab credential
+
+- One token for one instance (ADR-0004), read from `BALUARTE_GITLAB_TOKEN_FILE`. Baluarte only issues `GET` requests and needs only the `read_api` scope. Use a dedicated non-admin bot or auditor user; an administrator token sees everything and is flagged by diagnostics.
+- The token travels only in the `PRIVATE-TOKEN` header to `BALUARTE_GITLAB_URL`, which must be `https`. Redirects are never followed, so a redirect cannot forward the token to another host. TLS verification is always on; a private CA is added with `SSL_CERT_FILE`.
+- Error messages stored or returned for GitLab failures contain the status and endpoint path only, never response bodies, query strings or the token.
+- Diagnostics (`POST /api/v1/gitlab/diagnostics`, admin, CSRF-protected) warn when the token has write scopes (`api`, `write_repository`, ...), belongs to an administrator, or expires within 30 days, and fail when it is revoked, expired, lacks `read_api`, or its user is blocked. Checks that cannot run are `unknown`, never `ok`. Each run is audited (`gitlab.diagnostics_run`).
 
 ## Audit trail
 

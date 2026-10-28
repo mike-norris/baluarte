@@ -57,6 +57,9 @@ For evaluation only, `--set devDatabase.enabled=true` runs a single PostgreSQL p
 | `auth.oidc.adminGroups`, `analystGroups`, `auditorGroups` | `[]` | Provider groups granted each role; at least one is required |
 | `auth.oidc.rolesClaim`, `auth.oidc.scopes` | `groups`, `openid profile email` | Groups claim and requested scopes |
 | `auth.session.idleMinutes`, `auth.session.lifetimeMinutes` | `60`, `480` | Session idle and absolute expiry |
+| `gitlab.url` | `""` | https URL of the GitLab instance; empty leaves GitLab unconfigured |
+| `gitlab.existingSecret`, `gitlab.tokenKey` | `""`, `token` | Secret and key holding a `read_api` token; required with `gitlab.url`. Mounted into the API only |
+| `gitlab.timeoutSeconds` | `15` | Per-request timeout |
 | `ingress.enabled`, `ingress.className`, `ingress.host`, `ingress.tls` | disabled | Ingress to the web Service |
 | `imagePullSecrets` | `[]` | Registry credentials |
 

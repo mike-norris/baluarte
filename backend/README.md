@@ -39,6 +39,9 @@ OIDC sign-in is off until `BALUARTE_PUBLIC_URL`, `BALUARTE_OIDC_ISSUER` and `BAL
 | `BALUARTE_OIDC_SCOPES` | `openid profile email` | Requested scopes; must include `openid`. Add the scope your provider needs to release groups |
 | `BALUARTE_OIDC_ROLES_CLAIM` | `groups` | Claim listing the user's groups. Read from the ID token, or from userinfo if the ID token lacks it |
 | `BALUARTE_OIDC_ADMIN_GROUPS`, `BALUARTE_OIDC_ANALYST_GROUPS`, `BALUARTE_OIDC_AUDITOR_GROUPS` | | Comma-separated groups granted each role; matching is exact and case-sensitive |
+| `BALUARTE_GITLAB_URL` | | https URL of the GitLab instance; unset means GitLab is not configured |
+| `BALUARTE_GITLAB_TOKEN_FILE` | when the URL is set | File containing a `read_api` token |
+| `BALUARTE_GITLAB_TIMEOUT_SECONDS` | | Per-request timeout, 1 to 120 (default 15) |
 | `BALUARTE_SESSION_IDLE_MINUTES` | `60` | Session ends after this long without a request |
 | `BALUARTE_SESSION_LIFETIME_MINUTES` | `480` | Session ends this long after sign-in regardless of activity |
 
@@ -66,7 +69,8 @@ Handlers take the claimed job and must be idempotent. Raise `JobError("safe mess
 
 - `GET /api/v1/jobs?state=&kind=&limit=&before_id=`: jobs newest first, without payloads; `next_before_id` pages backwards. Needs `jobs:read` (admin).
 - `GET /api/v1/audit-events?action=&actor=&since=&until=&limit=&before_id=`: audit events newest first with their `details_digest`; `since`/`until` need a time zone. Needs `audit_log:read` (admin, auditor).
-- `GET /api/v1/settings`: effective logging, database and authentication settings; secrets appear only as `configured` or `not_set`. Needs `settings:manage` (admin).
+- `GET /api/v1/settings`: effective logging, database, GitLab and authentication settings; secrets appear only as `configured` or `not_set`. Needs `settings:manage` (admin).
+- `POST /api/v1/gitlab/diagnostics`: tests the GitLab connection and token permissions (see [docs/GITLAB_INTEGRATION.md](../docs/GITLAB_INTEGRATION.md#diagnostics)). Returns 200 with a report whenever the checks ran, including failures; read `status`. Needs `settings:manage` (admin) and the CSRF header.
 
 Every other endpoint requires a session (401 without one) and is checked against the permission matrix in [docs/SECURITY.md](../docs/SECURITY.md).
 

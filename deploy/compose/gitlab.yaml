@@ -1,0 +1,18 @@
+# Opt-in GitLab connection for the Compose stack:
+#
+#   printf '%s' "$TOKEN" > secrets/gitlab_token     # read_api scope only
+#   BALUARTE_GITLAB_URL=https://gitlab.example.internal \
+#     docker compose -f compose.yaml -f deploy/compose/gitlab.yaml up -d
+#
+# For a private CA, also mount the bundle and set SSL_CERT_FILE on the api service.
+services:
+  api:
+    environment:
+      BALUARTE_GITLAB_URL: ${BALUARTE_GITLAB_URL:?set BALUARTE_GITLAB_URL}
+      BALUARTE_GITLAB_TOKEN_FILE: /run/secrets/gitlab_token
+      BALUARTE_GITLAB_TIMEOUT_SECONDS: ${BALUARTE_GITLAB_TIMEOUT_SECONDS:-15}
+    secrets: [postgres_password, gitlab_token]
+
+secrets:
+  gitlab_token:
+    file: ./secrets/gitlab_token

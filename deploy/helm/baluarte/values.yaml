@@ -153,6 +153,18 @@ auth:
     idleMinutes: 60
     lifetimeMinutes: 480
 
+# The one self-managed GitLab instance to govern (ADR-0004). Access is read-only: create a
+# token with the read_api scope only, ideally for a non-admin bot or auditor user. With url
+# empty, GitLab is not configured and diagnostics report that.
+gitlab:
+  # https URL of the instance, e.g. https://gitlab.example.internal (no /api/v4).
+  url: ""
+  # Secret holding the token. Required when url is set.
+  existingSecret: ""
+  tokenKey: token
+  # Per-request timeout, 1 to 120 seconds.
+  timeoutSeconds: 15
+
 # Single-pod PostgreSQL for evaluation and CI only: no backups, no high availability.
 # A random password is generated on install and kept across upgrades.
 devDatabase:
