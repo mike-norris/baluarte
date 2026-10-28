@@ -8,7 +8,7 @@ COPY . .
 RUN npm run build
 
 # Static files only; runs as non-root on port 8080.
-FROM nginxinc/nginx-unprivileged:1.30-alpine
+FROM nginxinc/nginx-unprivileged:alpine
 # Pick up Alpine security fixes released after the base image was built.
 USER root
 RUN apk upgrade --no-cache
