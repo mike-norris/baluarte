@@ -1,0 +1,55 @@
+# Local development stack. Not a production configuration: see docs/DEPLOYMENT.md.
+# Create the database password first: see README.md "Run locally".
+name: baluarte
+
+x-hardening: &hardening
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  tmpfs: [/tmp]
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: baluarte
+      POSTGRES_USER: baluarte
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U baluarte -d baluarte"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    <<: *hardening
+    build: ./backend
+    image: baluarte-app:dev
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  # The worker service (same image, different command) is added with job processing in BAL-009.
+
+  web:
+    <<: *hardening
+    build: ./frontend
+    image: baluarte-web:dev
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"
+
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password
+
+volumes:
+  db-data:
