@@ -16,6 +16,22 @@ Protect GitLab API tokens, OIDC sessions, organization policies, inventory, audi
 - Audit logs for login, policy changes, export generation, and administrative actions.
 - Signed/versioned container release process and dependency scanning.
 
+## Authentication and authorization
+
+Implemented as described in [ADR-0006](architecture/ADR-0006-server-side-oidc-sessions.md): the API completes the OIDC authorization code flow with PKCE and gives the browser only an opaque `HttpOnly` session cookie. Sessions are stored as SHA-256 digests with idle (default 60 minutes) and absolute (default 8 hours) expiry. State-changing requests require the `X-CSRF-Token` header returned by `GET /api/v1/auth/me`. Every route requires a session except health, readiness, `/auth/login` and `/auth/callback`.
+
+Roles come from the identity provider's groups claim (`BALUARTE_OIDC_*_GROUPS`); a user in no mapped group cannot sign in. Endpoints check permissions:
+
+| Permission | admin | analyst | auditor |
+|---|---|---|---|
+| `inventory:read`, `findings:read`, `evidence:read` | yes | yes | yes |
+| `policy:write` | yes | yes | no |
+| `evidence:export` | yes | no | yes |
+| `audit_log:read` | yes | no | yes |
+| `settings:manage` | yes | no | no |
+
+Sign-in, failed sign-in (with a reason code) and sign-out are written to `audit_event`. Callbacks that do not match a sign-in started by the same browser are logged but not audited, so anonymous requests cannot grow the append-only audit table. Rate limiting of the sign-in endpoints is not built yet; apply it at the ingress.
+
 ## Threats to test
 
 Credential theft, privilege escalation, forged webhook payloads, stale inventory reported as green, manipulated evidence, unauthorized export, GitLab API outages, cross-project data leaks, job duplication, malicious YAML, and compromised dependencies.

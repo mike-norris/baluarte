@@ -12,6 +12,7 @@ pytestmark = pytest.mark.db
 
 TABLES = {
     "alembic_version",
+    "app_user",
     "audit_event",
     "collection_job",
     "evaluation",
@@ -21,8 +22,10 @@ TABLES = {
     "gitlab_instance",
     "gitlab_project",
     "observation",
+    "oidc_login",
     "policy",
     "policy_assignment",
+    "user_session",
 }
 
 

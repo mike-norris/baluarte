@@ -102,6 +102,28 @@ migrations:
     limits:
       memory: 256Mi
 
+# OIDC sign-in (authorization code flow with PKCE). With oidc.issuer empty, sign-in and every
+# protected endpoint answer 503; health and readiness still work.
+auth:
+  # Browser-facing https origin. Defaults to https://<ingress.host> when ingress.enabled.
+  publicUrl: ""
+  oidc:
+    issuer: ""
+    clientId: ""
+    # Secret holding the client secret. Empty means a public client that relies on PKCE alone.
+    existingSecret: ""
+    clientSecretKey: client-secret
+    scopes: "openid profile email"
+    # ID token or userinfo claim listing the user's groups.
+    rolesClaim: groups
+    # Identity provider groups granted each role. Users in none of them cannot sign in.
+    adminGroups: []
+    analystGroups: []
+    auditorGroups: []
+  session:
+    idleMinutes: 60
+    lifetimeMinutes: 480
+
 # Single-pod PostgreSQL for evaluation and CI only: no backups, no high availability.
 # A random password is generated on install and kept across upgrades.
 devDatabase:

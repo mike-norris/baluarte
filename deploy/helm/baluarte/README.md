@@ -21,6 +21,17 @@ helm install baluarte deploy/helm/baluarte \
 helm test baluarte -n baluarte
 ```
 
+To enable sign-in, register a client with your identity provider (redirect URI `https://baluarte.example.internal/api/v1/auth/callback`), store its secret, and upgrade:
+
+```sh
+kubectl -n baluarte create secret generic baluarte-oidc --from-file=client-secret=./oidc-client-secret
+helm upgrade baluarte deploy/helm/baluarte -n baluarte --reuse-values \
+  --set auth.oidc.issuer=https://idp.example.internal/realms/main \
+  --set auth.oidc.clientId=baluarte \
+  --set auth.oidc.existingSecret=baluarte-oidc \
+  --set 'auth.oidc.adminGroups={baluarte-admins}'
+```
+
 For evaluation only, `--set devDatabase.enabled=true` runs a single PostgreSQL pod with a generated password. It has no backups or high availability.
 
 ## Key values
@@ -37,6 +48,12 @@ For evaluation only, `--set devDatabase.enabled=true` runs a single PostgreSQL p
 | `database.sslMode` | `require` | libpq `sslmode`; use `verify-full` with a trusted CA where possible |
 | `migrations.waitTimeoutSeconds` | `120` | How long the migration Job waits for PostgreSQL |
 | `devDatabase.enabled` | `false` | Single-pod PostgreSQL for evaluation and CI |
+| `auth.oidc.issuer`, `auth.oidc.clientId` | `""` | OIDC provider and client. Empty issuer leaves sign-in off: protected endpoints answer 503 |
+| `auth.publicUrl` | `https://<ingress.host>` | Browser-facing https origin; register `<publicUrl>/api/v1/auth/callback` with the provider |
+| `auth.oidc.existingSecret`, `auth.oidc.clientSecretKey` | `""`, `client-secret` | Secret holding the client secret; empty for a PKCE-only public client |
+| `auth.oidc.adminGroups`, `analystGroups`, `auditorGroups` | `[]` | Provider groups granted each role; at least one is required |
+| `auth.oidc.rolesClaim`, `auth.oidc.scopes` | `groups`, `openid profile email` | Groups claim and requested scopes |
+| `auth.session.idleMinutes`, `auth.session.lifetimeMinutes` | `60`, `480` | Session idle and absolute expiry |
 | `ingress.enabled`, `ingress.className`, `ingress.host`, `ingress.tls` | disabled | Ingress to the web Service |
 | `imagePullSecrets` | `[]` | Registry credentials |
 

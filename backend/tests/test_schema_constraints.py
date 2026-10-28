@@ -10,6 +10,7 @@ from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
 
 from baluarte.db.models import (
+    AppUser,
     AuditEvent,
     Evaluation,
     ExportJob,
@@ -17,6 +18,7 @@ from baluarte.db.models import (
     GitLabProject,
     Observation,
     Policy,
+    UserSession,
 )
 
 pytestmark = pytest.mark.db
@@ -259,3 +261,49 @@ def test_export_period_must_be_ordered(session: Session) -> None:
     session.add(ExportJob(requested_by="auditor", scope={}, period_start=now, period_end=now))
     with pytest.raises(IntegrityError, match="ck_export_job_period_ordered"):
         session.commit()
+
+
+def _user(db: Session) -> AppUser:
+    user = AppUser(issuer="https://idp.example.test", subject="user-1")
+    db.add(user)
+    db.flush()
+    return user
+
+
+@pytest.mark.parametrize("roles", [[], ["root"], ["admin", "superuser"]])
+def test_session_roles_are_constrained(migrated_engine: Engine, roles: list[str]) -> None:
+    with Session(migrated_engine) as db:
+        user = _user(db)
+        db.add(
+            UserSession(
+                token_digest="a" * 64,
+                user_id=user.id,
+                roles=roles,
+                expires_at=datetime.now(UTC) + timedelta(hours=1),
+            )
+        )
+        with pytest.raises(IntegrityError):
+            db.flush()
+
+
+def test_session_token_must_be_a_digest(migrated_engine: Engine) -> None:
+    with Session(migrated_engine) as db:
+        user = _user(db)
+        db.add(
+            UserSession(
+                token_digest="raw-session-token",
+                user_id=user.id,
+                roles=["admin"],
+                expires_at=datetime.now(UTC) + timedelta(hours=1),
+            )
+        )
+        with pytest.raises(IntegrityError):
+            db.flush()
+
+
+def test_user_identity_is_unique_per_issuer(migrated_engine: Engine) -> None:
+    with Session(migrated_engine) as db:
+        _user(db)
+        db.add(AppUser(issuer="https://idp.example.test", subject="user-1"))
+        with pytest.raises(IntegrityError):
+            db.flush()

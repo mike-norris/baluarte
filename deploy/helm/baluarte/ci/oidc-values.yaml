@@ -1,0 +1,11 @@
+devDatabase:
+  enabled: true
+auth:
+  publicUrl: https://baluarte.example.internal
+  oidc:
+    issuer: https://idp.example.internal/realms/main
+    clientId: baluarte
+    existingSecret: baluarte-oidc
+    adminGroups: [baluarte-admins]
+    analystGroups: [baluarte-analysts, security-engineers]
+    auditorGroups: [baluarte-auditors]
