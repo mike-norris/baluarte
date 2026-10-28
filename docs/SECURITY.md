@@ -33,6 +33,17 @@ Roles come from the identity provider's groups claim (`BALUARTE_OIDC_*_GROUPS`);
 
 Sign-in, failed sign-in (with a reason code) and sign-out are written to `audit_event`. Callbacks that do not match a sign-in started by the same browser are logged but not audited, so anonymous requests cannot grow the append-only audit table. Rate limiting of the sign-in endpoints is not built yet; apply it at the ingress.
 
+## Secrets and logs
+
+- Secrets are read only from files named by `<NAME>_FILE` (Docker or Kubernetes secret mounts). Setting a secret directly in the environment, or a password inside `BALUARTE_DATABASE_URL`, is a configuration error. Secret values are never returned by the API: `GET /api/v1/settings` reports them only as `configured` or `not_set`.
+- All processes log one JSON object per line to stdout (`BALUARTE_LOG_FORMAT=text` for development). Uvicorn's loggers are routed through the same handler.
+- Every log line is redacted after formatting: values of secrets read from files, credentials in URLs, `Bearer`/`Basic` credentials, GitLab tokens (`glpat-` and other `gl*-` prefixes), JWTs, and the values of sensitive parameters (`private_token`, `access_token`, `token`, `password`, `secret`, `client_secret`, `code`, `state`, ...). This covers the authorization code and state in the OIDC callback's access-log line. Redaction is pattern-based defence in depth; code must still avoid logging secrets.
+- Background job errors store only messages written for storage; unexpected exceptions are recorded by type name.
+
+## Audit trail
+
+`audit_event` rows are append-only (database triggers) and carry a SHA-256 digest of their canonical details. Details are redacted before hashing. Each committed event is also written to the `baluarte.audit` logger as a JSON line with an `audit` field (id, actor, action, resource, details, digest), so a log collector can keep an independent copy; rolled-back actions are not logged. Admins and auditors read the trail through `GET /api/v1/audit-events`.
+
 ## Threats to test
 
 Credential theft, privilege escalation, forged webhook payloads, stale inventory reported as green, manipulated evidence, unauthorized export, GitLab API outages, cross-project data leaks, job duplication, malicious YAML, and compromised dependencies.

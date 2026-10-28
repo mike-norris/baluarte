@@ -1,16 +1,10 @@
-"""Runtime configuration read from the environment.
-
-Only database settings exist so far; the full settings model arrives with BAL-010.
-"""
-
-import os
-from pathlib import Path
+"""Database connection settings. Shared helpers live in baluarte.settings."""
 
 from sqlalchemy.engine import URL, make_url
 
+from baluarte.settings import ConfigurationError, env, read_secret
 
-class ConfigurationError(RuntimeError):
-    """Required configuration is missing or invalid."""
+__all__ = ["ConfigurationError", "database_url"]
 
 
 def database_url() -> URL:
@@ -19,7 +13,7 @@ def database_url() -> URL:
     ``BALUARTE_DATABASE_URL`` holds the URL without a password. The password is read from the
     file named by ``BALUARTE_DATABASE_PASSWORD_FILE`` so it never appears in the environment.
     """
-    raw = os.environ.get("BALUARTE_DATABASE_URL", "").strip()
+    raw = env("BALUARTE_DATABASE_URL")
     if not raw:
         raise ConfigurationError("BALUARTE_DATABASE_URL is not set")
     try:
@@ -30,11 +24,11 @@ def database_url() -> URL:
         raise ConfigurationError("BALUARTE_DATABASE_URL must use PostgreSQL")
     url = url.set(drivername="postgresql+psycopg")
 
-    password_file = os.environ.get("BALUARTE_DATABASE_PASSWORD_FILE", "").strip()
-    if password_file:
-        try:
-            password = Path(password_file).read_text(encoding="utf-8").strip()
-        except OSError as exc:
-            raise ConfigurationError("BALUARTE_DATABASE_PASSWORD_FILE cannot be read") from exc
+    if url.password is not None:
+        raise ConfigurationError(
+            "BALUARTE_DATABASE_URL must not contain a password; use BALUARTE_DATABASE_PASSWORD_FILE"
+        )
+    password = read_secret("BALUARTE_DATABASE_PASSWORD")
+    if password is not None:
         url = url.set(password=password)
     return url

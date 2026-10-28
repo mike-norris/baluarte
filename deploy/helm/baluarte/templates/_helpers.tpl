@@ -174,3 +174,10 @@ https://{{ .Values.ingress.host }}
         path: client-secret
 {{- end }}
 {{- end }}
+
+{{- define "baluarte.loggingEnv" -}}
+- name: BALUARTE_LOG_LEVEL
+  value: {{ .Values.logging.level | quote }}
+- name: BALUARTE_LOG_FORMAT
+  value: {{ .Values.logging.format | quote }}
+{{- end }}

@@ -51,6 +51,13 @@ api:
     enabled: false
     minAvailable: 1
 
+# Applies to the API, worker and migration Job. Secrets are redacted in both formats.
+logging:
+  # DEBUG, INFO, WARNING or ERROR.
+  level: INFO
+  # json (one object per line, for log collectors) or text.
+  format: json
+
 # Background job worker. Uses the api image and runAsUser; no Service.
 worker:
   replicaCount: 1

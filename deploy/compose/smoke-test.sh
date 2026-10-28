@@ -45,6 +45,14 @@ status=$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/api/v1/au
 [[ $status == 503 ]] || fail "unconfigured /api/v1/auth/me returned $status, expected 503"
 echo "ok  web proxy /api/v1/auth/me refused without OIDC (503)"
 
+# Structured logs, with OAuth parameters in access-log query strings redacted.
+curl -sS -o /dev/null 'http://127.0.0.1:8080/api/v1/auth/callback?code=SMOKECODE123&state=SMOKESTATE456'
+api_logs=$("${compose[@]}" logs --no-log-prefix api)
+grep -q '"logger": "uvicorn.access"' <<<"$api_logs" || fail "api access log is not JSON"
+grep -q 'auth/callback' <<<"$api_logs" || fail "callback request was not logged"
+! grep -qE 'SMOKECODE123|SMOKESTATE456' <<<"$api_logs" || fail "OAuth parameters leaked into api logs"
+echo "ok  api logs are JSON and redact OAuth parameters"
+
 curl -fsS http://127.0.0.1:8080/ | grep -q '<div id="root">' || fail "web index not served"
 echo "ok  web /"
 

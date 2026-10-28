@@ -27,6 +27,7 @@ from baluarte.config import ConfigurationError, database_url
 from baluarte.db.migrate import head_revisions, wait_for_database
 from baluarte.jobs import queue
 from baluarte.jobs.handlers import HANDLERS, Handler
+from baluarte.settings import configure_logging_from_env
 
 logger = logging.getLogger(__name__)
 
@@ -189,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "healthcheck":
         return healthcheck()
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+    configure_logging_from_env()
     try:
         poll = _seconds("BALUARTE_WORKER_POLL_SECONDS", 5.0)
         lease = timedelta(seconds=_seconds("BALUARTE_WORKER_LEASE_SECONDS", 300.0))
