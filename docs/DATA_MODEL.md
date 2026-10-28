@@ -38,6 +38,8 @@ Delivery is at least once: handlers must be idempotent. Jobs are never deleted b
 
 ## Audit digests
 
+`gitlab_instance.capability_snapshot` holds the latest capability detection result: `status` (`ok`, `partial`, `failed`), `checked_at`, `version`, `edition`, `tier`, `error` and one entry per probe with `status`, `endpoint`, `http_status` and `detail` (see [GITLAB_INTEGRATION.md](GITLAB_INTEGRATION.md#capability-detection)).
+
 `audit_event.details_digest` is the SHA-256 of `details` serialised as canonical JSON: keys sorted, no insignificant whitespace, UTF-8 (`baluarte.audit.details_digest`). Details are redacted before they are hashed, and each committed event is mirrored to the `baluarte.audit` log stream (see [SECURITY.md](SECURITY.md#audit-trail)).
 
 ## Migrations

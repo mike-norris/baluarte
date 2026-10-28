@@ -70,6 +70,8 @@ Handlers take the claimed job and must be idempotent. Raise `JobError("safe mess
 - `GET /api/v1/jobs?state=&kind=&limit=&before_id=`: jobs newest first, without payloads; `next_before_id` pages backwards. Needs `jobs:read` (admin).
 - `GET /api/v1/audit-events?action=&actor=&since=&until=&limit=&before_id=`: audit events newest first with their `details_digest`; `since`/`until` need a time zone. Needs `audit_log:read` (admin, auditor).
 - `GET /api/v1/settings`: effective logging, database, GitLab and authentication settings; secrets appear only as `configured` or `not_set`. Needs `settings:manage` (admin).
+- `GET /api/v1/gitlab/instance`: configured URL, version, edition, the latest capability snapshot and whether it is `stale` (older than 24 hours or never run). Needs `inventory:read` (every role).
+- `POST /api/v1/gitlab/capabilities/refresh`: queues capability detection in the worker; returns 202 with `job_id`, and requests in the same minute share one job. 409 when GitLab is not configured. Needs `settings:manage` (admin) and the CSRF header.
 - `POST /api/v1/gitlab/diagnostics`: tests the GitLab connection and token permissions (see [docs/GITLAB_INTEGRATION.md](../docs/GITLAB_INTEGRATION.md#diagnostics)). Returns 200 with a report whenever the checks ran, including failures; read `status`. Needs `settings:manage` (admin) and the CSRF header.
 
 Every other endpoint requires a session (401 without one) and is checked against the permission matrix in [docs/SECURITY.md](../docs/SECURITY.md).

@@ -30,7 +30,7 @@ def test_sends_token_header_and_only_gets() -> None:
     body = client(fake).get_json("/groups", {"per_page": 1})
 
     [request] = fake.requests
-    assert body == [{"id": 1, "full_path": "platform"}]
+    assert body == [{"id": 1, "full_path": "platform", "visibility": "private"}]
     assert request.method == "GET"
     assert str(request.url) == "https://gitlab.example.test/api/v4/groups?per_page=1"
     assert request.headers["PRIVATE-TOKEN"] == TOKEN

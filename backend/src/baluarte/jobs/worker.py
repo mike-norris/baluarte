@@ -120,7 +120,7 @@ class Worker:
     def _execute(self, job: queue.ClaimedJob) -> tuple[str, bool] | None:
         """Run the handler; return None on success or (stored message, retry) on failure."""
         try:
-            self.handlers[job.kind](job)
+            self.handlers[job.kind](job, self.engine)
         except queue.PermanentJobError as exc:
             return str(exc) or type(exc).__name__, False
         except queue.JobError as exc:

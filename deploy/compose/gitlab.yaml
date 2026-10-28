@@ -4,13 +4,19 @@
 #   BALUARTE_GITLAB_URL=https://gitlab.example.internal \
 #     docker compose -f compose.yaml -f deploy/compose/gitlab.yaml up -d
 #
-# For a private CA, also mount the bundle and set SSL_CERT_FILE on the api service.
+# For a private CA, also mount the bundle and set SSL_CERT_FILE on the api and worker services.
+x-gitlab-env: &gitlab-env
+  BALUARTE_GITLAB_URL: ${BALUARTE_GITLAB_URL:?set BALUARTE_GITLAB_URL}
+  BALUARTE_GITLAB_TOKEN_FILE: /run/secrets/gitlab_token
+  BALUARTE_GITLAB_TIMEOUT_SECONDS: ${BALUARTE_GITLAB_TIMEOUT_SECONDS:-15}
+
 services:
+  # Diagnostics run in the API; capability detection and collection run in the worker.
   api:
-    environment:
-      BALUARTE_GITLAB_URL: ${BALUARTE_GITLAB_URL:?set BALUARTE_GITLAB_URL}
-      BALUARTE_GITLAB_TOKEN_FILE: /run/secrets/gitlab_token
-      BALUARTE_GITLAB_TIMEOUT_SECONDS: ${BALUARTE_GITLAB_TIMEOUT_SECONDS:-15}
+    environment: *gitlab-env
+    secrets: [postgres_password, gitlab_token]
+  worker:
+    environment: *gitlab-env
     secrets: [postgres_password, gitlab_token]
 
 secrets:
