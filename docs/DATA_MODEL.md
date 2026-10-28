@@ -1,13 +1,13 @@
 # Data model
 
-Implemented in `backend/src/baluarte/db/models.py`; migrations `0001` (inventory, policy and evidence) and `0002` (users and sessions) create it. All primary keys are `bigint` identity columns, all timestamps are `timestamptz` (UTC instants), and status-like columns are `text` with CHECK constraints rather than PostgreSQL enum types. SHA-256 digests are stored as 64-character lowercase hex and checked by constraint.
+Implemented in `backend/src/baluarte/db/models.py`; migrations `0001` (inventory, policy and evidence), `0002` (users and sessions) and `0003` (job lease constraints) create it. All primary keys are `bigint` identity columns, all timestamps are `timestamptz` (UTC instants), and status-like columns are `text` with CHECK constraints rather than PostgreSQL enum types. SHA-256 digests are stored as 64-character lowercase hex and checked by constraint.
 
 | Table | Key fields | Notes |
 |---|---|---|
 | gitlab_instance | id, base_url (unique), version, edition, capability_snapshot, last_checked_at | One instance in v0.1 (ADR-0004); the ID is kept on every GitLab resource |
 | gitlab_group | id, instance_id, gitlab_id, parent_gitlab_id, full_path, visibility, state, first_seen_at, last_seen_at | Unique `(instance_id, gitlab_id)`; state `active`, `missing`, `inaccessible` |
 | gitlab_project | id, instance_id, gitlab_id, namespace_gitlab_id, path_with_namespace, visibility, archived, default_branch, state, first_seen_at, last_seen_at | Unique `(instance_id, gitlab_id)`; current inventory cache |
-| collection_job | id, kind, state, idempotency_key (unique), payload, attempt, max_attempts, run_after, lease_owner, lease_until, error | Durable worker coordination; indexed on `(state, run_after)` for claiming |
+| collection_job | id, kind, state, idempotency_key (unique), payload, attempt, max_attempts, run_after, lease_owner, lease_until, error | Background jobs (see [Jobs](#jobs)). A lease is held exactly when `running`; `attempt` never exceeds `max_attempts`; indexed for claiming and for finding expired leases |
 | policy | id, name, version, source_yaml, yaml_digest, effective_at | Immutable versions, unique `(name, version)` |
 | policy_assignment | id, policy_id, target_type, target_id, precedence | Unique per policy and target; inheritance rules pending (BAL-018) |
 | observation | id, instance_id, project_id or group_id, collection_job_id, source, source_ref, collected_at, collection_status, payload, payload_digest, error, retention_until | Evidence provenance. A payload requires a digest. Neither target means instance-level |
@@ -22,6 +22,19 @@ Implemented in `backend/src/baluarte/db/models.py`; migrations `0001` (inventory
 ## Immutability
 
 Database triggers reject `UPDATE` on `observation` and `evaluation`, and both `UPDATE` and `DELETE` on `audit_event`. Deletes of observations and evaluations remain possible so the retention design (BAL-029) can expire them. These triggers stop accidental or application-level changes; they do not stop a database superuser, so integrity still depends on protected digests (see [SECURITY.md](SECURITY.md)).
+
+## Jobs
+
+Implements [ADR-0002](architecture/ADR-0002-postgresql-job-queue.md) in `baluarte.jobs`:
+
+- `enqueue` inserts a job unless its `idempotency_key` exists. The key names the work, so repeating an enqueue is a no-op even after the job finished.
+- Workers claim due `queued` jobs of the kinds they handle with `FOR UPDATE SKIP LOCKED`, set `running`, increment `attempt` and take a lease (`lease_owner`, `lease_until`). All times come from the database clock.
+- While a handler runs the worker renews the lease. Completing, failing and renewing are fenced on `lease_owner` and `attempt`, so a worker whose lease expired cannot overwrite a later attempt.
+- A failed attempt is requeued after 30s, 60s, 120s ... (capped at one hour, +/-20% jitter) until `max_attempts` (default 5), then the job is `failed`. Handlers raise `PermanentJobError` to fail at once.
+- A lease that expires (worker crashed or was killed) returns the job to the queue with backoff, or fails it if no attempts remain. `error` records what happened.
+- `error` holds only messages written for storage. Unexpected exceptions are recorded by type name, because their text may contain URLs, tokens or response bodies.
+
+Delivery is at least once: handlers must be idempotent. Jobs are never deleted by the queue; retention is part of BAL-029.
 
 ## Audit digests
 

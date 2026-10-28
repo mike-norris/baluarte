@@ -6,7 +6,7 @@ the sign-in redirects are public.
 
 from fastapi import APIRouter, Depends
 
-from baluarte.api.v1 import auth, health, ready
+from baluarte.api.v1 import auth, health, jobs, ready
 from baluarte.auth.dependencies import current_principal
 
 public = APIRouter()
@@ -23,6 +23,7 @@ protected = APIRouter(
     },
 )
 protected.include_router(auth.router)
+protected.include_router(jobs.router)
 
 router = APIRouter(prefix="/api/v1")
 router.include_router(public)

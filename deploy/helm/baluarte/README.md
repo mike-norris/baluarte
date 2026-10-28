@@ -1,8 +1,8 @@
 # Baluarte Helm chart
 
-Deploys the Baluarte API and web UI to Kubernetes 1.29+. The web pod serves the UI and proxies `/api/` to the API Service, so an Ingress only needs to route to the web Service.
+Deploys the Baluarte API, background worker and web UI to Kubernetes 1.29+. The web pod serves the UI and proxies `/api/` to the API Service, so an Ingress only needs to route to the web Service.
 
-Every install and upgrade runs a `baluarte-migrate` Job; the API reports ready only once the schema is current. The worker Deployment is added with job processing (BAL-009).
+Every install and upgrade runs a `baluarte-migrate` Job; the API reports ready only once the schema is current.
 
 ## Install
 
@@ -40,9 +40,11 @@ For evaluation only, `--set devDatabase.enabled=true` runs a single PostgreSQL p
 |---|---|---|
 | `global.imageRegistry` | `""` | Registry prefix for both images (private or air-gapped registries) |
 | `api.image.tag`, `web.image.tag` | chart `appVersion` | Image tags |
-| `api.replicaCount`, `web.replicaCount` | `1` | Replicas |
+| `api.replicaCount`, `web.replicaCount`, `worker.replicaCount` | `1` | Replicas. Workers coordinate through PostgreSQL leases, so several can run safely |
+| `worker.pollSeconds`, `worker.leaseSeconds` | `5`, `300` | Idle poll interval; how long a silent worker keeps a job before it is retried elsewhere |
+| `worker.terminationGracePeriodSeconds` | `60` | Time to finish the current job after SIGTERM |
 | `api.resources`, `web.resources` | small requests, memory limits | Resource requests and limits |
-| `api.podDisruptionBudget.enabled`, `web.podDisruptionBudget.enabled` | `false` | PodDisruptionBudgets (enable with 2+ replicas) |
+| `api.podDisruptionBudget.enabled`, `web.podDisruptionBudget.enabled`, `worker.podDisruptionBudget.enabled` | `false` | PodDisruptionBudgets (enable with 2+ replicas) |
 | `database.host`, `database.port`, `database.name`, `database.user` | `""`, `5432`, `baluarte`, `baluarte` | External PostgreSQL; `host` is required unless `devDatabase.enabled` |
 | `database.existingSecret`, `database.passwordKey` | `""`, `password` | Secret holding the database password |
 | `database.sslMode` | `require` | libpq `sslmode`; use `verify-full` with a trusted CA where possible |

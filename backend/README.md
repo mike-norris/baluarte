@@ -40,6 +40,17 @@ OIDC sign-in is off until `BALUARTE_PUBLIC_URL`, `BALUARTE_OIDC_ISSUER` and `BAL
 
 To trust a private CA for the identity provider, point `SSL_CERT_FILE` at a CA bundle. Certificate verification cannot be disabled.
 
+## Background worker
+
+`baluarte-worker` runs background jobs (same image as the API, different command). It waits for the database and for migrations to reach head, then claims only the job kinds registered in `baluarte/jobs/handlers.py`, so an older worker leaves newer kinds queued during a rolling upgrade. SIGTERM finishes the current job, then exits. `baluarte-worker healthcheck` exits 0 while the worker's heartbeat file is fresh, for container probes. See [docs/DATA_MODEL.md](../docs/DATA_MODEL.md#jobs) for leasing and retries.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `BALUARTE_WORKER_POLL_SECONDS` | `5` | Wait between polls when no job is due |
+| `BALUARTE_WORKER_LEASE_SECONDS` | `300` | Lease length; renewed every third of this (at most every 30s) while a job runs |
+
+Handlers take the claimed job and must be idempotent. Raise `JobError("safe message")` to retry or `PermanentJobError` to stop; the message is stored on the job and shown to admins, so it must not contain secrets.
+
 ## Endpoints
 
 - `GET /api/v1/health`: liveness. Does not touch the database.
@@ -48,6 +59,8 @@ To trust a private CA for the identity provider, point `SSL_CERT_FILE` at a CA b
 - `GET /api/v1/auth/callback`: the provider's redirect target. Sets the session cookie and redirects to `return_to`, or to `/sign-in?error=<code>` (`expired`, `provider_denied`, `provider_unavailable`, `not_authorized`, `sign_in_failed`).
 - `GET /api/v1/auth/me`: the signed-in user, roles, permissions, session expiry and CSRF token; 401 without a session.
 - `POST /api/v1/auth/logout`: revokes the session; needs the `X-CSRF-Token` header.
+
+- `GET /api/v1/jobs?state=&kind=&limit=&before_id=`: jobs newest first, without payloads; `next_before_id` pages backwards. Needs `jobs:read` (admin).
 
 Every other endpoint requires a session (401 without one) and is checked against the permission matrix in [docs/SECURITY.md](../docs/SECURITY.md).
 
