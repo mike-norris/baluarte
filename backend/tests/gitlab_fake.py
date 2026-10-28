@@ -15,7 +15,11 @@ Reply = httpx.Response | Callable[[httpx.Request], httpx.Response] | Exception
 
 def healthy_routes() -> dict[str, list[Reply]]:
     return {
-        "/api/v4/version": [httpx.Response(200, json={"version": "17.5.1-ee", "revision": "abc"})],
+        "/api/v4/version": [
+            httpx.Response(
+                200, json={"version": "17.5.1-ee", "revision": "abc", "enterprise": True}
+            )
+        ],
         "/api/v4/personal_access_tokens/self": [
             httpx.Response(
                 200,
@@ -34,7 +38,27 @@ def healthy_routes() -> dict[str, list[Reply]]:
                 200, json={"id": 5, "username": "baluarte-bot", "state": "active", "bot": True}
             )
         ],
-        "/api/v4/groups": [httpx.Response(200, json=[{"id": 1, "full_path": "platform"}])],
+        "/api/v4/groups": [
+            httpx.Response(200, json=[{"id": 1, "full_path": "platform", "visibility": "private"}])
+        ],
+        "/api/v4/projects": [
+            httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 42,
+                        "path_with_namespace": "platform/api",
+                        "visibility": "internal",
+                        "default_branch": "main",
+                    }
+                ],
+            )
+        ],
+        "/api/v4/projects/42/protected_branches": [
+            httpx.Response(200, json=[{"id": 1, "name": "main"}])
+        ],
+        "/api/v4/projects/42/approvals": [httpx.Response(200, json={"approvals_before_merge": 0})],
+        "/api/v4/license": [httpx.Response(403, json={"message": "403 Forbidden"})],
     }
 
 

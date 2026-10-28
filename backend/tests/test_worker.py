@@ -66,7 +66,9 @@ def test_successful_handler_completes_the_job(migrated_engine: Engine) -> None:
     seen: list[queue.ClaimedJob] = []
     job_id = enqueue(migrated_engine)
 
-    assert Worker(migrated_engine, {"inventory.sync": seen.append}).run_once()
+    assert Worker(
+        migrated_engine, {"inventory.sync": lambda claimed, _: seen.append(claimed)}
+    ).run_once()
 
     assert [claimed.payload for claimed in seen] == [{"group": "group-1"}]
     assert job(migrated_engine, job_id).state == "succeeded"
@@ -76,12 +78,12 @@ def test_successful_handler_completes_the_job(migrated_engine: Engine) -> None:
 def test_idle_worker_claims_nothing(migrated_engine: Engine) -> None:
     enqueue(migrated_engine, kind="export.build")
 
-    assert not Worker(migrated_engine, {"inventory.sync": lambda _: None}).run_once()
+    assert not Worker(migrated_engine, {"inventory.sync": lambda *_: None}).run_once()
     assert not Worker(migrated_engine, {}).run_once()
 
 
 def _raise(error: Exception) -> Handler:
-    def handler(_: queue.ClaimedJob) -> None:
+    def handler(*_: object) -> None:
         raise error
 
     return handler
@@ -122,7 +124,7 @@ def test_lease_is_renewed_while_the_handler_runs(migrated_engine: Engine) -> Non
     job_id = enqueue(migrated_engine)
     lease_seen: list[datetime] = []
 
-    def slow(_: queue.ClaimedJob) -> None:
+    def slow(*_: object) -> None:
         for _round in range(2):
             lease_until = job(migrated_engine, job_id).lease_until
             assert lease_until is not None
@@ -146,7 +148,7 @@ def test_run_loop_stops_when_asked(migrated_engine: Engine, tmp_path: Path) -> N
         enqueue(migrated_engine, key=key)
     runner = Worker(
         migrated_engine,
-        {"inventory.sync": lambda _: None},
+        {"inventory.sync": lambda *_: None},
         poll_interval=0.05,
         heartbeat_file=beat,
     )

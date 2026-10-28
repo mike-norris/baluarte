@@ -45,6 +45,7 @@ Sign-in, failed sign-in (with a reason code) and sign-out are written to `audit_
 - One token for one instance (ADR-0004), read from `BALUARTE_GITLAB_TOKEN_FILE`. Baluarte only issues `GET` requests and needs only the `read_api` scope. Use a dedicated non-admin bot or auditor user; an administrator token sees everything and is flagged by diagnostics.
 - The token travels only in the `PRIVATE-TOKEN` header to `BALUARTE_GITLAB_URL`, which must be `https`. Redirects are never followed, so a redirect cannot forward the token to another host. TLS verification is always on; a private CA is added with `SSL_CERT_FILE`.
 - Error messages stored or returned for GitLab failures contain the status and endpoint path only, never response bodies, query strings or the token.
+- The token is mounted into the API (diagnostics) and the worker (capability detection and collection) only. Capability detection calls `GET /license`, which is administrator-only; a least-privilege token gets 403 there by design and the tier is reported as unknown.
 - Diagnostics (`POST /api/v1/gitlab/diagnostics`, admin, CSRF-protected) warn when the token has write scopes (`api`, `write_repository`, ...), belongs to an administrator, or expires within 30 days, and fail when it is revoked, expired, lacks `read_api`, or its user is blocked. Checks that cannot run are `unknown`, never `ok`. Each run is audited (`gitlab.diagnostics_run`).
 
 ## Audit trail
