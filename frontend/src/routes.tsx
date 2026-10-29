@@ -4,6 +4,7 @@ import type { RouteObject } from "react-router";
 import { AuthProvider } from "./auth/AuthProvider";
 import { RequireSession } from "./auth/RequireSession";
 import { Layout } from "./components/Layout";
+import { CollectionNote } from "./freshness/CollectionNote";
 import { navItems } from "./navigation";
 import { InventoryPage } from "./pages/InventoryPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
@@ -14,6 +15,9 @@ import { SignInPage } from "./pages/SignInPage";
 const pages: Partial<Record<string, ReactNode>> = {
   "/inventory": <InventoryPage />,
 };
+
+/** Placeholders whose content will be derived from GitLab data, so they show its freshness. */
+const collectionDerived = new Set(["/", "/findings", "/evidence"]);
 
 export const routes: RouteObject[] = [
   {
@@ -26,14 +30,14 @@ export const routes: RouteObject[] = [
       { path: "/sign-in", element: <SignInPage /> },
       {
         element: <RequireSession />,
-        children: navItems.map(
-          (item): RouteObject => ({
-            path: item.path,
-            element: pages[item.path] ?? (
-              <PlaceholderPage title={item.label} description={item.description} />
-            ),
-          }),
-        ),
+        children: navItems.map((item): RouteObject => ({
+          path: item.path,
+          element: pages[item.path] ?? (
+            <PlaceholderPage title={item.label} description={item.description}>
+              {collectionDerived.has(item.path) && <CollectionNote />}
+            </PlaceholderPage>
+          ),
+        })),
       },
       { path: "*", element: <NotFoundPage /> },
     ],

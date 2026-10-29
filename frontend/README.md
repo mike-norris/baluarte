@@ -29,4 +29,17 @@ Hiding sections in the browser is a convenience only: the API enforces every per
 - **Errors and retries:** API errors show a retry; a 401 refreshes the session and returns to sign-in.
 - **Times:** shown in UTC.
 
-`src/api/` holds the typed API client, and `src/inventory/` holds the page's helpers.
+`src/api/` holds the typed API client and the `useLoad` hook, and `src/inventory/` holds the page's helpers.
+
+## Freshness
+
+Signed-in users see the collection status in the header on every page, as text and colour (for example "GitLab data: Stale"), linking to `/inventory` for details. `src/freshness/` is the one place for freshness statuses, labels, colours and severity order.
+
+- **When it checks:** the header calls `GET /api/v1/gitlab/freshness` on sign-in, on every navigation and every minute while a page stays open. The previous status stays visible while a check is in flight; checks are aborted on navigation and unmount.
+- **Unknown is not current:** if a check fails, the header shows "Status unknown" and replaces any earlier "Up to date". Unknown ranks between failed and never, so it is never treated as compliant.
+- **Announcements:** failed, stale and unknown are announced once through a polite live region. Re-checks that return the same status, and navigation, do not repeat the announcement.
+- **Placeholders:** Dashboard, Findings and Evidence show the collection status and the oldest successful collection across projects, groups and capabilities. They show no time when any part has never succeeded or the status is unknown.
+
+### Evaluation freshness (not yet available)
+
+Policy evaluation does not exist yet (BAL-021), so the app shows no evaluation freshness and the placeholders say that nothing has been evaluated. Each source is a `FreshnessSignal` (`source`, `status`, `lastSuccessAt`), and the header shows the worst signal. When the evaluation API exists, its status becomes a second signal with `source: "evaluation"`, and neither the header nor the pages need to change. Until then, nothing in the app implies that findings are current.

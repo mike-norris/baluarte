@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useEffectEvent, useState } from "react";
 
-import { ApiError } from "../api/client";
+import { ApiError } from "./client";
 import { useAuth } from "../auth/context";
 
 type Result<T> = { key: string; data: T } | { key: string; error: ApiError };

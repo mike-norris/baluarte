@@ -12,15 +12,16 @@ import {
   type Page,
   type Project,
 } from "../api/gitlab";
-import { FreshnessPanel } from "../inventory/FreshnessPanel";
+import { useLoad, type Loaded } from "../api/useLoad";
+import { FreshnessPanel } from "../freshness/FreshnessPanel";
 import {
   isFiltered,
   readFilters,
   writeFilters,
   type InventoryView,
 } from "../inventory/filters";
-import { formatTime, stateHelp, stateLabels, visibilityLabel } from "../inventory/format";
-import { useLoad, type Loaded } from "../inventory/useLoad";
+import { stateHelp, stateLabels, visibilityLabel } from "../inventory/format";
+import { formatTime } from "../time";
 
 const buttonClass =
   "rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 disabled:opacity-50";

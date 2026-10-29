@@ -3,35 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { FreshnessReport, Group, KindFreshness, Page, Project } from "../api/gitlab";
+import type { Group, Page, Project } from "../api/gitlab";
 import { routes } from "../routes";
 import { analyst, json, mockApi } from "../test/api";
+import { freshness, kind } from "../test/freshness";
 
 const ME = "GET /api/v1/auth/me";
 const FRESHNESS = "GET /api/v1/gitlab/freshness";
 const PROJECTS = "GET /api/v1/gitlab/projects?limit=100";
-
-function kind(status: KindFreshness["status"], extra: Partial<KindFreshness> = {}): KindFreshness {
-  return {
-    status,
-    running: false,
-    last_run: null,
-    last_success_at: status === "never" ? null : "2026-10-29T06:00:00Z",
-    ...extra,
-  };
-}
-
-function freshness(overrides: Partial<FreshnessReport> = {}): FreshnessReport {
-  return {
-    status: "fresh",
-    checked_at: "2026-10-29T07:00:00Z",
-    stale_after_minutes: 720,
-    sync_interval_minutes: 360,
-    collections: { capabilities: kind("fresh"), groups: kind("fresh"), projects: kind("fresh") },
-    resources: {},
-    ...overrides,
-  };
-}
 
 const seen = {
   first_seen_at: "2026-10-28T06:00:00Z",
