@@ -10,7 +10,7 @@ from typing import Any
 
 from sqlalchemy import Engine
 
-from baluarte.db.models import VISIBILITIES, GitLabProject
+from baluarte.db.models import NAMESPACE_KINDS, VISIBILITIES, GitLabProject
 from baluarte.integrations.gitlab.client import GitLabClient, InvalidResponse
 from baluarte.integrations.gitlab.discovery import Discovery, ResourceKind, discover
 
@@ -20,6 +20,7 @@ def _row(instance_id: int, project: dict[str, Any]) -> dict[str, Any]:
     path = project.get("path_with_namespace")
     namespace = project.get("namespace")
     namespace_id = namespace.get("id") if isinstance(namespace, dict) else None
+    namespace_kind = namespace.get("kind") if isinstance(namespace, dict) else None
     if (
         not isinstance(gitlab_id, int)
         or not isinstance(path, str)
@@ -34,6 +35,8 @@ def _row(instance_id: int, project: dict[str, Any]) -> dict[str, Any]:
         "instance_id": instance_id,
         "gitlab_id": gitlab_id,
         "namespace_gitlab_id": namespace_id,
+        # Unknown kinds are stored as null, which policy resolution treats as unconfirmed.
+        "namespace_kind": namespace_kind if namespace_kind in NAMESPACE_KINDS else None,
         "path_with_namespace": path,
         "name": str(project.get("name") or path.rsplit("/", 1)[-1]),
         # An unrecognised value is stored as unknown rather than guessed.
@@ -54,6 +57,7 @@ PROJECTS = ResourceKind(
     to_row=_row,
     refreshed=(
         "namespace_gitlab_id",
+        "namespace_kind",
         "path_with_namespace",
         "name",
         "visibility",

@@ -29,6 +29,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from baluarte.db.base import Base
 
 VISIBILITIES = ("private", "internal", "public")
+NAMESPACE_KINDS = ("group", "user")
 INVENTORY_STATES = ("active", "missing", "inaccessible")
 JOB_STATES = ("queued", "running", "succeeded", "failed", "cancelled")
 COLLECTION_STATUSES = ("ok", "partial", "forbidden", "not_found", "unsupported", "failed")
@@ -102,12 +103,15 @@ class GitLabProject(Base):
         Index("ix_gitlab_project_namespace", "instance_id", "namespace_gitlab_id"),
         one_of("visibility", VISIBILITIES),
         one_of("state", INVENTORY_STATES),
+        one_of("namespace_kind", NAMESPACE_KINDS),
     )
 
     id: Mapped[int] = pk()
     instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
     gitlab_id: Mapped[int] = mapped_column(BigInteger)
     namespace_gitlab_id: Mapped[int] = mapped_column(BigInteger)
+    # A group or a user (personal project); null when unknown, e.g. not yet rediscovered.
+    namespace_kind: Mapped[str | None] = mapped_column(Text)
     path_with_namespace: Mapped[str] = mapped_column(Text)
     name: Mapped[str] = mapped_column(Text)
     visibility: Mapped[str | None] = mapped_column(Text)

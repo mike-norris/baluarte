@@ -44,14 +44,16 @@ GROUPS = [
     (40, "loop-a", 41, "active"),
     (41, "loop-b", 40, "active"),
 ]
-# (gitlab_id, path_with_namespace, namespace, state)
+# (gitlab_id, path_with_namespace, namespace, namespace kind, state)
 PROJECTS = [
-    (100, "platform/backend/api/svc", 12, "active"),
-    (101, "platform/web", 10, "active"),
-    (102, "alice/dotfiles", 500, "active"),
-    (103, "orphans/sub/tool", 20, "active"),
-    (104, "gone/child/app", 31, "active"),
-    (105, "platform/old", 10, "missing"),
+    (100, "platform/backend/api/svc", 12, "group", "active"),
+    (101, "platform/web", 10, "group", "active"),
+    (102, "alice/dotfiles", 500, "user", "active"),
+    (103, "orphans/sub/tool", 20, "group", "active"),
+    (104, "gone/child/app", 31, "group", "active"),
+    (105, "platform/old", 10, "group", "missing"),
+    # Discovered before namespace kinds were recorded.
+    (106, "bob/notes", 501, None, "active"),
 ]
 
 
@@ -80,12 +82,13 @@ def instance_id(migrated_engine: Engine, gitlab_env: None) -> int:
                     state=state,
                 )
             )
-        for gitlab_id, path, namespace, state in PROJECTS:
+        for gitlab_id, path, namespace, kind, state in PROJECTS:
             db.execute(
                 insert(GitLabProject).values(
                     instance_id=instance.id,
                     gitlab_id=gitlab_id,
                     namespace_gitlab_id=namespace,
+                    namespace_kind=kind,
                     path_with_namespace=path,
                     name=path.rsplit("/", 1)[-1],
                     state=state,
@@ -489,7 +492,7 @@ def test_missing_ancestor_makes_ancestry_incomplete(
     assert summary(body, "policies") == [("strict", 1, "group", 31, "effective")]
 
 
-def test_personal_project_reports_its_namespace_as_unknown(
+def test_personal_project_goes_straight_to_the_instance(
     migrated_engine: Engine, instance_id: int
 ) -> None:
     admin = client_as(migrated_engine, Role.ADMIN)
@@ -499,8 +502,12 @@ def test_personal_project_reports_its_namespace_as_unknown(
 
     body = admin.get("/api/v1/gitlab/projects/102/effective-policies").json()
 
-    assert body["ancestry"] == "incomplete"
-    assert body["gaps"] == [{"gitlab_id": 500, "reason": "not_in_inventory"}]
+    assert body["ancestry"] == "complete"
+    assert body["gaps"] == []
+    assert [(level["target_type"], level["target_id"]) for level in body["path"]] == [
+        ("project", 102),
+        ("instance", instance_id),
+    ]
     assert summary(body) == [
         ("backend-only", 1, "instance", instance_id, "out_of_scope"),
         (DEFAULT, 1, "instance", instance_id, "effective"),
@@ -598,3 +605,17 @@ def test_database_rejects_inconsistent_assignments(
         )
         with pytest.raises(IntegrityError):
             db.commit()
+
+
+def test_unknown_namespace_kind_is_never_complete(
+    migrated_engine: Engine, instance_id: int
+) -> None:
+    admin = client_as(migrated_engine, Role.ADMIN)
+    assign(admin, DEFAULT, 1, "instance")
+
+    body = admin.get("/api/v1/gitlab/projects/106/effective-policies").json()
+
+    # Not assumed to be personal: the namespace may be a group the inventory has not seen.
+    assert body["ancestry"] == "incomplete"
+    assert body["gaps"] == [{"gitlab_id": 501, "reason": "not_in_inventory"}]
+    assert summary(body, "policies") == [(DEFAULT, 1, "instance", instance_id, "effective")]

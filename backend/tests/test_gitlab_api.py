@@ -399,6 +399,11 @@ def test_projects_are_listed_for_every_role(
     assert project_paths(response) == ["platform/api", "platform/old_api", "alice/scratch"]
     first = response.json()["items"][0]
     assert (first["namespace_gitlab_id"], first["default_branch"]) == (1, "main")
+    assert [item["namespace_kind"] for item in response.json()["items"]] == [
+        "group",
+        "group",
+        "user",
+    ]
 
 
 def test_project_filters_and_paging(migrated_engine: Engine, gitlab_env: None) -> None:
@@ -410,6 +415,10 @@ def test_project_filters_and_paging(migrated_engine: Engine, gitlab_env: None) -
 
     assert paths(state="inaccessible") == ["alice/scratch"]
     assert paths(namespace_gitlab_id=1) == ["platform/api", "platform/old_api"]
+    assert paths(namespace_kind="user") == ["alice/scratch"]
+    assert (
+        client.get("/api/v1/gitlab/projects", params={"namespace_kind": "org"}).status_code == 422
+    )
     assert paths(visibility="public") == ["alice/scratch"]
     assert paths(archived="true") == ["platform/old_api"]
     assert paths(archived="false") == ["platform/api", "alice/scratch"]

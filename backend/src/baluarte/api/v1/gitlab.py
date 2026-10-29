@@ -302,6 +302,7 @@ class ProjectOut(BaseModel):
     id: int
     gitlab_id: int
     namespace_gitlab_id: int
+    namespace_kind: str | None
     path_with_namespace: str
     name: str
     visibility: str | None
@@ -325,7 +326,8 @@ class ProjectPage(BaseModel):
     summary="Discovered projects",
     description="Projects of the configured instance in ID order, archived ones included. "
     "`visibility` and `default_branch` are null when unknown or (for the branch) when the "
-    "repository is empty. " + _STATE_DOC,
+    "repository is empty. `namespace_kind` is `group`, `user` (a personal project) or null "
+    "when not yet known. " + _STATE_DOC,
 )
 def list_projects(
     _: Annotated[Principal, Depends(require(Permission.INVENTORY_READ))],
@@ -333,6 +335,7 @@ def list_projects(
     state: Annotated[InventoryState | None, Query()] = None,
     search: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
     namespace_gitlab_id: Annotated[int | None, Query(gt=0)] = None,
+    namespace_kind: Annotated[Literal["group", "user"] | None, Query()] = None,
     visibility: Annotated[Literal["private", "internal", "public"] | None, Query()] = None,
     archived: Annotated[bool | None, Query()] = None,
     has_error: Annotated[bool | None, Query()] = None,
@@ -357,6 +360,8 @@ def list_projects(
         )
     if namespace_gitlab_id is not None:
         statement = statement.where(GitLabProject.namespace_gitlab_id == namespace_gitlab_id)
+    if namespace_kind is not None:
+        statement = statement.where(GitLabProject.namespace_kind == namespace_kind)
     if visibility is not None:
         statement = statement.where(GitLabProject.visibility == visibility)
     if archived is not None:
