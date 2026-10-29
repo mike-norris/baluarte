@@ -17,8 +17,13 @@ export interface Call {
   init: RequestInit | undefined;
 }
 
-/** Replace fetch with a handler keyed on "METHOD /path"; returns the recorded calls. */
-export function mockApi(routes: Record<string, () => Response | Promise<Response>>): Call[] {
+/**
+ * Replace fetch with a handler keyed on "METHOD /path"; returns the recorded calls.
+ * Handlers receive the request options, for tests that need the body or the abort signal.
+ */
+export function mockApi(
+  routes: Record<string, (init?: RequestInit) => Response | Promise<Response>>,
+): Call[] {
   const calls: Call[] = [];
   vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
     const url = input instanceof Request ? input.url : input.toString();
@@ -26,7 +31,7 @@ export function mockApi(routes: Record<string, () => Response | Promise<Response
     const key = `${init?.method ?? "GET"} ${url}`;
     const handler = routes[key];
     return handler
-      ? Promise.resolve(handler())
+      ? Promise.resolve(handler(init))
       : Promise.reject(new TypeError(`unexpected fetch: ${key}`));
   });
   return calls;
