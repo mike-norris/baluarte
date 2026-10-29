@@ -27,9 +27,48 @@ Each stored evaluation names the observation it judged (`evaluation.observation_
 
 Read them with `GET /api/v1/gitlab/projects/{gitlab_id}/observations`, `GET /api/v1/gitlab/groups/{gitlab_id}/observations` and `GET /api/v1/gitlab/instance/observations` (`evidence:read`).
 
-## Export package
+## Export
 
-ZIP containing `manifest.json`, `inventory.csv`, `evaluations.csv`, `observations.jsonl` (redacted), `collection_errors.csv`, and `README.txt` describing scope and limitations. Include per-file SHA-256 hashes and package generation metadata. PDF reports are a later enhancement.
+`POST /api/v1/evidence/exports` (BAL-027) exports scoped evidence as one JSON document (`"format": "json"`) or a ZIP of CSV files (`"format": "csv"`). It needs `evidence:export`, which admins and auditors have and analysts do not: an export is a bulk copy of inventory and evidence.
+
+**Scope.** Every field narrows the export, and an empty scope is refused: `all: true` must be set to export everything, and cannot be combined with filters.
+
+| Field | Selects |
+|---|---|
+| `group` | Projects in that group and all its subgroups (whole path segments, case-insensitive), and the collection errors of those groups. Must be in the inventory. |
+| `projects` | Project GitLab IDs, at most 500. Each must be in the inventory. |
+| `policy`, `rule` | Evaluations and findings of that policy name and rule ID. |
+| `outcome` | Evaluations with that outcome, and findings whose latest outcome it is. |
+| `finding_state` | Findings in that state, and the evaluations of their project, policy and rule. |
+| `since`, `until` | Evaluations evaluated in `[since, until)`, findings open at some point in it, and runs started in it. Without a window, the latest evaluation of each project, policy and rule, and the latest finished run of each kind. Timestamps need a time zone. |
+
+The inventory section always lists every project in the group or project scope, whatever the other filters.
+
+**Content.** Read in one `REPEATABLE READ`, read-only transaction, so every section describes the same moment. Each row carries its provenance.
+
+| Section (CSV file) | Holds |
+|---|---|
+| `inventory` (`inventory.csv`) | Projects in scope as the inventory holds them at export time. |
+| `evaluations` (`evaluations.csv`) | Stored results, with policy version, reason codes, expected and observed values, capability and collection status, `observation_id` and `evaluation_run_id`. |
+| `findings` (`findings.csv`) | Findings with their latest evaluation and the observation it judged. |
+| `observations` (`observations.jsonl`) | Every observation those reference: source, `source_ref`, `collected_at`, `collection_run_id`, `collection_job_id`, payload, `payload_digest`, and `digest_valid` recomputed at export. A `false` is exported as it is, never hidden. |
+| `policies` (`policies.csv`) | The exact policy versions referenced: name, version, `yaml_digest`, `effective_at` and the source YAML. |
+| `collection_errors` (`collection_errors.csv`) | Projects and groups in scope that are missing, inaccessible or carry a collection error. |
+| `collection_runs` (`collection_runs.csv`) | Collection and evaluation runs, with status, error and counts. |
+
+The JSON document also holds the scope, the export ID, `generated_at` (database clock) and the collection and evaluation freshness at export time, and ends with row counts. The ZIP holds the same metadata in `export.json` and a `README.txt` describing the scope, the files and their limitations. `unknown` and `unsupported` results, failed runs and unreachable resources are exported, never dropped.
+
+**No credentials.** Observation payloads are already an allowlist. Every other text value passes through the log redactor (registered secrets, GitLab tokens, bearer and basic credentials, JWTs, credentials in URLs and `token=`-style parameters). A payload that would need redacting is withheld (`payload_withheld: true`, payload null) instead of altered, so its digest still describes the stored row. Policy YAML that needed redacting is marked `source_yaml_redacted`, and its `yaml_digest` then no longer matches the exported text.
+
+**CSV safety.** A cell that starts with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading apostrophe, so spreadsheets do not run it as a formula. Lists and objects are written as canonical JSON.
+
+**Limits.** At most 100,000 rows (inventory, evaluations, findings and collection errors together). A larger scope is a 422 before anything is sent; narrow it. The response is streamed from paged reads, so memory stays bounded, with `Cache-Control: no-store`.
+
+**Reproducible.** The same evidence and scope give the same rows in the same order. ZIP entries have a fixed timestamp. Only the export ID, `generated_at` and the freshness `checked_at` differ.
+
+**Audit.** `evidence.exported` is recorded when the export is accepted: actor, format, scope, planned row counts and instance. `evidence.export_completed` is recorded once every byte has been produced: the response's size and SHA-256, row counts, and each ZIP file's size, rows and SHA-256. Neither holds exported data. An export interrupted part way has no completion event.
+
+Not yet: `manifest.json` inside the package with per-file hashes and the collection errors summary (BAL-028; the completion audit event already records the per-file hashes), and PDF reports.
 
 ## Audit language
 
