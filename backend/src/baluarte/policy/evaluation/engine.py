@@ -44,6 +44,19 @@ _COLLECTION_REASONS: dict[str, UnknownReason] = {
 
 
 @dataclass(frozen=True)
+class BranchProtection:
+    """The latest default-branch protection observation of a project."""
+
+    observation_id: int
+    # The observation's collection status: "ok", or why it could not be read.
+    status: str
+    collected_at: datetime
+    # The payload (branch, protected, rules) when ``status`` is "ok".
+    payload: dict[str, Any] | None
+    error: str | None
+
+
+@dataclass(frozen=True)
 class ProjectFacts:
     """A project as recorded in the inventory."""
 
@@ -55,6 +68,8 @@ class ProjectFacts:
     last_error: str | None
     archived: bool = False
     default_branch: str | None = None
+    # None when the project's branch protection has never been read.
+    protection: BranchProtection | None = None
 
 
 @dataclass(frozen=True)

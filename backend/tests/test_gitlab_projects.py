@@ -8,7 +8,9 @@ from gitlab_fake import TOKEN, URL, FakeGitLab, paged, project, settings
 from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
-from baluarte.db.models import CollectionJob, GitLabProject
+from baluarte.db.models import CollectionJob, GitLabProject, Observation
+from baluarte.integrations.gitlab import branches
+from baluarte.integrations.gitlab.branches import PROTECTION_SOURCE
 from baluarte.integrations.gitlab.client import GitLabClient, InvalidResponse, ServerError
 from baluarte.integrations.gitlab.discovery import Discovery
 from baluarte.integrations.gitlab.jobs import DISCOVER_PROJECTS, make_discover_projects
@@ -202,3 +204,210 @@ def test_job_failure_is_retried_with_a_safe_message(
 
     assert job.state == "queued"
     assert job.error == "project discovery failed: the token may not read /projects (403)"
+
+
+# Default-branch protection, read after the listing.
+
+PROTECTED_RULE = {
+    "id": 1,
+    "name": "main",
+    "push_access_levels": [
+        {"access_level": 40, "access_level_description": "Maintainers"},
+        {"access_level": None, "user_id": 77, "access_level_description": "Jane Doe"},
+    ],
+    "merge_access_levels": [{"access_level": 30, "group_id": 5}],
+    "unprotect_access_levels": [{"access_level": 40}],
+    "allow_force_push": False,
+    "code_owner_approval_required": True,
+}
+
+
+def protections(engine: Engine) -> dict[int, Observation]:
+    """The latest protection observation of each project, by GitLab ID."""
+    ids = {row.id: gitlab_id for gitlab_id, row in projects(engine).items()}
+    found: dict[int, Observation] = {}
+    with Session(engine) as db:
+        for row in db.scalars(
+            select(Observation)
+            .where(Observation.source == PROTECTION_SOURCE)
+            .order_by(Observation.id)
+        ):
+            assert row.project_id is not None
+            found[ids[row.project_id]] = row
+    return found
+
+
+def protection_fake(replies: dict[int, Any]) -> FakeGitLab:
+    """The standard listing, with protected-branch replies by GitLab project ID."""
+    fake = fake_with(PAGES)
+    for gitlab_id, reply in replies.items():
+        path = f"/projects/{gitlab_id}/protected_branches"
+        if isinstance(reply, list):
+            fake.json(path, body=reply)
+        else:
+            fake.set(path, reply)
+    return fake
+
+
+def test_default_branch_protection_is_read_for_each_project(migrated_engine: Engine) -> None:
+    fake = protection_fake(
+        {
+            10: [PROTECTED_RULE, {"id": 2, "name": "release/*"}],
+            11: [{"id": 3, "name": "*"}],
+            12: [{"id": 4, "name": "develop"}],
+        }
+    )
+
+    result = discover(migrated_engine, fake)
+
+    found = protections(migrated_engine)
+    # Project 13 is an empty repository: there is no branch to read.
+    assert sorted(found) == [10, 11, 12]
+    assert "/projects/13/protected_branches" not in fake.paths()
+    assert found[10].payload == {
+        "branch": "main",
+        "protected": True,
+        "rules": [
+            {
+                "name": "main",
+                "push_access_levels": [
+                    {"kind": "role", "access_level": 40},
+                    {"kind": "user", "access_level": None},
+                ],
+                "merge_access_levels": [{"kind": "group", "access_level": 30}],
+                "unprotect_access_levels": [{"kind": "role", "access_level": 40}],
+                "allow_force_push": False,
+                "code_owner_approval_required": True,
+            }
+        ],
+    }
+    # Names and IDs of the people allowed are not evidence.
+    assert "Jane" not in str(found[10].payload) and "77" not in str(found[10].payload)
+    # A wildcard rule covers the branch; a rule for another branch does not.
+    assert found[11].payload is not None and found[11].payload["protected"] is True
+    assert [rule["name"] for rule in found[11].payload["rules"]] == ["*"]
+    assert found[12].payload == {"branch": "main", "protected": False, "rules": []}
+    assert {row.collection_status for row in found.values()} == {"ok"}
+    assert found[10].source_ref == "/projects/10/protected_branches"
+    assert result.protection == {"protected": 2, "unprotected": 1, "unread": 0}
+
+
+@pytest.mark.parametrize(
+    ("reply", "status", "error"),
+    [
+        (httpx.Response(403), "forbidden", "the token may not read"),
+        (httpx.Response(404), "not_found", "was not found (404)"),
+        (httpx.Response(500), "failed", "GitLab returned 500"),
+        (httpx.Response(200, json={"not": "a list"}), "failed", "did not return a list"),
+    ],
+)
+def test_protection_that_cannot_be_read_is_recorded_without_failing_discovery(
+    migrated_engine: Engine, reply: httpx.Response, status: str, error: str
+) -> None:
+    fake = protection_fake({10: reply, 11: [{"id": 1, "name": "main"}], 12: []})
+
+    result = discover(migrated_engine, fake)
+
+    found = protections(migrated_engine)
+    assert (found[10].collection_status, found[10].payload) == (status, None)
+    assert found[10].error is not None and error in found[10].error
+    assert TOKEN not in found[10].error
+    # Other projects are still read, and the inventory is unaffected.
+    assert found[11].collection_status == "ok"
+    assert projects(migrated_engine)[10].last_error is None
+    assert result.protection == {"protected": 1, "unprotected": 1, "unread": 1}
+
+
+def test_a_rejected_token_stops_further_reads(migrated_engine: Engine) -> None:
+    fake = protection_fake({10: httpx.Response(401)})
+
+    result = discover(migrated_engine, fake)
+
+    found = protections(migrated_engine)
+    assert found[10].error == "GitLab rejected the token (401)"
+    assert {found[n].collection_status for n in (11, 12)} == {"failed"}
+    assert found[11].error == "not read: GitLab rejected the token earlier in this collection"
+    assert "/projects/11/protected_branches" not in fake.paths()
+    assert "/projects/12/protected_branches" not in fake.paths()
+    assert result.protection == {"protected": 0, "unprotected": 0, "unread": 3}
+
+
+def test_repeated_failures_stop_further_reads(
+    migrated_engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(branches, "MAX_CONSECUTIVE_FAILURES", 2)
+    fake = protection_fake({10: httpx.Response(500), 11: httpx.Response(500)})
+
+    discover(migrated_engine, fake)
+
+    found = protections(migrated_engine)
+    assert found[12].error is not None and "2 protected-branch reads in a row" in found[12].error
+    assert "/projects/12/protected_branches" not in fake.paths()
+
+
+def test_unchanged_protection_is_not_stored_again(migrated_engine: Engine) -> None:
+    def count() -> int:
+        with Session(migrated_engine) as db:
+            rows = db.scalars(select(Observation).where(Observation.source == PROTECTION_SOURCE))
+            return len(rows.all())
+
+    discover(migrated_engine, protection_fake({10: [PROTECTED_RULE]}))
+    discover(migrated_engine, protection_fake({10: [PROTECTED_RULE]}))
+    assert count() == 3
+
+    discover(migrated_engine, protection_fake({10: []}))
+
+    assert count() == 4
+    assert protections(migrated_engine)[10].payload == {
+        "branch": "main",
+        "protected": False,
+        "rules": [],
+    }
+
+
+def test_inactive_projects_are_not_read(migrated_engine: Engine) -> None:
+    discover(migrated_engine, fake_with(PAGES))
+    age(migrated_engine)
+    fake = fake_with([PAGES[0], [PAGES[1][1]]])
+    fake.set("/projects/12", httpx.Response(404))
+
+    discover(migrated_engine, fake)
+
+    assert projects(migrated_engine)[12].state == "missing"
+    assert "/projects/12/protected_branches" not in fake.paths()
+
+
+def test_protected_branches_are_read_page_by_page(migrated_engine: Engine) -> None:
+    fake = fake_with(PAGES)
+    fake.set(
+        "/projects/10/protected_branches",
+        paged(
+            "/projects/10/protected_branches",
+            [[{"id": 1, "name": "develop"}], [{"id": 2, "name": "main"}]],
+        ),
+    )
+
+    discover(migrated_engine, fake)
+
+    payload = protections(migrated_engine)[10].payload
+    assert payload is not None and payload["protected"] is True
+    assert fake.paths().count("/projects/10/protected_branches") == 2
+
+
+@pytest.mark.parametrize(
+    ("rule", "branch", "covered"),
+    [
+        ("main", "main", True),
+        ("main", "main2", False),
+        ("*", "release/1.0", True),
+        ("release/*", "release/1.0", True),
+        ("release/*", "release", False),
+        ("*-stable", "16-5-stable", True),
+        ("feature.x", "featureXx", False),
+        ("feature.x", "feature.x", True),
+        ("v[1]*", "v[1]-rc", True),
+        ("v[1]*", "v1", False),
+    ],
+)
+def test_rule_names_match_branches_like_gitlab(rule: str, branch: str, covered: bool) -> None:
+    assert branches.matches(rule, branch) is covered

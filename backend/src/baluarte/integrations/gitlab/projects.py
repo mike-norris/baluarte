@@ -3,7 +3,9 @@
 ``GET /projects`` uses keyset pagination ordered by ID: GitLab limits offset pagination of this
 endpoint on large instances, and keyset pages stay consistent while projects are created.
 Archived projects are listed and flagged, because archiving does not remove them from scope.
-Reconciliation is shared with groups (``baluarte.integrations.gitlab.discovery``).
+Reconciliation is shared with groups (``baluarte.integrations.gitlab.discovery``). After a
+complete listing, each active project's default-branch protection is read
+(``baluarte.integrations.gitlab.branches``).
 """
 
 from typing import Any
@@ -12,6 +14,7 @@ from sqlalchemy import Engine
 
 from baluarte.db.models import NAMESPACE_KINDS, VISIBILITIES, GitLabProject
 from baluarte.evidence.observations import Provenance
+from baluarte.integrations.gitlab.branches import collect_protection
 from baluarte.integrations.gitlab.client import GitLabClient, InvalidResponse
 from baluarte.integrations.gitlab.discovery import Discovery, ResourceKind, discover
 
@@ -82,4 +85,11 @@ PROJECTS = ResourceKind(
 def discover_projects(
     client: GitLabClient, engine: Engine, base_url: str, provenance: Provenance | None = None
 ) -> Discovery:
-    return discover(client, engine, base_url, PROJECTS, provenance)
+    result = discover(client, engine, base_url, PROJECTS, provenance)
+    reads = collect_protection(client, engine, result.instance_id, provenance)
+    result.protection = reads.as_counts()
+    return result
+
+
+# A project's own observations, as opposed to its branch protection.
+PROJECT_SOURCES = PROJECTS.sources
