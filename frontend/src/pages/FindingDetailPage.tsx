@@ -14,6 +14,8 @@ import { usePaged } from "../api/usePaged";
 import { useLoad } from "../api/useLoad";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { linkClass, secondaryClass } from "../components/styles";
+import { ExportLink } from "../evidence/ExportLink";
+import { evidenceHref } from "../evidence/scope";
 import { EvaluationNote } from "../findings/EvaluationNote";
 import {
   capabilityLabels,
@@ -432,6 +434,14 @@ export function FindingDetailPage() {
       <ExpectedVersusActual evaluation={finding.latest_evaluation} />
       <Evidence evaluation={finding.latest_evaluation} />
       <History findingId={finding.id} />
+      <ExportLink
+        label="Export evidence for this project and rule"
+        href={evidenceHref({
+          projects: String(finding.project.gitlab_id),
+          policy: finding.policy.name,
+          rule: finding.rule_id,
+        })}
+      />
     </section>
   );
 }

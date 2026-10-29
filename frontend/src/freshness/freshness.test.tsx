@@ -165,7 +165,7 @@ describe("header freshness indicator", () => {
   });
 });
 
-describe("collection context on placeholder pages", () => {
+describe("collection context on GitLab-derived pages", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });

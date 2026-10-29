@@ -13,6 +13,8 @@ import { usePaged } from "../api/usePaged";
 import { useLoad } from "../api/useLoad";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
+import { ExportLink } from "../evidence/ExportLink";
+import { findingsExportLink } from "../evidence/scope";
 import { EvaluationNote } from "../findings/EvaluationNote";
 import {
   hasFindingFilters,
@@ -248,6 +250,7 @@ export function FindingsPage() {
       </div>
       <EvaluationNote />
       <Filters filters={filters} />
+      <ExportLink label="Export evidence for this view" {...findingsExportLink(filters)} />
       <Listing filters={filters} />
     </section>
   );

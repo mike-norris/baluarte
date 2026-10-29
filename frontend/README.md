@@ -40,8 +40,8 @@ Signed-in users see one status in the header on every page, as text and colour (
 - **Worst wins:** a failed evaluation shows "Failed" even when collection is fresh. The badge links to the details of the signal that set it: `/inventory` for collection (also when both are equally bad), the dashboard for evaluation. An evaluation that never ran reads "Never evaluated".
 - **Unknown is not current:** if either check fails, the header shows "Status unknown" and replaces any earlier "Up to date". Unknown ranks between failed and never, so it is never treated as compliant.
 - **Announcements:** failed, stale and unknown are announced once through a polite live region, naming collection or evaluation. Re-checks that return the same status, and navigation, do not repeat the announcement.
-- **Results behind collection:** `behind_collection` (a project discovery finished after the latest successful evaluation started) does not change the badge, because a queued evaluation follows every discovery and the badge would otherwise flash. The dashboard, the Findings pages and the Evidence placeholder say that results may not reflect the latest collection.
-- **Placeholders:** Evidence shows both statuses, the oldest successful collection across projects, groups and capabilities, and the last successful evaluation. They show no time when any part has never succeeded or the status is unknown.
+- **Results behind collection:** `behind_collection` (a project discovery finished after the latest successful evaluation started) does not change the badge, because a queued evaluation follows every discovery and the badge would otherwise flash. The dashboard, the Findings pages and the Evidence page say that results may not reflect the latest collection.
+- **Evidence page:** shows both statuses, the oldest successful collection across projects, groups and capabilities, and the last successful evaluation. It shows no time when any part has never succeeded or the status is unknown.
 
 ## Dashboard
 
@@ -65,3 +65,13 @@ Signed-in users see one status in the header on every page, as text and colour (
 - **Not found:** an unknown or malformed finding ID shows "Finding not found" without calling the API for a malformed one.
 
 `src/findings/` holds the labels, reason explanations, URL filters and the evaluation note. `src/api/usePaged.ts` and `src/components/ErrorMessage.tsx` are shared with the Inventory page.
+
+## Evidence
+
+`/evidence` exports scoped evidence through `POST /api/v1/evidence/exports`:
+
+- **Who sees the form:** only users whose `/auth/me` permissions include `evidence:export` (admin and auditor). Others see why; the API enforces it either way. The Findings list ("Export evidence for this view") and a finding's detail ("Export evidence for this project and rule") link to the form, also only for those users.
+- **Scope:** group path, project GitLab IDs, policy, rule, outcome, finding state and a UTC time window, or "Export everything", which disables the other fields and sends `{"all": true}` alone. A scope is required, as the API requires. The form checks the API's limits before sending and lists every problem. The request body holds only the fields that were set.
+- **Links:** the form is prefilled from the URL (`group`, `projects=105,230`, `policy`, `rule`, `outcome`, `finding_state`, `since`, `until`, `format=csv`). Findings filters map onto these, except severity, which the export cannot filter by; the link says so.
+- **Download:** the request sends the `X-CSRF-Token` header. The response is read to the end, with the bytes received shown and a cancel button, and only then saved, under the `Content-Disposition` name reduced to letters, digits, `.`, `-` and `_` with the format's extension. A cancelled or interrupted export saves nothing. 401 returns to sign-in; 403, 409 and 422 show the API's reason.
+- **Verification:** the page explains the manifest and `SHA256SUMS`, that `manifest_sha256` is only in the `evidence.export_completed` audit event (naming the export ID from `X-Baluarte-Export-Id`), and the `baluarte-verify-export <file> --manifest-sha256 <value>` command. There is no audit log page yet, so it points admins and auditors to `GET /api/v1/audit-events`.
