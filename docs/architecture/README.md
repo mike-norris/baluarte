@@ -10,6 +10,7 @@ Record a decision here when it changes or establishes a foundational choice: run
 | [ADR-0004](ADR-0004-single-gitlab-instance.md) | One GitLab instance per deployment for v0.1 | Accepted |
 | [ADR-0005](ADR-0005-no-cloud-dependency.md) | No cloud or internet dependency at runtime | Accepted |
 | [ADR-0006](ADR-0006-server-side-oidc-sessions.md) | API is the OIDC client; sessions in PostgreSQL | Accepted |
+| [ADR-0007](ADR-0007-remediation-constraints.md) | Constraints for GitLab remediation (M6) | Proposed |
 
 ## Template
 
