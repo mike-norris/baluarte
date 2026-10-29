@@ -26,6 +26,8 @@ export interface Group extends Tracked {
 
 export interface Project extends Tracked {
   namespace_gitlab_id: number;
+  /** Null for projects discovered before namespace kinds were recorded. */
+  namespace_kind: "group" | "user" | null;
   path_with_namespace: string;
   archived: boolean;
   default_branch: string | null;

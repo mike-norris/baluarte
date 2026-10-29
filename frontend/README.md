@@ -25,6 +25,7 @@ Hiding sections in the browser is a convenience only: the API enforces every per
 
 - **Collection status:** a failed or stale collection is announced as an alert before any data, so an old success never reads as current.
 - **Unknown values:** these are shown as such: an unknown visibility is "Unknown", an empty repository has no default branch, and `missing` is explained as "deleted, or hidden from the token".
+- **Personal projects:** projects in a user namespace carry a "Personal" tag. Projects discovered before namespace kinds were recorded have no tag until the next project discovery.
 - **Filters:** search, state, visibility, archived and collection errors are kept in the URL (`?view=groups&state=missing`), so a filtered view can be shared. "Load more" follows `next_after_id`.
 - **Errors and retries:** API errors show a retry; a 401 refreshes the session and returns to sign-in.
 - **Times:** shown in UTC.
