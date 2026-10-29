@@ -67,6 +67,11 @@ class ResourceKind:
     def lookup_source(self) -> str:
         return f"GET {self.list_path}/:id"
 
+    @property
+    def sources(self) -> tuple[str, str]:
+        """The resource's own observations; a listing and a lookup are compared with each other."""
+        return (self.list_source, self.lookup_source)
+
     def ref(self, gitlab_id: int) -> str:
         return f"{self.list_path}/{gitlab_id}"
 
@@ -78,6 +83,8 @@ class Discovery:
     reconciled: dict[str, int] = field(
         default_factory=lambda: {"active": 0, "inaccessible": 0, "missing": 0, "unchanged": 0}
     )
+    # Default-branch protection reads (projects only): protected, unprotected, unread.
+    protection: dict[str, int] | None = None
 
 
 def _upsert(
@@ -119,6 +126,7 @@ def _upsert(
             for row in rows
         ],
         provenance,
+        compare_with=kind.sources,
     )
 
 
@@ -133,7 +141,7 @@ def _update(
 ) -> None:
     with Session(engine) as db:
         db.execute(update(kind.model).where(kind.model.id == row_id).values(**values))
-        record(db, instance_id, kind.target, [observed], provenance)
+        record(db, instance_id, kind.target, [observed], provenance, compare_with=kind.sources)
         db.commit()
 
 

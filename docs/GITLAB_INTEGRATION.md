@@ -67,10 +67,28 @@ Both jobs share the following behaviour:
 
 Results are read with `GET /api/v1/gitlab/groups` and `GET /api/v1/gitlab/projects`.
 
+### Default-branch protection
+
+After a complete project listing and reconciliation, project discovery reads the protected branches of every `active` project that has a default branch, for the `gitlab.branch.default_protected` rule ([EVALUATION.md](EVALUATION.md#gitlabbranchdefault_protected)):
+
+- **Request:** `GET /projects/:id/protected_branches`, every page, with the same read-only token (`read_api`). One request per project per discovery, usually a single page. Large instances should expect one extra call per project on top of the listing, subject to the client's retries and GitLab's rate limits. Empty repositories and projects that are `missing` or `inaccessible` are not read.
+- **Why the list:** `GET /projects/:id/protected_branches/:name` is not used. Whether it resolves wildcard rules for a concrete branch name is not documented (open question 4 in [REMEDIATION_RESEARCH.md](REMEDIATION_RESEARCH.md)), and missing a `*` or `release/*` rule would report a protected branch as unprotected.
+- **Matching:** a rule covers the default branch when its name equals the branch, or when it contains `*` and matches with `*` standing for any run of characters, `/` included. This mirrors GitLab's wildcard protected branches. It has not been compared with a live instance.
+- **Evidence:** each project gets an observation with source `GET /projects/:id/protected_branches`:
+  - **Read:** status `ok` with `branch`, `protected` and the matching rules. For each rule only its name, the push, merge and unprotect access levels (as `kind`: role, user, group or deploy key, and `access_level`), `allow_force_push` and `code_owner_approval_required` are kept. User, group and deploy key names and IDs are not stored.
+  - **Not read:** `forbidden` (401, 403), `not_found` (404) or `failed` (anything else), with no payload.
+
+  It is compared only with the project's earlier protection observations, so it is written only when it changes.
+- **Failures:** a read that fails is recorded for that project and does not stop discovery. If GitLab rejects the token (401), or 20 reads in a row fail, the remaining projects are recorded as `failed` ("not read: ...") without calling GitLab. A stale protection observation therefore never outlives a collection that did not confirm it.
+- **Counts:** the discovery result reports `protected`, `unprotected` and `unread`. The run does not yet include these counts or become `partial` when reads fail. Each unread project's rule is `unknown` regardless.
+- **Unverified:**
+  - Whether a role below Maintainer may list protected branches. A token that may not is recorded as `forbidden`, so the rule is `unknown`.
+  - Whether group-level protected branches (Premium) appear in a project's list. If they do not, a branch protected only at group level reads as unprotected and fails: a false failure, never a false pass.
+
 ## Scheduling and freshness
 
 - **Schedule:** the worker queues capability detection, group discovery and project discovery every `BALUARTE_GITLAB_SYNC_INTERVAL_MINUTES` (default 360; `0` collects only on request). The interval is divided into buckets on the database clock, and each job's idempotency key names its bucket, so any number of workers queue each collection once per interval. Scheduled jobs have three attempts.
-- **Runs:** every job attempt writes a `collection_run` row before calling GitLab and closes it as `succeeded`, `partial` (some resources could not be confirmed, or some capabilities are not supported) or `failed`, with counts and the safe error. The row is closed even when the job will be retried. A run left `running` by a worker that died is closed as failed (`interrupted: ...`) when a later attempt of the same kind starts, provided its own job attempt is no longer running.
+- **Runs:** every job attempt writes a `collection_run` row before calling GitLab and closes it as `succeeded`, `partial` (some resources could not be confirmed, or some capabilities are not supported) or `failed`, with counts and the safe error. Default-branch protection reads that fail do not yet make a project run `partial` (see [Default-branch protection](#default-branch-protection)). The row is closed even when the job will be retried. A run left `running` by a worker that died is closed as failed (`interrupted: ...`) when a later attempt of the same kind starts, provided its own job attempt is no longer running.
 - **Per resource:** a group or project whose reconciliation lookup failed keeps its state and gets `last_error` and `last_error_at`. These are cleared when it is listed again.
 - **Freshness:** `GET /api/v1/gitlab/freshness` reports each kind as:
 

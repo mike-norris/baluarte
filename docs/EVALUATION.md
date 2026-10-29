@@ -1,11 +1,11 @@
 # Rule evaluation
 
-How a rule in an effective policy is checked against the GitLab inventory. Implemented in `backend/src/baluarte/policy/evaluation/` (BAL-019). The policy format and how policies are resolved for a project are in [POLICY_ENGINE.md](POLICY_ENGINE.md).
+How a rule in an effective policy is checked against the GitLab inventory. Implemented in `backend/src/baluarte/policy/evaluation/` (BAL-019, BAL-020). The policy format and how policies are resolved for a project are in [POLICY_ENGINE.md](POLICY_ENGINE.md).
 
 Status:
 
-- **Implemented:** the result model, the shared engine, and the `gitlab.project.visibility` evaluator.
-- **Not yet implemented:** results are computed but not stored or served. Persistence is BAL-021, and the protected default branch evaluator is BAL-020.
+- **Implemented:** the result model, the shared engine, and the `gitlab.project.visibility` and `gitlab.branch.default_protected` evaluators.
+- **Not yet implemented:** results are computed but not stored or served. Persistence is BAL-021.
 
 ## Results
 
@@ -19,7 +19,7 @@ Each rule, in each effective policy, for each project produces one result:
 | `outcome` | `pass`, `fail`, `unknown`, `unsupported` or `excepted` (see below). |
 | `expected` | What the rule requires, e.g. `{"allowed": ["private"]}`. |
 | `observed` | The value judged. `null` whenever the outcome is `unknown` or `unsupported`, so an untrusted value is never shown as current. |
-| `source` | Where the value is read from, e.g. `gitlab_project.visibility`. |
+| `source` | Where the value is read from, e.g. `gitlab_project.visibility` or `GET /projects/:id/protected_branches`. |
 | `observed_at` | When GitLab last confirmed the value (`last_seen_at`); `null` when `observed` is. |
 | `evaluated_at` | The database clock at evaluation. |
 | `reason` | A human-readable explanation built from fixed text and inventory paths. It never includes credentials or the raw collection error. |
@@ -94,18 +94,51 @@ Each rule type names the collection its value comes from. Only that collection's
 
 Archived projects are evaluated like any other: an archived public project is still public.
 
+## `gitlab.branch.default_protected`
+
+| | |
+| --- | --- |
+| Value | The project's latest default-branch protection observation (source `GET /projects/:id/protected_branches`), read during project discovery. It shares the projects collection's freshness. |
+| Passes when | `required: true` and a protected-branch rule covers the default branch. |
+| Fails when | `required: true` and GitLab listed the project's protected branches but none covers the default branch. |
+| `required: false` | Asserts nothing. It passes whenever the protection is known, recording what was observed, and is `unknown` when it is not. |
+| Capability | `protected_branches.read`. |
+| Unknown when | Any reason above applies, or (`value_unknown`): |
+
+- **No default branch:** the project is an empty repository, so there is no branch to check. GitLab's protection for the first push is set by instance and group defaults, which are not read. An empty project is not called compliant.
+- **Never read:** the project's protection has not been read yet, for example a project discovered before this evaluator existed.
+- **Not read:** the last read was denied (`forbidden`), the project was not found (`not_found`), or it failed (`failed`). A read that fails after an earlier success replaces it, so an old "protected" never stands in for a read that did not happen.
+- **Branch changed:** the last read was for a branch that is no longer the default. It is read again at the next project discovery.
+
+How protection is read and matched is described in [GITLAB_INTEGRATION.md](GITLAB_INTEGRATION.md#default-branch-protection). In short:
+
+- **Matching:** the default branch is matched against every protected-branch rule, including wildcards (`*`, `release/*`).
+- **Recorded:** only the matching rules are kept, with their access-level summary, force push and code owner approval. Whether a branch counts as protected does not depend on those settings.
+- **Not judged:** who may push or merge is not judged by this rule.
+
+### Capabilities
+
+The capability status comes from the instance's latest capability snapshot (`capability_statuses`):
+
+- **`supported`:** the probe answered.
+- **`unknown`:** every other probe status (`forbidden`, `not_found`, `error`, `skipped`), a missing probe, a missing snapshot, or a failed detection. Detection cannot prove a feature is missing: a 404 may mean a hidden sample project and a 403 a token limit.
+- **`unsupported`:** the engine supports it, but no probe produces it today. Protected branches exist in every edition.
+
 ## Running an evaluation
 
 `evaluation.project` evaluates the policies in force for one project. It only reads:
 
 ```python
 collections = collection_contexts(db, instance.id, settings)  # once per batch
+capabilities = capability_statuses(db, instance.id)  # once per batch
 resolution = resolve_project(db, instance, project)
-results = evaluate_project(db, project, resolution, collections)
+results = evaluate_project(db, project, resolution, collections, capabilities)
 ```
 
+`capabilities` defaults to the instance's snapshot when omitted. Each project's default-branch protection observation is read with the project.
+
 - **Which policies:** only the resolution's `effective` policies are evaluated. Overridden and out-of-scope versions are not.
-- **Which rules:** a rule is evaluated only if its type has an evaluator. Today that is `gitlab.project.visibility`. Rules of other types produce no result until their evaluator exists; they never produce a guessed one.
+- **Which rules:** a rule is evaluated only if its type has an evaluator. Today that is `gitlab.project.visibility` and `gitlab.branch.default_protected`. Rules of other types produce no result until their evaluator exists; they never produce a guessed one.
 - **Order:** by policy name, then by the rule's position in the policy.
 
 ## Adding a rule type
@@ -123,7 +156,6 @@ The engine applies the unknown and unsupported handling above, so each rule type
 
 | Item | Issue |
 | --- | --- |
-| Protected default branch evaluator, using the capability snapshot for `capability` | BAL-020 |
 | Storing results and findings, linking observation IDs, an API | BAL-021 |
 | Tests across unknown, unsupported and stale outcomes end to end | BAL-022 |
 | Exceptions (`excepted`) | BAL-033 |

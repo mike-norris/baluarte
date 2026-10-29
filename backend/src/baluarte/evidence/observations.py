@@ -7,10 +7,12 @@ that could not be observed gets an observation too, with a status and a safe err
 payload, so "could not observe" is itself evidence.
 
 A new row is written only when the target's status, payload digest or error differs from its
-latest observation. Unchanged data is not copied every run: the latest observation stays the
-evidence, and the resource's ``last_seen_at`` and the collection runs show it was confirmed
-since. Rows are never updated (a trigger rejects ``UPDATE``), so an evaluation that references
-an observation always points at exactly the data it judged.
+latest observation from the same sources. A target can be observed through several sources (a
+project's own fields, and its default-branch protection), and each is compared only with
+observations from its own sources. Unchanged data is not copied every run: the latest
+observation stays the evidence, and the resource's ``last_seen_at`` and the collection runs show
+it was confirmed since. Rows are never updated (a trigger rejects ``UPDATE``), so an evaluation
+that references an observation always points at exactly the data it judged.
 """
 
 from collections.abc import Sequence
@@ -73,20 +75,32 @@ def latest(
     column: TargetColumn | None,
     target_id: int | None,
     source: str | None = None,
+    *,
+    sources: Sequence[str] | None = None,
 ) -> Observation | None:
-    """The most recent observation of a target; for the instance, pass the ``source``."""
+    """The most recent observation of a target; for the instance, pass the ``source``.
+
+    ``sources`` limits the search to observations from any of those sources, for example a
+    project's own fields (``PROJECT_SOURCES``) rather than its branch protection.
+    """
     statement = select(Observation).where(
         Observation.instance_id == instance_id, _target(column, target_id)
     )
     if source is not None:
         statement = statement.where(Observation.source == source)
+    if sources is not None:
+        statement = statement.where(Observation.source.in_(sources))
     return db.scalars(
         statement.order_by(Observation.collected_at.desc(), Observation.id.desc()).limit(1)
     ).first()
 
 
 def _previous(
-    db: Session, instance_id: int, column: TargetColumn | None, observed: Sequence[Observed]
+    db: Session,
+    instance_id: int,
+    column: TargetColumn | None,
+    observed: Sequence[Observed],
+    sources: Sequence[str],
 ) -> dict[int | None, Fingerprint]:
     if column is None:
         found: dict[int | None, Fingerprint] = {}
@@ -101,6 +115,7 @@ def _previous(
         .where(
             Observation.instance_id == instance_id,
             target.in_([item.target_id for item in observed]),
+            Observation.source.in_(sources),
         )
         .ext(distinct_on(target))
         .order_by(target, Observation.collected_at.desc(), Observation.id.desc())
@@ -114,15 +129,19 @@ def record(
     column: TargetColumn | None,
     observed: Sequence[Observed],
     provenance: Provenance | None = None,
+    compare_with: Sequence[str] | None = None,
 ) -> int:
     """Add the observations that differ from each target's latest one; returns how many.
 
-    The caller commits them in the same transaction as the inventory change they describe.
+    ``compare_with`` names the sources whose observations count as "the latest one"; by default,
+    the sources of ``observed``. The caller commits them in the same transaction as the
+    inventory change they describe.
     """
     if not observed:
         return 0
     provenance = provenance or Provenance()
-    previous = _previous(db, instance_id, column, observed)
+    sources = compare_with if compare_with is not None else sorted({i.source for i in observed})
+    previous = _previous(db, instance_id, column, observed, sources)
     added = 0
     for item in observed:
         digest = payload_digest(item.payload) if item.payload is not None else None

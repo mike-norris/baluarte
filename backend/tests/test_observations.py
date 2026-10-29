@@ -18,6 +18,7 @@ from baluarte.auth.roles import Role
 from baluarte.db.migrate import alembic_config
 from baluarte.db.models import CollectionJob, CollectionRun, GitLabProject, Observation
 from baluarte.evidence.observations import latest, payload_digest, verify
+from baluarte.integrations.gitlab.branches import PROTECTION_SOURCE
 from baluarte.integrations.gitlab.client import GitLabClient
 from baluarte.integrations.gitlab.discovery import Discovery
 from baluarte.integrations.gitlab.groups import discover_groups
@@ -27,7 +28,7 @@ from baluarte.integrations.gitlab.jobs import (
     make_detect_capabilities,
     make_discover_projects,
 )
-from baluarte.integrations.gitlab.projects import discover_projects
+from baluarte.integrations.gitlab.projects import PROJECT_SOURCES, discover_projects
 from baluarte.jobs import queue
 from baluarte.jobs.worker import Worker
 from baluarte.main import create_app
@@ -73,9 +74,17 @@ def discover(engine: Engine, fake: FakeGitLab) -> Discovery:
     return discover_projects(client, engine, URL)
 
 
-def observations(engine: Engine) -> list[Observation]:
+def observations(engine: Engine, protection: bool = False) -> list[Observation]:
+    """Observations in order; default-branch protection only when ``protection`` is set."""
+    wanted = Observation.source == PROTECTION_SOURCE
     with Session(engine) as db:
-        return list(db.scalars(select(Observation).order_by(Observation.id)))
+        return list(
+            db.scalars(
+                select(Observation)
+                .where(wanted if protection else ~wanted)
+                .order_by(Observation.id)
+            )
+        )
 
 
 def project_ids(engine: Engine) -> dict[int, int]:
@@ -210,6 +219,45 @@ def test_repeated_failure_is_recorded_once_and_recovery_again(migrated_engine: E
 
 
 @pytest.mark.db
+def test_project_fields_and_branch_protection_are_compared_separately(
+    migrated_engine: Engine,
+) -> None:
+    fake = fake_with(PAGES)
+    fake.json("/projects/10/protected_branches", body=[{"id": 1, "name": "main"}])
+    discover(migrated_engine, fake)
+    first = len(observations(migrated_engine)), len(observations(migrated_engine, True))
+
+    # Both kinds are recorded for the same project, yet neither is written again.
+    fake = fake_with(PAGES)
+    fake.json("/projects/10/protected_branches", body=[{"id": 1, "name": "main"}])
+    discover(migrated_engine, fake)
+
+    assert first == (3, 3)
+    assert (len(observations(migrated_engine)), len(observations(migrated_engine, True))) == first
+    with Session(migrated_engine) as db:
+        project_id = project_ids(migrated_engine)[10]
+        instance_id = observations(migrated_engine)[0].instance_id
+        fields = latest(db, instance_id, "project_id", project_id, sources=PROJECT_SOURCES)
+        branch = latest(db, instance_id, "project_id", project_id, sources=(PROTECTION_SOURCE,))
+    assert fields is not None and fields.source == "GET /projects"
+    assert branch is not None and branch.payload == {
+        "branch": "main",
+        "protected": True,
+        "rules": [
+            {
+                "name": "main",
+                "push_access_levels": None,
+                "merge_access_levels": None,
+                "unprotect_access_levels": None,
+                "allow_force_push": None,
+                "code_owner_approval_required": None,
+            }
+        ],
+    }
+    assert verify(branch)
+
+
+@pytest.mark.db
 def test_groups_are_observed_with_their_own_allowlist(migrated_engine: Engine) -> None:
     fake = FakeGitLab()
     fake.set("/groups", paged("/groups", [[group(1, "platform", web_url="https://x/platform")]]))
@@ -337,12 +385,20 @@ def test_api_lists_project_evidence_newest_first(
     assert newest["payload"]["visibility"] == "public"
     assert newest["digest_valid"] is True
     assert newest["source_ref"] == "/projects/10"
-    second = api.get(
-        "/api/v1/gitlab/projects/10/observations",
-        params={"limit": 1, "before_id": body["next_before_id"]},
-    ).json()
-    assert [item["payload"]["visibility"] for item in second["items"]] == ["internal"]
-    assert second["next_before_id"] is None
+    pages = []
+    before = body["next_before_id"]
+    while before is not None:
+        page = api.get(
+            "/api/v1/gitlab/projects/10/observations", params={"limit": 1, "before_id": before}
+        ).json()
+        pages.extend(page["items"])
+        before = page["next_before_id"]
+    # The default-branch protection read by the first discovery, then that discovery's fields.
+    assert [(item["source"], item["collection_status"]) for item in pages] == [
+        (PROTECTION_SOURCE, "not_found"),
+        ("GET /projects", "ok"),
+    ]
+    assert pages[1]["payload"]["visibility"] == "internal"
 
 
 @pytest.mark.db
@@ -364,7 +420,11 @@ def test_api_reports_a_tampered_digest(migrated_engine: Engine, gitlab_env: None
         .json()["items"]
     )
 
-    assert [item["digest_valid"] for item in items] == [False]
+    assert [
+        (item["source_ref"], item["digest_valid"])
+        for item in items
+        if item["source"] != PROTECTION_SOURCE
+    ] == [("/projects/10", False)]
 
 
 @pytest.mark.db

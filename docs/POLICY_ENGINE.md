@@ -23,7 +23,7 @@ spec:
       required: true
 ```
 
-Status: the format, its validation and versioned storage (BAL-017), and assignment and inheritance (BAL-018) are implemented in `backend/src/baluarte/policy/`. Evaluating rules against inventory is described in [EVALUATION.md](EVALUATION.md): the project visibility rule is implemented (BAL-019); the protected default branch rule and storing results follow (BAL-020, BAL-021).
+Status: the format, its validation and versioned storage (BAL-017), and assignment and inheritance (BAL-018) are implemented in `backend/src/baluarte/policy/`. Evaluating rules against inventory is described in [EVALUATION.md](EVALUATION.md): the project visibility (BAL-019) and protected default branch (BAL-020) rules are implemented; storing results follows (BAL-021).
 
 ### Fields
 
@@ -43,7 +43,7 @@ Status: the format, its validation and versioned storage (BAL-017), and assignme
 | `type` | Fields | Passes when |
 | --- | --- | --- |
 | `gitlab.project.visibility` | `allowed`: 1 to 3 distinct values from `private`, `internal`, `public` | The project's visibility is in `allowed`. |
-| `gitlab.branch.default_protected` | `required`: boolean | With `required: true`, the project's default branch is protected. |
+| `gitlab.branch.default_protected` | `required`: boolean | With `required: true`, a protected-branch rule (exact or wildcard) covers the project's default branch. `required: false` asserts nothing. An empty repository is `unknown`. |
 
 Any other `type` is rejected. New rule types are added to the schema, and old ones are never redefined; incompatible changes get a new `apiVersion`.
 
@@ -175,7 +175,7 @@ Audit events record the policy name, version, digest, target type, target ID and
 
 ## Not yet defined
 
-- Evaluating the protected default branch rule (BAL-020) and storing results (BAL-021). See [EVALUATION.md](EVALUATION.md) for what is implemented.
+- Storing evaluation results (BAL-021). See [EVALUATION.md](EVALUATION.md) for what is implemented.
 - How `effective_at` is scheduled. Today a version takes effect when it is saved.
 
 ## Outcomes
