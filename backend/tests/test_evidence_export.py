@@ -140,6 +140,7 @@ def test_a_json_export_holds_every_section_with_provenance(world: World) -> None
         "freshness",
         *SECTIONS,
         "counts",
+        "manifest",
     ]
     assert document["format"] == "baluarte.evidence-export/v1"
     assert document["export_id"] == response.headers["x-baluarte-export-id"]
@@ -388,6 +389,8 @@ def test_a_csv_export_is_a_zip_of_csv_files(world: World) -> None:
         "policies.csv",
         "collection_errors.csv",
         "collection_runs.csv",
+        "manifest.json",
+        "SHA256SUMS",
     ]
     assert archive.testzip() is None
     readme = archive.read("README.txt").decode()
@@ -514,10 +517,22 @@ def test_the_same_evidence_gives_the_same_export(world: World) -> None:
     world.project(2, "private")
     world.run()
 
+    def stable(manifest: dict[str, Any]) -> dict[str, Any]:
+        # The export ID and times differ, and so do the hashes of what holds them.
+        for key in ("export_id", "generated_at", "freshness", "metadata_sha256"):
+            manifest.pop(key, None)
+        manifest["files"] = [
+            entry
+            for entry in manifest.get("files", [])
+            if entry["name"] not in {"README.txt", "export.json"}
+        ]
+        return manifest
+
     def normalized() -> dict[str, Any]:
         document = export_json(world.engine, all=True)
         for key in ("export_id", "generated_at", "freshness"):
             document.pop(key)
+        document["manifest"] = stable(document["manifest"])
         return document
 
     first, second = normalized(), normalized()
@@ -525,10 +540,13 @@ def test_the_same_evidence_gives_the_same_export(world: World) -> None:
     _, zip_two = export_zip(world.engine, all=True)
 
     assert first == second
+    volatile = {"README.txt", "export.json", "manifest.json", "SHA256SUMS"}
     for name in zip_one.namelist():
-        if name not in {"README.txt", "export.json"}:
+        assert zip_one.getinfo(name).date_time == (1980, 1, 1, 0, 0, 0)
+        if name not in volatile:
             assert zip_one.read(name) == zip_two.read(name), name
-            assert zip_one.getinfo(name).date_time == (1980, 1, 1, 0, 0, 0)
+    manifests = [stable(json.loads(z.read("manifest.json"))) for z in (zip_one, zip_two)]
+    assert manifests[0] == manifests[1]
 
 
 def test_every_export_is_audited_without_its_data(world: World) -> None:

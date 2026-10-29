@@ -19,6 +19,11 @@ Sections, in this order (each later section only references rows of earlier ones
 - ``collection_runs``: collection and evaluation runs (all started inside the time window, or
   the latest finished run of each kind).
 
+Every export ends with a manifest (BAL-028, :mod:`baluarte.evidence.manifest`): the hash and row
+count of every file (ZIP) or section (JSON), the policy versions, observation digest results,
+collection errors, freshness and limitations. A ZIP ends with ``manifest.json`` and then
+``SHA256SUMS``.
+
 Nothing here exports credentials: observation payloads are already an allowlist of normalized
 fields, every other text value passes through the log redactor, and a payload that would need
 redacting is withheld (with its digest and ``digest_valid`` still exported) rather than altered.
@@ -38,6 +43,8 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, PositiveInt, m
 from sqlalchemy import ColumnElement, Engine, and_, exists, func, or_, select, text
 from sqlalchemy.orm import Session
 
+from baluarte import __version__
+from baluarte.audit import details_digest
 from baluarte.db.models import (
     CollectionRun,
     Evaluation,
@@ -49,6 +56,7 @@ from baluarte.db.models import (
     Observation,
     Policy,
 )
+from baluarte.evidence import manifest
 from baluarte.evidence.observations import verify
 from baluarte.integrations.gitlab import freshness as collection_freshness
 from baluarte.integrations.gitlab.settings import GitLabSettings
@@ -93,6 +101,12 @@ policies.csv           The exact policy versions referenced, with their YAML and
 collection_errors.csv  Projects and groups in scope that are missing, inaccessible or failed to
                        collect. Unknown state is listed here, never dropped.
 collection_runs.csv    Collection and evaluation runs for the window (or the latest of each).
+manifest.json          Every file above with its SHA-256 and row count, the policy versions,
+                       observation digest results, collection errors, freshness and these
+                       limitations. Its own SHA-256 (of its canonical JSON) is in the
+                       evidence.export_completed audit event.
+SHA256SUMS             SHA-256 of every file, including manifest.json; check with
+                       sha256sum -c SHA256SUMS, or run baluarte-verify-export on the ZIP.
 
 Limitations
 -----------
@@ -162,12 +176,16 @@ class FileDigest:
 
 @dataclass
 class ExportResult:
-    """What was sent, for the completion audit event (and the BAL-028 manifest)."""
+    """What was sent, for the completion audit event and the manifest."""
 
     bytes: int = 0
     sha256: str = ""
     rows: dict[str, int] = field(default_factory=dict)
     files: dict[str, FileDigest] = field(default_factory=dict)
+    # JSON exports: the digest of each section's rows.
+    sections: dict[str, FileDigest] = field(default_factory=dict)
+    # SHA-256 of the manifest's canonical JSON, for the audit event.
+    manifest_sha256: str = ""
 
 
 def _ts(value: datetime | None) -> str | None:
@@ -196,8 +214,10 @@ class EvidenceExport:
         scope: ExportScope,
         fmt: ExportFormat,
         export_id: str,
+        requested_by: str | None = None,
     ) -> None:
         self.settings = settings
+        self.requested_by = requested_by
         self.scope = scope
         self.format = fmt
         self.export_id = export_id
@@ -215,6 +235,7 @@ class EvidenceExport:
         self._observation_ids: set[int] = set()
         self._policy_ids: set[int] = set()
         self.result = ExportResult()
+        self.summary = manifest.Summary()
 
     def close(self) -> None:
         self.db.rollback()
@@ -624,6 +645,30 @@ class EvidenceExport:
             }
         )
 
+    def _rows(self, name: str, rows: Callable[[], Iterator[dict[str, Any]]]) -> Iterator[Any]:
+        for row in rows():
+            self.summary.add(name, row)
+            yield row
+
+    def _manifest(
+        self,
+        meta: dict[str, Any],
+        contents: list[dict[str, Any]],
+        metadata_sha256: str | None = None,
+    ) -> dict[str, Any]:
+        built = manifest.build(
+            meta=meta,
+            package="json" if self.format == "json" else "zip",
+            baluarte_version=__version__,
+            requested_by=self.requested_by,
+            counts=self.result.rows,
+            contents=contents,
+            summary=self.summary,
+            metadata_sha256=metadata_sha256,
+        )
+        self.result.manifest_sha256 = details_digest(built)
+        return built
+
     def sections(self) -> list[tuple[str, Callable[[], Iterator[dict[str, Any]]]]]:
         return [
             ("inventory", self.inventory),
@@ -663,13 +708,25 @@ class EvidenceExport:
         yield head.encode()
         for name, rows in self.sections():
             yield f',\n"{name}":['.encode()
-            count = 0
-            for row in rows():
-                yield (("," if count else "") + "\n" + _dumps(row)).encode()
-                count += 1
+            record = FileDigest()
+            digest = hashlib.sha256()
+            for row in self._rows(name, rows):
+                yield (("," if record.rows else "") + "\n" + _dumps(row)).encode()
+                line = (_canonical(row) + "\n").encode()
+                digest.update(line)
+                record.bytes += len(line)
+                record.rows += 1
             yield b"\n]"
-            self.result.rows[name] = count
-        yield (',\n"counts":' + _dumps(self.result.rows) + "}\n").encode()
+            record.sha256 = digest.hexdigest()
+            self.result.sections[name] = record
+            self.result.rows[name] = record.rows
+        contents = [
+            {"name": name, "rows": record.rows, "sha256": record.sha256}
+            for name, record in self.result.sections.items()
+        ]
+        built = self._manifest(meta, contents, metadata_sha256=details_digest(meta))
+        yield (',\n"counts":' + _dumps(self.result.rows)).encode()
+        yield (',\n"manifest":' + _dumps(built) + "}\n").encode()
 
     def _zip(self) -> Iterator[bytes]:
         sink = _Sink()
@@ -687,13 +744,23 @@ class EvidenceExport:
         yield from self._zip_file(archive, sink, "export.json", iter([meta_text]), rows=False)
         for name, rows in self.sections():
             if name == "observations":
-                lines = (_dumps(row) + "\n" for row in rows())
+                lines = (_dumps(row) + "\n" for row in self._rows(name, rows))
                 yield from self._zip_file(archive, sink, "observations.jsonl", lines)
                 self.result.rows[name] = self.result.files["observations.jsonl"].rows
             else:
                 filename = f"{name}.csv"
-                yield from self._zip_file(archive, sink, filename, _csv(COLUMNS[name], rows()))
+                section = self._rows(name, rows)
+                yield from self._zip_file(archive, sink, filename, _csv(COLUMNS[name], section))
                 self.result.rows[name] = self.result.files[filename].rows
+        contents = [
+            {"name": name, "rows": record.rows, "bytes": record.bytes, "sha256": record.sha256}
+            for name, record in self.result.files.items()
+        ]
+        built = self._manifest(meta, contents)
+        manifest_text = json.dumps(built, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+        yield from self._zip_file(archive, sink, "manifest.json", iter([manifest_text]), rows=False)
+        sums = "".join(f"{f.sha256}  {name}\n" for name, f in self.result.files.items())
+        yield from self._zip_file(archive, sink, "SHA256SUMS", iter([sums]), rows=False)
         archive.close()
         yield sink.drain()
 
@@ -841,6 +908,11 @@ class _Sink:
 
 def _dumps(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def _canonical(value: Any) -> str:
+    """The canonical JSON the manifest's section digests are computed over."""
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
 def cell(value: Any) -> str:

@@ -32,6 +32,7 @@ dev = [
 [project.scripts]
 baluarte-migrate = "baluarte.db.migrate:main"
 baluarte-worker = "baluarte.jobs.worker:main"
+baluarte-verify-export = "baluarte.evidence.verify:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/baluarte"]

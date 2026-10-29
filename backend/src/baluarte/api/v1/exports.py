@@ -3,7 +3,8 @@
 Exports are bulk copies of inventory and evidence, so they need ``evidence:export`` (admin and
 auditor; not analyst) and are audited twice: ``evidence.exported`` when the export is accepted,
 with its scope and planned row counts, and ``evidence.export_completed`` once every byte has been
-produced, with the SHA-256 of the response. An export that stops part way has no completion event.
+produced, with the SHA-256 of the response and of its manifest (BAL-028), which is how an auditor
+ties a package back to this deployment. An export that stops part way has no completion event.
 """
 
 import logging
@@ -65,10 +66,15 @@ def _completed(engine: Engine, actor: str, export_id: str) -> Callable[[ExportRe
                     details={
                         "bytes": result.bytes,
                         "sha256": result.sha256,
+                        "manifest_sha256": result.manifest_sha256,
                         "rows": result.rows,
                         "files": {
                             name: {"rows": f.rows, "bytes": f.bytes, "sha256": f.sha256}
                             for name, f in result.files.items()
+                        },
+                        "sections": {
+                            name: {"rows": s.rows, "sha256": s.sha256}
+                            for name, s in result.sections.items()
                         },
                     },
                 )
@@ -86,8 +92,12 @@ def _completed(engine: Engine, actor: str, export_id: str) -> Callable[[ExportRe
     summary="Export scoped evidence as JSON or a ZIP of CSV files",
     description=(
         "`format` is `json` (one document) or `csv` (a ZIP of CSV files, observations as JSON "
-        "lines, and a README). The scope must narrow the export (`group`, `projects`, "
-        "`policy`, `rule`, `outcome`, `finding_state`, `since`, `until`) or set `all: true`. "
+        "lines, a README, `manifest.json` and `SHA256SUMS`). Every export ends with a manifest: "
+        "the SHA-256 and row count of each file or section, the policy versions, observation "
+        "digest results, collection errors and freshness; the manifest's own SHA-256 is in the "
+        "`evidence.export_completed` audit event. The scope must narrow the export (`group`, "
+        "`projects`, `policy`, `rule`, `outcome`, `finding_state`, `since`, `until`) or set "
+        "`all: true`. "
         f"At most {MAX_ROWS} rows; a larger scope is refused with 422 before anything is "
         "sent. Everything is read from one database snapshot. Unknown and failed collection "
         "state is exported, never dropped. Requires the `X-CSRF-Token` header. Audited."
@@ -110,7 +120,9 @@ def export_evidence(
     if settings is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "GitLab is not configured")
     export_id = uuid.uuid4().hex
-    export = EvidenceExport(engine, settings, request.scope, request.format, export_id)
+    export = EvidenceExport(
+        engine, settings, request.scope, request.format, export_id, requested_by=principal.actor
+    )
     try:
         if export.instance_id is None:
             raise HTTPException(status.HTTP_409_CONFLICT, "Nothing has been collected yet")
