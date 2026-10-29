@@ -207,19 +207,36 @@ class Policy(Base):
 
 
 class PolicyAssignment(Base):
-    """Scopes a policy to a target. Inheritance and precedence rules are defined in BAL-018."""
+    """Pins one immutable policy version to the instance, a group or a project (BAL-018).
+
+    ``target_id`` is the GitLab ID of a group or project, or the ``gitlab_instance`` row ID for
+    the instance. A target holds at most one version of each policy name; how assignments are
+    inherited is in ``baluarte.policy.assignments``. A trigger (migration 0006) rejects a
+    ``policy_name`` that differs from the name of the version ``policy_id`` refers to.
+    """
 
     __tablename__ = "policy_assignment"
     __table_args__ = (
-        UniqueConstraint("policy_id", "target_type", "target_id"),
+        UniqueConstraint(
+            "instance_id",
+            "target_type",
+            "target_id",
+            "policy_name",
+            name="uq_policy_assignment_target_policy_name",
+        ),
+        Index("ix_policy_assignment_policy_id", "policy_id"),
         one_of("target_type", TARGET_TYPES),
+        CheckConstraint(
+            "target_type <> 'instance' OR target_id = instance_id", name="instance_target"
+        ),
     )
 
     id: Mapped[int] = pk()
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
     policy_id: Mapped[int] = mapped_column(ForeignKey("policy.id"))
+    policy_name: Mapped[str] = mapped_column(Text)
     target_type: Mapped[str] = mapped_column(Text)
     target_id: Mapped[int] = mapped_column(BigInteger)
-    precedence: Mapped[int] = mapped_column(Integer, server_default=text("0"))
     created_at: Mapped[datetime] = utc_now()
 
 
