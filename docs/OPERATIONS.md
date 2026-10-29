@@ -68,6 +68,7 @@ To restore, scale the API and worker to zero, restore the database with your pro
 | Data | Today |
 |---|---|
 | `audit_event` | Append-only: triggers reject `UPDATE` and `DELETE` |
+| `policy` | Triggers reject `UPDATE` (migration `0005`): a saved version never changes; a new version is a new row |
 | `observation`, `evaluation` | Triggers reject `UPDATE`; `DELETE` is allowed so retention can expire them. `observation.retention_until` exists but nothing sets or enforces it |
 | `collection_job`, `collection_run` | Kept indefinitely; the run history feeds freshness |
 | `user_session`, `oidc_login` | Expire logically (idle, absolute and 10-minute limits) but rows remain |

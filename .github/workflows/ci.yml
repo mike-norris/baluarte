@@ -157,6 +157,8 @@ jobs:
         with:
           persist-credentials: false
       - run: deploy/compose/smoke-test.sh
+      - name: Backup and restore check
+        run: deploy/compose/backup-restore-test.sh
 
   helm-smoke:
     name: Helm kind smoke test
