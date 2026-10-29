@@ -1,12 +1,19 @@
+import type { ReactNode } from "react";
 import type { RouteObject } from "react-router";
 
 import { AuthProvider } from "./auth/AuthProvider";
 import { RequireSession } from "./auth/RequireSession";
 import { Layout } from "./components/Layout";
 import { navItems } from "./navigation";
+import { InventoryPage } from "./pages/InventoryPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { SignInPage } from "./pages/SignInPage";
+
+/** Sections that are implemented; the rest render a placeholder. */
+const pages: Partial<Record<string, ReactNode>> = {
+  "/inventory": <InventoryPage />,
+};
 
 export const routes: RouteObject[] = [
   {
@@ -22,7 +29,9 @@ export const routes: RouteObject[] = [
         children: navItems.map(
           (item): RouteObject => ({
             path: item.path,
-            element: <PlaceholderPage title={item.label} description={item.description} />,
+            element: pages[item.path] ?? (
+              <PlaceholderPage title={item.label} description={item.description} />
+            ),
           }),
         ),
       },
