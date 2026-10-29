@@ -60,6 +60,7 @@ For evaluation only, `--set devDatabase.enabled=true` runs a single PostgreSQL p
 | `gitlab.url` | `""` | https URL of the GitLab instance; empty leaves GitLab unconfigured |
 | `gitlab.existingSecret`, `gitlab.tokenKey` | `""`, `token` | Secret and key holding a `read_api` token; required with `gitlab.url`. Mounted into the API and worker |
 | `gitlab.timeoutSeconds` | `15` | Per-request timeout |
+| `gitlab.syncIntervalMinutes` | `360` | Scheduled collection interval (15 to 10080), or `0` for on request only; data older than twice this is stale |
 | `ingress.enabled`, `ingress.className`, `ingress.host`, `ingress.tls` | disabled | Ingress to the web Service |
 | `imagePullSecrets` | `[]` | Registry credentials |
 

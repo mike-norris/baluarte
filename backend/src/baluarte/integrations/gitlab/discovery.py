@@ -11,7 +11,8 @@ from you" in a listing:
 - 401 or 403: ``inaccessible``. It exists, but this token may not read it.
 - 404: ``missing``. Deleted, or hidden from the token; GitLab answers 404 for both.
 
-Any other failure leaves the row unchanged. A resource seen again becomes ``active``.
+Any other failure leaves the state unchanged and records ``last_error``. A resource seen again
+becomes ``active`` and its error is cleared.
 """
 
 import logging
@@ -71,14 +72,16 @@ def _upsert(db: Session, kind: ResourceKind, rows: list[dict[str, Any]]) -> None
                 **{column: statement.excluded[column] for column in kind.refreshed},
                 "state": "active",
                 "last_seen_at": func.now(),
+                "last_error": None,
+                "last_error_at": None,
             },
         )
     )
 
 
-def _set_state(engine: Engine, kind: ResourceKind, row_id: int, state: str) -> None:
+def _update(engine: Engine, kind: ResourceKind, row_id: int, **values: Any) -> None:
     with Session(engine) as db:
-        db.execute(update(kind.model).where(kind.model.id == row_id).values(state=state))
+        db.execute(update(kind.model).where(kind.model.id == row_id).values(**values))
         db.commit()
 
 
@@ -111,13 +114,20 @@ def discover(client: GitLabClient, engine: Engine, base_url: str, kind: Resource
             item = client.get_json(f"{kind.list_path}/{gitlab_id}", kind.lookup_params)
             row = kind.to_row(instance_id, item if isinstance(item, dict) else {})
         except (Unauthorized, Forbidden):
-            _set_state(engine, kind, row_id, "inaccessible")
+            _update(engine, kind, row_id, state="inaccessible", last_error=None, last_error_at=None)
             result.reconciled["inaccessible"] += 1
         except NotFound:
-            _set_state(engine, kind, row_id, "missing")
+            _update(engine, kind, row_id, state="missing", last_error=None, last_error_at=None)
             result.reconciled["missing"] += 1
         except GitLabError as error:
             logger.warning("gitlab: %s %s left unchanged (%s)", kind.name, gitlab_id, error.reason)
+            _update(
+                engine,
+                kind,
+                row_id,
+                last_error=f"could not confirm: {error}",
+                last_error_at=func.now(),
+            )
             result.reconciled["unchanged"] += 1
         else:
             with Session(engine) as db:

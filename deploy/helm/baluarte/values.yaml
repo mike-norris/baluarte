@@ -164,6 +164,9 @@ gitlab:
   tokenKey: token
   # Per-request timeout, 1 to 120 seconds.
   timeoutSeconds: 15
+  # How often the worker collects capabilities, groups and projects: 15 to 10080 minutes, or
+  # 0 to collect only on request. Data older than twice this is reported as stale.
+  syncIntervalMinutes: 360
 
 # Single-pod PostgreSQL for evaluation and CI only: no backups, no high availability.
 # A random password is generated on install and kept across upgrades.

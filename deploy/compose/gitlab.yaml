@@ -9,6 +9,7 @@ x-gitlab-env: &gitlab-env
   BALUARTE_GITLAB_URL: ${BALUARTE_GITLAB_URL:?set BALUARTE_GITLAB_URL}
   BALUARTE_GITLAB_TOKEN_FILE: /run/secrets/gitlab_token
   BALUARTE_GITLAB_TIMEOUT_SECONDS: ${BALUARTE_GITLAB_TIMEOUT_SECONDS:-15}
+  BALUARTE_GITLAB_SYNC_INTERVAL_MINUTES: ${BALUARTE_GITLAB_SYNC_INTERVAL_MINUTES:-360}
 
 services:
   # Diagnostics run in the API; capability detection and collection run in the worker.

@@ -1,12 +1,13 @@
 # Data model
 
-Implemented in `backend/src/baluarte/db/models.py`; migrations `0001` (inventory, policy and evidence), `0002` (users and sessions) and `0003` (job lease constraints) create it. All primary keys are `bigint` identity columns, all timestamps are `timestamptz` (UTC instants), and status-like columns are `text` with CHECK constraints rather than PostgreSQL enum types. SHA-256 digests are stored as 64-character lowercase hex and checked by constraint.
+Implemented in `backend/src/baluarte/db/models.py`; migrations `0001` (inventory, policy and evidence), `0002` (users and sessions), `0003` (job lease constraints) and `0004` (collection runs and resource errors) create it. All primary keys are `bigint` identity columns, all timestamps are `timestamptz` (UTC instants), and status-like columns are `text` with CHECK constraints rather than PostgreSQL enum types. SHA-256 digests are stored as 64-character lowercase hex and checked by constraint.
 
 | Table | Key fields | Notes |
 |---|---|---|
 | gitlab_instance | id, base_url (unique), version, edition, capability_snapshot, last_checked_at | One instance in v0.1 (ADR-0004); the ID is kept on every GitLab resource |
-| gitlab_group | id, instance_id, gitlab_id, parent_gitlab_id, full_path, visibility, state, first_seen_at, last_seen_at | Unique `(instance_id, gitlab_id)`; state `active`, `missing`, `inaccessible` |
-| gitlab_project | id, instance_id, gitlab_id, namespace_gitlab_id, path_with_namespace, visibility, archived, default_branch, state, first_seen_at, last_seen_at | Unique `(instance_id, gitlab_id)`; current inventory cache |
+| gitlab_group | id, instance_id, gitlab_id, parent_gitlab_id, full_path, visibility, state, first_seen_at, last_seen_at, last_error, last_error_at | Unique `(instance_id, gitlab_id)`; state `active`, `missing`, `inaccessible` |
+| gitlab_project | id, instance_id, gitlab_id, namespace_gitlab_id, path_with_namespace, visibility, archived, default_branch, state, first_seen_at, last_seen_at, last_error, last_error_at | Unique `(instance_id, gitlab_id)`; current inventory cache |
+| collection_run | id, instance_id, kind, collection_job_id, attempt, status, started_at, finished_at, seen, counts, error | One row per job attempt for freshness. Kind `capabilities`, `groups`, `projects`; status `running`, `succeeded`, `partial`, `failed`; finished exactly when not running |
 | collection_job | id, kind, state, idempotency_key (unique), payload, attempt, max_attempts, run_after, lease_owner, lease_until, error | Background jobs (see [Jobs](#jobs)). A lease is held exactly when `running`; `attempt` never exceeds `max_attempts`; indexed for claiming and for finding expired leases |
 | policy | id, name, version, source_yaml, yaml_digest, effective_at | Immutable versions, unique `(name, version)` |
 | policy_assignment | id, policy_id, target_type, target_id, precedence | Unique per policy and target; inheritance rules pending (BAL-018) |

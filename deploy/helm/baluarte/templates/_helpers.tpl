@@ -197,6 +197,8 @@ https://{{ .Values.ingress.host }}
   value: /var/run/secrets/baluarte/gitlab/token
 - name: BALUARTE_GITLAB_TIMEOUT_SECONDS
   value: {{ .timeoutSeconds | quote }}
+- name: BALUARTE_GITLAB_SYNC_INTERVAL_MINUTES
+  value: {{ .syncIntervalMinutes | quote }}
 {{- end }}
 {{- end }}
 {{- end }}
