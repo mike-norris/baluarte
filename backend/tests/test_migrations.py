@@ -27,6 +27,7 @@ TABLES = {
     "oidc_login",
     "policy",
     "policy_assignment",
+    "policy_exception",
     "user_session",
 }
 
@@ -64,7 +65,10 @@ def test_downgrade_to_base_and_upgrade_again(migrated_engine: Engine) -> None:
     assert set(inspect(migrated_engine).get_table_names()) == {"alembic_version"}
     with migrated_engine.connect() as connection:
         functions = connection.execute(
-            text("SELECT count(*) FROM pg_proc WHERE proname = 'baluarte_reject_modification'")
+            text(
+                "SELECT count(*) FROM pg_proc WHERE proname IN "
+                "('baluarte_reject_modification', 'baluarte_policy_exception_transition')"
+            )
         ).scalar_one()
     assert functions == 0
 

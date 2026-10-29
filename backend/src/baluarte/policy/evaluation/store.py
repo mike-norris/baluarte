@@ -16,8 +16,12 @@ Findings follow a rule for a project by policy name, across versions:
 - A rule that no longer applies to the project resolves its open finding
   (``resolution = no_longer_applies``), but only when the project's policy resolution was
   complete: a gap in the group chain could be hiding the policy, so it proves nothing.
-- ``excepted`` findings are left to the exception workflow (BAL-033); only their latest
-  evaluation is updated.
+- Exceptions (BAL-033): a backed ``fail`` covered by an exception in force is stored as
+  ``excepted`` with the exception's ID, keeping the observed value and evidence, and its
+  finding becomes ``excepted`` (opened in that state if needed). Once no exception is in
+  force, the next ``fail`` reopens it, a ``pass`` resolves it, and an ``unknown`` or
+  ``unsupported`` result reopens it: a waived failure that can no longer be checked is not
+  compliant. ``unknown`` and ``unsupported`` are never excepted.
 """
 
 import logging
@@ -29,12 +33,13 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from baluarte.db.models import Evaluation, Finding, GitLabProject, Observation
+from baluarte.db.models import Evaluation, Finding, GitLabProject, Observation, PolicyException
 from baluarte.evidence.observations import verify
 from baluarte.integrations.gitlab.branches import PROTECTION_SOURCE
 from baluarte.integrations.gitlab.projects import PROJECT_SOURCES
 from baluarte.policy.assignments import Resolution
 from baluarte.policy.evaluation.model import RuleResult, UnknownReason
+from baluarte.policy.exceptions import active_for_project
 
 logger = logging.getLogger(__name__)
 
@@ -154,12 +159,26 @@ def backed(result: RuleResult, evidence: Evidence, observation: Observation | No
     return result
 
 
+def excepted(result: RuleResult, exception: PolicyException | None) -> RuleResult:
+    """A backed ``fail`` waived by ``exception``; every other result unchanged."""
+    if result.outcome != "fail" or exception is None:
+        return result
+    until = exception.expires_at.strftime("%Y-%m-%d %H:%M UTC")
+    return result.model_copy(
+        update={
+            "outcome": "excepted",
+            "reason": f"{result.reason} Waived by approved exception {exception.id} until {until}.",
+        }
+    )
+
+
 def _row(
     instance_id: int,
     project: GitLabProject,
     result: RuleResult,
     observation: Observation | None,
     run_id: int | None,
+    exception_id: int | None,
 ) -> Evaluation:
     return Evaluation(
         instance_id=instance_id,
@@ -184,11 +203,14 @@ def _row(
         collection_status=result.collection.status,
         collection_last_success_at=result.collection.last_success_at,
         ancestry=result.ancestry,
+        exception_id=exception_id,
         evaluated_at=result.evaluated_at,
     )
 
 
-def _follow(db: Session, project: GitLabProject, row: Evaluation, tally: Tally) -> None:
+def _follow(
+    db: Session, project: GitLabProject, row: Evaluation, in_force: set[int], tally: Tally
+) -> None:
     finding = db.scalars(
         select(Finding)
         .where(
@@ -199,7 +221,8 @@ def _follow(db: Session, project: GitLabProject, row: Evaluation, tally: Tally) 
         .with_for_update()
     ).first()
     if finding is None:
-        if row.outcome == "fail":
+        if row.outcome in ("fail", "excepted"):
+            excepted = row.outcome == "excepted"
             db.add(
                 Finding(
                     project_id=project.id,
@@ -209,18 +232,35 @@ def _follow(db: Session, project: GitLabProject, row: Evaluation, tally: Tally) 
                     latest_evaluation_id=row.id,
                     latest_outcome=row.outcome,
                     severity=row.severity,
-                    state="open",
+                    state="excepted" if excepted else "open",
+                    exception_id=row.exception_id,
                     first_seen_at=row.evaluated_at,
                     last_seen_at=row.evaluated_at,
                 )
             )
-            tally.findings["opened"] += 1
+            tally.findings["excepted" if excepted else "opened"] += 1
         return
     finding.policy_id = row.policy_id
     finding.latest_evaluation_id = row.id
     finding.latest_outcome = row.outcome
-    if finding.state == "excepted":
+    if row.outcome == "excepted":
+        if finding.state != "excepted":
+            tally.findings["excepted"] += 1
+        finding.state = "excepted"
+        finding.exception_id = row.exception_id
+        finding.severity = row.severity
+        finding.last_seen_at = row.evaluated_at
+        finding.resolved_at = None
+        finding.resolution = None
         return
+    if finding.state == "excepted":
+        if row.outcome in ("unknown", "unsupported") and finding.exception_id in in_force:
+            # Still waived; the next decided result settles it.
+            return
+        # The exception ended (or the rule now passes): follow the finding as an open one.
+        finding.state = "open"
+        finding.exception_id = None
+        tally.findings["exception_ended"] += 1
     if row.outcome == "fail":
         finding.severity = row.severity
         finding.last_seen_at = row.evaluated_at
@@ -241,7 +281,7 @@ def _close_inapplicable(
 ) -> None:
     open_findings = db.scalars(
         select(Finding)
-        .where(Finding.project_id == project.id, Finding.state == "open")
+        .where(Finding.project_id == project.id, Finding.state.in_(("open", "excepted")))
         .with_for_update()
     ).all()
     stale = [f for f in open_findings if (f.policy_name, f.rule_id) not in applied]
@@ -249,6 +289,7 @@ def _close_inapplicable(
         return
     now = db.execute(select(func.now())).scalar_one()
     for finding in stale:
+        finding.exception_id = None
         finding.state = "resolved"
         finding.resolved_at = now
         finding.resolution = "no_longer_applies"
@@ -266,6 +307,8 @@ def store_project(
 ) -> list[Evaluation]:
     """Store a project's results and update its findings. The caller commits."""
     observations: dict[tuple[str, ...], Observation | None] = {}
+    exceptions = active_for_project(db, project.id)
+    in_force = {exception.id for exception in exceptions.values()}
     rows: list[Evaluation] = []
     for result in results:
         evidence = evidence_for(result)
@@ -275,10 +318,13 @@ def store_project(
             )
         observation = observations[evidence.sources]
         result = backed(result, evidence, observation)
-        row = _row(instance_id, project, result, observation, run_id)
+        exception = exceptions.get((result.policy.name, result.rule_id))
+        result = excepted(result, exception)
+        exception_id = exception.id if result.outcome == "excepted" and exception else None
+        row = _row(instance_id, project, result, observation, run_id, exception_id)
         db.add(row)
         db.flush()
-        _follow(db, project, row, tally)
+        _follow(db, project, row, in_force, tally)
         tally.outcomes[row.outcome] += 1
         rows.append(row)
     if resolution.ancestry == "complete":

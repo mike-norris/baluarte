@@ -8,7 +8,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from pydantic import BaseModel
-from sqlalchemy import Select, func, select
+from sqlalchemy import ColumnElement, Select, and_, func, or_, select
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.orm import Session
 
@@ -22,12 +22,14 @@ from baluarte.db.models import (
     GitLabInstance,
     GitLabProject,
     Policy,
+    PolicyException,
 )
 from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_settings
 from baluarte.jobs import queue
 from baluarte.policy.evaluation import freshness
 from baluarte.policy.evaluation.freshness import EvaluationFreshness, EvaluationRunOut
 from baluarte.policy.evaluation.runner import EVALUATE, MAX_ATTEMPTS
+from baluarte.policy.exceptions import in_force
 from baluarte.settings import ConfigurationError
 
 router = APIRouter(tags=["evaluations"])
@@ -79,6 +81,8 @@ class EvaluationOut(BaseModel):
     capability: CapabilityOut
     collection: CollectionOut
     ancestry: str
+    # The exception that waived this failure; set exactly when ``outcome`` is ``excepted``.
+    exception_id: int | None
     evaluated_at: datetime
 
 
@@ -94,6 +98,12 @@ class ProjectEvaluations(BaseModel):
     items: list[EvaluationOut]
 
 
+class FindingException(BaseModel):
+    id: int
+    expires_at: datetime
+    in_force: bool
+
+
 class FindingOut(BaseModel):
     id: int
     project: ProjectRef
@@ -106,6 +116,9 @@ class FindingOut(BaseModel):
     first_seen_at: datetime
     last_seen_at: datetime
     resolved_at: datetime | None
+    # While ``state`` is ``excepted``, the exception waiving the failure. A finding whose
+    # exception expired or was revoked reads as ``open`` even before the next evaluation.
+    exception: FindingException | None
     latest_evaluation: EvaluationOut
 
 
@@ -114,7 +127,7 @@ class FindingPage(BaseModel):
     next_after_id: int | None
 
 
-FindingRows = Select[Evaluation, int, int, str, str, Finding]
+FindingRows = Select[Evaluation, int, int, str, str, Finding, PolicyException, bool]
 
 
 class EvaluationQueued(BaseModel):
@@ -184,11 +197,19 @@ def _evaluation_out(row: Any) -> EvaluationOut:
             last_success_at=evaluation.collection_last_success_at,
         ),
         ancestry=evaluation.ancestry,
+        exception_id=evaluation.exception_id,
         evaluated_at=evaluation.evaluated_at,
     )
 
 
-def _finding_out(finding: Finding, evaluation: EvaluationOut) -> FindingOut:
+def _finding_out(row: Any) -> FindingOut:
+    finding: Finding = row[5]
+    exception: PolicyException | None = row[6]
+    waived: bool = bool(row[7])
+    evaluation = _evaluation_out(row)
+    state = finding.state
+    if state == "excepted" and not waived:
+        state = "open"
     return FindingOut(
         id=finding.id,
         project=evaluation.project,
@@ -199,14 +220,33 @@ def _finding_out(finding: Finding, evaluation: EvaluationOut) -> FindingOut:
         ),
         rule_id=finding.rule_id,
         severity=finding.severity,
-        state=finding.state,  # type: ignore[arg-type]
+        state=state,  # type: ignore[arg-type]
         resolution=finding.resolution,
         latest_outcome=finding.latest_outcome,  # type: ignore[arg-type]
         first_seen_at=finding.first_seen_at,
         last_seen_at=finding.last_seen_at,
         resolved_at=finding.resolved_at,
+        exception=(
+            FindingException(id=exception.id, expires_at=exception.expires_at, in_force=waived)
+            if exception is not None
+            else None
+        ),
         latest_evaluation=evaluation,
     )
+
+
+def _waived() -> ColumnElement[bool]:
+    """SQL: the finding's exception is in force."""
+    return and_(PolicyException.id.is_not(None), in_force())
+
+
+def _state_is(state: str) -> ColumnElement[bool]:
+    """SQL: the finding's state as reported, with ended exceptions counted as open."""
+    if state == "excepted":
+        return and_(Finding.state == "excepted", _waived())
+    if state == "open":
+        return or_(Finding.state == "open", and_(Finding.state == "excepted", ~_waived()))
+    return Finding.state == state
 
 
 def _findings() -> FindingRows:
@@ -218,11 +258,14 @@ def _findings() -> FindingRows:
             GitLabProject.path_with_namespace,
             GitLabProject.state,
             Finding,
+            PolicyException,
+            func.coalesce(_waived(), False),
         )
         .select_from(Finding)
         .join(Evaluation, Evaluation.id == Finding.latest_evaluation_id)
         .join(Policy, Policy.id == Evaluation.policy_id)
         .join(GitLabProject, GitLabProject.id == Finding.project_id)
+        .outerjoin(PolicyException, PolicyException.id == Finding.exception_id)
     )
 
 
@@ -307,7 +350,9 @@ def list_runs(
     summary="Findings: rules a project failed, followed until they pass",
     description="A finding opens when a rule fails and resolves when it passes "
     "(`resolution = passed`) or no longer applies (`no_longer_applies`). An `unknown` or "
-    "`unsupported` result never opens or resolves one; `latest_outcome` shows it. Filter by "
+    "`unsupported` result never opens or resolves one; `latest_outcome` shows it. A failure "
+    "waived by an approved exception is `excepted` until the exception expires or is revoked, "
+    "then `open` again. Filter by "
     "`state`, `outcome` (the latest outcome), `severity`, `project` (GitLab ID), `policy` "
     "(name) and `rule` (rule ID). Ordered by ID; follow `next_after_id`.",
 )
@@ -325,7 +370,7 @@ def list_findings(
 ) -> FindingPage:
     statement = _scoped(_findings(), db)
     if state is not None:
-        statement = statement.where(Finding.state == state)
+        statement = statement.where(_state_is(state))
     if outcome is not None:
         statement = statement.where(Finding.latest_outcome == outcome)
     if severity is not None:
@@ -339,7 +384,7 @@ def list_findings(
     if after_id is not None:
         statement = statement.where(Finding.id > after_id)
     rows = db.execute(statement.order_by(Finding.id).limit(limit + 1)).all()
-    items = [_finding_out(row[5], _evaluation_out(row)) for row in rows[:limit]]
+    items = [_finding_out(row) for row in rows[:limit]]
     return FindingPage(items=items, next_after_id=items[-1].id if len(rows) > limit else None)
 
 
@@ -361,8 +406,7 @@ def read_finding(
     _: Annotated[Principal, Depends(require(Permission.FINDINGS_READ))],
     db: Annotated[Session, Depends(database)],
 ) -> FindingOut:
-    row = _finding(db, finding_id)
-    return _finding_out(row[5], _evaluation_out(row))
+    return _finding_out(_finding(db, finding_id))
 
 
 @router.get(

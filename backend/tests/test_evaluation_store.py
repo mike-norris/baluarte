@@ -448,20 +448,6 @@ def test_a_gap_in_the_group_chain_does_not_resolve_a_finding(migrated_engine: En
     assert len(world.evaluations()) == 1
 
 
-def test_an_excepted_finding_is_left_to_the_exception_workflow(world: World) -> None:
-    project_id = world.project(1, "public")
-    world.run()
-    with Session(world.engine) as db:
-        db.execute(update(Finding).values(state="excepted"))
-        db.commit()
-    world.observe(project_id, "private")
-
-    world.run()
-
-    (finding,) = world.findings()
-    assert (finding.state, finding.latest_outcome) == ("excepted", "pass")
-
-
 def test_missing_projects_are_evaluated_only_while_they_have_an_open_finding(
     world: World,
 ) -> None:

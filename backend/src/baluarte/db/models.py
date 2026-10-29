@@ -44,6 +44,9 @@ RUN_STATUSES = ("running", "succeeded", "partial", "failed")
 ANCESTRIES = ("complete", "incomplete")
 CAPABILITY_STATUSES = ("not_required", "supported", "unsupported", "unknown")
 FINDING_RESOLUTIONS = ("passed", "no_longer_applies")
+EXCEPTION_STATES = ("requested", "approved", "rejected", "revoked", "expired")
+# Longest an exception may last, from its request.
+MAX_EXCEPTION_DAYS = 365
 
 
 def one_of(column: str, values: Iterable[str]) -> CheckConstraint:
@@ -332,11 +335,15 @@ class Evaluation(Base):
             name="unknown_has_reasons",
         ),
         CheckConstraint(
-            "outcome IN ('pass', 'fail') OR observed IS NULL", name="observed_only_when_decided"
+            "outcome IN ('pass', 'fail', 'excepted') OR observed IS NULL",
+            name="observed_only_when_decided",
         ),
         CheckConstraint(
-            "outcome NOT IN ('pass', 'fail') OR observation_id IS NOT NULL",
+            "outcome NOT IN ('pass', 'fail', 'excepted') OR observation_id IS NOT NULL",
             name="decided_has_evidence",
+        ),
+        CheckConstraint(
+            "(outcome = 'excepted') = (exception_id IS NOT NULL)", name="excepted_has_exception"
         ),
     )
 
@@ -366,6 +373,8 @@ class Evaluation(Base):
     collection_status: Mapped[str] = mapped_column(Text)
     collection_last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ancestry: Mapped[str] = mapped_column(Text)
+    # The approved exception that waived a failure; set exactly when ``outcome = excepted``.
+    exception_id: Mapped[int | None] = mapped_column(ForeignKey("policy_exception.id"))
     evaluated_at: Mapped[datetime] = utc_now()
 
 
@@ -391,6 +400,9 @@ class Finding(Base):
         CheckConstraint(
             "(state = 'resolved') = (resolution IS NOT NULL)", name="resolved_has_resolution"
         ),
+        CheckConstraint(
+            "(state = 'excepted') = (exception_id IS NOT NULL)", name="excepted_has_exception"
+        ),
     )
 
     id: Mapped[int] = pk()
@@ -408,6 +420,73 @@ class Finding(Base):
     last_seen_at: Mapped[datetime] = utc_now()
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     resolution: Mapped[str | None] = mapped_column(Text)
+    # The exception waiving the failure while ``state = excepted``.
+    exception_id: Mapped[int | None] = mapped_column(ForeignKey("policy_exception.id"))
+
+
+class PolicyException(Base):
+    """A time-limited waiver of one rule for one project, approved by someone else.
+
+    ``requested`` becomes ``approved`` or ``rejected``; ``requested`` or ``approved`` becomes
+    ``revoked``, or ``expired`` once ``expires_at`` has passed. A trigger enforces those
+    transitions, keeps what was requested unchanged and rejects ``DELETE``; the audit trail
+    records who did each. An approved exception whose ``expires_at`` has passed is in force no
+    longer, whether or not its row has been marked ``expired`` yet.
+    """
+
+    __tablename__ = "policy_exception"
+    __table_args__ = (
+        Index(
+            "uq_policy_exception_active",
+            "project_id",
+            "policy_name",
+            "rule_id",
+            unique=True,
+            postgresql_where=text("state IN ('requested', 'approved')"),
+        ),
+        one_of("state", EXCEPTION_STATES),
+        CheckConstraint("length(justification) > 0", name="justified"),
+        CheckConstraint(
+            f"expires_at > requested_at AND expires_at <= requested_at + "
+            f"interval '{MAX_EXCEPTION_DAYS * 24} hours'",
+            name="expiry_bounded",
+        ),
+        CheckConstraint(
+            "decided_by_user_id IS NULL OR decided_by_user_id <> requested_by_user_id",
+            name="decided_by_another_user",
+        ),
+        CheckConstraint(
+            "(decided_at IS NULL) = (decided_by_user_id IS NULL)", name="decision_complete"
+        ),
+        CheckConstraint(
+            "state NOT IN ('approved', 'rejected') OR decided_at IS NOT NULL",
+            name="decided_has_decision",
+        ),
+        CheckConstraint(
+            "(state IN ('revoked', 'expired')) = (ended_at IS NOT NULL)", name="ended_has_time"
+        ),
+        CheckConstraint(
+            "(state = 'revoked') = (ended_by_user_id IS NOT NULL)", name="revoked_has_user"
+        ),
+    )
+
+    id: Mapped[int] = pk()
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    project_id: Mapped[int] = mapped_column(ForeignKey("gitlab_project.id"), index=True)
+    policy_name: Mapped[str] = mapped_column(Text)
+    rule_id: Mapped[str] = mapped_column(Text)
+    justification: Mapped[str] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(Text, server_default="requested")
+    requested_by_user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id"))
+    requested_at: Mapped[datetime] = utc_now()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    decided_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_note: Mapped[str | None] = mapped_column(Text)
+    # Set when revoked (with the user) or expired (by the system).
+    ended_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    end_note: Mapped[str | None] = mapped_column(Text)
 
 
 class AuditEvent(Base):

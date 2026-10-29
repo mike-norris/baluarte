@@ -30,13 +30,23 @@ def test_every_role_has_permissions() -> None:
         (Role.ADMIN, set(Permission), set()),
         (
             Role.ANALYST,
-            {Permission.FINDINGS_READ, Permission.POLICY_WRITE},
-            {Permission.SETTINGS_MANAGE, Permission.EVIDENCE_EXPORT, Permission.AUDIT_LOG_READ},
+            {Permission.FINDINGS_READ, Permission.POLICY_WRITE, Permission.EXCEPTION_REQUEST},
+            {
+                Permission.SETTINGS_MANAGE,
+                Permission.EVIDENCE_EXPORT,
+                Permission.AUDIT_LOG_READ,
+                Permission.EXCEPTION_APPROVE,
+            },
         ),
         (
             Role.AUDITOR,
             {Permission.EVIDENCE_EXPORT, Permission.AUDIT_LOG_READ, Permission.EVIDENCE_READ},
-            {Permission.POLICY_WRITE, Permission.SETTINGS_MANAGE},
+            {
+                Permission.POLICY_WRITE,
+                Permission.SETTINGS_MANAGE,
+                Permission.EXCEPTION_REQUEST,
+                Permission.EXCEPTION_APPROVE,
+            },
         ),
     ],
 )

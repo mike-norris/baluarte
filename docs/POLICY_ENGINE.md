@@ -175,6 +175,7 @@ Audit events record the policy name, version, digest, target type, target ID and
 
 ## Not yet defined
 
+- Exceptions for a group subtree or a whole policy (see [Exceptions](#exceptions)).
 - How `effective_at` is scheduled. Today a version takes effect when it is saved.
 
 ## Outcomes
@@ -183,7 +184,18 @@ Audit events record the policy name, version, digest, target type, target ID and
 
 - `unknown` covers insufficient permissions, stale data and failed collection. It never counts as compliant.
 - `unsupported` means the GitLab feature is unavailable.
-- An exception requires approval and expiration metadata.
+- `excepted` means a `fail` waived by an approved, unexpired exception. See [Exceptions](#exceptions).
+
+## Exceptions
+
+Implemented in `baluarte.policy.exceptions` (BAL-033). An exception waives one rule (`policy_name`, `rule_id`) for one project, for a limited time:
+
+- **Request:** `exception:request` (admin, analyst) with a justification and `expires_at`, at most 365 days ahead. The rule must exist in the policy's latest version, and only one exception per project and rule may be requested or approved at a time.
+- **Separation of duties:** approving or rejecting needs `exception:approve` (admin) and must be done by someone other than the requester. The API refuses it (403) and a CHECK constraint enforces it again in the database.
+- **Lifecycle:** `requested` -> `approved` or `rejected`; `requested` or `approved` -> `revoked` (by an approver, with a reason) or `expired` (once `expires_at` has passed, database clock). A trigger rejects any other change, any edit of what was requested, and `DELETE`. Every transition is audited (`policy_exception.requested`, `.approved`, `.rejected`, `.revoked`, `.expired`).
+- **Effect:** while an exception is approved and unexpired, a backed `fail` for its project and rule is stored as `excepted` with the exception ID; the expected and observed values and the evidence are kept, and the finding's state is `excepted`. `unknown` and `unsupported` are never excepted: an exception waives a known failure, not missing or untrustworthy evidence.
+- **Ending:** revoking reopens the exception's findings at once. Expiry takes effect at `expires_at` in every API response (an expired exception reads `expired` and its finding `open`), and each evaluation run first marks due exceptions `expired` and reopens their findings before judging anything. A run is queued after every approval, rejection and revocation.
+- **Not yet:** exceptions for a group subtree or a whole policy, renewal (request a new exception instead), and exceptions in evidence exports.
 
 ## Evaluation invariants
 

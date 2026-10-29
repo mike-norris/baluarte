@@ -26,10 +26,14 @@ Roles come from the identity provider's groups claim (`BALUARTE_OIDC_*_GROUPS`);
 |---|---|---|---|
 | `inventory:read`, `findings:read`, `evidence:read` | yes | yes | yes |
 | `policy:write` | yes | yes | no |
+| `exception:request` | yes | yes | no |
+| `exception:approve` (approve, reject, revoke; never one's own request) | yes | no | no |
 | `evidence:export` | yes | no | yes |
 | `audit_log:read` | yes | no | yes |
 | `settings:manage` (includes running GitLab diagnostics) | yes | no | no |
 | `jobs:read` | yes | no | no |
+
+Exceptions separate duties: the user who requests one cannot approve or reject it, which the API and a database constraint both enforce. With the default role mapping only admins approve, so a deployment that wants two people involved needs at least two admins, or an analyst requesting and an admin approving.
 
 Sign-in, failed sign-in (with a reason code) and sign-out are written to `audit_event`. Callbacks that do not match a sign-in started by the same browser are logged but not audited, so anonymous requests cannot grow the append-only audit table. Rate limiting of the sign-in endpoints is not built yet; apply it at the ingress.
 

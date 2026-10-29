@@ -18,6 +18,7 @@ from baluarte.db.models import (
     GitLabProject,
     Observation,
     Policy,
+    PolicyException,
     UserSession,
 )
 
@@ -106,6 +107,24 @@ def test_rejects_unknown_visibility(session: Session, instance: GitLabInstance) 
         session.commit()
 
 
+def add_exception(session: Session, instance: GitLabInstance, project: GitLabProject) -> int:
+    requester = AppUser(issuer="https://idp.example", subject="requester")
+    session.add(requester)
+    session.flush()
+    exception = PolicyException(
+        instance_id=instance.id,
+        project_id=project.id,
+        policy_name="baseline",
+        rule_id="project-visibility",
+        justification="Public documentation site",
+        requested_by_user_id=requester.id,
+        expires_at=datetime.now(UTC) + timedelta(days=30),
+    )
+    session.add(exception)
+    session.flush()
+    return exception.id
+
+
 def evaluation(
     session: Session, instance: GitLabInstance, outcome: str, **overrides: Any
 ) -> Evaluation:
@@ -113,6 +132,7 @@ def evaluation(
     observation = add_observation(session, instance)
     policy = Policy(name="baseline", version=1, source_yaml="x", yaml_digest=digest("x"))
     session.add(policy)
+    exception_id = add_exception(session, instance, project) if outcome == "excepted" else None
     session.commit()
     values: dict[str, Any] = {
         "instance_id": instance.id,
@@ -127,12 +147,13 @@ def evaluation(
         "reason": "test",
         "unknown_reasons": ["value_unknown"] if outcome == "unknown" else [],
         "expected": {"allowed": ["private"]},
-        "observed": "private" if outcome in ("pass", "fail") else None,
+        "observed": "private" if outcome in ("pass", "fail", "excepted") else None,
         "source": "gitlab_project.visibility",
         "capability_status": "not_required",
         "collection_kind": "projects",
         "collection_status": "fresh",
         "ancestry": "complete",
+        "exception_id": exception_id,
     }
     values.update(overrides)
     return Evaluation(**values)
@@ -163,6 +184,8 @@ def test_rejects_undocumented_outcome(session: Session, instance: GitLabInstance
         ("pass", {"severity": "urgent"}, "ck_evaluation_severity_allowed"),
         ("pass", {"ancestry": "partial"}, "ck_evaluation_ancestry_allowed"),
         ("pass", {"capability_status": "maybe"}, "ck_evaluation_capability_status_allowed"),
+        ("excepted", {"exception_id": None}, "ck_evaluation_excepted_has_exception"),
+        ("excepted", {"observation_id": None}, "ck_evaluation_decided_has_evidence"),
     ],
 )
 def test_evaluation_invariants(

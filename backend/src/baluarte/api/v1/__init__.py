@@ -10,6 +10,7 @@ from baluarte.api.v1 import (
     audit_events,
     auth,
     evaluations,
+    exceptions,
     exports,
     gitlab,
     health,
@@ -44,6 +45,7 @@ protected.include_router(observations.router)
 protected.include_router(policies.router)
 protected.include_router(policy_assignments.router)
 protected.include_router(evaluations.router)
+protected.include_router(exceptions.router)
 protected.include_router(exports.router)
 
 router = APIRouter(prefix="/api/v1")
