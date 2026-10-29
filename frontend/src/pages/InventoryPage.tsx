@@ -92,6 +92,11 @@ function ProjectRows({ projects }: { projects: Project[] }) {
     <tr key={project.id}>
       <th scope="row" className="px-3 py-2 font-medium">
         {project.path_with_namespace}
+        {project.namespace_kind === "user" && (
+          <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-xs font-normal">
+            Personal
+          </span>
+        )}
         {project.archived && (
           <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-xs font-normal">
             Archived

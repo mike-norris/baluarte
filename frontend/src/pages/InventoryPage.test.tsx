@@ -26,6 +26,7 @@ function project(id: number, path: string, extra: Partial<Project> = {}): Projec
     name: path.split("/").at(-1) ?? path,
     path_with_namespace: path,
     namespace_gitlab_id: 1,
+    namespace_kind: "group",
     visibility: "private",
     archived: false,
     default_branch: "main",
@@ -75,6 +76,7 @@ describe("inventory", () => {
           page([
             project(1, "platform/api"),
             project(2, "platform/legacy", { archived: true, visibility: null }),
+            project(5, "alice/dotfiles", { namespace_kind: "user" }),
             project(3, "platform/empty", { default_branch: null, state: "missing" }),
             project(4, "platform/billing", {
               last_error: "could not confirm: GitLab returned 500 for /projects/104",
@@ -88,7 +90,12 @@ describe("inventory", () => {
 
     const table = await screen.findByRole("table", { name: "GitLab projects" });
     const rows = within(table).getAllByRole("row");
-    expect(rows).toHaveLength(5);
+    expect(rows).toHaveLength(6);
+    const personal = within(table).getByRole("rowheader", { name: /alice\/dotfiles/ });
+    expect(personal).toHaveTextContent("Personal");
+    expect(within(table).getByRole("rowheader", { name: "platform/api" })).not.toHaveTextContent(
+      "Personal",
+    );
     const legacy = within(table).getByRole("rowheader", { name: /platform\/legacy/ }).closest("tr");
     expect(legacy).toHaveTextContent("Archived");
     expect(legacy).toHaveTextContent("Unknown");
@@ -99,7 +106,7 @@ describe("inventory", () => {
     expect(billing).toHaveTextContent("GitLab returned 500 for /projects/104");
     expect(billing).toHaveTextContent("29 Oct 2026, 06:30 UTC");
     expect(screen.getByText("Collection status: Up to date")).toBeInTheDocument();
-    expect(screen.getByText("Showing 4 projects.")).toBeInTheDocument();
+    expect(screen.getByText("Showing 5 projects.")).toBeInTheDocument();
   });
 
   it("puts a failed collection first, even after an earlier success", async () => {
