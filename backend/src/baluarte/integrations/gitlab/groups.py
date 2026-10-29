@@ -11,6 +11,7 @@ from typing import Any
 from sqlalchemy import Engine
 
 from baluarte.db.models import VISIBILITIES, GitLabGroup
+from baluarte.evidence.observations import Provenance
 from baluarte.integrations.gitlab.client import GitLabClient, InvalidResponse
 from baluarte.integrations.gitlab.discovery import Discovery, ResourceKind, discover
 
@@ -42,8 +43,12 @@ GROUPS = ResourceKind(
     lookup_params={"with_projects": "false"},
     to_row=_row,
     refreshed=("parent_gitlab_id", "full_path", "name", "visibility"),
+    target="group_id",
+    evidence_fields=("gitlab_id", "parent_gitlab_id", "full_path", "name", "visibility"),
 )
 
 
-def discover_groups(client: GitLabClient, engine: Engine, base_url: str) -> Discovery:
-    return discover(client, engine, base_url, GROUPS)
+def discover_groups(
+    client: GitLabClient, engine: Engine, base_url: str, provenance: Provenance | None = None
+) -> Discovery:
+    return discover(client, engine, base_url, GROUPS, provenance)

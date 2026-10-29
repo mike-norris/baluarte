@@ -254,6 +254,13 @@ class Observation(Base):
     __table_args__ = (
         Index("ix_observation_project_collected", "project_id", "collected_at"),
         Index("ix_observation_group_collected", "group_id", "collected_at"),
+        Index(
+            "ix_observation_instance_collected",
+            "instance_id",
+            "source",
+            "collected_at",
+            postgresql_where=text("project_id IS NULL AND group_id IS NULL"),
+        ),
         one_of("collection_status", COLLECTION_STATUSES),
         sha256_hex("payload_digest"),
         CheckConstraint("project_id IS NULL OR group_id IS NULL", name="single_target"),
@@ -265,11 +272,12 @@ class Observation(Base):
     project_id: Mapped[int | None] = mapped_column(ForeignKey("gitlab_project.id"))
     group_id: Mapped[int | None] = mapped_column(ForeignKey("gitlab_group.id"))
     collection_job_id: Mapped[int | None] = mapped_column(ForeignKey("collection_job.id"))
+    collection_run_id: Mapped[int | None] = mapped_column(ForeignKey("collection_run.id"))
     source: Mapped[str] = mapped_column(Text)
     source_ref: Mapped[str | None] = mapped_column(Text)
     collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     collection_status: Mapped[str] = mapped_column(Text)
-    payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+    payload: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
     payload_digest: Mapped[str | None] = mapped_column(Text)
     error: Mapped[str | None] = mapped_column(Text)
     retention_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

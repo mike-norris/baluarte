@@ -11,6 +11,7 @@ from typing import Any
 from sqlalchemy import Engine
 
 from baluarte.db.models import NAMESPACE_KINDS, VISIBILITIES, GitLabProject
+from baluarte.evidence.observations import Provenance
 from baluarte.integrations.gitlab.client import GitLabClient, InvalidResponse
 from baluarte.integrations.gitlab.discovery import Discovery, ResourceKind, discover
 
@@ -64,8 +65,21 @@ PROJECTS = ResourceKind(
         "archived",
         "default_branch",
     ),
+    target="project_id",
+    evidence_fields=(
+        "gitlab_id",
+        "path_with_namespace",
+        "name",
+        "namespace_gitlab_id",
+        "namespace_kind",
+        "visibility",
+        "archived",
+        "default_branch",
+    ),
 )
 
 
-def discover_projects(client: GitLabClient, engine: Engine, base_url: str) -> Discovery:
-    return discover(client, engine, base_url, PROJECTS)
+def discover_projects(
+    client: GitLabClient, engine: Engine, base_url: str, provenance: Provenance | None = None
+) -> Discovery:
+    return discover(client, engine, base_url, PROJECTS, provenance)

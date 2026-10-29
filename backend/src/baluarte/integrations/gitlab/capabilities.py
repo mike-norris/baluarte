@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from baluarte.db.models import GitLabInstance
+from baluarte.evidence.observations import Observed, Provenance, record
 from baluarte.integrations.gitlab.client import (
     Forbidden,
     GitLabClient,
@@ -171,3 +172,37 @@ def record_snapshot(db: Session, base_url: str, snapshot: CapabilitySnapshot) ->
     instance.capability_snapshot = snapshot.model_dump(mode="json")
     instance.last_checked_at = snapshot.checked_at
     return instance
+
+
+CAPABILITY_SOURCE = "capabilities"
+
+
+def observe_snapshot(
+    db: Session, instance_id: int, snapshot: CapabilitySnapshot, provenance: Provenance
+) -> None:
+    """Record the snapshot as instance-level evidence; a failed detection has no payload.
+
+    ``checked_at`` is left out of the payload (the observation's ``collected_at`` records the
+    time), so an unchanged snapshot has an unchanged digest and is not stored again.
+    """
+    payload = (
+        None
+        if snapshot.status == "failed"
+        else snapshot.model_dump(mode="json", include={"version", "edition", "tier", "probes"})
+    )
+    record(
+        db,
+        instance_id,
+        None,
+        [
+            Observed(
+                target_id=None,
+                source=CAPABILITY_SOURCE,
+                source_ref=None,
+                collection_status=snapshot.status,
+                payload=payload,
+                error=snapshot.error,
+            )
+        ],
+        provenance,
+    )

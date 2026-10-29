@@ -12,7 +12,8 @@ import httpx
 from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session
 
-from baluarte.integrations.gitlab.capabilities import detect, record_snapshot
+from baluarte.evidence.observations import Provenance
+from baluarte.integrations.gitlab.capabilities import detect, observe_snapshot, record_snapshot
 from baluarte.integrations.gitlab.client import GitLabClient, GitLabError
 from baluarte.integrations.gitlab.discovery import Discovery
 from baluarte.integrations.gitlab.groups import discover_groups
@@ -39,7 +40,7 @@ SNAPSHOT_OUTCOMES: dict[str, RunOutcome] = {
 }
 
 GitLabHandler = Callable[[ClaimedJob, Engine], None]
-DiscoverFn = Callable[[GitLabClient, Engine, str], Discovery]
+DiscoverFn = Callable[[GitLabClient, Engine, str, Provenance], Discovery]
 
 
 def _settings() -> GitLabSettings:
@@ -67,7 +68,9 @@ def make_detect_capabilities(transport: httpx.BaseTransport | None = None) -> Gi
             with GitLabClient(settings, transport=transport) as client:
                 snapshot = detect(client)
             with Session(engine) as db:
-                record_snapshot(db, settings.url, snapshot)
+                instance = record_snapshot(db, settings.url, snapshot)
+                db.flush()
+                observe_snapshot(db, instance.id, snapshot, Provenance(run_id, job.id))
                 db.commit()
         except Exception as exc:
             _unexpected(engine, run_id, exc)
@@ -108,7 +111,7 @@ def _make_discovery(
         run_id = start_run(engine, settings.url, kind, job)
         try:
             with GitLabClient(settings, transport=transport) as client:
-                result = run(client, engine, settings.url)
+                result = run(client, engine, settings.url, Provenance(run_id, job.id))
         except GitLabError as error:
             # Pages already stored stay; nothing is marked missing after an incomplete listing.
             message = f"{singular} discovery failed: {error}"

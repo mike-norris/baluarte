@@ -62,6 +62,7 @@ Both jobs share the following behaviour:
   - Any other failure leaves the row unchanged.
 
   A resource that is listed again becomes `active`.
+- **Evidence:** each listed or confirmed resource, and each one that could not be read, is recorded as an observation with an allowlisted payload and its SHA-256 digest, written only when it changed ([AUDIT_EVIDENCE.md](AUDIT_EVIDENCE.md#observations)).
 - **Failures:** if the listing fails part way, pages already stored are kept, nothing is marked `missing` or `inaccessible`, and the job retries (up to five attempts). The job error holds the safe client message, for example `project discovery failed: GitLab rejected the token (401)`.
 
 Results are read with `GET /api/v1/gitlab/groups` and `GET /api/v1/gitlab/projects`.

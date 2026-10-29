@@ -12,6 +12,7 @@ from baluarte.api.v1 import (
     gitlab,
     health,
     jobs,
+    observations,
     policies,
     policy_assignments,
     ready,
@@ -37,6 +38,7 @@ protected.include_router(jobs.router)
 protected.include_router(audit_events.router)
 protected.include_router(system.router)
 protected.include_router(gitlab.router)
+protected.include_router(observations.router)
 protected.include_router(policies.router)
 protected.include_router(policy_assignments.router)
 
