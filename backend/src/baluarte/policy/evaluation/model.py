@@ -8,7 +8,7 @@ re-reading the inventory. ``unknown`` is never compliant.
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from baluarte.integrations.gitlab.freshness import Freshness
 
@@ -28,6 +28,9 @@ UnknownReason = Literal[
     "ancestry_incomplete",
     "capability_unknown",
     "value_unknown",
+    # Set when a result is stored (BAL-021): a pass or fail must be backed by an observation.
+    "evidence_missing",
+    "evidence_mismatch",
 ]
 UNKNOWN_PRECEDENCE: tuple[UnknownReason, ...] = (
     "target_not_in_inventory",
@@ -41,6 +44,8 @@ UNKNOWN_PRECEDENCE: tuple[UnknownReason, ...] = (
     "ancestry_incomplete",
     "capability_unknown",
     "value_unknown",
+    "evidence_missing",
+    "evidence_mismatch",
 )
 
 CapabilityStatus = Literal["not_required", "supported", "unsupported", "unknown"]
@@ -93,6 +98,10 @@ class RuleResult(_Frozen):
     observed: Any
     # Where the value is read from, e.g. "gitlab_project.visibility".
     source: str
+    # The ``observation.source`` of the evidence for this value, when it is not the project's
+    # inventory observation ("GET /projects" or "GET /projects/:id"). None for inventory fields,
+    # and then left out of the serialized result.
+    observation_source: str | None = Field(default=None, exclude_if=lambda value: value is None)
     # When the value was last confirmed in GitLab; None when ``observed`` is None.
     observed_at: datetime | None
     evaluated_at: datetime

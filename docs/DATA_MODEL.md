@@ -12,8 +12,9 @@ Implemented in `backend/src/baluarte/db/models.py`; migrations `0001` (inventory
 | policy | id, name, version, source_yaml, yaml_digest, effective_at | Immutable versions (`UPDATE` rejected by trigger), unique `(name, version)`; `name` is the document's `metadata.name`, `source_yaml` the exact submitted text and `yaml_digest` the SHA-256 of its UTF-8 bytes. See [POLICY_ENGINE.md](POLICY_ENGINE.md#versions) |
 | policy_assignment | id, instance_id, policy_id, policy_name, target_type, target_id, created_at | Pins one policy version to the instance, a group or a project. `target_id` is the GitLab ID, or the `gitlab_instance` ID for the instance (checked). Unique `(instance_id, target_type, target_id, policy_name)`: one version of each policy per target. A trigger rejects a `policy_name` that differs from the version's name. See [POLICY_ENGINE.md](POLICY_ENGINE.md#assignment-and-inheritance) |
 | observation | id, instance_id, project_id or group_id, collection_job_id, collection_run_id, source, source_ref, collected_at, collection_status, payload, payload_digest, error, retention_until | Evidence provenance. A payload requires a digest (SHA-256 of canonical JSON). Neither target means instance-level (capability snapshots). A new row only when status, digest or error changes; see [AUDIT_EVIDENCE.md](AUDIT_EVIDENCE.md#observations) |
-| evaluation | id, observation_id, policy_id, rule_id, outcome, reason, expected, observed, capability_status, evaluated_at | Outcome `pass`, `fail`, `unknown`, `unsupported`, `excepted` |
-| finding | id, project_id, policy_id, rule_id, latest_evaluation_id, severity, state, first_seen_at, last_seen_at, resolved_at | Unique `(project_id, policy_id, rule_id)`; state `open`, `resolved`, `excepted` |
+| evaluation_run | id, instance_id, collection_job_id, attempt, status, started_at, finished_at, projects, counts, error | One row per `policy.evaluate` attempt, for evaluation freshness; same statuses and interrupted-run handling as `collection_run`. `counts` holds results by outcome and finding transitions |
+| evaluation | id, instance_id, project_id, evaluation_run_id, observation_id, policy_id, policy_name, rule_id, rule_type, severity, outcome, reason, unknown_reasons, expected, observed, source, observed_at, capability_name, capability_status, collection_kind, collection_status, collection_last_success_at, ancestry, evaluated_at | One rule for one project at one time. Outcome `pass`, `fail`, `unknown`, `unsupported`, `excepted`. Checked: `pass` and `fail` reference an observation; `unknown_reasons` is non-empty exactly when `unknown`; `observed` is null unless `pass` or `fail`. `observation_id` is otherwise the project's latest observation, or null when there is none. Written every run (not deduplicated), so it records when each rule was checked. See [Evaluations and findings](#evaluations-and-findings) |
+| finding | id, project_id, policy_id, policy_name, rule_id, latest_evaluation_id, latest_outcome, severity, state, resolution, first_seen_at, last_seen_at, resolved_at | Unique `(project_id, policy_name, rule_id)`: followed across policy versions, `policy_id` is the latest evaluation's version. State `open`, `resolved` (with `resolved_at` and `resolution` `passed` or `no_longer_applies`), `excepted` |
 | audit_event | id, actor, action, resource_type, resource_id, details, details_digest, occurred_at | Administrative trace |
 | export_job | id, requested_by, scope, period_start, period_end, status, manifest_digest | Auditable exports; period must be ordered |
 | app_user | id, issuer, subject, email, display_name, created_at, last_login_at | Unique `(issuer, subject)`; created on first sign-in |
@@ -23,6 +24,20 @@ Implemented in `backend/src/baluarte/db/models.py`; migrations `0001` (inventory
 ## Immutability
 
 Database triggers reject `UPDATE` on `observation`, `evaluation` and `policy`, and both `UPDATE` and `DELETE` on `audit_event`. Deletes of observations and evaluations remain possible so the retention design (BAL-029) can expire them. These triggers stop accidental or application-level changes; they do not stop a database superuser, so integrity still depends on protected digests (see [SECURITY.md](SECURITY.md)).
+
+## Evaluations and findings
+
+The `policy.evaluate` job (`baluarte.policy.evaluation.runner`) evaluates every active project, and every other project that still has an open finding, against its effective policies (BAL-021). It runs after each project discovery that succeeds or is partial, after a policy assignment changes, and on demand. Projects are read 200 at a time; each page is stored in one transaction under a per-instance advisory lock.
+
+- **Evidence:** a `pass` or `fail` is stored only when the project's latest observation of the value's source is `ok` and its payload holds the judged value. Otherwise the result is stored as `unknown` with `evidence_missing` or `evidence_mismatch`, so no stored compliance result lacks evidence. Projects discovered before observations existed are `unknown` until their next discovery.
+- **Findings** are keyed by policy name, so a new version of a baseline continues the same finding:
+  - `fail` opens one, or reopens a resolved one; `last_seen_at` is the latest failing evaluation.
+  - `pass` resolves an open one (`resolution = passed`).
+  - `unknown` and `unsupported` never open or resolve one; `latest_outcome` shows the last check could not decide.
+  - When a rule no longer applies to the project, its open finding resolves as `no_longer_applies`, but only if the project's policy resolution was complete: a gap in the group chain proves nothing.
+  - `excepted` is left to the exception workflow (BAL-033).
+- **Severity** is the rule's `severity` in the policy (`medium` when omitted).
+- `policy_name` on `evaluation` and `finding` must match the referenced version (the trigger from migration 0006).
 
 ## Jobs
 

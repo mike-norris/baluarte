@@ -22,6 +22,7 @@ from baluarte.integrations.gitlab.runs import RunKind, RunOutcome, finish_run, s
 from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_settings
 from baluarte.jobs import queue
 from baluarte.jobs.queue import ClaimedJob, JobError, PermanentJobError
+from baluarte.policy.evaluation.runner import queue_after_collection
 from baluarte.settings import ConfigurationError
 
 logger = logging.getLogger(__name__)
@@ -129,6 +130,12 @@ def _make_discovery(
             counts=result.reconciled,
             error=f"{unconfirmed} {kind} could not be confirmed" if unconfirmed else None,
         )
+        if kind == "projects":
+            # Re-evaluate against the new inventory. A failed discovery queues none (its attempt
+            # is retried); the collection freshness already reports the failure.
+            with Session(engine) as db:
+                queue_after_collection(db, run_id)
+                db.commit()
         logger.info(
             "gitlab %s: %s listed, reconciled %s",
             kind,

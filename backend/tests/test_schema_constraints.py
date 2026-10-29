@@ -106,45 +106,87 @@ def test_rejects_unknown_visibility(session: Session, instance: GitLabInstance) 
         session.commit()
 
 
+def evaluation(
+    session: Session, instance: GitLabInstance, outcome: str, **overrides: Any
+) -> Evaluation:
+    project = add_project(session, instance, 1)
+    observation = add_observation(session, instance)
+    policy = Policy(name="baseline", version=1, source_yaml="x", yaml_digest=digest("x"))
+    session.add(policy)
+    session.commit()
+    values: dict[str, Any] = {
+        "instance_id": instance.id,
+        "project_id": project.id,
+        "observation_id": observation.id,
+        "policy_id": policy.id,
+        "policy_name": "baseline",
+        "rule_id": "project-visibility",
+        "rule_type": "gitlab.project.visibility",
+        "severity": "medium",
+        "outcome": outcome,
+        "reason": "test",
+        "unknown_reasons": ["value_unknown"] if outcome == "unknown" else [],
+        "expected": {"allowed": ["private"]},
+        "observed": "private" if outcome in ("pass", "fail") else None,
+        "source": "gitlab_project.visibility",
+        "capability_status": "not_required",
+        "collection_kind": "projects",
+        "collection_status": "fresh",
+        "ancestry": "complete",
+    }
+    values.update(overrides)
+    return Evaluation(**values)
+
+
 @pytest.mark.parametrize("outcome", ["pass", "fail", "unknown", "unsupported", "excepted"])
 def test_accepts_every_documented_outcome(
     session: Session, instance: GitLabInstance, outcome: str
 ) -> None:
-    observation = add_observation(session, instance)
-    policy = Policy(name="baseline", version=1, source_yaml="x", yaml_digest=digest("x"))
-    session.add(policy)
-    session.commit()
-
-    session.add(
-        Evaluation(
-            observation_id=observation.id,
-            policy_id=policy.id,
-            rule_id="project-visibility",
-            outcome=outcome,
-            reason="test",
-            expected=["private"],
-        )
-    )
+    session.add(evaluation(session, instance, outcome))
     session.commit()
 
 
 def test_rejects_undocumented_outcome(session: Session, instance: GitLabInstance) -> None:
-    observation = add_observation(session, instance)
-    policy = Policy(name="baseline", version=1, source_yaml="x", yaml_digest=digest("x"))
-    session.add(policy)
+    session.add(evaluation(session, instance, "compliant"))
+    with pytest.raises(IntegrityError, match="ck_evaluation_outcome_allowed"):
+        session.commit()
+
+
+@pytest.mark.parametrize(
+    ("outcome", "overrides", "constraint"),
+    [
+        ("pass", {"observation_id": None}, "ck_evaluation_decided_has_evidence"),
+        ("fail", {"observation_id": None}, "ck_evaluation_decided_has_evidence"),
+        ("unknown", {"unknown_reasons": []}, "ck_evaluation_unknown_has_reasons"),
+        ("pass", {"unknown_reasons": ["value_unknown"]}, "ck_evaluation_unknown_has_reasons"),
+        ("unknown", {"observed": "private"}, "ck_evaluation_observed_only_when_decided"),
+        ("pass", {"severity": "urgent"}, "ck_evaluation_severity_allowed"),
+        ("pass", {"ancestry": "partial"}, "ck_evaluation_ancestry_allowed"),
+        ("pass", {"capability_status": "maybe"}, "ck_evaluation_capability_status_allowed"),
+    ],
+)
+def test_evaluation_invariants(
+    session: Session,
+    instance: GitLabInstance,
+    outcome: str,
+    overrides: dict[str, Any],
+    constraint: str,
+) -> None:
+    session.add(evaluation(session, instance, outcome, **overrides))
+    with pytest.raises(IntegrityError, match=constraint):
+        session.commit()
+
+
+def test_unknown_needs_no_observation(session: Session, instance: GitLabInstance) -> None:
+    session.add(evaluation(session, instance, "unknown", observation_id=None))
     session.commit()
 
-    session.add(
-        Evaluation(
-            observation_id=observation.id,
-            policy_id=policy.id,
-            rule_id="project-visibility",
-            outcome="compliant",
-            reason="test",
-            expected=["private"],
-        )
-    )
-    with pytest.raises(IntegrityError, match="ck_evaluation_outcome_allowed"):
+
+def test_evaluation_policy_name_must_match_the_version(
+    session: Session, instance: GitLabInstance
+) -> None:
+    session.add(evaluation(session, instance, "pass", policy_name="another"))
+    with pytest.raises(DBAPIError, match="policy_name does not match"):
         session.commit()
 
 
