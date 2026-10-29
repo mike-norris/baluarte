@@ -126,7 +126,8 @@ describe("account menu", () => {
     });
     const user = userEvent.setup();
 
-    renderAt("/");
+    // A section that makes no API calls of its own, so the only alert is the sign-out error.
+    renderAt("/policies");
     await user.click(await screen.findByRole("button", { name: "Sign out" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Sign-out failed");

@@ -6,6 +6,7 @@ import { RequireSession } from "./auth/RequireSession";
 import { Layout } from "./components/Layout";
 import { CollectionNote } from "./freshness/CollectionNote";
 import { navItems } from "./navigation";
+import { DashboardPage } from "./pages/DashboardPage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
@@ -13,11 +14,12 @@ import { SignInPage } from "./pages/SignInPage";
 
 /** Sections that are implemented; the rest render a placeholder. */
 const pages: Partial<Record<string, ReactNode>> = {
+  "/": <DashboardPage />,
   "/inventory": <InventoryPage />,
 };
 
 /** Placeholders whose content will be derived from GitLab data, so they show its freshness. */
-const collectionDerived = new Set(["/", "/findings", "/evidence"]);
+const collectionDerived = new Set(["/findings", "/evidence"]);
 
 export const routes: RouteObject[] = [
   {

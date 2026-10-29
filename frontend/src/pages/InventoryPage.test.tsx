@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Group, Page, Project } from "../api/gitlab";
 import { routes } from "../routes";
 import { analyst, json, mockApi } from "../test/api";
-import { freshness, kind } from "../test/freshness";
+import { EVALUATION_FRESHNESS, evaluationFreshness, freshness, kind } from "../test/freshness";
 
 const ME = "GET /api/v1/auth/me";
 const FRESHNESS = "GET /api/v1/gitlab/freshness";
@@ -61,7 +61,12 @@ function renderAt(path: string) {
 }
 
 function api(routes: Record<string, () => Response>) {
-  return mockApi({ [ME]: () => json(analyst), [FRESHNESS]: () => json(freshness()), ...routes });
+  return mockApi({
+    [ME]: () => json(analyst),
+    [FRESHNESS]: () => json(freshness()),
+    [EVALUATION_FRESHNESS]: () => json(evaluationFreshness()),
+    ...routes,
+  });
 }
 
 describe("inventory", () => {
