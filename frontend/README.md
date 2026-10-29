@@ -40,8 +40,8 @@ Signed-in users see one status in the header on every page, as text and colour (
 - **Worst wins:** a failed evaluation shows "Failed" even when collection is fresh. The badge links to the details of the signal that set it: `/inventory` for collection (also when both are equally bad), the dashboard for evaluation. An evaluation that never ran reads "Never evaluated".
 - **Unknown is not current:** if either check fails, the header shows "Status unknown" and replaces any earlier "Up to date". Unknown ranks between failed and never, so it is never treated as compliant.
 - **Announcements:** failed, stale and unknown are announced once through a polite live region, naming collection or evaluation. Re-checks that return the same status, and navigation, do not repeat the announcement.
-- **Results behind collection:** `behind_collection` (a project discovery finished after the latest successful evaluation started) does not change the badge, because a queued evaluation follows every discovery and the badge would otherwise flash. The dashboard and the Findings and Evidence placeholders say that results may not reflect the latest collection.
-- **Placeholders:** Findings and Evidence show both statuses, the oldest successful collection across projects, groups and capabilities, and the last successful evaluation. They show no time when any part has never succeeded or the status is unknown.
+- **Results behind collection:** `behind_collection` (a project discovery finished after the latest successful evaluation started) does not change the badge, because a queued evaluation follows every discovery and the badge would otherwise flash. The dashboard, the Findings pages and the Evidence placeholder say that results may not reflect the latest collection.
+- **Placeholders:** Evidence shows both statuses, the oldest successful collection across projects, groups and capabilities, and the last successful evaluation. They show no time when any part has never succeeded or the status is unknown.
 
 ## Dashboard
 
@@ -50,4 +50,18 @@ Signed-in users see one status in the header on every page, as text and colour (
 - **Evaluation status:** the evaluation freshness, with failed and stale announced as alerts, whether a run is running or queued, results behind collection, and the last run's error.
 - **Rule results:** totals by outcome from the latest *successful* run in `GET /api/v1/evaluations/runs` (its `counts.outcomes`). If a newer run has not succeeded, the page says the totals come from an earlier run. The pass share is "X of N rule results", where N includes `unknown` and `unsupported`. Neither is ever counted as passing; each outcome is shown with its meaning. The share is floored, so it never reads 100% unless every result passed.
 - **Open findings:** counted by severity and by policy and rule from `GET /api/v1/findings?state=open`, following `next_after_id` for at most 5 pages of 200. When more remain, every count reads "at least". Open findings whose latest result is unknown or unsupported are called out, since they could not be re-checked. "No open findings" says that this is not compliance, because unknown results never open a finding.
-- **Links:** counts link to `/findings` with the API's own filter names (`state`, `outcome`, `severity`, `policy`, `rule`, `project`), for the Findings page (BAL-024) to read.
+- **Links:** counts link to `/findings` with the API's own filter names (`state`, `outcome`, `severity`, `policy`, `rule`, `project`), which the Findings page reads.
+
+## Findings
+
+`/findings` lists findings from `GET /api/v1/findings`; `/findings/:id` shows one.
+
+- **List:** project, rule, policy and pinned version, severity, state, latest outcome, and first and last seen (UTC). Each project links to the finding.
+- **Filters:** `state`, `outcome`, `severity`, `project` (GitLab ID), `policy` and `rule` are read from and written to the URL in the API's own names, so the dashboard's links and shared URLs open the same view. Values the API would reject are dropped. "Load more" follows `next_after_id`.
+- **Not compliance:** an empty list says that no findings is not the same as every rule passing. An unknown or unsupported latest outcome carries its meaning for screen readers. The policy evaluation status is shown on both pages, and a failed or stale evaluation says the results are not current.
+- **Expected versus actual:** the latest evaluation's expected value beside the observed one. When the outcome is not a pass or fail, or nothing was observed, the observed side reads "Unknown — <reason>" and never shows a value. Every unknown reason code is listed with its meaning, the first one explaining the result. The page also shows the capability the rule depends on, the collection status at evaluation, whether policy inheritance was complete, and the source.
+- **Evidence:** the observation the result judged, from the project's observations (`GET /api/v1/gitlab/projects/:id/observations?before_id=<id+1>&limit=1`, since there is no single-observation endpoint): source, reference, collection time and status, SHA-256 digest, and whether `digest_valid` holds. A failed digest check, an `evidence_digest_mismatch` reason, or a linked record that cannot be found is announced as an alert. A result with no linked evidence says so; for a pass or fail that is also an alert.
+- **History:** every evaluation of the rule for the project, newest first and across policy versions, with "Load older evaluations" following `next_before_id`.
+- **Not found:** an unknown or malformed finding ID shows "Finding not found" without calling the API for a malformed one.
+
+`src/findings/` holds the labels, reason explanations, URL filters and the evaluation note. `src/api/usePaged.ts` and `src/components/ErrorMessage.tsx` are shared with the Inventory page.

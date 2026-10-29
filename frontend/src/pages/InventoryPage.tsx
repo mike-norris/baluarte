@@ -1,7 +1,6 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { Link, useSearchParams } from "react-router";
 
-import { ApiError } from "../api/client";
 import {
   getFreshness,
   listGroups,
@@ -12,7 +11,10 @@ import {
   type Page,
   type Project,
 } from "../api/gitlab";
-import { useLoad, type Loaded } from "../api/useLoad";
+import { usePaged } from "../api/usePaged";
+import { useLoad } from "../api/useLoad";
+import { ErrorMessage } from "../components/ErrorMessage";
+import { buttonClass, fieldClass, secondaryClass } from "../components/styles";
 import { FreshnessPanel } from "../freshness/FreshnessPanel";
 import {
   isFiltered,
@@ -22,26 +24,6 @@ import {
 } from "../inventory/filters";
 import { stateHelp, stateLabels, visibilityLabel } from "../inventory/format";
 import { formatTime } from "../time";
-
-const buttonClass =
-  "rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 disabled:opacity-50";
-const secondaryClass =
-  "rounded border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600";
-const fieldClass =
-  "mt-1 block w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-sky-600";
-
-function ErrorMessage({ error, retry }: { error: ApiError; retry: () => void }) {
-  return (
-    <div role="alert" className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-900">
-      <p>{error.message}</p>
-      {error.status !== 401 && error.status !== 403 && (
-        <button type="button" onClick={retry} className={`mt-3 ${secondaryClass}`}>
-          Try again
-        </button>
-      )}
-    </div>
-  );
-}
 
 function StateCell({ state }: { state: InventoryState }) {
   return (
@@ -126,47 +108,6 @@ function GroupRows({ groups }: { groups: Group[] }) {
       <ErrorCell error={group.last_error} at={group.last_error_at} />
     </tr>
   ));
-}
-
-interface Extra<T> {
-  key: string;
-  items: T[];
-  next: number | null;
-}
-
-/** First page from the hook, later pages appended by "Load more" for the same key. */
-function usePaged<T>(key: string, first: Loaded<Page<T>>, fetchPage: (after: number) => Promise<Page<T>>) {
-  const [extra, setExtra] = useState<Extra<T> | null>(null);
-  const [pending, setPending] = useState(false);
-  const [moreError, setMoreError] = useState<{ key: string; error: ApiError } | null>(null);
-  const current = extra?.key === key ? extra : null;
-  const items = first.data ? [...first.data.items, ...(current?.items ?? [])] : [];
-  const next = current ? current.next : (first.data?.next_after_id ?? null);
-
-  async function loadMore() {
-    if (next === null) return;
-    setPending(true);
-    try {
-      const page = await fetchPage(next);
-      setExtra({ key, items: [...(current?.items ?? []), ...page.items], next: page.next_after_id });
-      setMoreError(null);
-    } catch (error) {
-      setMoreError({
-        key,
-        error: error instanceof ApiError ? error : new ApiError(0, "The response could not be read."),
-      });
-    } finally {
-      setPending(false);
-    }
-  }
-
-  return {
-    items,
-    next,
-    pending,
-    moreError: moreError?.key === key ? moreError.error : undefined,
-    loadMore,
-  };
 }
 
 function Filters({ view, filters }: { view: InventoryView; filters: InventoryFilters }) {
@@ -284,7 +225,12 @@ function Listing<T>({
 }) {
   const key = `${view}?${writeFilters(view, filters).toString()}`;
   const first = useLoad(key, (signal) => load(null, signal));
-  const paged = usePaged(key, first, (after) => load(after));
+  const paged = usePaged<T, Page<T>>(
+    key,
+    first,
+    (page) => page.next_after_id,
+    (after) => load(after),
+  );
   const noun = view === "projects" ? "projects" : "groups";
 
   if (first.error) return <ErrorMessage error={first.error} retry={first.retry} />;
