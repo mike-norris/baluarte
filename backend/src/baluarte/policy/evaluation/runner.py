@@ -36,6 +36,7 @@ from baluarte.policy.evaluation.project import (
     evaluate_project,
 )
 from baluarte.policy.evaluation.store import Tally, store_project
+from baluarte.policy.exceptions import expire_due
 from baluarte.settings import ConfigurationError
 
 logger = logging.getLogger(__name__)
@@ -115,9 +116,12 @@ def finish_run(
 
 
 def _page(db: Session, instance_id: int, after_id: int) -> list[GitLabProject]:
-    """Active projects, and any other project with an open finding so it shows as unknown."""
+    """Active projects, and any other project with an open or excepted finding.
+
+    So a finding on a project that left the inventory shows its latest result as unknown.
+    """
     has_open_finding = exists().where(
-        Finding.project_id == GitLabProject.id, Finding.state == "open"
+        Finding.project_id == GitLabProject.id, Finding.state.in_(("open", "excepted"))
     )
     return list(
         db.scalars(
@@ -144,6 +148,15 @@ def evaluate_all(
     tally = Tally()
     projects = 0
     try:
+        with Session(engine) as db:
+            # Exceptions past their expiry end before anything is judged against them.
+            db.execute(select(func.pg_advisory_xact_lock(_LOCK_CLASS, instance_id)))
+            expired, reopened = expire_due(db)
+            db.commit()
+            if reopened:
+                tally.findings["exception_expired"] += reopened
+            if expired:
+                logger.info("policy exceptions expired: %s", expired)
         with Session(engine) as db:
             # Read once, so every page is judged against the same collection freshness.
             collections = collection_contexts(db, instance_id, settings)

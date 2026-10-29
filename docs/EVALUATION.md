@@ -35,7 +35,7 @@ When a result is stored, its row also records the policy version ID and the ID o
 - **`pass` and `fail`:** only when the value can be trusted. See the next section.
 - **`unknown`:** the rule could not be decided. It is never compliant.
 - **`unsupported`:** the GitLab instance lacks a capability the rule needs.
-- **`excepted`:** reserved for approved exceptions (BAL-033). Nothing produces it yet.
+- **`excepted`:** a `fail` waived by an approved, unexpired exception (BAL-033). It is applied when the result is stored, after the evidence check, so only a backed failure can be waived; `unknown` and `unsupported` never become `excepted`. See [POLICY_ENGINE.md](POLICY_ENGINE.md#exceptions).
 
 ## Deciding a rule
 
@@ -185,6 +185,9 @@ Baluarte never reports unknown, unsupported or stale state as compliant. The end
 | Evidence changed after it was written (digest mismatch) never backs a `pass`, even when the inventory was changed to agree. | `test_tampered_evidence_never_backs_a_pass` |
 | An inventory that disagrees with its evidence is `unknown` (`evidence_mismatch`). | `test_an_inventory_that_disagrees_with_its_evidence_is_unknown` |
 | A new policy version continues the same finding. | `test_a_new_policy_version_continues_the_same_finding` |
+| An exception waives only a backed `fail`: `unknown` (including a stale collection) is never `excepted`, and requested or rejected exceptions waive nothing. | `test_exceptions.py`: `test_unknown_is_never_excepted`, `test_stale_collection_is_not_excepted_but_keeps_a_waived_finding`, `test_only_an_approved_exception_waives` |
+| An exception that expired or was revoked waives nothing: the API reads it as ended at once, and the next run reopens or settles its finding. | `test_expiry_ends_the_waiver_on_the_next_run`, `test_an_exception_past_expiry_reads_as_expired_before_the_next_run`, `test_revoking_reopens_the_finding_at_once`, `test_an_unknown_result_after_the_exception_ended_reopens_the_finding` |
+| Nobody approves or rejects their own exception. | `test_the_requester_cannot_approve_their_own_request`, `test_the_requester_cannot_decide_their_own_request` |
 
 Where a scenario leaves results undecided, the tests also check that no `pass` appears in the latest results, in the project evaluations API (with `observed` empty), or among findings resolved by a pass, and, where every project is affected, in the run's outcome counts. The unit tests in `test_evaluation_visibility.py`, `test_evaluation_default_branch.py`, `test_evaluation_project.py` and `test_evaluation_store.py` cover each reason and transition on its own.
 
@@ -192,5 +195,5 @@ Where a scenario leaves results undecided, the tests also check that no `pass` a
 
 | Item | Issue |
 | --- | --- |
-| Exceptions (`excepted`) | BAL-033 |
+| Exceptions for a group subtree or a whole policy | |
 | Group-level rules. All current rule types target projects. | |
