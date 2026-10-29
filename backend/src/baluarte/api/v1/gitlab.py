@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from baluarte import audit
 from baluarte.auth.dependencies import Principal, database, require
 from baluarte.auth.roles import Permission
-from baluarte.db.models import GitLabGroup, GitLabInstance
+from baluarte.db.models import GitLabGroup, GitLabInstance, GitLabProject
 from baluarte.integrations.gitlab.capabilities import CapabilitySnapshot
 from baluarte.integrations.gitlab.client import GitLabClient
 from baluarte.integrations.gitlab.diagnostics import (
@@ -21,7 +21,11 @@ from baluarte.integrations.gitlab.diagnostics import (
     not_configured,
     run_diagnostics,
 )
-from baluarte.integrations.gitlab.jobs import DETECT_CAPABILITIES, DISCOVER_GROUPS
+from baluarte.integrations.gitlab.jobs import (
+    DETECT_CAPABILITIES,
+    DISCOVER_GROUPS,
+    DISCOVER_PROJECTS,
+)
 from baluarte.integrations.gitlab.settings import load_gitlab_settings
 from baluarte.jobs import queue
 from baluarte.settings import ConfigurationError
@@ -200,6 +204,28 @@ def discover_groups(
     return _queue(db, principal, DISCOVER_GROUPS, "gitlab.group_discovery_requested", 5)
 
 
+@router.post(
+    "/projects/discover",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=JobQueued,
+    summary="Queue project discovery",
+    description=_QUEUED_DOC,
+    responses={409: {"description": "GitLab is not configured"}},
+)
+def discover_projects(
+    principal: Annotated[Principal, Depends(require(Permission.SETTINGS_MANAGE))],
+    db: Annotated[Session, Depends(database)],
+) -> JobQueued:
+    return _queue(db, principal, DISCOVER_PROJECTS, "gitlab.project_discovery_requested", 5)
+
+
+InventoryState = Literal["active", "missing", "inaccessible"]
+_STATE_DOC = (
+    "`state` is `active`, `inaccessible` (exists, but the token may not read it) or `missing` "
+    "(deleted or hidden from the token). `last_seen_at` is when discovery last listed it."
+)
+
+
 class GroupOut(BaseModel):
     id: int
     gitlab_id: int
@@ -225,14 +251,12 @@ def _like(text: str) -> str:
     "/groups",
     response_model=GroupPage,
     summary="Discovered groups and subgroups",
-    description="Groups of the configured instance in ID order. `state` is `active`, "
-    "`inaccessible` (exists, but the token may not read it) or `missing` (deleted or hidden "
-    "from the token). `last_seen_at` is when discovery last listed the group.",
+    description="Groups of the configured instance in ID order. " + _STATE_DOC,
 )
 def list_groups(
     _: Annotated[Principal, Depends(require(Permission.INVENTORY_READ))],
     db: Annotated[Session, Depends(database)],
-    state: Annotated[Literal["active", "missing", "inaccessible"] | None, Query()] = None,
+    state: Annotated[InventoryState | None, Query()] = None,
     search: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
     parent_gitlab_id: Annotated[int | None, Query(gt=0)] = None,
     after_id: Annotated[int | None, Query(gt=0)] = None,
@@ -259,3 +283,70 @@ def list_groups(
     rows = db.scalars(statement).all()
     items = [GroupOut.model_validate(row, from_attributes=True) for row in rows[:limit]]
     return GroupPage(items=items, next_after_id=items[-1].id if len(rows) > limit else None)
+
+
+class ProjectOut(BaseModel):
+    id: int
+    gitlab_id: int
+    namespace_gitlab_id: int
+    path_with_namespace: str
+    name: str
+    visibility: str | None
+    archived: bool
+    default_branch: str | None
+    state: str
+    first_seen_at: datetime
+    last_seen_at: datetime
+
+
+class ProjectPage(BaseModel):
+    items: list[ProjectOut]
+    next_after_id: int | None
+
+
+@router.get(
+    "/projects",
+    response_model=ProjectPage,
+    summary="Discovered projects",
+    description="Projects of the configured instance in ID order, archived ones included. "
+    "`visibility` and `default_branch` are null when unknown or (for the branch) when the "
+    "repository is empty. " + _STATE_DOC,
+)
+def list_projects(
+    _: Annotated[Principal, Depends(require(Permission.INVENTORY_READ))],
+    db: Annotated[Session, Depends(database)],
+    state: Annotated[InventoryState | None, Query()] = None,
+    search: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
+    namespace_gitlab_id: Annotated[int | None, Query(gt=0)] = None,
+    visibility: Annotated[Literal["private", "internal", "public"] | None, Query()] = None,
+    archived: Annotated[bool | None, Query()] = None,
+    after_id: Annotated[int | None, Query(gt=0)] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+) -> ProjectPage:
+    url = _configured_url()
+    if url is None:
+        return ProjectPage(items=[], next_after_id=None)
+    statement = (
+        select(GitLabProject)
+        .join(GitLabInstance, GitLabInstance.id == GitLabProject.instance_id)
+        .where(GitLabInstance.base_url == url)
+        .order_by(GitLabProject.id)
+        .limit(limit + 1)
+    )
+    if state is not None:
+        statement = statement.where(GitLabProject.state == state)
+    if search is not None:
+        statement = statement.where(
+            GitLabProject.path_with_namespace.ilike(_like(search), escape="\\")
+        )
+    if namespace_gitlab_id is not None:
+        statement = statement.where(GitLabProject.namespace_gitlab_id == namespace_gitlab_id)
+    if visibility is not None:
+        statement = statement.where(GitLabProject.visibility == visibility)
+    if archived is not None:
+        statement = statement.where(GitLabProject.archived.is_(archived))
+    if after_id is not None:
+        statement = statement.where(GitLabProject.id > after_id)
+    rows = db.scalars(statement).all()
+    items = [ProjectOut.model_validate(row, from_attributes=True) for row in rows[:limit]]
+    return ProjectPage(items=items, next_after_id=items[-1].id if len(rows) > limit else None)

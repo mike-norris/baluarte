@@ -125,3 +125,17 @@ def group(
         "parent_id": parent,
         "visibility": "private",
     } | extra
+
+
+def project(
+    gitlab_id: int, path: str, namespace_id: int, kind: str = "group", **extra: Any
+) -> dict[str, Any]:
+    return {
+        "id": gitlab_id,
+        "path_with_namespace": path,
+        "name": path.rsplit("/", 1)[-1],
+        "namespace": {"id": namespace_id, "kind": kind, "full_path": path.rsplit("/", 1)[0]},
+        "visibility": "private",
+        "archived": False,
+        "default_branch": "main",
+    } | extra

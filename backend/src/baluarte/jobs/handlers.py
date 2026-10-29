@@ -14,8 +14,10 @@ from sqlalchemy import Engine
 from baluarte.integrations.gitlab.jobs import (
     DETECT_CAPABILITIES,
     DISCOVER_GROUPS,
+    DISCOVER_PROJECTS,
     make_detect_capabilities,
     make_discover_groups,
+    make_discover_projects,
 )
 from baluarte.jobs.queue import ClaimedJob
 
@@ -24,4 +26,5 @@ Handler = Callable[[ClaimedJob, Engine], None]
 HANDLERS: Mapping[str, Handler] = {
     DETECT_CAPABILITIES: make_detect_capabilities(),
     DISCOVER_GROUPS: make_discover_groups(),
+    DISCOVER_PROJECTS: make_discover_projects(),
 }

@@ -38,7 +38,7 @@ Delivery is at least once: handlers must be idempotent. Jobs are never deleted b
 
 ## Audit digests
 
-`gitlab_group.state` is `active` (returned by the last complete listing, or confirmed by a direct lookup), `inaccessible` (lookup answered 401 or 403) or `missing` (lookup answered 404: deleted, or hidden from the token). See [GITLAB_INTEGRATION.md](GITLAB_INTEGRATION.md#group-discovery).
+`gitlab_group.state` and `gitlab_project.state` are `active` (returned by the last complete listing, or confirmed by a direct lookup), `inaccessible` (lookup answered 401 or 403) or `missing` (lookup answered 404: deleted, or hidden from the token). See [GITLAB_INTEGRATION.md](GITLAB_INTEGRATION.md#inventory-discovery).
 
 `gitlab_instance.capability_snapshot` holds the latest capability detection result: `status` (`ok`, `partial`, `failed`), `checked_at`, `version`, `edition`, `tier`, `error` and one entry per probe with `status`, `endpoint`, `http_status` and `detail` (see [GITLAB_INTEGRATION.md](GITLAB_INTEGRATION.md#capability-detection)).
 
