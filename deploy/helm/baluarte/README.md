@@ -32,7 +32,7 @@ helm upgrade baluarte deploy/helm/baluarte -n baluarte --reuse-values \
   --set 'auth.oidc.adminGroups={baluarte-admins}'
 ```
 
-For evaluation only, `--set devDatabase.enabled=true` runs a single PostgreSQL pod with a generated password. It has no backups or high availability.
+For evaluation only, `--set devDatabase.enabled=true` runs a single PostgreSQL pod with a generated password. It has no backups or high availability. Back up the external database with your provider's tooling; restore and verification steps are in [docs/OPERATIONS.md](../../../docs/OPERATIONS.md#kubernetes-helm).
 
 ## Key values
 

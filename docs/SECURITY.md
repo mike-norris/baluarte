@@ -52,6 +52,10 @@ Sign-in, failed sign-in (with a reason code) and sign-out are written to `audit_
 
 `audit_event` rows are append-only (database triggers) and carry a SHA-256 digest of their canonical details. Details are redacted before hashing. Each committed event is also written to the `baluarte.audit` logger as a JSON line with an `audit` field (id, actor, action, resource, details, digest), so a log collector can keep an independent copy; rolled-back actions are not logged. Admins and auditors read the trail through `GET /api/v1/audit-events`.
 
+## Backups
+
+Database backups contain inventory, evidence and the audit trail but no GitLab token or OIDC secret, and session cookies only as digests. Encrypt them, store a copy off the database host, restrict restore access like database access, and revoke all sessions after restoring to an earlier point. Procedures, verification and the current retention gaps are in [OPERATIONS.md](OPERATIONS.md); what the audit trail can and cannot prove is in [AUDIT_EVIDENCE.md](AUDIT_EVIDENCE.md#audit-limitations).
+
 ## Threats to test
 
 Credential theft, privilege escalation, forged webhook payloads, stale inventory reported as green, manipulated evidence, unauthorized export, GitLab API outages, cross-project data leaks, job duplication, malicious YAML, and compromised dependencies.
