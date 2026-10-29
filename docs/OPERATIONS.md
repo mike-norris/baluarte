@@ -29,7 +29,7 @@ docker compose exec -T db pg_restore -U baluarte -d baluarte --no-owner --exit-o
 docker compose up -d --wait        # migrate re-runs and applies any newer migrations
 ```
 
-Restore into a new image version only forwards: `baluarte-migrate` upgrades an older dump to the current schema, but a dump from a newer Baluarte cannot be restored under an older one.
+Restores only move forward: `baluarte-migrate` upgrades an older dump to the current schema, but a dump from a newer Baluarte cannot be restored under an older one.
 
 ## Kubernetes (Helm)
 
