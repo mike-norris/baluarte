@@ -119,6 +119,8 @@ The policies in force for a project come from its *path*, nearest first:
 3. that group's ancestors, up to the top-level group
 4. the instance
 
+A personal project has no groups on its path (see below).
+
 A group's path starts at the group itself.
 
 For each policy name assigned anywhere on the path:
@@ -145,7 +147,7 @@ Resolution follows `parent_gitlab_id` through the group inventory. Some steps ca
 
 | Reason | Meaning | Walk |
 | --- | --- | --- |
-| `not_in_inventory` | The namespace or parent group has not been discovered (or is a user namespace, below). | Stops; the instance is still included |
+| `not_in_inventory` | The namespace or parent group has not been discovered, or the project's namespace kind is unknown and no group has its ID (below). | Stops; the instance is still included |
 | `missing`, `inaccessible` | The group is in the inventory but was not confirmed by the last discovery. | Continues with its last known parent |
 | `cycle`, `too_deep` | The recorded parents loop, or exceed GitLab's 20 levels of subgroups. | Stops |
 
@@ -155,7 +157,9 @@ A project's or group's own `missing` or `inaccessible` state is reported in `tar
 
 ### Personal projects
 
-A personal project's namespace is a user, not a group. The inventory does not record namespace kinds yet, so a personal project reports its namespace as a `not_in_inventory` gap. Its path is the project, then the instance. Only `"*"` scopes cover it in practice, because no group shares a username's path.
+A personal project's namespace is a user, not a group. Project discovery records the namespace kind (`gitlab_project.namespace_kind`), and a project in a `user` namespace resolves with a complete ancestry: its path is the project, then the instance. Only `"*"` scopes cover it in practice, because no group shares a username's path.
+
+A null `namespace_kind` means the kind is unknown: the project was discovered before kinds were recorded, or GitLab returned a kind Baluarte does not recognise. Such a project is not assumed to be personal. Its namespace is looked up as a group, and if no group has that ID it is a `not_in_inventory` gap, so the ancestry is `incomplete` until the next project discovery records the kind.
 
 ### API
 
@@ -173,7 +177,6 @@ Audit events record the policy name, version, digest, target type, target ID and
 
 - Evaluating rules (BAL-019 to BAL-021). Evaluations will reference the pinned version from the resolution.
 - How `effective_at` is scheduled. Today a version takes effect when it is saved.
-- Recording namespace kinds during project discovery, so personal projects resolve without a gap.
 
 ## Outcomes
 

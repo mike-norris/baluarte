@@ -49,7 +49,7 @@ Groups and projects are discovered by worker jobs, queued by `POST /api/v1/gitla
 | Job | Listing | Notes |
 |---|---|---|
 | `gitlab.discover_groups` | `GET /groups?all_available=true&order_by=id&sort=asc` | Every group the token can see, nested subgroups included. `parent_gitlab_id` records the hierarchy. A subgroup can be visible while its parent is not, so a parent ID may have no row |
-| `gitlab.discover_projects` | `GET /projects?pagination=keyset&order_by=id&sort=asc` | Every project the token can see, including personal projects (`namespace_gitlab_id` is then a user namespace) and archived projects (`archived` is true). Keyset pagination is used because GitLab limits offset pagination of `/projects` on large instances. `default_branch` is null for an empty repository |
+| `gitlab.discover_projects` | `GET /projects?pagination=keyset&order_by=id&sort=asc` | Every project the token can see, including personal projects (`namespace_kind` is `user` and `namespace_gitlab_id` is the user namespace; an unrecognised kind is stored as null) and archived projects (`archived` is true). Keyset pagination is used because GitLab limits offset pagination of `/projects` on large instances. `default_branch` is null for an empty repository |
 
 Both jobs share the following behaviour:
 

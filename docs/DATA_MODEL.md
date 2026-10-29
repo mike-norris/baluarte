@@ -1,12 +1,12 @@
 # Data model
 
-Implemented in `backend/src/baluarte/db/models.py`; migrations `0001` (inventory, policy and evidence), `0002` (users and sessions), `0003` (job lease constraints), `0004` (collection runs and resource errors), `0005` (immutable policy versions) and `0006` (policy assignment rules) create it. All primary keys are `bigint` identity columns, all timestamps are `timestamptz` (UTC instants), and status-like columns are `text` with CHECK constraints rather than PostgreSQL enum types. SHA-256 digests are stored as 64-character lowercase hex and checked by constraint.
+Implemented in `backend/src/baluarte/db/models.py`; migrations `0001` (inventory, policy and evidence), `0002` (users and sessions), `0003` (job lease constraints), `0004` (collection runs and resource errors), `0005` (immutable policy versions), `0006` (policy assignment rules) and `0007` (project namespace kinds) create it. All primary keys are `bigint` identity columns, all timestamps are `timestamptz` (UTC instants), and status-like columns are `text` with CHECK constraints rather than PostgreSQL enum types. SHA-256 digests are stored as 64-character lowercase hex and checked by constraint.
 
 | Table | Key fields | Notes |
 |---|---|---|
 | gitlab_instance | id, base_url (unique), version, edition, capability_snapshot, last_checked_at | One instance in v0.1 (ADR-0004); the ID is kept on every GitLab resource |
 | gitlab_group | id, instance_id, gitlab_id, parent_gitlab_id, full_path, visibility, state, first_seen_at, last_seen_at, last_error, last_error_at | Unique `(instance_id, gitlab_id)`; state `active`, `missing`, `inaccessible` |
-| gitlab_project | id, instance_id, gitlab_id, namespace_gitlab_id, path_with_namespace, visibility, archived, default_branch, state, first_seen_at, last_seen_at, last_error, last_error_at | Unique `(instance_id, gitlab_id)`; current inventory cache |
+| gitlab_project | id, instance_id, gitlab_id, namespace_gitlab_id, namespace_kind, path_with_namespace, visibility, archived, default_branch, state, first_seen_at, last_seen_at, last_error, last_error_at | Unique `(instance_id, gitlab_id)`; current inventory cache |
 | collection_run | id, instance_id, kind, collection_job_id, attempt, status, started_at, finished_at, seen, counts, error | One row per job attempt for freshness. Kind `capabilities`, `groups`, `projects`; status `running`, `succeeded`, `partial`, `failed`; finished exactly when not running |
 | collection_job | id, kind, state, idempotency_key (unique), payload, attempt, max_attempts, run_after, lease_owner, lease_until, error | Background jobs (see [Jobs](#jobs)). A lease is held exactly when `running`; `attempt` never exceeds `max_attempts`; indexed for claiming and for finding expired leases |
 | policy | id, name, version, source_yaml, yaml_digest, effective_at | Immutable versions (`UPDATE` rejected by trigger), unique `(name, version)`; `name` is the document's `metadata.name`, `source_yaml` the exact submitted text and `yaml_digest` the SHA-256 of its UTF-8 bytes. See [POLICY_ENGINE.md](POLICY_ENGINE.md#versions) |
@@ -40,6 +40,8 @@ Delivery is at least once: handlers must be idempotent. Jobs are never deleted b
 ## Audit digests
 
 `gitlab_group.state` and `gitlab_project.state` are `active` (returned by the last complete listing, or confirmed by a direct lookup), `inaccessible` (lookup answered 401 or 403) or `missing` (lookup answered 404: deleted, or hidden from the token). See [GITLAB_INTEGRATION.md](GITLAB_INTEGRATION.md#inventory-discovery).
+
+`gitlab_project.namespace_kind` is `group`, `user` (a personal project) or null when unknown. Rows discovered before migration `0007` are null until the next project discovery refreshes them, and a kind GitLab adds later is stored as null rather than guessed. Policy resolution treats null as unconfirmed, never as a complete ancestry ([POLICY_ENGINE.md](POLICY_ENGINE.md#personal-projects)).
 
 `gitlab_instance.capability_snapshot` holds the latest capability detection result: `status` (`ok`, `partial`, `failed`), `checked_at`, `version`, `edition`, `tier`, `error` and one entry per probe with `status`, `endpoint`, `http_status` and `detail` (see [GITLAB_INTEGRATION.md](GITLAB_INTEGRATION.md#capability-detection)).
 

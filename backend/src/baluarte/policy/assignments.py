@@ -8,6 +8,9 @@ a project walks project, namespace group, its ancestors, then the instance:
 - The winning version's ``spec.scope.groups`` then decides whether it applies: when the target
   is outside the scope the name is ``out_of_scope`` and does not fall back to a farther
   assignment, so a version that a nearer owner replaced is never applied by accident.
+- A personal project's namespace is a user, so its path goes straight to the instance and is
+  complete. When the namespace kind is unknown (not yet rediscovered), the namespace is looked
+  up as a group like any other.
 - A group on the path that is not in the inventory, or is missing or inaccessible, makes the
   ancestry ``incomplete`` and is listed in ``gaps``. An incomplete resolution may lack policies
   (or nearer overrides) assigned to the groups that could not be followed.
@@ -263,9 +266,10 @@ def _resolve(
 def resolve_project(db: Session, instance: GitLabInstance, project: GitLabProject) -> Resolution:
     """Policies in force for a project.
 
-    The namespace of a personal project is a user, not a group, and the inventory does not yet
-    record namespace kinds, so a personal project reports its namespace as ``not_in_inventory``.
-    In practice only ``"*"`` scopes cover it: no group shares a username's path.
+    A personal project has no groups above it, so only project and instance assignments apply;
+    in practice only ``"*"`` scopes cover it, since no group shares a username's path. A project
+    whose namespace kind is unknown is not assumed to be personal: its namespace is looked up as
+    a group and reported as ``not_in_inventory`` when absent.
     """
     target = Target(
         target_type="project",
@@ -274,7 +278,8 @@ def resolve_project(db: Session, instance: GitLabInstance, project: GitLabProjec
         state=project.state,
     )
     namespace_path = project.path_with_namespace.rsplit("/", 1)[0]
-    return _resolve(db, instance, target, project.namespace_gitlab_id, namespace_path)
+    start = None if project.namespace_kind == "user" else project.namespace_gitlab_id
+    return _resolve(db, instance, target, start, namespace_path)
 
 
 def resolve_group(db: Session, instance: GitLabInstance, group: GitLabGroup) -> Resolution:

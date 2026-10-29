@@ -68,6 +68,12 @@ def test_discovers_projects_with_keyset_pagination(migrated_engine: Engine) -> N
     assert (stored[10].namespace_gitlab_id, stored[10].visibility) == (1, "internal")
     assert stored[11].archived is True
     assert (stored[12].namespace_gitlab_id, stored[12].visibility) == (900, "public")
+    assert {gitlab_id: row.namespace_kind for gitlab_id, row in stored.items()} == {
+        10: "group",
+        11: "group",
+        12: "user",
+        13: "group",
+    }
     assert stored[13].default_branch is None
     assert stored[10].default_branch == "main"
     assert {row.state for row in stored.values()} == {"active"}
@@ -82,7 +88,11 @@ def test_rediscovery_follows_moves_and_changes(migrated_engine: Engine) -> None:
             project(10, "security/api", 4, visibility="private", default_branch="trunk"),
             project(11, "platform/backend/billing", 2, archived=False),
         ],
-        PAGES[1],
+        [
+            # Transferred from a user to a group, and a kind GitLab may add later.
+            project(12, "platform/scratch", 1, visibility="public"),
+            project(13, "platform/empty", 1, kind="organization", default_branch=None),
+        ],
     ]
 
     discover(migrated_engine, fake_with(changed))
@@ -93,6 +103,12 @@ def test_rediscovery_follows_moves_and_changes(migrated_engine: Engine) -> None:
     assert (after[10].visibility, after[10].default_branch) == ("private", "trunk")
     assert after[11].archived is False
     assert after[10].first_seen_at == before[10].first_seen_at
+    assert (after[12].path_with_namespace, after[12].namespace_kind) == (
+        "platform/scratch",
+        "group",
+    )
+    # Unrecognised kinds are stored as unknown, never guessed.
+    assert after[13].namespace_kind is None
 
 
 @pytest.mark.parametrize(
