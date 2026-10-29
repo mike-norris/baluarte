@@ -1,6 +1,6 @@
 # Data model
 
-Implemented in `backend/src/baluarte/db/models.py`; migrations `0001` (inventory, policy and evidence), `0002` (users and sessions), `0003` (job lease constraints) and `0004` (collection runs and resource errors) create it. All primary keys are `bigint` identity columns, all timestamps are `timestamptz` (UTC instants), and status-like columns are `text` with CHECK constraints rather than PostgreSQL enum types. SHA-256 digests are stored as 64-character lowercase hex and checked by constraint.
+Implemented in `backend/src/baluarte/db/models.py`; migrations `0001` (inventory, policy and evidence), `0002` (users and sessions), `0003` (job lease constraints), `0004` (collection runs and resource errors) and `0005` (immutable policy versions) create it. All primary keys are `bigint` identity columns, all timestamps are `timestamptz` (UTC instants), and status-like columns are `text` with CHECK constraints rather than PostgreSQL enum types. SHA-256 digests are stored as 64-character lowercase hex and checked by constraint.
 
 | Table | Key fields | Notes |
 |---|---|---|
@@ -9,7 +9,7 @@ Implemented in `backend/src/baluarte/db/models.py`; migrations `0001` (inventory
 | gitlab_project | id, instance_id, gitlab_id, namespace_gitlab_id, path_with_namespace, visibility, archived, default_branch, state, first_seen_at, last_seen_at, last_error, last_error_at | Unique `(instance_id, gitlab_id)`; current inventory cache |
 | collection_run | id, instance_id, kind, collection_job_id, attempt, status, started_at, finished_at, seen, counts, error | One row per job attempt for freshness. Kind `capabilities`, `groups`, `projects`; status `running`, `succeeded`, `partial`, `failed`; finished exactly when not running |
 | collection_job | id, kind, state, idempotency_key (unique), payload, attempt, max_attempts, run_after, lease_owner, lease_until, error | Background jobs (see [Jobs](#jobs)). A lease is held exactly when `running`; `attempt` never exceeds `max_attempts`; indexed for claiming and for finding expired leases |
-| policy | id, name, version, source_yaml, yaml_digest, effective_at | Immutable versions, unique `(name, version)` |
+| policy | id, name, version, source_yaml, yaml_digest, effective_at | Immutable versions (`UPDATE` rejected by trigger), unique `(name, version)`; `name` is the document's `metadata.name`, `source_yaml` the exact submitted text and `yaml_digest` the SHA-256 of its UTF-8 bytes. See [POLICY_ENGINE.md](POLICY_ENGINE.md#versions) |
 | policy_assignment | id, policy_id, target_type, target_id, precedence | Unique per policy and target; inheritance rules pending (BAL-018) |
 | observation | id, instance_id, project_id or group_id, collection_job_id, source, source_ref, collected_at, collection_status, payload, payload_digest, error, retention_until | Evidence provenance. A payload requires a digest. Neither target means instance-level |
 | evaluation | id, observation_id, policy_id, rule_id, outcome, reason, expected, observed, capability_status, evaluated_at | Outcome `pass`, `fail`, `unknown`, `unsupported`, `excepted` |
@@ -22,7 +22,7 @@ Implemented in `backend/src/baluarte/db/models.py`; migrations `0001` (inventory
 
 ## Immutability
 
-Database triggers reject `UPDATE` on `observation` and `evaluation`, and both `UPDATE` and `DELETE` on `audit_event`. Deletes of observations and evaluations remain possible so the retention design (BAL-029) can expire them. These triggers stop accidental or application-level changes; they do not stop a database superuser, so integrity still depends on protected digests (see [SECURITY.md](SECURITY.md)).
+Database triggers reject `UPDATE` on `observation`, `evaluation` and `policy`, and both `UPDATE` and `DELETE` on `audit_event`. Deletes of observations and evaluations remain possible so the retention design (BAL-029) can expire them. These triggers stop accidental or application-level changes; they do not stop a database superuser, so integrity still depends on protected digests (see [SECURITY.md](SECURITY.md)).
 
 ## Jobs
 
