@@ -4,11 +4,13 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from gitlab_fake import TOKEN, URL, FakeGitLab, paged, project
 from sqlalchemy import Engine, delete, func, insert, select, text, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
+from test_evaluation_project import observe_protection, protection, set_probe
 from test_policy_schema import BASELINE
 
 from baluarte.db.models import (
@@ -24,27 +26,37 @@ from baluarte.db.models import (
     PolicyAssignment,
 )
 from baluarte.evidence.observations import Observed, record
+from baluarte.integrations.gitlab.branches import PROTECTION_SOURCE
 from baluarte.integrations.gitlab.instances import instance_for
 from baluarte.integrations.gitlab.jobs import DISCOVER_PROJECTS, make_discover_projects
 from baluarte.integrations.gitlab.settings import GitLabSettings
 from baluarte.jobs import queue
 from baluarte.jobs.worker import Worker
-from baluarte.policy.assignments import Target, assign
+from baluarte.policy.assignments import Target, assign, resolve_project
 from baluarte.policy.evaluation import runner
+from baluarte.policy.evaluation.project import collection_contexts, evaluate_project
 from baluarte.policy.evaluation.runner import (
     EVALUATE,
-    capability_statuses,
     evaluate,
     evaluate_all,
     request_evaluation,
 )
+from baluarte.policy.evaluation.store import Tally, store_project
 from baluarte.policy.store import save_version
 
 pytestmark = pytest.mark.db
 
 SETTINGS = GitLabSettings(url=URL, token=TOKEN)
-NEXT_VERSION = BASELINE.replace("allowed: [private, internal]", "allowed: [private]")
-HIGH = BASELINE.replace(
+# The baseline without its default-branch rule, so each project has one result.
+VISIBILITY_ONLY = BASELINE.replace(
+    """    - id: default-branch-protected
+      type: gitlab.branch.default_protected
+      required: true
+""",
+    "",
+)
+NEXT_VERSION = VISIBILITY_ONLY.replace("allowed: [private, internal]", "allowed: [private]")
+HIGH = VISIBILITY_ONLY.replace(
     "allowed: [private, internal]", "allowed: [private, internal]\n      severity: high"
 )
 
@@ -79,13 +91,13 @@ class World:
             )
             db.commit()
 
-    def save(self, source: str = BASELINE) -> int:
+    def save(self, source: str = VISIBILITY_ONLY) -> int:
         with Session(self.engine) as db:
             policy_id = save_version(db, source).policy.id
             db.commit()
             return policy_id
 
-    def assign(self, source: str = BASELINE, target: Target | None = None) -> None:
+    def assign(self, source: str = VISIBILITY_ONLY, target: Target | None = None) -> None:
         with Session(self.engine) as db:
             policy = save_version(db, source).policy
             target = target or Target(
@@ -102,6 +114,7 @@ class World:
         observe: bool = True,
         state: str = "active",
         namespace: int = 10,
+        default_branch: str | None = None,
     ) -> int:
         with Session(self.engine) as db:
             row = GitLabProject(
@@ -113,6 +126,7 @@ class World:
                 name=f"p{gitlab_id}",
                 visibility=visibility,
                 state=state,
+                default_branch=default_branch,
             )
             db.add(row)
             db.commit()
@@ -200,6 +214,61 @@ def test_a_fail_is_stored_with_its_evidence_and_opens_a_finding(world: World) ->
     assert run.status == "succeeded"
     assert run.projects == 1
     assert run.counts == {"outcomes": {"fail": 1}, "findings": {"opened": 1}}
+
+
+def test_each_rule_links_the_observation_it_judged(migrated_engine: Engine) -> None:
+    world = World(migrated_engine)
+    world.assign(BASELINE)
+    set_probe(migrated_engine, world.instance_id, "supported")
+    project_id = world.project(1, "private", default_branch="main")
+    observe_protection(migrated_engine, world.instance_id, 1, protection("main", False))
+
+    run = world.run()
+
+    with Session(migrated_engine) as db:
+        sources = {
+            row.id: row.source
+            for row in db.scalars(select(Observation).where(Observation.project_id == project_id))
+        }
+    by_rule = {e.rule_id: e for e in world.evaluations()}
+    assert set(by_rule) == {"project-visibility", "default-branch-protected"}
+    visibility = by_rule["project-visibility"]
+    branch = by_rule["default-branch-protected"]
+    assert (visibility.outcome, sources[visibility.observation_id or 0]) == (
+        "pass",
+        "GET /projects",
+    )
+    assert (branch.outcome, sources[branch.observation_id or 0]) == ("fail", PROTECTION_SOURCE)
+    assert branch.observed == protection("main", False)
+    assert (branch.capability_name, branch.capability_status) == (
+        "protected_branches.read",
+        "supported",
+    )
+    (finding,) = world.findings()
+    assert finding.rule_id == "default-branch-protected"
+    assert run.counts["outcomes"] == {"pass": 1, "fail": 1}
+
+
+def test_a_protection_result_must_match_its_observation(migrated_engine: Engine) -> None:
+    world = World(migrated_engine)
+    world.assign(BASELINE)
+    set_probe(migrated_engine, world.instance_id, "supported")
+    world.project(1, "private", default_branch="main")
+    observe_protection(migrated_engine, world.instance_id, 1, protection("main", True))
+
+    with Session(migrated_engine) as db:
+        project_row = db.scalars(select(GitLabProject)).one()
+        resolution = resolve_project(db, db.get_one(GitLabInstance, world.instance_id), project_row)
+        collections = collection_contexts(db, world.instance_id, SETTINGS)
+        (_, branch) = evaluate_project(db, project_row, resolution, collections)
+        # The value judged differs from the latest stored protection observation.
+        tampered = branch.model_copy(update={"observed": protection("main", False)})
+        (stored,) = store_project(
+            db, world.instance_id, project_row, resolution, [tampered], None, Tally()
+        )
+
+    assert branch.outcome == "pass"
+    assert (stored.outcome, stored.unknown_reasons) == ("unknown", ["evidence_mismatch"])
 
 
 def test_a_pass_opens_nothing(world: World) -> None:
@@ -483,39 +552,73 @@ def gitlab_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.delenv("BALUARTE_GITLAB_TOKEN", raising=False)
 
 
-def test_project_discovery_queues_an_evaluation_that_the_worker_runs(
-    migrated_engine: Engine, gitlab_env: None
-) -> None:
-    world = World(migrated_engine)
-    world.assign()
-    fake = FakeGitLab()
-    fake.set(
-        "/projects", paged("/projects", [[project(1, "platform/api", 10, visibility="public")]])
-    )
-    with Session(migrated_engine) as db:
+def discover_and_evaluate(engine: Engine, fake: FakeGitLab) -> tuple[CollectionRun, World]:
+    world = World(engine)
+    world.assign(BASELINE)
+    set_probe(engine, world.instance_id, "supported")
+    with Session(engine) as db:
         queue.enqueue(db, DISCOVER_PROJECTS, "test", max_attempts=1)
         db.commit()
     worker = Worker(
-        migrated_engine,
-        {DISCOVER_PROJECTS: make_discover_projects(fake.transport), EVALUATE: evaluate},
+        engine, {DISCOVER_PROJECTS: make_discover_projects(fake.transport), EVALUATE: evaluate}
     )
-
     assert worker.run_once()
     assert worker.run_once()
-
-    with Session(migrated_engine) as db:
-        jobs = {job.kind: job for job in db.scalars(select(CollectionJob))}
+    with Session(engine) as db:
         discovery_run = db.scalars(
             select(CollectionRun).where(CollectionRun.collection_job_id.is_not(None))
         ).one()
+    return discovery_run, world
+
+
+def listing(fake: FakeGitLab) -> FakeGitLab:
+    fake.set(
+        "/projects", paged("/projects", [[project(1, "platform/api", 10, visibility="public")]])
+    )
+    return fake
+
+
+def test_project_discovery_queues_an_evaluation_that_the_worker_runs(
+    migrated_engine: Engine, gitlab_env: None
+) -> None:
+    fake = listing(FakeGitLab())
+    fake.json("/projects/1/protected_branches", body=[{"id": 1, "name": "main"}])
+
+    discovery_run, world = discover_and_evaluate(migrated_engine, fake)
+
+    with Session(migrated_engine) as db:
+        jobs = {job.kind: job for job in db.scalars(select(CollectionJob))}
         run = db.scalars(select(EvaluationRun)).one()
     assert jobs[EVALUATE].idempotency_key == f"{EVALUATE}:after-run:{discovery_run.id}"
     assert jobs[EVALUATE].state == "succeeded"
     assert run.collection_job_id == jobs[EVALUATE].id
-    (evaluation,) = world.evaluations()
-    # Discovery recorded the observation, so the result is backed by evidence.
-    assert (evaluation.outcome, evaluation.observation_id is not None) == ("fail", True)
-    assert world.findings()[0].state == "open"
+    assert discovery_run.status == "succeeded"
+    assert discovery_run.counts["protection"] == {"protected": 1, "unprotected": 0, "unread": 0}
+    # Discovery recorded both observations, so both results are backed by evidence.
+    outcomes = {e.rule_id: (e.outcome, e.source) for e in world.evaluations()}
+    assert outcomes == {
+        "project-visibility": ("fail", "gitlab_project.visibility"),
+        "default-branch-protected": ("pass", PROTECTION_SOURCE),
+    }
+    assert all(e.observation_id is not None for e in world.evaluations())
+    assert [f.rule_id for f in world.findings()] == ["project-visibility"]
+
+
+def test_unread_protection_makes_the_discovery_partial(
+    migrated_engine: Engine, gitlab_env: None
+) -> None:
+    fake = listing(FakeGitLab())
+    fake.set("/projects/1/protected_branches", httpx.Response(502))
+
+    discovery_run, world = discover_and_evaluate(migrated_engine, fake)
+
+    assert discovery_run.status == "partial"
+    assert discovery_run.counts["protection"] == {"protected": 0, "unprotected": 0, "unread": 1}
+    assert discovery_run.error == "default-branch protection of 1 projects was not read"
+    branch = {e.rule_id: e for e in world.evaluations()}["default-branch-protected"]
+    assert (branch.outcome, branch.unknown_reasons) == ("unknown", ["value_unknown"])
+    # The failed read is the evidence linked to the unknown result.
+    assert branch.observation_id is not None
 
 
 def test_evaluation_without_gitlab_is_a_permanent_failure(
@@ -544,26 +647,6 @@ def test_requests_share_a_queued_evaluation(migrated_engine: Engine) -> None:
     assert first is not None
     assert second is None
     assert [job.kind for job in jobs] == [EVALUATE]
-
-
-def test_only_supported_probes_count_as_supported() -> None:
-    instance = GitLabInstance(
-        base_url=URL,
-        capability_snapshot={
-            "probes": {
-                "protected_branches.read": {"status": "supported"},
-                "merge_request_approvals.read": {"status": "not_found"},
-                "groups.list": {"status": "forbidden"},
-            }
-        },
-    )
-
-    assert capability_statuses(instance) == {
-        "protected_branches.read": "supported",
-        "merge_request_approvals.read": "unknown",
-        "groups.list": "unknown",
-    }
-    assert capability_statuses(GitLabInstance(base_url=URL)) == {}
 
 
 def test_evaluation_uses_the_database_clock(world: World) -> None:

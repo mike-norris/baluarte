@@ -30,8 +30,11 @@ from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_se
 from baluarte.jobs import queue
 from baluarte.jobs.queue import ClaimedJob, PermanentJobError
 from baluarte.policy.assignments import resolve_project
-from baluarte.policy.evaluation.model import CapabilityStatus
-from baluarte.policy.evaluation.project import collection_contexts, evaluate_project
+from baluarte.policy.evaluation.project import (
+    capability_statuses,
+    collection_contexts,
+    evaluate_project,
+)
 from baluarte.policy.evaluation.store import Tally, store_project
 from baluarte.settings import ConfigurationError
 
@@ -54,25 +57,6 @@ def _settings() -> GitLabSettings:
     if settings is None:
         raise PermanentJobError("GitLab is not configured (BALUARTE_GITLAB_URL is not set)")
     return settings
-
-
-def capability_statuses(instance: GitLabInstance) -> dict[str, CapabilityStatus]:
-    """Detected probes as capability statuses.
-
-    Only a ``supported`` probe counts as supported. A probe that was forbidden, failed, skipped
-    or answered 404 is ``unknown``: a 404 can mean a missing feature or an object the token
-    cannot see, so it is not taken as proof that the instance lacks the capability.
-    """
-    snapshot = instance.capability_snapshot or {}
-    probes = snapshot.get("probes")
-    if not isinstance(probes, dict):
-        return {}
-    return {
-        name: "supported"
-        if isinstance(probe, dict) and probe.get("status") == "supported"
-        else "unknown"
-        for name, probe in probes.items()
-    }
 
 
 def start_run(engine: Engine, instance_id: int, job: ClaimedJob | None) -> int:
@@ -168,7 +152,7 @@ def evaluate_all(
             with Session(engine) as db:
                 db.execute(select(func.pg_advisory_xact_lock(_LOCK_CLASS, instance_id)))
                 instance = db.get_one(GitLabInstance, instance_id)
-                capabilities = capability_statuses(instance)
+                capabilities = capability_statuses(db, instance_id)
                 page = _page(db, instance_id, after_id)
                 if not page:
                     break

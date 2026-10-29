@@ -19,7 +19,7 @@ Findings follow a rule for a project by policy name, across versions:
 """
 
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -27,26 +27,39 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from baluarte.db.models import Evaluation, Finding, GitLabProject, Observation
+from baluarte.integrations.gitlab.branches import PROTECTION_SOURCE
+from baluarte.integrations.gitlab.projects import PROJECT_SOURCES
 from baluarte.policy.assignments import Resolution
 from baluarte.policy.evaluation.model import RuleResult, UnknownReason
 
-# Sources of the project's inventory observation (list and lookup), from discovery.
-INVENTORY_SOURCES = ("GET /projects", "GET /projects/:id")
+# Sources of the project's own fields (listing and lookup), from discovery.
+INVENTORY_SOURCES: tuple[str, ...] = tuple(PROJECT_SOURCES)
+
+
+def _whole(payload: dict[str, Any]) -> Any:
+    return payload
+
+
+def _visibility(payload: dict[str, Any]) -> Any:
+    return payload.get("visibility")
 
 
 @dataclass(frozen=True)
 class Evidence:
-    """Which observations can back a result, and the payload field holding the value."""
+    """Which observations can back a result, and how to read the judged value from one."""
 
     sources: tuple[str, ...]
-    # Compared with the judged value when set; None skips the comparison.
-    payload_key: str | None
+    # The value in an observation's payload, compared with the judged value. None when it is
+    # not known, so a pass or fail cannot be backed.
+    value: Callable[[dict[str, Any]], Any] | None
 
 
 # Evidence by result ``source``. A rule type whose value lives elsewhere either adds an entry
-# here or sets ``RuleResult.observation_source``.
+# here or sets ``RuleResult.observation_source`` (its value is then the whole payload).
 EVIDENCE: Mapping[str, Evidence] = {
-    "gitlab_project.visibility": Evidence(INVENTORY_SOURCES, "visibility"),
+    "gitlab_project.visibility": Evidence(INVENTORY_SOURCES, _visibility),
+    # The default-branch protection rule judges the protection observation's payload itself.
+    PROTECTION_SOURCE: Evidence((PROTECTION_SOURCE,), _whole),
 }
 
 
@@ -55,7 +68,9 @@ def evidence_for(result: RuleResult) -> Evidence:
     if found is not None:
         return found
     if result.observation_source is not None:
-        return Evidence((result.observation_source,), None)
+        return Evidence((result.observation_source,), _whole)
+    # An unknown source: link the project's own observation, but nothing says where its value
+    # is, so a pass or fail is stored as unknown.
     return Evidence(INVENTORY_SOURCES, None)
 
 
@@ -109,8 +124,7 @@ def backed(result: RuleResult, evidence: Evidence, observation: Observation | No
             f"No stored observation of project {path} backs this value; it will be evaluated "
             "again after the next project discovery records one.",
         )
-    key = evidence.payload_key
-    if key is not None and observation.payload.get(key) != result.observed:
+    if evidence.value is None or evidence.value(observation.payload) != result.observed:
         return _unbacked(
             result,
             "evidence_mismatch",

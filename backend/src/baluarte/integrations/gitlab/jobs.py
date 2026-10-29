@@ -7,6 +7,7 @@ so failures are recorded even when the job will be retried.
 import logging
 import time
 from collections.abc import Callable
+from typing import Any
 
 import httpx
 from sqlalchemy import Engine, func, select
@@ -122,13 +123,21 @@ def _make_discovery(
             _unexpected(engine, run_id, exc)
             raise
         unconfirmed = result.reconciled["unchanged"]
+        counts: dict[str, Any] = dict(result.reconciled)
+        problems = [f"{unconfirmed} {kind} could not be confirmed"] if unconfirmed else []
+        if result.protection is not None:
+            counts["protection"] = result.protection
+            unread = result.protection.get("unread", 0)
+            if unread:
+                # Their protection evaluates as unknown, so the run is not a full success.
+                problems.append(f"default-branch protection of {unread} projects was not read")
         finish_run(
             engine,
             run_id,
-            "partial" if unconfirmed else "succeeded",
+            "partial" if problems else "succeeded",
             seen=result.seen,
-            counts=result.reconciled,
-            error=f"{unconfirmed} {kind} could not be confirmed" if unconfirmed else None,
+            counts=counts,
+            error="; ".join(problems) or None,
         )
         if kind == "projects":
             # Re-evaluate against the new inventory. A failed discovery queues none (its attempt
