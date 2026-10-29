@@ -23,7 +23,7 @@ spec:
       required: true
 ```
 
-Status: the format, its validation and versioned storage (BAL-017), and assignment and inheritance (BAL-018) are implemented in `backend/src/baluarte/policy/`. Evaluating rules against inventory is described in [EVALUATION.md](EVALUATION.md): the project visibility (BAL-019) and protected default branch (BAL-020) rules are implemented; storing results follows (BAL-021).
+Status: the format, its validation and versioned storage (BAL-017), and assignment and inheritance (BAL-018) are implemented in `backend/src/baluarte/policy/`. Evaluating rules against inventory is described in [EVALUATION.md](EVALUATION.md): the project visibility (BAL-019) and protected default branch (BAL-020) rules are implemented, and results and findings are stored and served (BAL-021; see [Evaluations and findings](DATA_MODEL.md#evaluations-and-findings)).
 
 ### Fields
 
@@ -175,7 +175,6 @@ Audit events record the policy name, version, digest, target type, target ID and
 
 ## Not yet defined
 
-- Storing evaluation results (BAL-021). See [EVALUATION.md](EVALUATION.md) for what is implemented.
 - How `effective_at` is scheduled. Today a version takes effect when it is saved.
 
 ## Outcomes

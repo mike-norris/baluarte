@@ -80,7 +80,7 @@ After a complete project listing and reconciliation, project discovery reads the
 
   It is compared only with the project's earlier protection observations, so it is written only when it changes.
 - **Failures:** a read that fails is recorded for that project and does not stop discovery. If GitLab rejects the token (401), or 20 reads in a row fail, the remaining projects are recorded as `failed` ("not read: ...") without calling GitLab. A stale protection observation therefore never outlives a collection that did not confirm it.
-- **Counts:** the discovery result reports `protected`, `unprotected` and `unread`. The run does not yet include these counts or become `partial` when reads fail. Each unread project's rule is `unknown` regardless.
+- **Counts:** the projects run records `protected`, `unprotected` and `unread` under `counts.protection`. When any read failed (`unread` above zero), the run is `partial`, with the error "default-branch protection of N projects was not read". Each unread project's rule is `unknown`.
 - **Unverified:**
   - Whether a role below Maintainer may list protected branches. A token that may not is recorded as `forbidden`, so the rule is `unknown`.
   - Whether group-level protected branches (Premium) appear in a project's list. If they do not, a branch protected only at group level reads as unprotected and fails: a false failure, never a false pass.

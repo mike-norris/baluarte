@@ -1,11 +1,11 @@
 # Rule evaluation
 
-How a rule in an effective policy is checked against the GitLab inventory. Implemented in `backend/src/baluarte/policy/evaluation/` (BAL-019, BAL-020). The policy format and how policies are resolved for a project are in [POLICY_ENGINE.md](POLICY_ENGINE.md).
+How a rule in an effective policy is checked against the GitLab inventory. Implemented in `backend/src/baluarte/policy/evaluation/` (BAL-019, BAL-020, BAL-021). The policy format and how policies are resolved for a project are in [POLICY_ENGINE.md](POLICY_ENGINE.md).
 
 Status:
 
 - **Implemented:** the result model, the shared engine, and the `gitlab.project.visibility` and `gitlab.branch.default_protected` evaluators.
-- **Not yet implemented:** results are computed but not stored or served. Persistence is BAL-021.
+- **Stored and served:** the `policy.evaluate` job stores every result as an immutable `evaluation` row linked to the observation it judged, and follows findings. See [Evaluations and findings](DATA_MODEL.md#evaluations-and-findings) and the findings API in `backend/README.md`.
 
 ## Results
 
@@ -28,7 +28,7 @@ Each rule, in each effective policy, for each project produces one result:
 | `capability` | The GitLab capability probe the rule depends on (`name`, or `null`) and its status: `not_required`, `supported`, `unsupported` or `unknown`. |
 | `collection` | The collection the value came from: `kind`, its freshness `status` and `last_success_at`. |
 
-Policy-version and observation IDs will be linked when observations are stored (BAL-021 and BAL-026). Until then, `observed_at` and `collection` record provenance.
+When a result is stored, its row also records the policy version ID and the ID of the observation it judged (BAL-021, BAL-026). A `pass` or `fail` is stored only when that observation backs it; see [Stored results](#stored-results).
 
 ## Outcomes
 
@@ -63,6 +63,9 @@ All reasons that apply are kept in `unknown_reasons`. The first one, in this ord
 | 9 | `ancestry_incomplete` | Policy resolution could not follow every group above the project. A policy, or a nearer version overriding one that was found, may be missing. |
 | 10 | `capability_unknown` | The rule needs a capability probe that has not run. |
 | 11 | `value_unknown` | The project is otherwise fine, but GitLab did not report the value. |
+| 12 | `evidence_missing` | Set when storing: no successful observation of the value's source exists for the project. |
+| 13 | `evidence_digest_mismatch` | Set when storing: the observation's SHA-256 digest no longer matches its payload, so the row was changed after it was written. |
+| 14 | `evidence_mismatch` | Set when storing: the observation's payload does not hold the value judged (the inventory and its evidence disagree). |
 
 The order puts the most fundamental problem first:
 
@@ -124,6 +127,16 @@ The capability status comes from the instance's latest capability snapshot (`cap
 - **`unknown`:** every other probe status (`forbidden`, `not_found`, `error`, `skipped`), a missing probe, a missing snapshot, or a failed detection. Detection cannot prove a feature is missing: a 404 may mean a hidden sample project and a 403 a token limit.
 - **`unsupported`:** the engine supports it, but no probe produces it today. Protected branches exist in every edition.
 
+## Stored results
+
+A result is decided from the inventory, then checked against its evidence before it is stored (`evaluation/store.py`). A `pass` or `fail` is stored only when the project's latest observation of the value's source:
+
+1. exists and was read successfully (`ok`, with a payload);
+2. still matches its SHA-256 digest, recomputed at evaluation time;
+3. holds exactly the value judged.
+
+Otherwise the result is stored as `unknown` with reason 12, 13 or 14 above, and changes no finding. A digest failure is also logged as a warning (observation ID and project path only). A row rewritten together with a recomputed digest is not detected here; see the audit limitations in [AUDIT_EVIDENCE.md](AUDIT_EVIDENCE.md).
+
 ## Running an evaluation
 
 `evaluation.project` evaluates the policies in force for one project. It only reads:
@@ -152,11 +165,32 @@ A rule type is one `RuleEvaluator`, registered in `EVALUATORS` (`evaluation/proj
 
 The engine applies the unknown and unsupported handling above, so each rule type decides only `pass` or `fail`.
 
+## Security guarantees and their tests
+
+Baluarte never reports unknown, unsupported or stale state as compliant. The end-to-end tests in `backend/tests/test_outcome_guarantees.py` drive the real jobs (capability detection, group and project discovery with protection reads, and `policy.evaluate`) against a scripted GitLab and a real database, then check stored evaluations, findings, run counts and the API. Time is moved by shifting stored timestamps back against the database clock.
+
+| Guarantee | Test |
+| --- | --- |
+| A healthy collection decides every rule, and findings open on `fail`. | `test_a_healthy_collection_decides_every_rule` |
+| A failed collection (token rejected with 401, or a GitLab error) after a success makes every result `unknown` (`collection_failed`), resolves no finding, and `/gitlab/freshness` reports `failed`. | `test_a_failed_collection_after_a_success_decides_nothing` |
+| A token revoked during protection reads leaves protection `unknown` for every project, keeps the branch finding open, stops calling GitLab, and makes the run `partial`. | `test_a_token_revoked_during_protection_reads_leaves_protection_unknown` |
+| A denied (403) protection read is `unknown` with its reason, linked to the failed read as evidence. | `test_forbidden_protection_reads_are_unknown_with_their_reason` |
+| An undetected capability (probe denied, or detection failed) makes the rules that need it `unknown` (`capability_unknown`). | `test_an_undetected_capability_makes_its_rule_unknown`, `test_a_failed_capability_detection_leaves_every_capability_unknown` |
+| An unsupported capability is stored as `unsupported`: never `pass`, and it neither opens nor resolves a finding. No probe reports `unsupported` today, so the test stands in a snapshot that does. | `test_an_unsupported_capability_is_unsupported_not_compliant` |
+| A stale collection is `unknown` (`collection_stale`) even when the stored evidence says compliant. An open finding stays open and a resolved one is not reopened. | `test_a_stale_collection_is_unknown_even_when_the_evidence_said_pass` |
+| Old evaluation results are reported `stale` by `/evaluations/freshness`. | `test_old_evaluation_results_are_reported_stale` |
+| A project a partial discovery could not confirm is `unknown` (`target_collection_error`) and keeps its findings open. | `test_an_unconfirmed_project_in_a_partial_discovery_is_unknown` |
+| A missing or inaccessible project is still evaluated while it has open findings, as `unknown`, and they stay open. | `test_a_missing_or_inaccessible_project_keeps_its_findings_open` |
+| A gap in the group chain makes the project's rules `unknown` (`ancestry_incomplete`) and resolves nothing. | `test_a_gap_in_the_group_chain_is_unknown` |
+| Evidence changed after it was written (digest mismatch) never backs a `pass`, even when the inventory was changed to agree. | `test_tampered_evidence_never_backs_a_pass` |
+| An inventory that disagrees with its evidence is `unknown` (`evidence_mismatch`). | `test_an_inventory_that_disagrees_with_its_evidence_is_unknown` |
+| A new policy version continues the same finding. | `test_a_new_policy_version_continues_the_same_finding` |
+
+Where a scenario leaves results undecided, the tests also check that no `pass` appears in the latest results, in the project evaluations API (with `observed` empty), or among findings resolved by a pass, and, where every project is affected, in the run's outcome counts. The unit tests in `test_evaluation_visibility.py`, `test_evaluation_default_branch.py`, `test_evaluation_project.py` and `test_evaluation_store.py` cover each reason and transition on its own.
+
 ## Deferred
 
 | Item | Issue |
 | --- | --- |
-| Storing results and findings, linking observation IDs, an API | BAL-021 |
-| Tests across unknown, unsupported and stale outcomes end to end | BAL-022 |
 | Exceptions (`excepted`) | BAL-033 |
 | Group-level rules. All current rule types target projects. | |
