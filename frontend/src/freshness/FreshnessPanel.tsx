@@ -1,5 +1,6 @@
 import type { CollectionKind, FreshnessReport } from "../api/gitlab";
-import { formatTime, freshnessLabels, freshnessTone } from "./format";
+import { formatTime } from "../time";
+import { freshnessLabels, freshnessTone, needsAttention } from "./status";
 
 const kinds: { kind: CollectionKind; label: string }[] = [
   { kind: "projects", label: "Projects" },
@@ -39,7 +40,7 @@ export function FreshnessPanel({ report }: { report: FreshnessReport }) {
       </section>
     );
   }
-  const urgent = report.status === "failed" || report.status === "stale";
+  const urgent = needsAttention(report.status);
   return (
     <section
       aria-labelledby="freshness-title"
@@ -66,8 +67,7 @@ export function FreshnessPanel({ report }: { report: FreshnessReport }) {
               <dd className="text-slate-700">Last success: {formatTime(entry.last_success_at)}</dd>
               {lastRun?.error && (lastRun.status === "failed" || lastRun.status === "partial") && (
                 <dd className="mt-1 break-words text-slate-800">
-                  Last run {lastRun.status === "failed" ? "failed" : "was partial"}:{" "}
-                  {lastRun.error}
+                  Last run {lastRun.status === "failed" ? "failed" : "was partial"}: {lastRun.error}
                 </dd>
               )}
             </div>
