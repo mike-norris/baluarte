@@ -128,4 +128,3 @@ The engine applies the unknown and unsupported handling above, so each rule type
 | Tests across unknown, unsupported and stale outcomes end to end | BAL-022 |
 | Exceptions (`excepted`) | BAL-033 |
 | Group-level rules. All current rule types target projects. | |
-| Personal projects: their ancestry is `incomplete` until project discovery records namespace kinds, so they are `unknown`. | Follow-up to BAL-018 |

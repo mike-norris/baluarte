@@ -31,7 +31,17 @@ PROJECTS = [
     (103, "platform/gone", 10, "private", "missing", None),
     (104, "platform/flaky", 10, "private", "active", "GitLab returned 502 for /projects/104"),
     (105, "alice/dotfiles", 500, "private", "active", None),
+    (106, "bob/notes", 501, "private", "active", None),
 ]
+# Namespace kinds recorded by discovery; 105 predates them, so its kind is unknown.
+NAMESPACE_KINDS = {
+    100: "group",
+    101: "group",
+    102: "group",
+    103: "group",
+    104: "group",
+    106: "user",
+}
 
 
 @pytest.fixture
@@ -49,6 +59,7 @@ def instance_id(migrated_engine: Engine) -> int:
                     instance_id=instance.id,
                     gitlab_id=gitlab_id,
                     namespace_gitlab_id=namespace,
+                    namespace_kind=NAMESPACE_KINDS.get(gitlab_id),
                     path_with_namespace=path,
                     name=path.rsplit("/", 1)[-1],
                     visibility=visibility,
@@ -109,8 +120,10 @@ def fresh(migrated_engine: Engine, instance_id: int) -> int:
         (102, "unknown", ("value_unknown",)),
         (103, "unknown", ("target_missing",)),
         (104, "unknown", ("target_collection_error",)),
-        # Personal namespaces are not recorded yet, so the ancestry is incomplete.
+        # Namespace kind not recorded yet: its namespace is not a known group, so incomplete.
         (105, "unknown", ("ancestry_incomplete",)),
+        # A personal project resolves straight to the instance.
+        (106, "pass", ()),
     ],
 )
 def test_visibility_outcomes_from_the_inventory(
