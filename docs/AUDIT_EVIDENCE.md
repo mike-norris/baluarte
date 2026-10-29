@@ -56,7 +56,7 @@ The inventory section always lists every project in the group or project scope, 
 | `collection_errors` (`collection_errors.csv`) | Projects and groups in scope that are missing, inaccessible or carry a collection error. |
 | `collection_runs` (`collection_runs.csv`) | Collection and evaluation runs, with status, error and counts. |
 
-The JSON document also holds the scope, the export ID, `generated_at` (database clock) and the collection and evaluation freshness at export time, and ends with row counts. The ZIP holds the same metadata in `export.json` and a `README.txt` describing the scope, the files and their limitations. `unknown` and `unsupported` results, failed runs and unreachable resources are exported, never dropped.
+The JSON document also holds the scope, the export ID, `generated_at` (database clock) and the collection and evaluation freshness at export time, and ends with row counts and the [manifest](#manifest-and-verification). The ZIP holds the same metadata in `export.json`, a `README.txt` describing the scope, the files and their limitations, and ends with `manifest.json` and `SHA256SUMS`. `unknown` and `unsupported` results, failed runs and unreachable resources are exported, never dropped.
 
 **No credentials.** Observation payloads are already an allowlist. Every other text value passes through the log redactor (registered secrets, GitLab tokens, bearer and basic credentials, JWTs, credentials in URLs and `token=`-style parameters). A payload that would need redacting is withheld (`payload_withheld: true`, payload null) instead of altered, so its digest still describes the stored row. Policy YAML that needed redacting is marked `source_yaml_redacted`, and its `yaml_digest` then no longer matches the exported text.
 
@@ -64,11 +64,40 @@ The JSON document also holds the scope, the export ID, `generated_at` (database 
 
 **Limits.** At most 100,000 rows (inventory, evaluations, findings and collection errors together). A larger scope is a 422 before anything is sent; narrow it. The response is streamed from paged reads, so memory stays bounded, with `Cache-Control: no-store`.
 
-**Reproducible.** The same evidence and scope give the same rows in the same order. ZIP entries have a fixed timestamp. Only the export ID, `generated_at` and the freshness `checked_at` differ.
+**Reproducible.** The same evidence and scope give the same rows in the same order. ZIP entries have a fixed timestamp. Only the export ID, `generated_at` and the freshness `checked_at` differ, and with them the files and hashes that hold them (`README.txt`, `export.json`, the manifest and `SHA256SUMS`, and the JSON export's `metadata_sha256`).
 
-**Audit.** `evidence.exported` is recorded when the export is accepted: actor, format, scope, planned row counts and instance. `evidence.export_completed` is recorded once every byte has been produced: the response's size and SHA-256, row counts, and each ZIP file's size, rows and SHA-256. Neither holds exported data. An export interrupted part way has no completion event.
+**Audit.** `evidence.exported` is recorded when the export is accepted: actor, format, scope, planned row counts and instance. `evidence.export_completed` is recorded once every byte has been produced: the response's size and SHA-256, `manifest_sha256`, row counts, and each ZIP file's (or JSON section's) rows and SHA-256. Neither holds exported data. An export interrupted part way has no completion event.
 
-Not yet: `manifest.json` inside the package with per-file hashes and the collection errors summary (BAL-028; the completion audit event already records the per-file hashes), and PDF reports.
+Not yet: PDF reports.
+
+### Manifest and verification
+
+Every export carries a manifest (BAL-028): `manifest.json` in a ZIP, written after every file it lists, or the `manifest` member at the end of a JSON export.
+
+| Field | Holds |
+|---|---|
+| `manifest_format`, `export_format`, `package` | `baluarte.evidence-manifest/v1`, `baluarte.evidence-export/v1`, and `zip` or `json`. |
+| `export_id`, `generated_at`, `baluarte_version`, `instance`, `scope` | What was exported, when (database clock), by which version, from which GitLab. |
+| `requested_by` | The requester's internal user ID (`user:<id>`), as in the audit log. Names and email addresses are not copied into the package; the audit log and user table resolve the ID. |
+| `files` (ZIP) | Every other file except `SHA256SUMS`: name, rows (CSV records without the header, or JSON lines), bytes and SHA-256 of its bytes. |
+| `sections`, `metadata_sha256` (JSON) | Each section's rows and SHA-256 over the canonical JSON of each row followed by a newline, in document order; and the SHA-256 of the canonical JSON of the metadata members (`format`, `export_id`, `generated_at`, `instance`, `scope`, `freshness`). |
+| `counts` | Rows per section. |
+| `policies` | Each policy version referenced: ID, name, version, `yaml_digest`, and whether its exported YAML was redacted. |
+| `evaluations` | Exported results by outcome, and how often each unknown reason occurs. |
+| `observations` | Count, count by collection status, how many had `digest_valid: false` (with their IDs, up to 1,000), how many payloads were withheld, and how many observations have no payload (could not observe). |
+| `collection_errors` | Projects and groups in scope by type and state, and how many carry an error message. |
+| `runs_not_succeeded` | Exported collection and evaluation runs that failed, were partial or were still running, with their (redacted) error. |
+| `freshness` | Collection status per kind with its last success, and evaluation status, at export time. |
+| `digests` | How every hash in the package is computed. |
+| `limitations`, `verification` | What the export does not establish, and how to check it. |
+
+Hashes use SHA-256. Canonical JSON means keys sorted, no insignificant whitespace, non-ASCII characters unescaped, UTF-8: the same form as observation and audit digests. A ZIP's `SHA256SUMS` lists every file including `manifest.json` in `sha256sum` format, so `sha256sum -c SHA256SUMS` (or `shasum -a 256 -c SHA256SUMS`) checks an extracted package with standard tools.
+
+**Anchoring the manifest.** A file cannot hold its own hash, and anyone who can edit a package can rewrite its manifest and `SHA256SUMS` to match. So `manifest_sha256`, the SHA-256 of the manifest's canonical JSON, is recorded in the `evidence.export_completed` audit event and nowhere in the package. Comparing the two is what ties a package to what Baluarte produced; it is only as trustworthy as the audit record it is compared with, so prefer the copy in the `baluarte.audit` log stream kept outside the database (see [Audit limitations](#audit-limitations)).
+
+**Verifying.** `baluarte-verify-export <file> --manifest-sha256 <value from the audit event>` checks a ZIP or JSON export offline, with no database: every file or section against the manifest, a ZIP against `SHA256SUMS`, no file missing or unlisted, the counts, and every observation's `payload_digest` recomputed from its payload. It exits 0 when every check passes, 1 when any fails and 2 when the file cannot be read. Evidence that was already invalid when exported (`digest_valid: false`) and withheld payloads are reported as warnings: the export shows them truthfully, so they do not fail the package. Without `--manifest-sha256` it says the manifest itself was not checked. The verifier is one standard-library file (`backend/src/baluarte/evidence/verify.py`) and also runs as `python3 verify.py <file>` on Python 3.9 or later.
+
+What verification does not show: rows changed in the database before the export together with their digests, deleted or forged rows, or anything about GitLab's own records. The digests are not anchored outside the database.
 
 ## Audit language
 
