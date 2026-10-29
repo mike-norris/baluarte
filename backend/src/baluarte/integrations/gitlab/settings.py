@@ -13,6 +13,8 @@ class GitLabSettings:
     url: str
     token: str = field(repr=False)
     timeout_seconds: float = 15.0
+    # How often the worker schedules full collection; 0 turns scheduling off.
+    sync_interval_minutes: int = 360
 
     @property
     def api_url(self) -> str:
@@ -46,4 +48,17 @@ def load_gitlab_settings() -> GitLabSettings | None:
         raise ConfigurationError("BALUARTE_GITLAB_TIMEOUT_SECONDS must be a number") from exc
     if not 1 <= timeout <= 120:
         raise ConfigurationError("BALUARTE_GITLAB_TIMEOUT_SECONDS must be between 1 and 120")
-    return GitLabSettings(url=url, token=token, timeout_seconds=timeout)
+    interval_raw = env("BALUARTE_GITLAB_SYNC_INTERVAL_MINUTES")
+    try:
+        interval = int(interval_raw) if interval_raw else 360
+    except ValueError as exc:
+        raise ConfigurationError(
+            "BALUARTE_GITLAB_SYNC_INTERVAL_MINUTES must be a whole number of minutes"
+        ) from exc
+    if interval != 0 and not 15 <= interval <= 10080:
+        raise ConfigurationError(
+            "BALUARTE_GITLAB_SYNC_INTERVAL_MINUTES must be 0 (off) or between 15 and 10080"
+        )
+    return GitLabSettings(
+        url=url, token=token, timeout_seconds=timeout, sync_interval_minutes=interval
+    )

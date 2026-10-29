@@ -38,6 +38,8 @@ SEVERITIES = ("low", "medium", "high", "critical")
 FINDING_STATES = ("open", "resolved", "excepted")
 EXPORT_STATES = ("queued", "running", "succeeded", "failed")
 ROLES = ("admin", "analyst", "auditor")
+RUN_KINDS = ("capabilities", "groups", "projects")
+RUN_STATUSES = ("running", "succeeded", "partial", "failed")
 
 
 def one_of(column: str, values: Iterable[str]) -> CheckConstraint:
@@ -88,6 +90,9 @@ class GitLabGroup(Base):
     state: Mapped[str] = mapped_column(Text, server_default="active")
     first_seen_at: Mapped[datetime] = utc_now()
     last_seen_at: Mapped[datetime] = utc_now()
+    # Set when the last attempt to confirm this resource failed; cleared when it is seen again.
+    last_error: Mapped[str | None] = mapped_column(Text)
+    last_error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class GitLabProject(Base):
@@ -111,6 +116,9 @@ class GitLabProject(Base):
     state: Mapped[str] = mapped_column(Text, server_default="active")
     first_seen_at: Mapped[datetime] = utc_now()
     last_seen_at: Mapped[datetime] = utc_now()
+    # Set when the last attempt to confirm this resource failed; cleared when it is seen again.
+    last_error: Mapped[str | None] = mapped_column(Text)
+    last_error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class CollectionJob(Base):
@@ -149,6 +157,34 @@ class CollectionJob(Base):
     created_at: Mapped[datetime] = utc_now()
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CollectionRun(Base):
+    """One attempt at a collection job, for freshness and error reporting (BAL-015)."""
+
+    __tablename__ = "collection_run"
+    __table_args__ = (
+        Index("ix_collection_run_kind_started", "instance_id", "kind", "started_at"),
+        one_of("kind", RUN_KINDS),
+        one_of("status", RUN_STATUSES),
+        CheckConstraint(
+            "(status = 'running') = (finished_at IS NULL)", name="finished_unless_running"
+        ),
+    )
+
+    id: Mapped[int] = pk()
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    kind: Mapped[str] = mapped_column(Text)
+    collection_job_id: Mapped[int | None] = mapped_column(ForeignKey("collection_job.id"))
+    # The job attempt this run belongs to; a later attempt closes this run if it was cut short.
+    attempt: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(Text, server_default="running")
+    started_at: Mapped[datetime] = utc_now()
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    seen: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    # Reconciliation outcomes, e.g. {"missing": 1, "unchanged": 2}.
+    counts: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    error: Mapped[str | None] = mapped_column(Text)
 
 
 class Policy(Base):

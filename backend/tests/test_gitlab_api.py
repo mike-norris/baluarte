@@ -24,6 +24,7 @@ from baluarte.integrations.gitlab.capabilities import detect, record_snapshot
 from baluarte.integrations.gitlab.client import GitLabClient
 from baluarte.integrations.gitlab.groups import discover_groups
 from baluarte.integrations.gitlab.projects import discover_projects
+from baluarte.integrations.gitlab.runs import finish_run, start_run
 from baluarte.main import create_app
 
 pytestmark = pytest.mark.db
@@ -444,3 +445,95 @@ def test_project_discovery_is_queued_by_admins(
             actions = set(db.scalars(select(AuditEvent.action)))
         assert job.kind == "gitlab.discover_projects"
         assert actions == {"gitlab.project_discovery_requested"}
+
+
+def seed_runs(engine: Engine) -> list[int]:
+    ids = []
+    for kind, status_ in [("groups", "succeeded"), ("projects", "failed"), ("groups", "partial")]:
+        run_id = start_run(engine, URL, kind, None)  # type: ignore[arg-type]
+        finish_run(engine, run_id, status_, error="boom" if status_ == "failed" else None)  # type: ignore[arg-type]
+        ids.append(run_id)
+    return ids
+
+
+@pytest.mark.parametrize("role", [Role.ADMIN, Role.ANALYST, Role.AUDITOR])
+def test_freshness_for_every_role(migrated_engine: Engine, gitlab_env: None, role: Role) -> None:
+    seed_runs(migrated_engine)
+
+    body = client_as(migrated_engine, FakeGitLab(), role).get("/api/v1/gitlab/freshness").json()
+
+    assert body["status"] == "failed"
+    assert body["collections"]["capabilities"]["status"] == "never"
+    assert body["collections"]["projects"]["last_run"]["error"] == "boom"
+    assert body["collections"]["groups"]["status"] == "partial"
+    assert body["sync_interval_minutes"] == 360
+    assert body["resources"]["groups"] == {
+        "active": 0,
+        "missing": 0,
+        "inaccessible": 0,
+        "with_errors": 0,
+    }
+
+
+def test_freshness_before_anything_ran(migrated_engine: Engine, gitlab_env: None) -> None:
+    body = (
+        client_as(migrated_engine, FakeGitLab(), Role.AUDITOR)
+        .get("/api/v1/gitlab/freshness")
+        .json()
+    )
+
+    assert body["status"] == "never"
+
+
+def test_freshness_not_configured(migrated_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("BALUARTE_GITLAB_URL", raising=False)
+
+    body = (
+        client_as(migrated_engine, FakeGitLab(), Role.AUDITOR)
+        .get("/api/v1/gitlab/freshness")
+        .json()
+    )
+
+    assert body["status"] == "not_configured"
+
+
+def test_run_history(migrated_engine: Engine, gitlab_env: None) -> None:
+    ids = seed_runs(migrated_engine)
+    client = client_as(migrated_engine, FakeGitLab(), Role.ANALYST)
+
+    def run_ids(**params: object) -> list[int]:
+        return [
+            item["id"] for item in client.get("/api/v1/gitlab/runs", params=params).json()["items"]
+        ]
+
+    assert run_ids() == list(reversed(ids))
+    assert run_ids(kind="groups") == [ids[2], ids[0]]
+    assert run_ids(status="failed") == [ids[1]]
+    page = client.get("/api/v1/gitlab/runs", params={"limit": 2}).json()
+    assert run_ids(limit=2, before_id=page["next_before_id"]) == [ids[0]]
+
+
+def test_has_error_filter(migrated_engine: Engine, gitlab_env: None) -> None:
+    seed_groups(migrated_engine)
+    seed_projects(migrated_engine)
+    with Session(migrated_engine) as db:
+        db.execute(
+            update(GitLabGroup)
+            .where(GitLabGroup.gitlab_id == 2)
+            .values(last_error="could not confirm")
+        )
+        db.execute(
+            update(GitLabProject).where(GitLabProject.gitlab_id == 10).values(last_error="x")
+        )
+        db.commit()
+    client = client_as(migrated_engine, FakeGitLab(), Role.ANALYST)
+
+    errored = client.get("/api/v1/gitlab/groups", params={"has_error": "true"}).json()["items"]
+    clean = client.get("/api/v1/gitlab/groups", params={"has_error": "false"})
+    projects = client.get("/api/v1/gitlab/projects", params={"has_error": "true"})
+
+    assert [(g["full_path"], g["last_error"]) for g in errored] == [
+        ("platform/back_end", "could not confirm")
+    ]
+    assert "platform/back_end" not in group_paths(clean)
+    assert project_paths(projects) == ["platform/api"]

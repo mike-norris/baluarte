@@ -14,7 +14,7 @@ import sys
 import threading
 import time
 import uuid
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from datetime import timedelta
 from pathlib import Path
 from types import FrameType
@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from baluarte.config import ConfigurationError, database_url
 from baluarte.db.migrate import head_revisions, wait_for_database
+from baluarte.integrations.gitlab.jobs import scheduler
 from baluarte.jobs import queue
 from baluarte.jobs.handlers import HANDLERS, Handler
 from baluarte.settings import configure_logging_from_env
@@ -58,12 +59,15 @@ class Worker:
         poll_interval: float = 5.0,
         heartbeat_file: Path | None = None,
         owner: str | None = None,
+        tick: Callable[[], None] | None = None,
     ) -> None:
         self.engine = engine
         self.handlers = dict(handlers)
         self.lease = lease
         self.poll_interval = poll_interval
         self.heartbeat_file = heartbeat_file
+        # Called once per loop before claiming, e.g. to queue scheduled collections.
+        self.tick = tick
         self.owner = owner or f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
         self.stop = threading.Event()
         # Renew well before expiry, and often enough to keep the liveness heartbeat fresh.
@@ -78,6 +82,8 @@ class Worker:
         while not self.stop.is_set():
             self.beat()
             try:
+                if self.tick is not None:
+                    self.tick()
                 worked = self.run_once()
             except SQLAlchemyError as exc:
                 logger.warning("worker: database error (%s); retrying", type(exc).__name__)
@@ -202,7 +208,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     worker = Worker(
-        engine, HANDLERS, lease=lease, poll_interval=poll, heartbeat_file=HEARTBEAT_FILE
+        engine,
+        HANDLERS,
+        lease=lease,
+        poll_interval=poll,
+        heartbeat_file=HEARTBEAT_FILE,
+        tick=scheduler(engine),
     )
     # Healthy while waiting for the database and migrations; the --timeout bounds that wait.
     worker.beat()

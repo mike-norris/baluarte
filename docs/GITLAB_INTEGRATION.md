@@ -64,7 +64,25 @@ Both jobs share the following behaviour:
   A resource that is listed again becomes `active`.
 - **Failures:** if the listing fails part way, pages already stored are kept, nothing is marked `missing` or `inaccessible`, and the job retries (up to five attempts). The job error holds the safe client message, for example `project discovery failed: GitLab rejected the token (401)`.
 
-Results are read with `GET /api/v1/gitlab/groups` and `GET /api/v1/gitlab/projects`. Collection freshness and per-resource error tracking are BAL-015.
+Results are read with `GET /api/v1/gitlab/groups` and `GET /api/v1/gitlab/projects`.
+
+## Scheduling and freshness
+
+- **Schedule:** the worker queues capability detection, group discovery and project discovery every `BALUARTE_GITLAB_SYNC_INTERVAL_MINUTES` (default 360; `0` collects only on request). The interval is divided into buckets on the database clock, and each job's idempotency key names its bucket, so any number of workers queue each collection once per interval. Scheduled jobs have three attempts.
+- **Runs:** every job attempt writes a `collection_run` row before calling GitLab and closes it as `succeeded`, `partial` (some resources could not be confirmed, or some capabilities are not supported) or `failed`, with counts and the safe error. The row is closed even when the job will be retried. A run left `running` by a worker that died is closed as failed (`interrupted: ...`) when a later attempt of the same kind starts, provided its own job attempt is no longer running.
+- **Per resource:** a group or project whose reconciliation lookup failed keeps its state and gets `last_error` and `last_error_at`. These are cleared when it is listed again.
+- **Freshness:** `GET /api/v1/gitlab/freshness` reports each kind as:
+
+  | Status | Meaning |
+  |---|---|
+  | `failed` | The latest finished run failed, even if an earlier one succeeded |
+  | `never` | No run has finished |
+  | `stale` | The last success is older than twice the interval (24 hours when scheduling is off) |
+  | `partial` | The latest run finished but some resources could not be confirmed |
+  | `fresh` | The latest run succeeded within the threshold |
+
+  The overall status is the worst of the three, in that order, together with resource counts by state and with errors. **A failed collection is therefore never hidden behind an older success.**
+- **History:** `GET /api/v1/gitlab/runs` lists run history.
 
 ## Reliability
 

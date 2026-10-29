@@ -15,3 +15,8 @@ def instance_for(db: Session, base_url: str) -> GitLabInstance:
         .on_conflict_do_nothing(index_elements=[GitLabInstance.base_url])
     )
     return db.scalars(select(GitLabInstance).where(GitLabInstance.base_url == base_url)).one()
+
+
+def instance_id_for(db: Session, base_url: str) -> int | None:
+    """The instance row's ID for ``base_url`` without creating it (for read-only requests)."""
+    return db.scalars(select(GitLabInstance.id).where(GitLabInstance.base_url == base_url)).first()

@@ -1,7 +1,7 @@
 """GitLab connection diagnostics and capability detection. Nothing is ever written to GitLab."""
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 import httpx
@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from baluarte import audit
 from baluarte.auth.dependencies import Principal, database, require
 from baluarte.auth.roles import Permission
-from baluarte.db.models import GitLabGroup, GitLabInstance, GitLabProject
+from baluarte.db.models import CollectionRun, GitLabGroup, GitLabInstance, GitLabProject
 from baluarte.integrations.gitlab.capabilities import CapabilitySnapshot
 from baluarte.integrations.gitlab.client import GitLabClient
 from baluarte.integrations.gitlab.diagnostics import (
@@ -21,12 +21,14 @@ from baluarte.integrations.gitlab.diagnostics import (
     not_configured,
     run_diagnostics,
 )
+from baluarte.integrations.gitlab.freshness import FreshnessReport, RunOut, report, stale_after
+from baluarte.integrations.gitlab.instances import instance_id_for
 from baluarte.integrations.gitlab.jobs import (
     DETECT_CAPABILITIES,
     DISCOVER_GROUPS,
     DISCOVER_PROJECTS,
 )
-from baluarte.integrations.gitlab.settings import load_gitlab_settings
+from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_settings
 from baluarte.jobs import queue
 from baluarte.settings import ConfigurationError
 
@@ -80,10 +82,6 @@ def diagnose(
     return report
 
 
-# A snapshot older than this is reported as stale.
-STALE_AFTER = timedelta(hours=24)
-
-
 class InstanceOut(BaseModel):
     configured: bool
     url: str | None
@@ -94,11 +92,15 @@ class InstanceOut(BaseModel):
     capabilities: CapabilitySnapshot | None
 
 
-def _configured_url() -> str | None:
+def _configured() -> GitLabSettings | None:
     try:
-        settings = load_gitlab_settings()
+        return load_gitlab_settings()
     except ConfigurationError:
         return None
+
+
+def _configured_url() -> str | None:
+    settings = _configured()
     return settings.url if settings else None
 
 
@@ -106,14 +108,16 @@ def _configured_url() -> str | None:
     "/instance",
     response_model=InstanceOut,
     summary="The GitLab instance: version, edition and detected capabilities",
-    description="`capabilities` is null until detection has run. `stale` is true when the last "
-    "detection is older than 24 hours or never ran.",
+    description="`capabilities` is null until detection has run. `stale` is true when detection "
+    "never ran or is older than the freshness threshold (twice the sync interval, or 24 hours "
+    "when scheduling is off).",
 )
 def read_instance(
     _: Annotated[Principal, Depends(require(Permission.INVENTORY_READ))],
     db: Annotated[Session, Depends(database)],
 ) -> InstanceOut:
-    url = _configured_url()
+    settings = _configured()
+    url = settings.url if settings else None
     instance = (
         db.scalars(select(GitLabInstance).where(GitLabInstance.base_url == url)).first()
         if url
@@ -136,7 +140,9 @@ def read_instance(
         version=instance.version,
         edition=instance.edition,
         last_checked_at=checked,
-        stale=checked is None or datetime.now(UTC) - checked > STALE_AFTER,
+        stale=checked is None
+        or settings is None
+        or datetime.now(UTC) - checked > stale_after(settings),
         capabilities=(
             CapabilitySnapshot.model_validate(instance.capability_snapshot)
             if instance.capability_snapshot
@@ -236,6 +242,8 @@ class GroupOut(BaseModel):
     state: str
     first_seen_at: datetime
     last_seen_at: datetime
+    last_error: str | None
+    last_error_at: datetime | None
 
 
 class GroupPage(BaseModel):
@@ -259,6 +267,7 @@ def list_groups(
     state: Annotated[InventoryState | None, Query()] = None,
     search: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
     parent_gitlab_id: Annotated[int | None, Query(gt=0)] = None,
+    has_error: Annotated[bool | None, Query()] = None,
     after_id: Annotated[int | None, Query(gt=0)] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> GroupPage:
@@ -278,6 +287,10 @@ def list_groups(
         statement = statement.where(GitLabGroup.full_path.ilike(_like(search), escape="\\"))
     if parent_gitlab_id is not None:
         statement = statement.where(GitLabGroup.parent_gitlab_id == parent_gitlab_id)
+    if has_error is not None:
+        statement = statement.where(
+            GitLabGroup.last_error.is_not(None) if has_error else GitLabGroup.last_error.is_(None)
+        )
     if after_id is not None:
         statement = statement.where(GitLabGroup.id > after_id)
     rows = db.scalars(statement).all()
@@ -297,6 +310,8 @@ class ProjectOut(BaseModel):
     state: str
     first_seen_at: datetime
     last_seen_at: datetime
+    last_error: str | None
+    last_error_at: datetime | None
 
 
 class ProjectPage(BaseModel):
@@ -320,6 +335,7 @@ def list_projects(
     namespace_gitlab_id: Annotated[int | None, Query(gt=0)] = None,
     visibility: Annotated[Literal["private", "internal", "public"] | None, Query()] = None,
     archived: Annotated[bool | None, Query()] = None,
+    has_error: Annotated[bool | None, Query()] = None,
     after_id: Annotated[int | None, Query(gt=0)] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> ProjectPage:
@@ -345,8 +361,74 @@ def list_projects(
         statement = statement.where(GitLabProject.visibility == visibility)
     if archived is not None:
         statement = statement.where(GitLabProject.archived.is_(archived))
+    if has_error is not None:
+        statement = statement.where(
+            GitLabProject.last_error.is_not(None)
+            if has_error
+            else GitLabProject.last_error.is_(None)
+        )
     if after_id is not None:
         statement = statement.where(GitLabProject.id > after_id)
     rows = db.scalars(statement).all()
     items = [ProjectOut.model_validate(row, from_attributes=True) for row in rows[:limit]]
     return ProjectPage(items=items, next_after_id=items[-1].id if len(rows) > limit else None)
+
+
+@router.get(
+    "/freshness",
+    response_model=FreshnessReport,
+    summary="Whether collected GitLab data is current, per kind",
+    description="Per kind (`capabilities`, `groups`, `projects`): `never`, `failed` (the latest "
+    "run failed, even if an earlier one succeeded), `stale` (last success older than "
+    "`stale_after_minutes`), `partial` (some resources could not be confirmed) or `fresh`. "
+    "`status` is the worst of the three. `resources` counts inventory by state and errors.",
+)
+def read_freshness(
+    _: Annotated[Principal, Depends(require(Permission.INVENTORY_READ))],
+    db: Annotated[Session, Depends(database)],
+) -> FreshnessReport:
+    settings = _configured()
+    instance_id = instance_id_for(db, settings.url) if settings else None
+    return report(db, instance_id, settings)
+
+
+class RunPage(BaseModel):
+    items: list[RunOut]
+    next_before_id: int | None
+
+
+@router.get(
+    "/runs",
+    response_model=RunPage,
+    summary="Collection run history, newest first",
+    description="One row per job attempt with its outcome counts and error.",
+)
+def list_runs(
+    _: Annotated[Principal, Depends(require(Permission.INVENTORY_READ))],
+    db: Annotated[Session, Depends(database)],
+    kind: Annotated[Literal["capabilities", "groups", "projects"] | None, Query()] = None,
+    run_status: Annotated[
+        Literal["running", "succeeded", "partial", "failed"] | None, Query(alias="status")
+    ] = None,
+    before_id: Annotated[int | None, Query(gt=0)] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> RunPage:
+    url = _configured_url()
+    instance_id = instance_id_for(db, url) if url else None
+    if instance_id is None:
+        return RunPage(items=[], next_before_id=None)
+    statement = (
+        select(CollectionRun)
+        .where(CollectionRun.instance_id == instance_id)
+        .order_by(CollectionRun.id.desc())
+        .limit(limit + 1)
+    )
+    if kind is not None:
+        statement = statement.where(CollectionRun.kind == kind)
+    if run_status is not None:
+        statement = statement.where(CollectionRun.status == run_status)
+    if before_id is not None:
+        statement = statement.where(CollectionRun.id < before_id)
+    rows = db.scalars(statement).all()
+    items = [RunOut.model_validate(row, from_attributes=True) for row in rows[:limit]]
+    return RunPage(items=items, next_before_id=items[-1].id if len(rows) > limit else None)

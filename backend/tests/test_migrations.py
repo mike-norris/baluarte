@@ -15,6 +15,7 @@ TABLES = {
     "app_user",
     "audit_event",
     "collection_job",
+    "collection_run",
     "evaluation",
     "export_job",
     "finding",
