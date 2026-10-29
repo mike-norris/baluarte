@@ -23,7 +23,7 @@ spec:
       required: true
 ```
 
-Status: the format, its validation and versioned storage are implemented (BAL-017) in `backend/src/baluarte/policy/`. Evaluating rules against inventory is not implemented yet. Neither is assigning policies to groups and projects or inheriting them (see [Not yet defined](#not-yet-defined)).
+Status: the format, its validation and versioned storage (BAL-017), and assignment and inheritance (BAL-018) are implemented in `backend/src/baluarte/policy/`. Evaluating rules against inventory is not implemented yet (see [Not yet defined](#not-yet-defined)).
 
 ### Fields
 
@@ -33,7 +33,7 @@ Status: the format, its validation and versioned storage are implemented (BAL-01
 | `kind` | Exactly `GitLabBaseline`. |
 | `metadata.name` | 1 to 63 lowercase letters, digits and hyphens, starting and ending with a letter or digit. This names the policy. |
 | `metadata.description` | Optional string, up to 1000 characters. |
-| `spec.scope.groups` | 1 to 200 distinct entries. Each is `"*"` (every group) or a GitLab group full path such as `platform/backend`. |
+| `spec.scope.groups` | 1 to 200 distinct entries. Each is `"*"` or a GitLab group full path such as `platform/backend`. The scope narrows where an assigned version applies (see [Scope](#scope)). |
 | `spec.rules` | 1 to 100 rules. Rule `id`s are unique and follow the same pattern as `metadata.name`. |
 | `spec.rules[].severity` | Optional: `low`, `medium` (default), `high` or `critical`. |
 | `spec.rules[].description` | Optional string, up to 1000 characters. |
@@ -93,16 +93,87 @@ Validation also needs `policy:write`, because it exists to support authoring.
 
 Reading needs `findings:read`, which every role holds. Every finding names the policy and rule that produced it, and an auditor must be able to see the exact baseline version in force. A separate `policy:read` permission would only ever be granted alongside `findings:read`.
 
+## Assignment and inheritance
+
+A saved version applies to nothing until it is assigned. Implemented in `baluarte.policy.assignments` (BAL-018).
+
+### Assignments pin a version
+
+An assignment pins one exact version (`name` and `version`) to a target: the GitLab instance, a group or a project. It never follows "the latest version" of a name, for two reasons:
+
+- Saving a version must not silently change what is enforced across the instance.
+- Every evaluation must name the immutable version it was checked against.
+
+Rolling out a new version is a separate, audited assignment.
+
+A target holds at most one version of each policy name. Assigning another version of a name already on the target replaces it. The audit event records the replaced assignment and version. Different policy names on one target add up. The database enforces one version per name and target with a unique constraint. A trigger keeps the stored policy name equal to the version's name.
+
+Only a target that is `active` in the inventory can be assigned to. A missing or inaccessible group or project cannot be confirmed in GitLab, so what the policy would govern is unknown. If a target goes missing later, its assignments stay and are listed with the target's state.
+
+### Resolution
+
+The policies in force for a project come from its *path*, nearest first:
+
+1. the project
+2. its namespace group
+3. that group's ancestors, up to the top-level group
+4. the instance
+
+A group's path starts at the group itself.
+
+For each policy name assigned anywhere on the path:
+
+1. **Nearest wins.** The assignment nearest the target decides the version. Assignments of the same name farther up are `overridden`. Each level holds one version of a name, so there are no ties.
+2. **Then scope.** If the winning version's `spec.scope.groups` does not cover the target, the name is `out_of_scope` and does not apply. Resolution does not fall back to a farther assignment, because that would apply a version that a nearer owner replaced.
+3. Every other name is `effective`.
+
+Policies cannot be removed from a subtree. To exempt it, assign a version whose scope excludes it.
+
+### Scope
+
+`spec.scope.groups` is checked against the target's namespace path. For a project, that is its `path_with_namespace` without the last segment. For a group, it is its own full path.
+
+- `"*"` covers every target the version is assigned to.
+- A group path covers that group and its subgroups, on segment boundaries: `platform` covers `platform/backend`, but `platform/back` does not.
+- Paths compare case-insensitively, as GitLab paths are unique regardless of case.
+
+An assignment decides *where* a version could apply, and its scope narrows that. A version with `groups: ["*"]` assigned to the instance applies to everything.
+
+### Incomplete ancestry
+
+Resolution follows `parent_gitlab_id` through the group inventory. Some steps cannot be confirmed. When that happens, `ancestry` is `incomplete` and `gaps` names each group and the reason:
+
+| Reason | Meaning | Walk |
+| --- | --- | --- |
+| `not_in_inventory` | The namespace or parent group has not been discovered (or is a user namespace, below). | Stops; the instance is still included |
+| `missing`, `inaccessible` | The group is in the inventory but was not confirmed by the last discovery. | Continues with its last known parent |
+| `cycle`, `too_deep` | The recorded parents loop, or exceed GitLab's 20 levels of subgroups. | Stops |
+
+What can be resolved is still returned. However, an incomplete result may lack policies assigned above a gap, and it may lack a nearer version that would override one listed. Evaluation must not treat a project with incomplete ancestry as fully governed. Any rule result that depends on the missing part is `unknown`, never compliant.
+
+A project's or group's own `missing` or `inaccessible` state is reported in `target.state`, not as a gap.
+
+### Personal projects
+
+A personal project's namespace is a user, not a group. The inventory does not record namespace kinds yet, so a personal project reports its namespace as a `not_in_inventory` gap. Its path is the project, then the instance. Only `"*"` scopes cover it in practice, because no group shares a username's path.
+
+### API
+
+| Endpoint | Permission | Behaviour |
+| --- | --- | --- |
+| `POST /api/v1/policy-assignments` | `policy:write` + CSRF | Body: `policy_name`, `version`, `target_type` (`instance`, `group`, `project`) and `target_id` (the GitLab ID; omitted for the instance).<br>Responses:<ul><li>201 when assigned, with a `policy.assigned` audit event.</li><li>200 when already assigned.</li><li>404 for an unknown version, or a target not in the inventory.</li><li>409 when GitLab is not configured, or the target is not `active`.</li></ul> |
+| `DELETE /api/v1/policy-assignments/{id}` | `policy:write` + CSRF | 204, with a `policy.unassigned` audit event. 404 if there is no such assignment. |
+| `GET /api/v1/policy-assignments` | `findings:read` | Assignments in ID order, with version, digest, and the target's path and state. Filters: `policy_name`, `target_type`, `target_id`. Paged with `after_id` and `limit`. |
+| `GET /api/v1/gitlab/projects/{gitlab_id}/effective-policies` | `findings:read` | Returns:<ul><li>`target` and `path`</li><li>`ancestry` and `gaps`</li><li>`policies`: the effective ones</li><li>`considered`: every assignment on the path with its outcome</li></ul>404 if the project is not in the inventory. |
+| `GET /api/v1/gitlab/groups/{gitlab_id}/effective-policies` | `findings:read` | The same, for a group. |
+
+Audit events record the policy name, version, digest, target type, target ID and target path.
+
 ## Not yet defined
 
-These are deferred to BAL-018 and need explicit tests and documentation before they are implemented:
-
-- Assigning policies to groups and projects (`policy_assignment`).
-- How `spec.scope.groups` matches subgroups.
-- Inheritance and override precedence.
+- Evaluating rules (BAL-019 to BAL-021). Evaluations will reference the pinned version from the resolution.
 - How `effective_at` is scheduled. Today a version takes effect when it is saved.
-
-Until then, a saved policy is stored and readable but not applied to anything.
+- Recording namespace kinds during project discovery, so personal projects resolve without a gap.
 
 ## Outcomes
 

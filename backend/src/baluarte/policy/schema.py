@@ -45,8 +45,8 @@ class Scope(_Strict):
         Field(
             min_length=1,
             max_length=MAX_SCOPE_GROUPS,
-            description='"*" for every group, or GitLab group full paths. How scopes are '
-            "assigned and inherited is defined separately (BAL-018).",
+            description='"*" for everything the policy is assigned to, or GitLab group full '
+            "paths; a path also covers its subgroups. Narrows where an assigned version applies.",
         ),
     ]
 
