@@ -99,3 +99,7 @@ Every resource and finding must show `last_collected_at`, status, and collection
 ## Initial rules
 
 Visibility and default-branch protection are the first two rules. Approval rules, push restrictions, security scans, and deployments require separate endpoint/tier investigations before committing to implementation.
+
+## Remediation research (M6)
+
+v0.1 makes no writes. [REMEDIATION_RESEARCH.md](REMEDIATION_RESEARCH.md) covers what a future remediation feature would depend on: the endpoints, token scopes, tiers, idempotency and audit behaviour. The proposed constraints are in [ADR-0007](architecture/ADR-0007-remediation-constraints.md).
