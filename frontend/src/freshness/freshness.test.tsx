@@ -3,11 +3,12 @@ import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { ApiError } from "../api/client";
 import type { FreshnessReport } from "../api/gitlab";
 import { routes } from "../routes";
 import { analyst, json, mockApi } from "../test/api";
-import { freshness, kind } from "../test/freshness";
-import { collectionSignal, freshnessState } from "./context";
+import { EVALUATION_FRESHNESS, evaluationFreshness, freshness, kind } from "../test/freshness";
+import { collectionSignal, evaluationSignal, freshnessState } from "./context";
 import { REFRESH_INTERVAL_MS } from "./FreshnessProvider";
 import { worst } from "./status";
 
@@ -21,8 +22,15 @@ function renderAt(path: string) {
   return { router, view };
 }
 
-function api(report: () => Response | Promise<Response>) {
-  return mockApi({ [ME]: () => json(analyst), [FRESHNESS]: report });
+function api(
+  report: () => Response | Promise<Response>,
+  evaluation: () => Response | Promise<Response> = () => json(evaluationFreshness()),
+) {
+  return mockApi({
+    [ME]: () => json(analyst),
+    [FRESHNESS]: report,
+    [EVALUATION_FRESHNESS]: evaluation,
+  });
 }
 
 function indicator(name: RegExp | string = /^GitLab data: /) {
@@ -162,15 +170,34 @@ describe("collection context on placeholder pages", () => {
     vi.unstubAllGlobals();
   });
 
-  it.each(["/", "/findings", "/evidence"])("shows collection status on %s", async (path) => {
-    api(() => json(freshness({ status: "stale", collections: { projects: kind("stale") } })));
-    renderAt(path);
-    await indicator("GitLab data: Stale");
+  it.each(["/findings", "/evidence"])(
+    "shows collection and evaluation status on %s",
+    async (path) => {
+      api(() => json(freshness({ status: "stale", collections: { projects: kind("stale") } })));
+      renderAt(path);
+      await indicator("GitLab data: Stale");
+
+      const note = screen.getByRole("complementary", { name: "Data freshness" });
+      expect(note).toHaveTextContent("GitLab collection status: Stale");
+      expect(note).toHaveTextContent("Oldest successful collection: 29 Oct 2026, 06:00 UTC");
+      expect(note).toHaveTextContent("Policy evaluation status: Up to date");
+      expect(note).toHaveTextContent("Last successful evaluation: 29 Oct 2026, 06:12 UTC");
+      expect(note).not.toHaveTextContent("collected after the last successful evaluation");
+    },
+  );
+
+  it("says when results predate the latest collection", async () => {
+    api(
+      () => json(freshness()),
+      () => json(evaluationFreshness({ behind_collection: true })),
+    );
+    renderAt("/findings");
+    await indicator("GitLab data: Up to date");
 
     const note = screen.getByRole("complementary", { name: "Data freshness" });
-    expect(note).toHaveTextContent("GitLab collection status: Stale");
-    expect(note).toHaveTextContent("Oldest successful collection: 29 Oct 2026, 06:00 UTC");
-    expect(note).toHaveTextContent("Policy evaluation is not available yet");
+    await vi.waitFor(() => {
+      expect(note).toHaveTextContent("collected after the last successful evaluation");
+    });
   });
 
   it("does not claim a collection time when the status is unknown", async () => {
@@ -214,6 +241,85 @@ describe("freshness signals", () => {
   });
 
   it("reports checking before the first result", () => {
-    expect(freshnessState(undefined, undefined).overall).toBe("checking");
+    expect(freshnessState({}, {}).overall).toBe("checking");
+  });
+
+  it("takes the worst of collection and evaluation, naming the signal that sets it", () => {
+    const failedEvaluation = freshnessState(
+      { data: freshness() },
+      { data: evaluationFreshness({ status: "failed" }) },
+    );
+    expect(failedEvaluation.overall).toBe("failed");
+    expect(failedEvaluation.worstSignal.source).toBe("evaluation");
+
+    const both = freshnessState(
+      { data: freshness({ status: "stale" }) },
+      { data: evaluationFreshness({ status: "stale" }) },
+    );
+    expect(both.worstSignal.source).toBe("collection");
+  });
+
+  it("treats an evaluation status that could not be read as unknown, with no success time", () => {
+    const signal = evaluationSignal(evaluationFreshness(), new ApiError(500, "boom"));
+    expect(signal.status).toBe("unknown");
+    expect(signal.lastSuccessAt).toBeNull();
+  });
+});
+
+describe("header with evaluation freshness", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("shows a failed evaluation even when collection is fresh, linking to the dashboard", async () => {
+    api(
+      () => json(freshness()),
+      () => json(evaluationFreshness({ status: "failed" })),
+    );
+    renderAt("/policies");
+
+    const link = await indicator("GitLab data: Failed");
+    expect(link).toHaveAttribute("href", "/");
+    expect(liveRegion()).toHaveTextContent(
+      "The latest policy evaluation failed. Compliance results may be out of date.",
+    );
+  });
+
+  it("names an evaluation that never ran", async () => {
+    api(
+      () => json(freshness()),
+      () =>
+        json(
+          evaluationFreshness({
+            status: "never",
+            last_run: null,
+            last_success_at: null,
+          }),
+        ),
+    );
+    renderAt("/policies");
+
+    await indicator("GitLab data: Never evaluated");
+  });
+
+  it("shows status unknown when the evaluation check fails", async () => {
+    api(
+      () => json(freshness()),
+      () => json({ detail: "boom" }, 500),
+    );
+    renderAt("/policies");
+
+    await indicator("GitLab data: Status unknown");
+    expect(liveRegion()).toHaveTextContent("Policy evaluation status could not be checked.");
+  });
+
+  it("keeps linking to the inventory when collection is as bad as evaluation", async () => {
+    api(
+      () => json(freshness({ status: "failed" })),
+      () => json(evaluationFreshness({ status: "failed" })),
+    );
+    renderAt("/policies");
+
+    expect(await indicator("GitLab data: Failed")).toHaveAttribute("href", "/inventory");
   });
 });

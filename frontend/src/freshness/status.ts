@@ -52,3 +52,9 @@ export const freshnessTone: Record<SignalStatus, string> = {
 export function needsAttention(status: SignalStatus): boolean {
   return status === "failed" || status === "stale" || status === "unknown";
 }
+
+/** The status label for one source; "never" names what has never happened. */
+export function statusLabel(source: "collection" | "evaluation", status: SignalStatus): string {
+  if (source === "evaluation" && status === "never") return "Never evaluated";
+  return freshnessLabels[status];
+}
