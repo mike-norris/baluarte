@@ -5,7 +5,7 @@ from typing import Any
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from gitlab_fake import TOKEN, URL, FakeGitLab, group, paged
+from gitlab_fake import TOKEN, URL, FakeGitLab, group, paged, project
 from gitlab_fake import settings as fake_settings
 from oidc_fake import make_settings
 from sqlalchemy import Engine, select, update
@@ -19,10 +19,11 @@ from baluarte.auth.dependencies import (
     database_engine,
 )
 from baluarte.auth.roles import Role
-from baluarte.db.models import AuditEvent, CollectionJob, GitLabGroup
+from baluarte.db.models import AuditEvent, CollectionJob, GitLabGroup, GitLabProject
 from baluarte.integrations.gitlab.capabilities import detect, record_snapshot
 from baluarte.integrations.gitlab.client import GitLabClient
 from baluarte.integrations.gitlab.groups import discover_groups
+from baluarte.integrations.gitlab.projects import discover_projects
 from baluarte.main import create_app
 
 pytestmark = pytest.mark.db
@@ -356,3 +357,90 @@ def test_group_discovery_is_queued_by_admins(
             actions = set(db.scalars(select(AuditEvent.action)))
         assert (job.kind, job.max_attempts) == ("gitlab.discover_groups", 5)
         assert actions == {"gitlab.group_discovery_requested"}
+
+
+def seed_projects(engine: Engine) -> None:
+    fake = FakeGitLab()
+    fake.set(
+        "/projects",
+        paged(
+            "/projects",
+            [
+                [
+                    project(10, "platform/api", 1, visibility="internal"),
+                    project(11, "platform/old_api", 1, archived=True),
+                    project(12, "alice/scratch", 900, kind="user", visibility="public"),
+                ]
+            ],
+        ),
+    )
+    discover_projects(GitLabClient(fake_settings(), transport=fake.transport), engine, URL)
+    with Session(engine) as db:
+        db.execute(
+            update(GitLabProject).where(GitLabProject.gitlab_id == 12).values(state="inaccessible")
+        )
+        db.commit()
+
+
+def project_paths(response: Any) -> list[str]:
+    return [item["path_with_namespace"] for item in response.json()["items"]]
+
+
+@pytest.mark.parametrize("role", [Role.ADMIN, Role.ANALYST, Role.AUDITOR])
+def test_projects_are_listed_for_every_role(
+    migrated_engine: Engine, gitlab_env: None, role: Role
+) -> None:
+    seed_projects(migrated_engine)
+
+    response = client_as(migrated_engine, FakeGitLab(), role).get("/api/v1/gitlab/projects")
+
+    assert response.status_code == 200
+    assert project_paths(response) == ["platform/api", "platform/old_api", "alice/scratch"]
+    first = response.json()["items"][0]
+    assert (first["namespace_gitlab_id"], first["default_branch"]) == (1, "main")
+
+
+def test_project_filters_and_paging(migrated_engine: Engine, gitlab_env: None) -> None:
+    seed_projects(migrated_engine)
+    client = client_as(migrated_engine, FakeGitLab(), Role.AUDITOR)
+
+    def paths(**params: object) -> list[str]:
+        return project_paths(client.get("/api/v1/gitlab/projects", params=params))
+
+    assert paths(state="inaccessible") == ["alice/scratch"]
+    assert paths(namespace_gitlab_id=1) == ["platform/api", "platform/old_api"]
+    assert paths(visibility="public") == ["alice/scratch"]
+    assert paths(archived="true") == ["platform/old_api"]
+    assert paths(archived="false") == ["platform/api", "alice/scratch"]
+    assert paths(search="D_A") == ["platform/old_api"]
+    first = client.get("/api/v1/gitlab/projects", params={"limit": 2}).json()
+    assert paths(limit=2, after_id=first["next_after_id"]) == ["alice/scratch"]
+
+
+def test_projects_when_not_configured(
+    migrated_engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("BALUARTE_GITLAB_URL", raising=False)
+
+    response = client_as(migrated_engine, FakeGitLab(), Role.ANALYST).get("/api/v1/gitlab/projects")
+
+    assert response.json() == {"items": [], "next_after_id": None}
+
+
+@pytest.mark.parametrize(
+    ("role", "status"), [(Role.ADMIN, 202), (Role.ANALYST, 403), (Role.AUDITOR, 403)]
+)
+def test_project_discovery_is_queued_by_admins(
+    migrated_engine: Engine, gitlab_env: None, role: Role, status: int
+) -> None:
+    response = client_as(migrated_engine, FakeGitLab(), role).post(
+        "/api/v1/gitlab/projects/discover"
+    )
+
+    assert response.status_code == status
+    if status == 202:
+        with Session(migrated_engine) as db:
+            job = db.get_one(CollectionJob, response.json()["job_id"])
+            actions = set(db.scalars(select(AuditEvent.action)))
+        assert job.kind == "gitlab.discover_projects"
+        assert actions == {"gitlab.project_discovery_requested"}

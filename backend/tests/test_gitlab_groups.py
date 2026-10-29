@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 
 from baluarte.db.models import CollectionJob, GitLabGroup
 from baluarte.integrations.gitlab.client import GitLabClient, InvalidResponse, ServerError
-from baluarte.integrations.gitlab.groups import GroupDiscovery, discover_groups
+from baluarte.integrations.gitlab.discovery import Discovery
+from baluarte.integrations.gitlab.groups import discover_groups
 from baluarte.integrations.gitlab.jobs import DISCOVER_GROUPS, make_discover_groups
 from baluarte.jobs import queue
 from baluarte.jobs.worker import Worker
@@ -30,7 +31,7 @@ def fake_with(pages: list[list[dict[str, object]]]) -> FakeGitLab:
     return fake
 
 
-def discover(engine: Engine, fake: FakeGitLab) -> GroupDiscovery:
+def discover(engine: Engine, fake: FakeGitLab) -> Discovery:
     client = GitLabClient(settings(), transport=fake.transport, sleep=lambda _: None)
     return discover_groups(client, engine, URL)
 

@@ -73,6 +73,8 @@ Handlers take the claimed job and must be idempotent. Raise `JobError("safe mess
 - `GET /api/v1/gitlab/instance`: configured URL, version, edition, the latest capability snapshot and whether it is `stale` (older than 24 hours or never run). Needs `inventory:read` (every role).
 - `POST /api/v1/gitlab/capabilities/refresh`: queues capability detection in the worker; returns 202 with `job_id`, and requests in the same minute share one job. 409 when GitLab is not configured. Needs `settings:manage` (admin) and the CSRF header.
 - `GET /api/v1/gitlab/groups?state=&search=&parent_gitlab_id=&limit=&after_id=`: discovered groups and subgroups in ID order; `search` matches `full_path` case-insensitively; `next_after_id` pages forwards. Needs `inventory:read` (every role).
+- `GET /api/v1/gitlab/projects?state=&search=&namespace_gitlab_id=&visibility=&archived=&limit=&after_id=`: discovered projects, archived ones included, in ID order; `search` matches `path_with_namespace` case-insensitively. Needs `inventory:read` (every role).
+- `POST /api/v1/gitlab/projects/discover`: queues project discovery; same behaviour as group discovery. Needs `settings:manage` (admin) and the CSRF header.
 - `POST /api/v1/gitlab/groups/discover`: queues group discovery in the worker; same 202, per-minute and 409 behaviour as the capability refresh. Needs `settings:manage` (admin) and the CSRF header.
 - `POST /api/v1/gitlab/diagnostics`: tests the GitLab connection and token permissions (see [docs/GITLAB_INTEGRATION.md](../docs/GITLAB_INTEGRATION.md#diagnostics)). Returns 200 with a report whenever the checks ran, including failures; read `status`. Needs `settings:manage` (admin) and the CSRF header.
 
