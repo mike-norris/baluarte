@@ -51,6 +51,45 @@ export interface PolicyVersionRef {
   version: number;
 }
 
+export type UnknownReason =
+  | "target_not_in_inventory"
+  | "target_missing"
+  | "target_inaccessible"
+  | "collection_not_configured"
+  | "collection_failed"
+  | "collection_never"
+  | "collection_stale"
+  | "target_collection_error"
+  | "ancestry_incomplete"
+  | "capability_unknown"
+  | "value_unknown"
+  | "evidence_missing"
+  | "evidence_digest_mismatch"
+  | "evidence_mismatch";
+
+/** One stored, immutable rule result. ``observed`` is null when the value is not known. */
+export interface Evaluation {
+  id: number;
+  evaluation_run_id: number | null;
+  observation_id: number | null;
+  project: ProjectRef;
+  policy: PolicyVersionRef;
+  rule_id: string;
+  rule_type: string;
+  severity: string;
+  outcome: Outcome;
+  reason: string;
+  unknown_reasons: UnknownReason[];
+  expected: unknown;
+  observed: unknown;
+  source: string;
+  observed_at: string | null;
+  capability: { name: string | null; status: string };
+  collection: { kind: string; status: string; last_success_at: string | null };
+  ancestry: string;
+  evaluated_at: string;
+}
+
 export interface Finding {
   id: number;
   project: ProjectRef;
@@ -65,9 +104,38 @@ export interface Finding {
   resolved_at: string | null;
 }
 
-interface FindingPage {
+export interface FindingDetail extends Finding {
+  latest_evaluation: Evaluation;
+}
+
+export interface FindingPage {
   items: Finding[];
   next_after_id: number | null;
+}
+
+export interface EvaluationPage {
+  items: Evaluation[];
+  next_before_id: number | null;
+}
+
+/** Evidence as stored; ``digest_valid`` is recomputed by the API on every read. */
+export interface Observation {
+  id: number;
+  source: string;
+  source_ref: string | null;
+  collected_at: string;
+  collection_status: string;
+  payload: Record<string, unknown> | null;
+  payload_digest: string | null;
+  digest_valid: boolean;
+  error: string | null;
+  collection_run_id: number | null;
+  collection_job_id: number | null;
+}
+
+interface ObservationPage {
+  items: Observation[];
+  next_before_id: number | null;
 }
 
 interface RunPage {
@@ -136,4 +204,54 @@ export function findingsHref(filters: FindingFilters): string {
   }
   const text = query.toString();
   return text ? `/findings?${text}` : "/findings";
+}
+
+export const FINDINGS_LIST_PAGE = 50;
+
+export function listFindings(
+  filters: FindingFilters,
+  afterId: number | null,
+  signal?: AbortSignal,
+): Promise<FindingPage> {
+  return getJson<FindingPage>(
+    "/api/v1/findings",
+    { ...filters, after_id: afterId, limit: FINDINGS_LIST_PAGE },
+    signal,
+  );
+}
+
+export function getFinding(id: number, signal: AbortSignal): Promise<FindingDetail> {
+  return getJson<FindingDetail>(`/api/v1/findings/${String(id)}`, {}, signal);
+}
+
+/** Every evaluation of the finding's rule for its project, newest first. */
+export function getFindingHistory(
+  id: number,
+  beforeId: number | null,
+  signal?: AbortSignal,
+): Promise<EvaluationPage> {
+  return getJson<EvaluationPage>(
+    `/api/v1/findings/${String(id)}/evaluations`,
+    { before_id: beforeId, limit: FINDINGS_LIST_PAGE },
+    signal,
+  );
+}
+
+/**
+ * The project's observation with this ID, or null when the project has no such observation.
+ * The API has no single-observation endpoint, so this reads the project's evidence history
+ * starting at that ID.
+ */
+export async function getObservation(
+  projectGitlabId: number,
+  observationId: number,
+  signal: AbortSignal,
+): Promise<Observation | null> {
+  const page = await getJson<ObservationPage>(
+    `/api/v1/gitlab/projects/${String(projectGitlabId)}/observations`,
+    { before_id: observationId + 1, limit: 1 },
+    signal,
+  );
+  const first = page.items[0];
+  return first?.id === observationId ? first : null;
 }

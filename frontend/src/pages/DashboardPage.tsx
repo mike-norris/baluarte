@@ -13,36 +13,12 @@ import {
   type EvaluationFreshness,
   type EvaluationRun,
   type Finding,
-  type Outcome,
 } from "../api/evaluations";
 import { useLoad, type Loaded } from "../api/useLoad";
+import { outcomeLabels, outcomeMeaning, severityLabels } from "../findings/format";
 import { useFreshness } from "../freshness/context";
 import { freshnessTone, needsAttention, statusLabel } from "../freshness/status";
 import { formatTime } from "../time";
-
-const outcomeLabels: Record<Outcome, string> = {
-  pass: "Pass",
-  fail: "Fail",
-  unknown: "Unknown",
-  unsupported: "Unsupported",
-  excepted: "Excepted",
-};
-
-const outcomeMeaning: Record<Outcome, string> = {
-  pass: "The collected value meets the rule.",
-  fail: "The collected value breaks the rule.",
-  unknown:
-    "Could not be decided: data missing, stale, unreadable or incomplete. Not counted as passing.",
-  unsupported: "This GitLab instance cannot report the setting. Not counted as passing.",
-  excepted: "Covered by an approved exception.",
-};
-
-const severityLabels: Record<string, string> = {
-  critical: "Critical",
-  high: "High",
-  medium: "Medium",
-  low: "Low",
-};
 
 const linkClass = "text-sky-800 underline";
 const cell = "px-3 py-2";

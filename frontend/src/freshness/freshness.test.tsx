@@ -170,7 +170,7 @@ describe("collection context on placeholder pages", () => {
     vi.unstubAllGlobals();
   });
 
-  it.each(["/findings", "/evidence"])(
+  it.each(["/evidence"])(
     "shows collection and evaluation status on %s",
     async (path) => {
       api(() => json(freshness({ status: "stale", collections: { projects: kind("stale") } })));
@@ -191,7 +191,7 @@ describe("collection context on placeholder pages", () => {
       () => json(freshness()),
       () => json(evaluationFreshness({ behind_collection: true })),
     );
-    renderAt("/findings");
+    renderAt("/evidence");
     await indicator("GitLab data: Up to date");
 
     const note = screen.getByRole("complementary", { name: "Data freshness" });
@@ -202,7 +202,7 @@ describe("collection context on placeholder pages", () => {
 
   it("does not claim a collection time when the status is unknown", async () => {
     api(() => json({}, 503));
-    renderAt("/findings");
+    renderAt("/evidence");
     await indicator("GitLab data: Status unknown");
 
     const note = screen.getByRole("complementary", { name: "Data freshness" });

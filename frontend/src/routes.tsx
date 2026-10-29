@@ -7,6 +7,8 @@ import { Layout } from "./components/Layout";
 import { CollectionNote } from "./freshness/CollectionNote";
 import { navItems } from "./navigation";
 import { DashboardPage } from "./pages/DashboardPage";
+import { FindingDetailPage } from "./pages/FindingDetailPage";
+import { FindingsPage } from "./pages/FindingsPage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
@@ -16,10 +18,11 @@ import { SignInPage } from "./pages/SignInPage";
 const pages: Partial<Record<string, ReactNode>> = {
   "/": <DashboardPage />,
   "/inventory": <InventoryPage />,
+  "/findings": <FindingsPage />,
 };
 
 /** Placeholders whose content will be derived from GitLab data, so they show its freshness. */
-const collectionDerived = new Set(["/findings", "/evidence"]);
+const collectionDerived = new Set(["/evidence"]);
 
 export const routes: RouteObject[] = [
   {
@@ -32,14 +35,17 @@ export const routes: RouteObject[] = [
       { path: "/sign-in", element: <SignInPage /> },
       {
         element: <RequireSession />,
-        children: navItems.map((item): RouteObject => ({
-          path: item.path,
-          element: pages[item.path] ?? (
-            <PlaceholderPage title={item.label} description={item.description}>
-              {collectionDerived.has(item.path) && <CollectionNote />}
-            </PlaceholderPage>
-          ),
-        })),
+        children: [
+          ...navItems.map((item): RouteObject => ({
+            path: item.path,
+            element: pages[item.path] ?? (
+              <PlaceholderPage title={item.label} description={item.description}>
+                {collectionDerived.has(item.path) && <CollectionNote />}
+              </PlaceholderPage>
+            ),
+          })),
+          { path: "/findings/:findingId", element: <FindingDetailPage /> },
+        ],
       },
       { path: "*", element: <NotFoundPage /> },
     ],
