@@ -30,6 +30,7 @@ UnknownReason = Literal[
     "value_unknown",
     # Set when a result is stored (BAL-021): a pass or fail must be backed by an observation.
     "evidence_missing",
+    "evidence_digest_mismatch",
     "evidence_mismatch",
 ]
 UNKNOWN_PRECEDENCE: tuple[UnknownReason, ...] = (
@@ -45,6 +46,7 @@ UNKNOWN_PRECEDENCE: tuple[UnknownReason, ...] = (
     "capability_unknown",
     "value_unknown",
     "evidence_missing",
+    "evidence_digest_mismatch",
     "evidence_mismatch",
 )
 

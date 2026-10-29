@@ -2,8 +2,10 @@
 
 Every result becomes an immutable ``evaluation`` row that names the observation it judged.
 A ``pass`` or ``fail`` must be backed by the project's latest observation of the value's
-source, with a payload that matches the value judged; otherwise it is stored as ``unknown``
-(``evidence_missing`` or ``evidence_mismatch``), so no stored compliance claim lacks evidence.
+source, whose SHA-256 digest still matches its payload, and whose payload matches the value
+judged; otherwise it is stored as ``unknown`` (``evidence_missing``,
+``evidence_digest_mismatch`` or ``evidence_mismatch``), so no stored compliance claim rests on
+missing or altered evidence.
 
 Findings follow a rule for a project by policy name, across versions:
 
@@ -18,6 +20,7 @@ Findings follow a rule for a project by policy name, across versions:
   evaluation is updated.
 """
 
+import logging
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -27,10 +30,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from baluarte.db.models import Evaluation, Finding, GitLabProject, Observation
+from baluarte.evidence.observations import verify
 from baluarte.integrations.gitlab.branches import PROTECTION_SOURCE
 from baluarte.integrations.gitlab.projects import PROJECT_SOURCES
 from baluarte.policy.assignments import Resolution
 from baluarte.policy.evaluation.model import RuleResult, UnknownReason
+
+logger = logging.getLogger(__name__)
 
 # Sources of the project's own fields (listing and lookup), from discovery.
 INVENTORY_SOURCES: tuple[str, ...] = tuple(PROJECT_SOURCES)
@@ -123,6 +129,20 @@ def backed(result: RuleResult, evidence: Evidence, observation: Observation | No
             "evidence_missing",
             f"No stored observation of project {path} backs this value; it will be evaluated "
             "again after the next project discovery records one.",
+        )
+    if not verify(observation):
+        # The row was changed after it was written (the trigger forbids UPDATE, so only a
+        # privileged change can do this). Never let it back a compliance claim.
+        logger.warning(
+            "observation %s fails its digest check; result for %s stored as unknown",
+            observation.id,
+            path,
+        )
+        return _unbacked(
+            result,
+            "evidence_digest_mismatch",
+            f"The stored observation of project {path} fails its integrity check (its SHA-256 "
+            "digest does not match its payload), so it cannot back this value.",
         )
     if evidence.value is None or evidence.value(observation.payload) != result.observed:
         return _unbacked(
