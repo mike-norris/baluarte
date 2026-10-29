@@ -165,21 +165,21 @@ describe("collection context on placeholder pages", () => {
   it.each(["/", "/findings", "/evidence"])("shows collection status on %s", async (path) => {
     api(() => json(freshness({ status: "stale", collections: { projects: kind("stale") } })));
     renderAt(path);
+    await indicator("GitLab data: Stale");
 
-    const note = await screen.findByRole("complementary", { name: "Data freshness" });
-    expect(note).toHaveTextContent("GitLab collection status: Stale.");
-    expect(note).toHaveTextContent("Oldest successful collection: 29 Oct 2026, 06:00 UTC.");
+    const note = screen.getByRole("complementary", { name: "Data freshness" });
+    expect(note).toHaveTextContent("GitLab collection status: Stale");
+    expect(note).toHaveTextContent("Oldest successful collection: 29 Oct 2026, 06:00 UTC");
     expect(note).toHaveTextContent("Policy evaluation is not available yet");
   });
 
   it("does not claim a collection time when the status is unknown", async () => {
     api(() => json({}, 503));
     renderAt("/findings");
+    await indicator("GitLab data: Status unknown");
 
-    const note = await screen.findByRole("complementary", { name: "Data freshness" });
-    await vi.waitFor(() => {
-      expect(note).toHaveTextContent("GitLab collection status: Status unknown.");
-    });
+    const note = screen.getByRole("complementary", { name: "Data freshness" });
+    expect(note).toHaveTextContent("GitLab collection status: Status unknown");
     expect(note).not.toHaveTextContent("Oldest successful collection");
   });
 

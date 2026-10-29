@@ -12,9 +12,13 @@ export function CollectionNote() {
   return (
     <aside aria-label="Data freshness" className="mt-6 space-y-1 text-sm text-slate-700">
       <p>
-        GitLab collection status: {freshnessLabels[collection.status]}.
-        {collection.lastSuccessAt &&
-          ` Oldest successful collection: ${formatTime(collection.lastSuccessAt)}.`}{" "}
+        GitLab collection status:{" "}
+        <span className="font-medium">{freshnessLabels[collection.status]}</span>
+      </p>
+      {collection.lastSuccessAt && (
+        <p>Oldest successful collection: {formatTime(collection.lastSuccessAt)}</p>
+      )}
+      <p>
         <Link to="/inventory" className="text-sky-800 underline">
           Collection details
         </Link>
