@@ -16,6 +16,7 @@ TABLES = {
     "audit_event",
     "collection_job",
     "collection_run",
+    "evaluation_run",
     "evaluation",
     "export_job",
     "finding",

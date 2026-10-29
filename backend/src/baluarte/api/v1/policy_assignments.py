@@ -1,7 +1,7 @@
 """Policy assignments and the policies in force for a group or project (BAL-018).
 
-Assigning and unassigning need ``policy:write`` and are audited. Reading needs
-``findings:read``, like reading the policies themselves.
+Assigning and unassigning need ``policy:write``, are audited, and queue a policy evaluation.
+Reading needs ``findings:read``, like reading the policies themselves.
 """
 
 from datetime import datetime
@@ -28,6 +28,7 @@ from baluarte.policy.assignments import (
     resolve_group,
     resolve_project,
 )
+from baluarte.policy.evaluation.runner import request_evaluation
 from baluarte.policy.schema import NAME_PATTERN
 from baluarte.settings import ConfigurationError
 
@@ -196,7 +197,7 @@ def _read(db: Session, assignment_id: int) -> AssignmentOut:
     summary="Pin a policy version to the instance, a group or a project",
     description="A target holds one version of each policy: assigning another version of the "
     "same policy replaces the current one. 201 when assigned; 200 when this version is already "
-    "assigned there. Requires the `X-CSRF-Token` header.",
+    "assigned there. A change queues a policy evaluation. Requires the `X-CSRF-Token` header.",
     responses={
         200: {"model": AssignmentOut, "description": "Already assigned"},
         404: {"description": "No such policy version, or the target is not in the inventory"},
@@ -245,6 +246,7 @@ def create_assignment(
         resource_id=str(out.id),
         details=details,
     )
+    request_evaluation(db, "assignment")
     db.commit()
     return out
 
@@ -253,7 +255,7 @@ def create_assignment(
     "/policy-assignments/{assignment_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Remove a policy assignment",
-    description="Requires the `X-CSRF-Token` header.",
+    description="Queues a policy evaluation. Requires the `X-CSRF-Token` header.",
     responses={404: {"description": "No such assignment"}},
 )
 def delete_assignment(
@@ -275,6 +277,7 @@ def delete_assignment(
         resource_id=str(assignment_id),
         details=_audit_details(out),
     )
+    request_evaluation(db, "assignment")
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

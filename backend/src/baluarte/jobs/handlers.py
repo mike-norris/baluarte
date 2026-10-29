@@ -20,6 +20,7 @@ from baluarte.integrations.gitlab.jobs import (
     make_discover_projects,
 )
 from baluarte.jobs.queue import ClaimedJob
+from baluarte.policy.evaluation.runner import EVALUATE, evaluate
 
 Handler = Callable[[ClaimedJob, Engine], None]
 
@@ -27,4 +28,5 @@ HANDLERS: Mapping[str, Handler] = {
     DETECT_CAPABILITIES: make_detect_capabilities(),
     DISCOVER_GROUPS: make_discover_groups(),
     DISCOVER_PROJECTS: make_discover_projects(),
+    EVALUATE: evaluate,
 }

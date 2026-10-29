@@ -70,7 +70,9 @@ To restore, scale the API and worker to zero, restore the database with your pro
 | `audit_event` | Append-only: triggers reject `UPDATE` and `DELETE` |
 | `policy` | Triggers reject `UPDATE` (migration `0005`): a saved version never changes; a new version is a new row |
 | `observation`, `evaluation` | Triggers reject `UPDATE`; `DELETE` is allowed so retention can expire them. An observation is added only when a target's status, payload or error changes, so growth follows the rate of change in GitLab, not the number of runs. `observation.retention_until` exists but nothing sets or enforces it |
-| `collection_job`, `collection_run` | Kept indefinitely; the run history feeds freshness |
+| `evaluation` growth | Unlike observations, a row is added for every rule and project on every evaluation run, so each check is on record: about rules × projects × runs per day (2 rules, 10,000 projects and 4 runs a day is 80,000 rows a day). Plan the retention period with this in mind |
+| `finding` | Mutable current state; resolved findings are kept |
+| `collection_job`, `collection_run`, `evaluation_run` | Kept indefinitely; the run history feeds freshness |
 | `user_session`, `oidc_login` | Expire logically (idle, absolute and 10-minute limits) but rows remain |
 | `gitlab_group`, `gitlab_project` | Kept; deleted or hidden resources become `missing`, not removed |
 

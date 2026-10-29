@@ -23,6 +23,8 @@ Every discovery and capability detection records what it read as an `observation
 - **Growth:** a new row is written only when a target's `collection_status`, `payload_digest` or `error` differs from its latest observation. Unchanged data is not copied each run: the latest observation remains the evidence, and the resource's `last_seen_at` and the collection runs show it was confirmed since. Evaluations reference the observation they judged, which never changes (a trigger rejects `UPDATE`).
 - **Not yet:** `retention_until` is not set and nothing expires observations ([OPERATIONS.md](OPERATIONS.md#retention)). A listing that fails part way records no per-resource observation; the failed collection run is the evidence.
 
+Each stored evaluation names the observation it judged (`evaluation.observation_id`). A `pass` or `fail` is never stored without an `ok` observation whose payload holds the judged value; otherwise the result is `unknown` (see [DATA_MODEL.md](DATA_MODEL.md#evaluations-and-findings)).
+
 Read them with `GET /api/v1/gitlab/projects/{gitlab_id}/observations`, `GET /api/v1/gitlab/groups/{gitlab_id}/observations` and `GET /api/v1/gitlab/instance/observations` (`evidence:read`).
 
 ## Export package

@@ -41,6 +41,9 @@ EXPORT_STATES = ("queued", "running", "succeeded", "failed")
 ROLES = ("admin", "analyst", "auditor")
 RUN_KINDS = ("capabilities", "groups", "projects")
 RUN_STATUSES = ("running", "succeeded", "partial", "failed")
+ANCESTRIES = ("complete", "incomplete")
+CAPABILITY_STATUSES = ("not_required", "supported", "unsupported", "unknown")
+FINDING_RESOLUTIONS = ("passed", "no_longer_applies")
 
 
 def one_of(column: str, values: Iterable[str]) -> CheckConstraint:
@@ -283,47 +286,128 @@ class Observation(Base):
     retention_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class EvaluationRun(Base):
+    """One attempt at evaluating every project's effective policies (BAL-021)."""
+
+    __tablename__ = "evaluation_run"
+    __table_args__ = (
+        Index("ix_evaluation_run_started", "instance_id", "started_at"),
+        one_of("status", RUN_STATUSES),
+        CheckConstraint(
+            "(status = 'running') = (finished_at IS NULL)", name="finished_unless_running"
+        ),
+    )
+
+    id: Mapped[int] = pk()
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    collection_job_id: Mapped[int | None] = mapped_column(ForeignKey("collection_job.id"))
+    attempt: Mapped[int | None] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(Text, server_default="running")
+    started_at: Mapped[datetime] = utc_now()
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    projects: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    # Results by outcome and finding transitions, e.g. {"pass": 3, "opened": 1}.
+    counts: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    error: Mapped[str | None] = mapped_column(Text)
+
+
 class Evaluation(Base):
-    """Outcome of one rule against one observation. Rows cannot be updated."""
+    """Outcome of one rule for one project, linked to the observation it judged.
+
+    Rows cannot be updated. ``pass`` and ``fail`` always reference an observation; ``unknown``
+    and ``unsupported`` reference the project's latest observation when there is one.
+    """
 
     __tablename__ = "evaluation"
     __table_args__ = (
         Index("ix_evaluation_policy_rule", "policy_id", "rule_id"),
+        Index("ix_evaluation_project_rule", "project_id", "policy_name", "rule_id", "evaluated_at"),
+        Index("ix_evaluation_run", "evaluation_run_id"),
         one_of("outcome", OUTCOMES),
+        one_of("severity", SEVERITIES),
+        one_of("ancestry", ANCESTRIES),
+        one_of("capability_status", CAPABILITY_STATUSES),
+        CheckConstraint(
+            "(outcome = 'unknown') = (cardinality(unknown_reasons) > 0)",
+            name="unknown_has_reasons",
+        ),
+        CheckConstraint(
+            "outcome IN ('pass', 'fail') OR observed IS NULL", name="observed_only_when_decided"
+        ),
+        CheckConstraint(
+            "outcome NOT IN ('pass', 'fail') OR observation_id IS NOT NULL",
+            name="decided_has_evidence",
+        ),
     )
 
     id: Mapped[int] = pk()
-    observation_id: Mapped[int] = mapped_column(ForeignKey("observation.id"), index=True)
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    project_id: Mapped[int] = mapped_column(ForeignKey("gitlab_project.id"))
+    evaluation_run_id: Mapped[int | None] = mapped_column(ForeignKey("evaluation_run.id"))
+    observation_id: Mapped[int | None] = mapped_column(ForeignKey("observation.id"), index=True)
     policy_id: Mapped[int] = mapped_column(ForeignKey("policy.id"))
+    policy_name: Mapped[str] = mapped_column(Text)
     rule_id: Mapped[str] = mapped_column(Text)
+    rule_type: Mapped[str] = mapped_column(Text)
+    severity: Mapped[str] = mapped_column(Text)
     outcome: Mapped[str] = mapped_column(Text)
     reason: Mapped[str] = mapped_column(Text)
+    # Every reason an unknown result could not be decided, most fundamental first.
+    unknown_reasons: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), server_default=text("'{}'::text[]")
+    )
     expected: Mapped[Any] = mapped_column(JSONB)
-    observed: Mapped[Any | None] = mapped_column(JSONB)
-    capability_status: Mapped[str | None] = mapped_column(Text)
+    observed: Mapped[Any | None] = mapped_column(JSONB(none_as_null=True))
+    source: Mapped[str] = mapped_column(Text)
+    observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    capability_name: Mapped[str | None] = mapped_column(Text)
+    capability_status: Mapped[str] = mapped_column(Text)
+    collection_kind: Mapped[str] = mapped_column(Text)
+    collection_status: Mapped[str] = mapped_column(Text)
+    collection_last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    ancestry: Mapped[str] = mapped_column(Text)
     evaluated_at: Mapped[datetime] = utc_now()
 
 
 class Finding(Base):
-    """Current operational state of a rule for a project, pointing at its latest evaluation."""
+    """A rule a project failed, followed across policy versions until it passes again.
+
+    Keyed by policy name, not version, so a new version of the same baseline continues the
+    finding. ``latest_outcome`` is the latest evaluation's outcome: an ``unknown`` result
+    never resolves or opens a finding, it only shows that the last check could not decide.
+    """
 
     __tablename__ = "finding"
     __table_args__ = (
-        UniqueConstraint("project_id", "policy_id", "rule_id"),
+        UniqueConstraint("project_id", "policy_name", "rule_id"),
+        Index("ix_finding_state", "state", "id"),
         one_of("severity", SEVERITIES),
         one_of("state", FINDING_STATES),
+        one_of("latest_outcome", OUTCOMES),
+        one_of("resolution", FINDING_RESOLUTIONS),
+        CheckConstraint(
+            "(state = 'resolved') = (resolved_at IS NOT NULL)", name="resolved_has_time"
+        ),
+        CheckConstraint(
+            "(state = 'resolved') = (resolution IS NOT NULL)", name="resolved_has_resolution"
+        ),
     )
 
     id: Mapped[int] = pk()
     project_id: Mapped[int] = mapped_column(ForeignKey("gitlab_project.id"))
+    # The policy version of the latest evaluation.
     policy_id: Mapped[int] = mapped_column(ForeignKey("policy.id"))
+    policy_name: Mapped[str] = mapped_column(Text)
     rule_id: Mapped[str] = mapped_column(Text)
     latest_evaluation_id: Mapped[int] = mapped_column(ForeignKey("evaluation.id"))
+    latest_outcome: Mapped[str] = mapped_column(Text)
     severity: Mapped[str] = mapped_column(Text)
     state: Mapped[str] = mapped_column(Text, server_default="open")
     first_seen_at: Mapped[datetime] = utc_now()
+    # When an evaluation last found the rule failing.
     last_seen_at: Mapped[datetime] = utc_now()
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resolution: Mapped[str | None] = mapped_column(Text)
 
 
 class AuditEvent(Base):

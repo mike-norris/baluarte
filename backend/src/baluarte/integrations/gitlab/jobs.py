@@ -7,6 +7,7 @@ so failures are recorded even when the job will be retried.
 import logging
 import time
 from collections.abc import Callable
+from typing import Any
 
 import httpx
 from sqlalchemy import Engine, func, select
@@ -22,6 +23,7 @@ from baluarte.integrations.gitlab.runs import RunKind, RunOutcome, finish_run, s
 from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_settings
 from baluarte.jobs import queue
 from baluarte.jobs.queue import ClaimedJob, JobError, PermanentJobError
+from baluarte.policy.evaluation.runner import queue_after_collection
 from baluarte.settings import ConfigurationError
 
 logger = logging.getLogger(__name__)
@@ -121,14 +123,28 @@ def _make_discovery(
             _unexpected(engine, run_id, exc)
             raise
         unconfirmed = result.reconciled["unchanged"]
+        counts: dict[str, Any] = dict(result.reconciled)
+        problems = [f"{unconfirmed} {kind} could not be confirmed"] if unconfirmed else []
+        if result.protection is not None:
+            counts["protection"] = result.protection
+            unread = result.protection.get("unread", 0)
+            if unread:
+                # Their protection evaluates as unknown, so the run is not a full success.
+                problems.append(f"default-branch protection of {unread} projects was not read")
         finish_run(
             engine,
             run_id,
-            "partial" if unconfirmed else "succeeded",
+            "partial" if problems else "succeeded",
             seen=result.seen,
-            counts=result.reconciled,
-            error=f"{unconfirmed} {kind} could not be confirmed" if unconfirmed else None,
+            counts=counts,
+            error="; ".join(problems) or None,
         )
+        if kind == "projects":
+            # Re-evaluate against the new inventory. A failed discovery queues none (its attempt
+            # is retried); the collection freshness already reports the failure.
+            with Session(engine) as db:
+                queue_after_collection(db, run_id)
+                db.commit()
         logger.info(
             "gitlab %s: %s listed, reconciled %s",
             kind,
