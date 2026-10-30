@@ -84,5 +84,5 @@ An exception waives one rule for one project for a limited time (`GET/POST /api/
 - **Deciding:** `/exceptions` lists exceptions, with filters in the URL (`state`, `project`, `policy`, `rule`). `expired` counts any exception past its expiry, before the next evaluation records it. `/exceptions/:id` shows the details and the history, oldest first.
   - Users with `exception:approve` (admins) can approve, reject or revoke after a confirmation step. Rejecting and revoking need a reason.
   - Every change sends the `X-CSRF-Token` header and is audited.
-- **Separation of duties:** `/auth/me` returns no user ID, so the page hides approve and reject when the requester's display name matches the signed-in user's. The API refuses self-approval regardless, and its reason is shown.
+- **Separation of duties:** the page hides approve and reject when the request's `requested_by.user_id` is the signed-in user's `user_id` from `/auth/me`. The API refuses self-approval regardless, and its reason is shown.
 - **Effect:** an excepted finding shows its expiry in the findings list and on its detail page, and is never counted as passing. The dashboard keeps `excepted` out of the pass share.

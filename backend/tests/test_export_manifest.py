@@ -22,6 +22,7 @@ from test_evidence_export import (
     post,
     world,
 )
+from test_exceptions import add_exception, user
 
 from baluarte.db.models import CollectionRun, GitLabProject
 from baluarte.evidence import verify
@@ -38,6 +39,7 @@ ZIP_FILES = [
     "findings.csv",
     "observations.jsonl",
     "policies.csv",
+    "exceptions.csv",
     "collection_errors.csv",
     "collection_runs.csv",
 ]
@@ -105,8 +107,8 @@ def test_a_zip_ends_with_a_manifest_and_sha256sums(world: World) -> None:
 
     assert archive.namelist() == [*ZIP_FILES, "manifest.json", "SHA256SUMS"]
     manifest = json.loads(archive.read("manifest.json"))
-    assert manifest["manifest_format"] == "baluarte.evidence-manifest/v1"
-    assert manifest["export_format"] == "baluarte.evidence-export/v1"
+    assert manifest["manifest_format"] == "baluarte.evidence-manifest/v2"
+    assert manifest["export_format"] == "baluarte.evidence-export/v2"
     assert manifest["package"] == "zip"
     assert manifest["export_id"] == response.headers["x-baluarte-export-id"]
     assert manifest["generated_at"] == json.loads(archive.read("export.json"))["generated_at"]
@@ -364,3 +366,95 @@ def test_the_verifier_rejects_what_it_cannot_read(tmp_path: Path) -> None:
     status, output = run(save(tmp_path, "partial.zip", buffer.getvalue()))
     assert status == 2
     assert "manifest.json is missing" in output
+
+
+# --- Exceptions (export format v2) --------------------------------------------------------------
+
+
+def with_exception(world: World) -> int:
+    """Project 1 fails but an approved exception waives it; project 2 passes."""
+    project_id = world.project(1, "public")
+    world.project(2, "private")
+    exception_id = add_exception(
+        world, project_id, user(world.engine, "ana"), approver=user(world.engine, "bea")
+    )
+    world.run()
+    return exception_id
+
+
+def without_exceptions(original: bytes, export_format: str | None = None) -> bytes:
+    """The ZIP without exceptions.csv, its manifest and SHA256SUMS rewritten to match."""
+    source = zipfile.ZipFile(io.BytesIO(original))
+    manifest = json.loads(source.read("manifest.json"))
+    manifest["files"] = [entry for entry in manifest["files"] if entry["name"] != "exceptions.csv"]
+    if export_format is not None:
+        manifest["export_format"] = export_format
+        del manifest["exceptions"]
+    files = {
+        name: source.read(name)
+        for name in source.namelist()
+        if name not in ("exceptions.csv", "SHA256SUMS")
+    }
+    files["manifest.json"] = json.dumps(manifest).encode()
+    sums = "".join(f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, data in files.items())
+    files["SHA256SUMS"] = sums.encode()
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as target:
+        for name, data in files.items():
+            target.writestr(name, data)
+    return buffer.getvalue()
+
+
+@pytest.mark.parametrize("fmt", ["json", "csv"])
+def test_the_manifest_lists_exceptions_and_the_verifier_passes(
+    world: World, tmp_path: Path, fmt: str
+) -> None:
+    with_exception(world)
+    response = post(world.engine, {"format": fmt, "scope": {"all": True}})
+    path = save(tmp_path, f"export.{'json' if fmt == 'json' else 'zip'}", response.content)
+    _, completed = audit_events(world.engine)
+
+    status, output = run(path, "--manifest-sha256", completed.details["manifest_sha256"])
+
+    assert status == 0, output
+    manifest = verify.verify(path)[1]
+    assert manifest["exceptions"] == {"count": 1, "by_effective_state": {"approved": 1}}
+    assert manifest["evaluations"]["outcomes"] == {"excepted": 1, "pass": 1}
+    listed = manifest["files" if fmt == "csv" else "sections"]
+    exceptions = next(entry for entry in listed if entry["name"].startswith("exceptions"))
+    assert exceptions["rows"] == 1
+
+
+def test_the_verifier_fails_an_edited_exceptions_file(world: World, tmp_path: Path) -> None:
+    with_exception(world)
+    response, archive = export_zip(world.engine, all=True)
+    edited = archive.read("exceptions.csv").replace(b",approved,approved,", b",approved,expired,")
+    assert edited != archive.read("exceptions.csv")
+
+    status, output = run(
+        save(tmp_path, "export.zip", rezip(response.content, {"exceptions.csv": edited}))
+    )
+
+    assert status == 1
+    assert "FAIL exceptions.csv: does not match the manifest" in output
+
+
+def test_a_current_export_without_its_exceptions_fails(world: World, tmp_path: Path) -> None:
+    with_exception(world)
+    response, _ = export_zip(world.engine, all=True)
+
+    # Every hash is rewritten to match; only the format's promise catches the removal.
+    status, output = run(save(tmp_path, "export.zip", without_exceptions(response.content)))
+
+    assert status == 1
+    assert "FAIL exceptions.csv: required by the export format but missing" in output
+
+
+def test_an_export_from_before_exceptions_still_verifies(world: World, tmp_path: Path) -> None:
+    seeded(world)
+    response, _ = export_zip(world.engine, all=True)
+    older = without_exceptions(response.content, export_format="baluarte.evidence-export/v1")
+
+    status, output = run(save(tmp_path, "export.zip", older))
+
+    assert status == 0, output

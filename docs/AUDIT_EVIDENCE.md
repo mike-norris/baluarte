@@ -49,10 +49,11 @@ The inventory section always lists every project in the group or project scope, 
 | Section (CSV file) | Holds |
 |---|---|
 | `inventory` (`inventory.csv`) | Projects in scope as the inventory holds them at export time. |
-| `evaluations` (`evaluations.csv`) | Stored results, with policy version, reason codes, expected and observed values, capability and collection status, `observation_id` and `evaluation_run_id`. |
-| `findings` (`findings.csv`) | Findings with their latest evaluation and the observation it judged. |
+| `evaluations` (`evaluations.csv`) | Stored results, with policy version, reason codes, expected and observed values, capability and collection status, `observation_id`, `evaluation_run_id` and, for an `excepted` result, `exception_id`. |
+| `findings` (`findings.csv`) | Findings with their latest evaluation, the observation it judged and, while waived, `exception_id`. |
 | `observations` (`observations.jsonl`) | Every observation those reference: source, `source_ref`, `collected_at`, `collection_run_id`, `collection_job_id`, payload, `payload_digest`, and `digest_valid` recomputed at export. A `false` is exported as it is, never hidden. |
 | `policies` (`policies.csv`) | The exact policy versions referenced: name, version, `yaml_digest`, `effective_at` and the source YAML. |
+| `exceptions` (`exceptions.csv`) | Policy exceptions in scope, and every exception an exported evaluation or finding references: project, policy name, rule, `state`, `effective_state`, justification, decision and end notes, and the request, decision, expiry and end times. `effective_state` is the state at export time (database clock), counting a requested or approved exception past `expires_at` as `expired`, as the API does. People appear only as `user:<id>`. Exceptions are narrowed by project, group, policy, rule and window (one requested before `until` that had not ended, been rejected or expired before `since`); `outcome` and `finding_state` do not narrow them. |
 | `collection_errors` (`collection_errors.csv`) | Projects and groups in scope that are missing, inaccessible or carry a collection error. |
 | `collection_runs` (`collection_runs.csv`) | Collection and evaluation runs, with status, error and counts. |
 
@@ -62,7 +63,7 @@ The JSON document also holds the scope, the export ID, `generated_at` (database 
 
 **CSV safety.** A cell that starts with `=`, `+`, `-`, `@`, a tab or a carriage return gets a leading apostrophe, so spreadsheets do not run it as a formula. Lists and objects are written as canonical JSON.
 
-**Limits.** At most 100,000 rows (inventory, evaluations, findings and collection errors together). A larger scope is a 422 before anything is sent; narrow it. The response is streamed from paged reads, so memory stays bounded, with `Cache-Control: no-store`.
+**Limits.** At most 100,000 rows (inventory, evaluations, findings, exceptions and collection errors together). A larger scope is a 422 before anything is sent; narrow it. The response is streamed from paged reads, so memory stays bounded, with `Cache-Control: no-store`.
 
 **Reproducible.** The same evidence and scope give the same rows in the same order. ZIP entries have a fixed timestamp. Only the export ID, `generated_at` and the freshness `checked_at` differ, and with them the files and hashes that hold them (`README.txt`, `export.json`, the manifest and `SHA256SUMS`, and the JSON export's `metadata_sha256`).
 
@@ -76,7 +77,7 @@ Every export carries a manifest (BAL-028): `manifest.json` in a ZIP, written aft
 
 | Field | Holds |
 |---|---|
-| `manifest_format`, `export_format`, `package` | `baluarte.evidence-manifest/v1`, `baluarte.evidence-export/v1`, and `zip` or `json`. |
+| `manifest_format`, `export_format`, `package` | `baluarte.evidence-manifest/v2`, `baluarte.evidence-export/v2`, and `zip` or `json`. Version 2 added the exceptions section, `exception_id` on evaluations and findings, and the manifest's `exceptions` summary. |
 | `export_id`, `generated_at`, `baluarte_version`, `instance`, `scope` | What was exported, when (database clock), by which version, from which GitLab. |
 | `requested_by` | The requester's internal user ID (`user:<id>`), as in the audit log. Names and email addresses are not copied into the package; the audit log and user table resolve the ID. |
 | `files` (ZIP) | Every other file except `SHA256SUMS`: name, rows (CSV records without the header, or JSON lines), bytes and SHA-256 of its bytes. |
@@ -86,6 +87,7 @@ Every export carries a manifest (BAL-028): `manifest.json` in a ZIP, written aft
 | `evaluations` | Exported results by outcome, and how often each unknown reason occurs. |
 | `observations` | Count, count by collection status, how many had `digest_valid: false` (with their IDs, up to 1,000), how many payloads were withheld, and how many observations have no payload (could not observe). |
 | `collection_errors` | Projects and groups in scope by type and state, and how many carry an error message. |
+| `exceptions` | How many exceptions were exported, by effective state at export time. |
 | `runs_not_succeeded` | Exported collection and evaluation runs that failed, were partial or were still running, with their (redacted) error. |
 | `freshness` | Collection status per kind with its last success, and evaluation status, at export time. |
 | `digests` | How every hash in the package is computed. |
@@ -95,7 +97,7 @@ Hashes use SHA-256. Canonical JSON means keys sorted, no insignificant whitespac
 
 **Anchoring the manifest.** A file cannot hold its own hash, and anyone who can edit a package can rewrite its manifest and `SHA256SUMS` to match. So `manifest_sha256`, the SHA-256 of the manifest's canonical JSON, is recorded in the `evidence.export_completed` audit event and nowhere in the package. Comparing the two is what ties a package to what Baluarte produced; it is only as trustworthy as the audit record it is compared with, so prefer the copy in the `baluarte.audit` log stream kept outside the database (see [Audit limitations](#audit-limitations)).
 
-**Verifying.** `baluarte-verify-export <file> --manifest-sha256 <value from the audit event>` checks a ZIP or JSON export offline, with no database: every file or section against the manifest, a ZIP against `SHA256SUMS`, no file missing or unlisted, the counts, and every observation's `payload_digest` recomputed from its payload. It exits 0 when every check passes, 1 when any fails and 2 when the file cannot be read. Evidence that was already invalid when exported (`digest_valid: false`) and withheld payloads are reported as warnings: the export shows them truthfully, so they do not fail the package. Without `--manifest-sha256` it says the manifest itself was not checked. The verifier is one standard-library file (`backend/src/baluarte/evidence/verify.py`) and also runs as `python3 verify.py <file>` on Python 3.9 or later.
+**Verifying.** `baluarte-verify-export <file> --manifest-sha256 <value from the audit event>` checks a ZIP or JSON export offline, with no database: every file or section against the manifest, a ZIP against `SHA256SUMS`, no file missing or unlisted, the counts, and every observation's `payload_digest` recomputed from its payload. It exits 0 when every check passes, 1 when any fails and 2 when the file cannot be read. Evidence that was already invalid when exported (`digest_valid: false`) and withheld payloads are reported as warnings: the export shows them truthfully, so they do not fail the package. Without `--manifest-sha256` it says the manifest itself was not checked. A `baluarte.evidence-export/v2` package must contain its exceptions (`exceptions.csv`, or the `exceptions` section), and the manifest's exception count must match; a package from before exceptions (`v1`) is still accepted and checked against what its own manifest lists. The verifier is one standard-library file (`backend/src/baluarte/evidence/verify.py`) and also runs as `python3 verify.py <file>` on Python 3.9 or later.
 
 What verification does not show: rows changed in the database before the export together with their digests, deleted or forged rows, or anything about GitLab's own records. The digests are not anchored outside the database.
 

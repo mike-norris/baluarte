@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 import zipfile
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,7 @@ from gitlab_fake import TOKEN, URL
 from sqlalchemy import Engine, select, text
 from sqlalchemy.orm import Session
 from test_evaluation_store import VISIBILITY_ONLY, World
+from test_exceptions import add_exception, user
 from test_findings_api import client_as
 
 from baluarte.auth.roles import Role
@@ -33,6 +35,7 @@ SECTIONS = [
     "findings",
     "observations",
     "policies",
+    "exceptions",
     "collection_errors",
     "collection_runs",
 ]
@@ -142,7 +145,7 @@ def test_a_json_export_holds_every_section_with_provenance(world: World) -> None
         "counts",
         "manifest",
     ]
-    assert document["format"] == "baluarte.evidence-export/v1"
+    assert document["format"] == "baluarte.evidence-export/v2"
     assert document["export_id"] == response.headers["x-baluarte-export-id"]
     assert document["scope"] == {"all": True}
     assert document["freshness"]["collection"]["status"] in {"fresh", "stale", "never", "failed"}
@@ -190,6 +193,7 @@ def test_a_json_export_holds_every_section_with_provenance(world: World) -> None
         "findings": 1,
         "observations": 2,
         "policies": 1,
+        "exceptions": 0,
         "collection_errors": 0,
         "collection_runs": 2,
     }
@@ -387,6 +391,7 @@ def test_a_csv_export_is_a_zip_of_csv_files(world: World) -> None:
         "findings.csv",
         "observations.jsonl",
         "policies.csv",
+        "exceptions.csv",
         "collection_errors.csv",
         "collection_runs.csv",
         "manifest.json",
@@ -566,7 +571,13 @@ def test_every_export_is_audited_without_its_data(world: World) -> None:
     assert accepted.details == {
         "format": "csv",
         "scope": {"group": "platform"},
-        "planned_rows": {"inventory": 1, "evaluations": 1, "findings": 1, "collection_errors": 0},
+        "planned_rows": {
+            "inventory": 1,
+            "evaluations": 1,
+            "findings": 1,
+            "collection_errors": 0,
+            "exceptions": 0,
+        },
         "instance": URL,
     }
     assert (completed.action, completed.resource_id) == ("evidence.export_completed", export_id)
@@ -580,3 +591,98 @@ def test_every_export_is_audited_without_its_data(world: World) -> None:
         assert digest["sha256"] == hashlib.sha256(archive.read(name)).hexdigest()
     assert files["evaluations.csv"]["rows"] == 1
     assert "platform/p1" not in json.dumps([accepted.details, completed.details])
+
+
+# --- Exceptions --------------------------------------------------------------------------------
+
+
+def test_exceptions_are_exported_with_their_effective_state(world: World) -> None:
+    waived = world.project(1, "public")
+    lapsed = world.project(2, "public")
+    ana, bea = user(world.engine, "ana"), user(world.engine, "bea")
+    approved = add_exception(world, waived, ana, approver=bea)
+    world.run()
+    # Approved but past its expiry, and no run has marked it expired yet.
+    expired = add_exception(
+        world,
+        lapsed,
+        ana,
+        approver=bea,
+        requested_ago=timedelta(days=10),
+        expires_in=timedelta(days=-1),
+    )
+
+    document = export_json(world.engine, all=True)
+
+    exceptions = {row["id"]: row for row in document["exceptions"]}
+    assert set(exceptions) == {approved, expired}
+    expected = {
+        "project_gitlab_id": 1,
+        "project_path": "platform/p1",
+        "policy_name": "default-gitlab-baseline",
+        "rule_id": "project-visibility",
+        "state": "approved",
+        "effective_state": "approved",
+        "requested_by": f"user:{ana}",
+        "decided_by": f"user:{bea}",
+        "ended_by": None,
+    }
+    assert {key: exceptions[approved][key] for key in expected} == expected
+    assert (exceptions[expired]["state"], exceptions[expired]["effective_state"]) == (
+        "approved",
+        "expired",
+    )
+    # People only as user IDs: no display names or subjects.
+    assert b"Ana" not in json.dumps(document).encode()
+    evaluation = by_project(document["evaluations"])[1]
+    assert (evaluation["outcome"], evaluation["exception_id"]) == ("excepted", approved)
+    finding = by_project(document["findings"])[1]
+    assert (finding["state"], finding["exception_id"]) == ("excepted", approved)
+    assert by_project(document["evaluations"])[2]["exception_id"] is None
+    assert document["counts"]["exceptions"] == 2
+
+
+def test_exceptions_follow_the_scope_and_window(world: World) -> None:
+    first = world.project(1, "public")
+    second = world.project(2, "public")
+    ana, bea = user(world.engine, "ana"), user(world.engine, "bea")
+    current = add_exception(world, first, ana, approver=bea)
+    rejected = add_exception(
+        world, second, ana, state="rejected", approver=bea, requested_ago=timedelta(days=30)
+    )
+    world.run()
+
+    assert [row["id"] for row in export_json(world.engine, projects=[2])["exceptions"]] == [
+        rejected
+    ]
+    assert export_json(world.engine, rule="default-branch-protected")["exceptions"] == []
+    # Rejected 15 days ago: outside a window starting 5 days ago; the current one is inside it.
+    since = (datetime.now(UTC) - timedelta(days=5)).isoformat()
+    windowed = export_json(world.engine, since=since)
+    assert [row["id"] for row in windowed["exceptions"]] == [current]
+
+
+def test_exception_text_is_redacted_and_cannot_run_as_a_formula(world: World) -> None:
+    project_id = world.project(1, "public")
+    ana, bea = user(world.engine, "ana"), user(world.engine, "bea")
+    exception_id = add_exception(world, project_id, ana, approver=bea)
+    with Session(world.engine) as db:
+        # The trigger keeps what was requested; disable it to plant hostile text.
+        db.execute(text("ALTER TABLE policy_exception DISABLE TRIGGER policy_exception_transition"))
+        db.execute(
+            text("UPDATE policy_exception SET justification = :value WHERE id = :id"),
+            {"value": f'=HYPERLINK("https://evil.example") token {FAKE_PAT}', "id": exception_id},
+        )
+        db.execute(text("ALTER TABLE policy_exception ENABLE TRIGGER policy_exception_transition"))
+        db.commit()
+    world.run()
+
+    as_json = post(world.engine, {"format": "json", "scope": {"all": True}})
+    _, archive = export_zip(world.engine, all=True)
+
+    assert FAKE_PAT.encode() not in as_json.content
+    assert FAKE_PAT.encode() not in b"".join(archive.read(name) for name in archive.namelist())
+    (row,) = rows(archive, "exceptions.csv")
+    assert row["justification"].startswith("'=HYPERLINK(")
+    assert "[REDACTED]" in row["justification"]
+    assert list(row) == list(export.COLUMNS["exceptions"])

@@ -31,12 +31,11 @@ export function hasPermission(user: CurrentUser, permission: string): boolean {
 }
 
 /**
- * Whether this looks like the signed-in user's own request. ``/auth/me`` has no user ID, so this
- * compares display names; the API enforces separation of duties either way.
+ * Whether the signed-in user requested this exception, by internal user ID. The API enforces
+ * separation of duties either way; this only hides actions it would refuse.
  */
-export function looksOwn(exception: PolicyException, user: CurrentUser): boolean {
-  const name = exception.requested_by.display_name;
-  return name !== null && name === user.display_name;
+export function isOwn(exception: PolicyException, user: CurrentUser): boolean {
+  return exception.requested_by.user_id === user.user_id;
 }
 
 export function requesterName(exception: PolicyException): string {

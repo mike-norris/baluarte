@@ -56,6 +56,8 @@ _PROVIDER_ERROR = re.compile(r"^[a-z_]{1,64}$")
 
 
 class CurrentUser(BaseModel):
+    # The internal ID that audit events and exports name as ``user:<id>``; the caller's own.
+    user_id: int
     subject: str
     email: str | None
     display_name: str | None
@@ -228,6 +230,7 @@ def callback(
 @router.get("/me", response_model=CurrentUser, summary="Current user and session")
 def me(principal: SignedIn) -> CurrentUser:
     return CurrentUser(
+        user_id=principal.user_id,
         subject=principal.subject,
         email=principal.email,
         display_name=principal.display_name,

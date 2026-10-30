@@ -14,7 +14,8 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any
 
-MANIFEST_FORMAT = "baluarte.evidence-manifest/v1"
+# v2: adds the exceptions summary (export format v2).
+MANIFEST_FORMAT = "baluarte.evidence-manifest/v2"
 # Invalid observation IDs listed by ID; beyond this only the count is given.
 MAX_LISTED = 1000
 
@@ -49,6 +50,8 @@ LIMITATIONS = [
     "manifest_sha256 is compared with the evidence.export_completed audit event, ideally from a "
     "copy of the baluarte.audit log stream kept outside the database.",
     "Results are only as current as the collection and evaluation freshness recorded here.",
+    "An excepted result is a known failure waived by an approved exception, not a pass. "
+    "Exceptions are listed with their state at export time; one past its expiry is expired.",
 ]
 
 VERIFICATION = [
@@ -78,6 +81,7 @@ class Summary:
     error_resources: Counter[tuple[str, str]] = field(default_factory=Counter)
     resources_with_errors: int = 0
     runs: list[dict[str, Any]] = field(default_factory=list)
+    exceptions: Counter[str] = field(default_factory=Counter)
 
     def add(self, section: str, row: dict[str, Any]) -> None:
         if section == "evaluations":
@@ -106,6 +110,8 @@ class Summary:
             self.error_resources[(row["resource_type"], row["state"])] += 1
             if row["error"] is not None:
                 self.resources_with_errors += 1
+        elif section == "exceptions":
+            self.exceptions[row["effective_state"]] += 1
         elif section == "collection_runs" and row["status"] in ("failed", "partial", "running"):
             self.runs.append(
                 {
@@ -184,6 +190,10 @@ def build(
                 for (kind, state), count in sorted(summary.error_resources.items())
             ],
             "with_error_message": summary.resources_with_errors,
+        },
+        "exceptions": {
+            "count": sum(summary.exceptions.values()),
+            "by_effective_state": dict(sorted(summary.exceptions.items())),
         },
         "runs_not_succeeded": summary.runs,
         "freshness": _freshness(meta),

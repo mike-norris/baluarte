@@ -20,7 +20,7 @@ import {
   exceptionStateLabels,
   exceptionStateMeaning,
   hasPermission,
-  looksOwn,
+  isOwn,
   requesterName,
 } from "../exceptions/format";
 import { formatTime } from "../time";
@@ -205,7 +205,7 @@ function Actions({
 }) {
   const [action, setAction] = useState<ExceptionAction | null>(null);
   if (!hasPermission(user, CAN_APPROVE)) return null;
-  const own = looksOwn(exception, user);
+  const own = isOwn(exception, user);
   const available: ExceptionAction[] = [];
   if (exception.state === "requested" && !own) available.push("approve", "reject");
   if (exception.state === "requested" || exception.state === "approved") available.push("revoke");
@@ -218,7 +218,7 @@ function Actions({
       </h2>
       {own && exception.state === "requested" && (
         <p className="mt-2 text-sm">
-          This appears to be your own request. Someone else must approve or reject it.
+          This is your own request. Someone else must approve or reject it.
         </p>
       )}
       {action ? (

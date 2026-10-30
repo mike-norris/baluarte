@@ -10,6 +10,9 @@ Standard library only and no database, so an auditor can run it anywhere (also a
   ``evidence.export_completed`` audit event, the only check an edit of both the package and its
   manifest cannot pass
 
+Packages of an older export format are still accepted: a v1 export (before exceptions) is checked
+against what its own manifest lists, and only a v2 or later export must contain the exceptions.
+
 Exit status: 0 when every check passes, 1 when any fails, 2 when the file cannot be read.
 Warnings (evidence that was already invalid when exported, withheld payloads) do not fail it.
 """
@@ -29,6 +32,8 @@ from typing import Any
 
 ROW_FILES = (".csv", ".jsonl")
 UNLISTED = ("manifest.json", "SHA256SUMS")
+# Contents an export format must have beyond what its manifest lists: exceptions from v2.
+REQUIRED = {"baluarte.evidence-export/v2": {"zip": "exceptions.csv", "json": "exceptions"}}
 # The members of a JSON export that are neither sections nor the manifest.
 METADATA = ("format", "export_id", "generated_at", "instance", "scope", "freshness")
 
@@ -186,6 +191,24 @@ def verify_observations(
     )
 
 
+def verify_expected(manifest: dict[str, Any], report: Report) -> None:
+    """Contents the manifest's export format promises, and the exceptions summary."""
+    package = manifest.get("package")
+    listed = {
+        entry["name"]: entry
+        for entry in manifest.get("files" if package == "zip" else "sections", [])
+    }
+    required = REQUIRED.get(str(manifest.get("export_format")), {}).get(str(package))
+    if required is not None:
+        report.check(required in listed, f"{required}: required by the export format but missing")
+    summary = manifest.get("exceptions")
+    if summary is not None and required in listed:
+        report.check(
+            summary.get("count") == listed[required]["rows"],
+            "exceptions: count differs from the manifest's rows",
+        )
+
+
 def verify(path: str, manifest_sha256: str | None = None) -> tuple[Report, dict[str, Any]]:
     report = Report()
     if zipfile.is_zipfile(path):
@@ -198,6 +221,7 @@ def verify(path: str, manifest_sha256: str | None = None) -> tuple[Report, dict[
             raise ValueError("not a Baluarte export")
         manifest, observations = verify_json(document, report)
     verify_observations(observations, manifest, report)
+    verify_expected(manifest, report)
     if manifest_sha256 is not None:
         report.check(
             sha256(canonical(manifest)) == manifest_sha256.strip().lower(),

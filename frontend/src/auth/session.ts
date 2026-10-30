@@ -1,6 +1,8 @@
 /** Client for the API's session endpoints. The server enforces access; this only reflects it. */
 
 export interface CurrentUser {
+  /** The internal ID the audit log and exceptions name; the signed-in user's own. */
+  user_id: number;
   subject: string;
   email: string | null;
   display_name: string | null;
