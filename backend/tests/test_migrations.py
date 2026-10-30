@@ -28,6 +28,7 @@ TABLES = {
     "policy",
     "policy_assignment",
     "policy_exception",
+    "remediation_plan",
     "user_session",
 }
 
@@ -67,7 +68,8 @@ def test_downgrade_to_base_and_upgrade_again(migrated_engine: Engine) -> None:
         functions = connection.execute(
             text(
                 "SELECT count(*) FROM pg_proc WHERE proname IN "
-                "('baluarte_reject_modification', 'baluarte_policy_exception_transition')"
+                "('baluarte_reject_modification', 'baluarte_policy_exception_transition', "
+                "'baluarte_remediation_plan_transition')"
             )
         ).scalar_one()
     assert functions == 0

@@ -28,6 +28,8 @@ Roles come from the identity provider's groups claim (`BALUARTE_OIDC_*_GROUPS`);
 | `policy:write` | yes | yes | no |
 | `exception:request` | yes | yes | no |
 | `exception:approve` (approve, reject, revoke; never one's own request) | yes | no | no |
+| `remediation:plan` (create and submit dry-run remediation plans) | yes | yes | no |
+| `remediation:approve` (approve or reject a plan; never one's own) | yes | no | no |
 | `evidence:export` | yes | no | yes |
 | `audit_log:read` | yes | no | yes |
 | `settings:manage` (includes running GitLab diagnostics) | yes | no | no |
@@ -51,6 +53,14 @@ Sign-in, failed sign-in (with a reason code) and sign-out are written to `audit_
 - Error messages stored or returned for GitLab failures contain the status and endpoint path only, never response bodies, query strings or the token.
 - The token is mounted into the API (diagnostics) and the worker (capability detection and collection) only. Capability detection calls `GET /license`, which is administrator-only; a least-privilege token gets 403 there by design and the tier is reported as unknown.
 - Diagnostics (`POST /api/v1/gitlab/diagnostics`, admin, CSRF-protected) warn when the token has write scopes (`api`, `write_repository`, ...), belongs to an administrator, or expires within 30 days, and fail when it is revoked, expired, lacks `read_api`, or its user is blocked. Checks that cannot run are `unknown`, never `ok`. Each run is audited (`gitlab.diagnostics_run`).
+
+## Remediation plans
+
+Dry-run plans (BAL-031, [REMEDIATION.md](REMEDIATION.md)) describe GitLab changes that would fix open findings; **creating, submitting or approving one changes nothing in GitLab**. Baluarte still sends only `GET` requests with the `read_api` token, and no write credential exists. Tests run every planning path with network requests forbidden, and check that the GitLab client can only send `GET`.
+
+When execution is built (BAL-032), it must use a separate write credential: its own secret file and setting, mounted only into the executing worker, and absent unless remediation is enabled ([ADR-0007](architecture/ADR-0007-remediation-constraints.md)). The read token must never gain write scopes. On GitLab Free, GitLab keeps no audit record of such changes, so Baluarte's audit trail would be the only one.
+
+Plans separate duties like exceptions: the creator cannot approve or reject their own plan (API and database constraint). Approval names the plan digest the approver reviewed and is refused when the plan is stale.
 
 ## Audit trail
 

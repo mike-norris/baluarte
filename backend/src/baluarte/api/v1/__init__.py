@@ -19,6 +19,7 @@ from baluarte.api.v1 import (
     policies,
     policy_assignments,
     ready,
+    remediation,
     system,
 )
 from baluarte.auth.dependencies import current_principal
@@ -47,6 +48,7 @@ protected.include_router(policy_assignments.router)
 protected.include_router(evaluations.router)
 protected.include_router(exceptions.router)
 protected.include_router(exports.router)
+protected.include_router(remediation.router)
 
 router = APIRouter(prefix="/api/v1")
 router.include_router(public)

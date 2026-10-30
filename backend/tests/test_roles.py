@@ -30,12 +30,18 @@ def test_every_role_has_permissions() -> None:
         (Role.ADMIN, set(Permission), set()),
         (
             Role.ANALYST,
-            {Permission.FINDINGS_READ, Permission.POLICY_WRITE, Permission.EXCEPTION_REQUEST},
+            {
+                Permission.FINDINGS_READ,
+                Permission.POLICY_WRITE,
+                Permission.EXCEPTION_REQUEST,
+                Permission.REMEDIATION_PLAN,
+            },
             {
                 Permission.SETTINGS_MANAGE,
                 Permission.EVIDENCE_EXPORT,
                 Permission.AUDIT_LOG_READ,
                 Permission.EXCEPTION_APPROVE,
+                Permission.REMEDIATION_APPROVE,
             },
         ),
         (
@@ -46,6 +52,8 @@ def test_every_role_has_permissions() -> None:
                 Permission.SETTINGS_MANAGE,
                 Permission.EXCEPTION_REQUEST,
                 Permission.EXCEPTION_APPROVE,
+                Permission.REMEDIATION_PLAN,
+                Permission.REMEDIATION_APPROVE,
             },
         ),
     ],

@@ -196,4 +196,5 @@ Where a scenario leaves results undecided, the tests also check that no `pass` a
 | Item | Issue |
 | --- | --- |
 | Exceptions for a group subtree or a whole policy | |
+| Executing remediation plans. Plans are built only from `fail` results and never from `unknown`, `unsupported` or `excepted` ones ([REMEDIATION.md](REMEDIATION.md)) | BAL-032 |
 | Group-level rules. All current rule types target projects. | |
