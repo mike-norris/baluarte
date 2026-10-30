@@ -1,5 +1,6 @@
 import { useId, useState, type ChangeEvent, type FormEvent } from "react";
 
+import type { ApiError } from "../api/client";
 import {
   saveOidc,
   testOidc,
@@ -94,7 +95,7 @@ export function OidcForm({
   config,
   secretKeyConfigured,
   onSaved,
-  onUnauthorized,
+  onError,
   submitLabel = "Save identity provider",
   lockoutWarning = false,
   onCancel,
@@ -105,7 +106,8 @@ export function OidcForm({
   /** Null when unknown (an older server); saving a secret is then attempted. */
   secretKeyConfigured: boolean | null;
   onSaved: (config: OidcConfig) => void;
-  onUnauthorized: () => void;
+  /** Called with every failed request, after its message is shown. */
+  onError: (error: ApiError) => void;
   submitLabel?: string;
   lockoutWarning?: boolean;
   onCancel?: () => void;
@@ -141,7 +143,7 @@ export function OidcForm({
     } catch (error) {
       const apiError = asApiError(error);
       setTestFailure(apiError.message);
-      if (apiError.status === 401) onUnauthorized();
+      onError(apiError);
     } finally {
       setTesting(false);
     }
@@ -176,7 +178,7 @@ export function OidcForm({
     } catch (error) {
       const apiError = asApiError(error);
       setFailure(apiError.message);
-      if (apiError.status === 401) onUnauthorized();
+      onError(apiError);
     } finally {
       setSaving(false);
     }

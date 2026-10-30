@@ -512,6 +512,29 @@ describe("GitLab step", () => {
     expect(document.body).not.toHaveTextContent("glpat-secret");
   });
 
+  it("shows the API's reason when a changed URL needs the token again", async () => {
+    const { user } = await openGitLabStep({
+      [GITLAB]: () => json(gitlabConfig),
+      "PUT /api/v1/setup/gitlab": () =>
+        json({ detail: "Enter the token again when changing the GitLab URL" }, 422),
+      "POST /api/v1/setup/gitlab/test": () =>
+        json({ detail: "Enter a token to test this URL" }, 422),
+    });
+    const address = await screen.findByRole("textbox", { name: "GitLab address" });
+    await user.clear(address);
+    await user.type(address, "https://gitlab.other.test");
+
+    await user.click(screen.getByRole("button", { name: "Test connection" }));
+    const form = screen.getByRole("form", { name: "GitLab connection" });
+    expect(await within(form).findByText(/Enter a token to test this URL/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Save and continue" }));
+    expect(await within(form).findByRole("alert")).toHaveTextContent(
+      "Refused: Enter the token again when changing the GitLab URL",
+    );
+    expect(screen.getByRole("heading", { name: "Step 2 of 3: GitLab" })).toBeInTheDocument();
+  });
+
   it("can be skipped", async () => {
     const { user } = await openGitLabStep({ [GITLAB]: notFound });
 
@@ -534,5 +557,91 @@ describe("GitLab step", () => {
       await screen.findByText(/The GitLab connection is managed by the deployment/),
     ).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "GitLab address" })).not.toBeInTheDocument();
+  });
+});
+
+describe("setup endpoint refusals", () => {
+  it("leaves setup for sign-in once another tab has completed it", async () => {
+    let complete = false;
+    window.sessionStorage.setItem("baluarte.setup.csrf", CSRF);
+    // The status follows the server: complete after the 409.
+    mockApi({
+      [ME]: () => json({ detail: "Not authenticated" }, 401),
+      [STATUS]: () =>
+        json(
+          complete
+            ? { ...status({ state: "complete" }), oidc: null, gitlab: null }
+            : status({ setup_session: true }),
+        ),
+      [OIDC]: () => json(oidcConfig),
+      "PUT /api/v1/setup/oidc": () => {
+        complete = true;
+        return json({ detail: "Setup is complete" }, 409);
+      },
+    });
+    const user = userEvent.setup();
+
+    const router = renderAt("/setup");
+    await user.click(await screen.findByRole("button", { name: "Save and continue" }));
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Sign in to Baluarte" }),
+    ).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/sign-in");
+  });
+
+  it("leaves setup when the code is sent after setup completed", async () => {
+    let complete = false;
+    api(
+      () => (complete ? { ...status({ state: "complete" }), oidc: null, gitlab: null } : status()),
+      {
+        [SESSION]: () => {
+          complete = true;
+          return json({ detail: "Setup is complete" }, 409);
+        },
+      },
+    );
+    const user = userEvent.setup();
+
+    const router = renderAt("/setup");
+    await user.type(await screen.findByRole("textbox", { name: "Setup code" }), "AAAA-BBBB");
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+
+    await vi.waitFor(() => {
+      expect(router.state.location.pathname).toBe("/sign-in");
+    });
+  });
+
+  it("asks for the code again when the security check is refused", async () => {
+    let session = true;
+    window.sessionStorage.setItem("baluarte.setup.csrf", CSRF);
+    api(() => status({ setup_session: session }), {
+      [OIDC]: () => json(oidcConfig),
+      "PUT /api/v1/setup/oidc": () => {
+        session = false;
+        return json({ detail: "Missing or invalid CSRF token" }, 403);
+      },
+    });
+    const user = userEvent.setup();
+
+    renderAt("/setup");
+    await user.click(await screen.findByRole("button", { name: "Save and continue" }));
+
+    expect(await screen.findByText(/security check failed/)).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Setup code" })).toBeInTheDocument();
+    expect(window.sessionStorage.getItem("baluarte.setup.csrf")).toBeNull();
+  });
+
+  it("explains how to find the Helm deployment", async () => {
+    api(() => status());
+
+    renderAt("/setup");
+
+    expect(
+      await screen.findByText(
+        /kubectl -n <ns> exec deploy\/<release>-baluarte-api -- baluarte-setup-code/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/already contains "baluarte"/)).toBeInTheDocument();
   });
 });

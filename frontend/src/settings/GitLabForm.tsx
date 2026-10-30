@@ -1,5 +1,6 @@
 import { useId, useState, type ChangeEvent, type FormEvent } from "react";
 
+import type { ApiError } from "../api/client";
 import {
   saveGitLab,
   testGitLab,
@@ -94,7 +95,7 @@ export function GitLabForm({
   config,
   secretKeyConfigured,
   onSaved,
-  onUnauthorized,
+  onError,
   submitLabel = "Save GitLab connection",
   onCancel,
 }: {
@@ -103,7 +104,8 @@ export function GitLabForm({
   config: GitLabConfig | null;
   secretKeyConfigured: boolean | null;
   onSaved: (config: GitLabConfig) => void;
-  onUnauthorized: () => void;
+  /** Called with every failed request, after its message is shown. */
+  onError: (error: ApiError) => void;
   submitLabel?: string;
   onCancel?: () => void;
 }) {
@@ -146,7 +148,7 @@ export function GitLabForm({
     } catch (error) {
       const apiError = asApiError(error);
       setTestFailure(apiError.message);
-      if (apiError.status === 401) onUnauthorized();
+      onError(apiError);
     } finally {
       setTesting(false);
     }
@@ -175,7 +177,7 @@ export function GitLabForm({
     } catch (error) {
       const apiError = asApiError(error);
       setFailure(apiError.message);
-      if (apiError.status === 401) onUnauthorized();
+      onError(apiError);
     } finally {
       setSaving(false);
     }

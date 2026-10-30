@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { Link } from "react-router";
+import { Link, Navigate } from "react-router";
 
 import { ApiError } from "../api/client";
 import {
@@ -73,10 +73,12 @@ function CodeStep({
   awaiting,
   notice,
   onAccepted,
+  onCompleted,
 }: {
   awaiting: boolean;
   notice: string | null;
   onAccepted: (csrf: string) => void;
+  onCompleted: () => void;
 }) {
   const [code, setCode] = useState("");
   const [problems, setProblems] = useState<string[]>([]);
@@ -93,7 +95,9 @@ function CodeStep({
     try {
       onAccepted(await startSetupSession(code.trim()));
     } catch (error) {
-      setProblems([asApiError(error).message]);
+      const apiError = asApiError(error);
+      setProblems([apiError.message]);
+      if (apiError.status === 409) onCompleted();
     } finally {
       setSending(false);
     }
@@ -155,9 +159,14 @@ function CodeStep({
             <p>Kubernetes (Helm):</p>
             <pre className="overflow-x-auto rounded bg-slate-100 p-2 text-xs">
               {
-                "kubectl logs deploy/<release>-baluarte-api | grep -i 'setup code'\nkubectl exec deploy/<release>-baluarte-api -- baluarte-setup-code"
+                "kubectl -n <ns> logs deploy/<release>-baluarte-api | grep -i 'setup code'\nkubectl -n <ns> exec deploy/<release>-baluarte-api -- baluarte-setup-code"
               }
             </pre>
+            <p className="text-xs">
+              If the release name already contains &quot;baluarte&quot;, the deployment is{" "}
+              <code>&lt;release&gt;-api</code>; a <code>fullnameOverride</code> replaces the prefix
+              too. <code>kubectl -n &lt;ns&gt; get deploy</code> lists the names.
+            </p>
           </div>
         </details>
         <button type="submit" disabled={sending} className={buttonClass}>
@@ -168,19 +177,19 @@ function CodeStep({
   );
 }
 
-/** Loads a setup-session resource; a 401 means the setup session ended. */
+/** Loads a setup-session resource; failures also go to ``onError`` (see ``SetupPage``). */
 function useSetupResource<T>(
   load: (signal: AbortSignal) => Promise<T>,
-  onUnauthorized: () => void,
+  onError: (error: ApiError) => void,
 ): { data: T | undefined; error: ApiError | undefined; retry: () => void } {
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<{ attempt: number; data?: T; error?: ApiError } | null>(null);
   const loadRef = useRef(load);
-  const unauthorizedRef = useRef(onUnauthorized);
+  const errorRef = useRef(onError);
 
   useEffect(() => {
     loadRef.current = load;
-    unauthorizedRef.current = onUnauthorized;
+    errorRef.current = onError;
   });
 
   useEffect(() => {
@@ -193,7 +202,7 @@ function useSetupResource<T>(
         if (controller.signal.aborted) return;
         const apiError = asApiError(error);
         setState({ attempt, error: apiError });
-        if (apiError.status === 401) unauthorizedRef.current();
+        errorRef.current(apiError);
       },
     );
     return () => {
@@ -274,13 +283,13 @@ function gitlabRows(config: GitLabConfig): [string, ReactNode][] {
 interface StepProps {
   status: SetupStatus;
   csrf: string;
-  onSessionLost: () => void;
+  onError: (error: ApiError) => void;
   onChanged: () => void;
   go: (step: Step) => void;
 }
 
-function OidcStep({ status, csrf, onSessionLost, onChanged, go }: StepProps) {
-  const config = useSetupResource((signal) => getOidcConfig(SETUP, signal), onSessionLost);
+function OidcStep({ status, csrf, onError, onChanged, go }: StepProps) {
+  const config = useSetupResource((signal) => getOidcConfig(SETUP, signal), onError);
   const deployment = status.oidc?.source === "deployment";
 
   if (config.error) return <ErrorMessage error={config.error} retry={config.retry} />;
@@ -316,7 +325,7 @@ function OidcStep({ status, csrf, onSessionLost, onChanged, go }: StepProps) {
           onChanged();
           go("gitlab");
         }}
-        onUnauthorized={onSessionLost}
+        onError={onError}
         submitLabel="Save and continue"
       />
       {status.oidc?.configured && (
@@ -331,8 +340,8 @@ function OidcStep({ status, csrf, onSessionLost, onChanged, go }: StepProps) {
   );
 }
 
-function GitLabStep({ status, csrf, onSessionLost, onChanged, go }: StepProps) {
-  const config = useSetupResource((signal) => getGitLabConfig(SETUP, signal), onSessionLost);
+function GitLabStep({ status, csrf, onError, onChanged, go }: StepProps) {
+  const config = useSetupResource((signal) => getGitLabConfig(SETUP, signal), onError);
   const deployment = status.gitlab?.source === "deployment";
   const back = () => {
     go("oidc");
@@ -369,7 +378,7 @@ function GitLabStep({ status, csrf, onSessionLost, onChanged, go }: StepProps) {
           onChanged();
           next();
         }}
-        onUnauthorized={onSessionLost}
+        onError={onError}
         submitLabel="Save and continue"
       />
       <StepNav
@@ -381,9 +390,9 @@ function GitLabStep({ status, csrf, onSessionLost, onChanged, go }: StepProps) {
   );
 }
 
-function ReviewStep({ status, onSessionLost, go }: StepProps) {
-  const oidc = useSetupResource((signal) => getOidcConfig(SETUP, signal), onSessionLost);
-  const gitlab = useSetupResource((signal) => getGitLabConfig(SETUP, signal), onSessionLost);
+function ReviewStep({ status, onError, go }: StepProps) {
+  const oidc = useSetupResource((signal) => getOidcConfig(SETUP, signal), onError);
+  const gitlab = useSetupResource((signal) => getGitLabConfig(SETUP, signal), onError);
 
   const error = oidc.error ?? gitlab.error;
   if (error) {
@@ -460,7 +469,7 @@ function ReviewStep({ status, onSessionLost, go }: StepProps) {
   );
 }
 
-function Wizard({ status, csrf, onSessionLost, onChanged }: Omit<StepProps, "go">) {
+function Wizard({ status, csrf, onError, onChanged }: Omit<StepProps, "go">) {
   const [step, setStep] = useState<Step>("oidc");
   const heading = useRef<HTMLHeadingElement>(null);
   const moved = useRef(false);
@@ -475,7 +484,7 @@ function Wizard({ status, csrf, onSessionLost, onChanged }: Omit<StepProps, "go"
     setStep(next);
   };
   const current = steps.findIndex((item) => item.step === step);
-  const props = { status, csrf, onSessionLost, onChanged, go };
+  const props = { status, csrf, onError, onChanged, go };
 
   return (
     <div className="space-y-6">
@@ -553,6 +562,9 @@ export function SetupPage() {
   } | null>(null);
   const [csrf, setCsrf] = useState<string | null>(readCsrf);
   const [notice, setNotice] = useState<string | null>(null);
+  // Set when a setup endpoint says setup is complete: the page is left once the status agrees.
+  const [leaving, setLeaving] = useState(false);
+  const { session } = useAuth();
 
   useEffect(() => {
     const controller = new AbortController();
@@ -573,11 +585,28 @@ export function SetupPage() {
   const reload = () => {
     setAttempt((value) => value + 1);
   };
-  const sessionLost = () => {
+  const endSession = (message: string) => {
     storeCsrf(null);
     setCsrf(null);
-    setNotice("Your setup session ended. Enter the setup code again to continue.");
+    setNotice(message);
     reload();
+  };
+  const completed = () => {
+    setLeaving(true);
+    reload();
+  };
+  // Setup endpoints answer 409 once setup is complete, 401 without a setup session and 403 when
+  // the CSRF token or Origin is refused. A 409 can also mean a refused change, so the status
+  // decides whether to leave.
+  const handleError = (failure: ApiError) => {
+    if (failure.status === 409) completed();
+    else if (failure.status === 401) {
+      endSession("Your setup session ended. Enter the setup code again to continue.");
+    } else if (failure.status === 403) {
+      endSession(
+        "The setup session's security check failed, for example after it was opened in another tab. Enter the setup code again to continue.",
+      );
+    }
   };
   // Keep the last status on screen while it is re-checked, so the wizard does not lose its step.
   const status = result?.status;
@@ -593,6 +622,9 @@ export function SetupPage() {
       </p>
     );
   } else if (status.state === "complete") {
+    if (leaving && result?.attempt === attempt) {
+      return <Navigate to={session.status === "signed_in" ? "/" : "/sign-in"} replace />;
+    }
     body = <Complete />;
   } else if (!status.setup_session || !csrf) {
     body = (
@@ -605,10 +637,11 @@ export function SetupPage() {
           setNotice(null);
           reload();
         }}
+        onCompleted={completed}
       />
     );
   } else {
-    body = <Wizard status={status} csrf={csrf} onSessionLost={sessionLost} onChanged={reload} />;
+    body = <Wizard status={status} csrf={csrf} onError={handleError} onChanged={reload} />;
   }
 
   return (

@@ -99,7 +99,9 @@ function GitLabCard({ csrf, secretKey }: { csrf: string; secretKey: boolean | nu
             setSaved("GitLab connection saved. The next collection uses it.");
             setVersion((value) => value + 1);
           }}
-          onUnauthorized={() => void refresh()}
+          onError={(error) => {
+            if (error.status === 401) void refresh();
+          }}
           onCancel={() => {
             setEditing(false);
           }}
@@ -224,7 +226,9 @@ function OidcCard({ csrf, secretKey }: { csrf: string; secretKey: boolean | null
             );
             setVersion((value) => value + 1);
           }}
-          onUnauthorized={() => void refresh()}
+          onError={(error) => {
+            if (error.status === 401) void refresh();
+          }}
           onCancel={() => {
             setEditing(false);
           }}
