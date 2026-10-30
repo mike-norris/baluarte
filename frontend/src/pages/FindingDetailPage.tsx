@@ -16,6 +16,7 @@ import { ErrorMessage } from "../components/ErrorMessage";
 import { linkClass, secondaryClass } from "../components/styles";
 import { ExportLink } from "../evidence/ExportLink";
 import { evidenceHref } from "../evidence/scope";
+import { ExceptionPanel } from "../exceptions/ExceptionPanel";
 import { EvaluationNote } from "../findings/EvaluationNote";
 import {
   capabilityLabels,
@@ -71,6 +72,9 @@ function Summary({ finding }: { finding: FindingDetail }) {
       <dl className="mt-2 divide-y divide-slate-100 text-sm">
         <Field term="State">
           {findingStateLabels[finding.state]}
+          {finding.state === "excepted" &&
+            finding.exception &&
+            ` until ${formatTime(finding.exception.expires_at)} (not counted as passing)`}
           {finding.state === "resolved" && finding.resolved_at && (
             <>
               {` on ${formatTime(finding.resolved_at)}`}
@@ -433,6 +437,7 @@ export function FindingDetailPage() {
       <Summary finding={finding} />
       <ExpectedVersusActual evaluation={finding.latest_evaluation} />
       <Evidence evaluation={finding.latest_evaluation} />
+      <ExceptionPanel finding={finding} />
       <History findingId={finding.id} />
       <ExportLink
         label="Export evidence for this project and rule"

@@ -22,6 +22,11 @@ export const navItems: readonly NavItem[] = [
     description: "Rule outcomes with expected and observed values.",
   },
   {
+    path: "/exceptions",
+    label: "Exceptions",
+    description: "Time-limited, approved waivers of known failures.",
+  },
+  {
     path: "/policies",
     label: "Policies",
     description: "Versioned YAML baselines and their scope.",

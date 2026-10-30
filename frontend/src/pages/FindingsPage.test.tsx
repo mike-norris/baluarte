@@ -38,6 +38,24 @@ describe("findings list", () => {
     vi.unstubAllGlobals();
   });
 
+  it("shows an excepted finding's expiry and that it is not passing", async () => {
+    api({
+      [ALL]: () =>
+        page([
+          finding(1, {
+            state: "excepted",
+            latest_outcome: "excepted",
+            exception: { id: 31, expires_at: "2027-01-31T23:59:59Z", in_force: true },
+          }),
+        ]),
+    });
+    renderAt("/findings");
+
+    const table = await screen.findByRole("table", { name: "Findings" });
+    const row = within(table).getByRole("rowheader", { name: "platform/p1" }).closest("tr");
+    expect(row).toHaveTextContent("Excepteduntil 31 Jan 2027, 23:59 UTC; not passing");
+  });
+
   it("lists findings with policy version, severity, state and latest outcome", async () => {
     api({
       [ALL]: () =>

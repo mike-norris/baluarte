@@ -21,6 +21,7 @@ export function evaluation(id: number, extra: Partial<Evaluation> = {}): Evaluat
     collection: { kind: "projects", status: "fresh", last_success_at: "2026-10-29T06:00:00Z" },
     ancestry: "complete",
     evaluated_at: "2026-10-29T06:12:00Z",
+    exception_id: null,
     ...extra,
   };
 }
@@ -38,6 +39,7 @@ export function finding(id: number, extra: Partial<Finding> = {}): Finding {
     first_seen_at: "2026-10-28T06:00:00Z",
     last_seen_at: "2026-10-29T06:12:00Z",
     resolved_at: null,
+    exception: null,
     ...extra,
   };
 }

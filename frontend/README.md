@@ -75,3 +75,14 @@ Signed-in users see one status in the header on every page, as text and colour (
 - **Links:** the form is prefilled from the URL (`group`, `projects=105,230`, `policy`, `rule`, `outcome`, `finding_state`, `since`, `until`, `format=csv`). Findings filters map onto these, except severity, which the export cannot filter by; the link says so.
 - **Download:** the request sends the `X-CSRF-Token` header. The response is read to the end, with the bytes received shown and a cancel button, and only then saved, under the `Content-Disposition` name reduced to letters, digits, `.`, `-` and `_` with the format's extension. A cancelled or interrupted export saves nothing. 401 returns to sign-in; 403, 409 and 422 show the API's reason.
 - **Verification:** the page explains the manifest and `SHA256SUMS`, that `manifest_sha256` is only in the `evidence.export_completed` audit event (naming the export ID from `X-Baluarte-Export-Id`), and the `baluarte-verify-export <file> --manifest-sha256 <value>` command. There is no audit log page yet, so it points admins and auditors to `GET /api/v1/audit-events`.
+
+## Exceptions
+
+An exception waives one rule for one project for a limited time (`GET/POST /api/v1/exceptions`, docs/POLICY_ENGINE.md#exceptions):
+
+- **Requesting:** the finding detail's Exception section shows any requested or approved exception for its project and rule. Users with `exception:request` (admins and analysts) can request one when the latest outcome is a known `fail`. For `unknown` or `unsupported` the page explains why nothing can be waived. The form needs a justification of 10 to 4,000 characters and an expiry day; the exception ends at 23:59:59 UTC on that day, at most 365 days ahead.
+- **Deciding:** `/exceptions` lists exceptions, with filters in the URL (`state`, `project`, `policy`, `rule`). `expired` counts any exception past its expiry, before the next evaluation records it. `/exceptions/:id` shows the details and the history, oldest first.
+  - Users with `exception:approve` (admins) can approve, reject or revoke after a confirmation step. Rejecting and revoking need a reason.
+  - Every change sends the `X-CSRF-Token` header and is audited.
+- **Separation of duties:** `/auth/me` returns no user ID, so the page hides approve and reject when the requester's display name matches the signed-in user's. The API refuses self-approval regardless, and its reason is shown.
+- **Effect:** an excepted finding shows its expiry in the findings list and on its detail page, and is never counted as passing. The dashboard keeps `excepted` out of the pass share.

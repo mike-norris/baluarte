@@ -35,6 +35,7 @@ function finding(id: number, extra: Partial<Finding> = {}): Finding {
     first_seen_at: "2026-10-28T06:00:00Z",
     last_seen_at: "2026-10-29T06:12:00Z",
     resolved_at: null,
+    exception: null,
     ...extra,
   };
 }
@@ -95,6 +96,19 @@ describe("dashboard", () => {
         /From evaluation run 7, finished 29 Oct 2026, 06:12 UTC, covering 4 projects/,
       ),
     ).toBeInTheDocument();
+  });
+
+  it("never counts excepted results as passing", async () => {
+    api({
+      [RUNS]: () => runs([evaluationRun(7, { counts: { outcomes: { pass: 1, excepted: 3 } } })]),
+    });
+    renderDashboard();
+
+    const table = await screen.findByRole("table", { name: "Rule results by outcome" });
+    const excepted = within(table).getByRole("rowheader", { name: "Excepted" }).closest("tr");
+    expect(excepted).toHaveTextContent("3");
+    expect(excepted).toHaveTextContent("Not counted as passing.");
+    expect(screen.getByText(/1 of 4 rule results passed \(25%\)/)).toBeInTheDocument();
   });
 
   it("floors the pass share so it never rounds up to 100%", async () => {

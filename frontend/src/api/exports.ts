@@ -1,4 +1,5 @@
 import { ApiError } from "./client";
+import { responseDetail } from "./send";
 import { exportFilename, type ExportRequest } from "../evidence/scope";
 
 export interface ExportDownload {
@@ -9,30 +10,8 @@ export interface ExportDownload {
   exportId: string | null;
 }
 
-interface ValidationIssue {
-  msg?: unknown;
-}
-
-function detailText(detail: unknown): string | null {
-  if (typeof detail === "string") return detail;
-  if (Array.isArray(detail)) {
-    const messages = (detail as ValidationIssue[])
-      .map((issue) => (typeof issue.msg === "string" ? issue.msg : ""))
-      .map((message) => message.replace(/^Value error, /, ""))
-      .filter(Boolean);
-    return messages.length > 0 ? messages.join(" ") : null;
-  }
-  return null;
-}
-
 async function failure(response: Response): Promise<string> {
-  let detail: string | null = null;
-  try {
-    const body = (await response.json()) as { detail?: unknown };
-    detail = detailText(body.detail);
-  } catch {
-    detail = null;
-  }
+  const detail = await responseDetail(response);
   switch (response.status) {
     case 401:
       return "Your session has ended. Sign in again to continue.";

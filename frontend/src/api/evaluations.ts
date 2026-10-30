@@ -88,6 +88,15 @@ export interface Evaluation {
   collection: { kind: string; status: string; last_success_at: string | null };
   ancestry: string;
   evaluated_at: string;
+  /** The exception that waived this failure; set exactly when ``outcome`` is ``excepted``. */
+  exception_id: number | null;
+}
+
+/** The exception waiving a finding; an ended one reads ``in_force: false``. */
+export interface FindingException {
+  id: number;
+  expires_at: string;
+  in_force: boolean;
 }
 
 export interface Finding {
@@ -102,6 +111,8 @@ export interface Finding {
   first_seen_at: string;
   last_seen_at: string;
   resolved_at: string | null;
+  /** While ``state`` is ``excepted``, the exception waiving the failure. */
+  exception: FindingException | null;
 }
 
 export interface FindingDetail extends Finding {

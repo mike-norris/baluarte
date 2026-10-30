@@ -7,6 +7,8 @@ import { Layout } from "./components/Layout";
 import { navItems } from "./navigation";
 import { DashboardPage } from "./pages/DashboardPage";
 import { EvidencePage } from "./pages/EvidencePage";
+import { ExceptionDetailPage } from "./pages/ExceptionDetailPage";
+import { ExceptionsPage } from "./pages/ExceptionsPage";
 import { FindingDetailPage } from "./pages/FindingDetailPage";
 import { FindingsPage } from "./pages/FindingsPage";
 import { InventoryPage } from "./pages/InventoryPage";
@@ -20,6 +22,7 @@ const pages: Partial<Record<string, ReactNode>> = {
   "/inventory": <InventoryPage />,
   "/findings": <FindingsPage />,
   "/evidence": <EvidencePage />,
+  "/exceptions": <ExceptionsPage />,
 };
 
 export const routes: RouteObject[] = [
@@ -41,6 +44,7 @@ export const routes: RouteObject[] = [
             ),
           })),
           { path: "/findings/:findingId", element: <FindingDetailPage /> },
+          { path: "/exceptions/:exceptionId", element: <ExceptionDetailPage /> },
         ],
       },
       { path: "*", element: <NotFoundPage /> },
