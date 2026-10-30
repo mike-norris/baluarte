@@ -125,7 +125,8 @@ describe("header freshness indicator", () => {
     const calls = api(() => json(freshness()));
     const user = userEvent.setup();
     renderAt("/policies");
-    await indicator();
+    // Wait for the settled result: "Checking…" can render before the first request is made.
+    await indicator("GitLab data: Up to date");
     const before = freshnessCalls(calls);
 
     await user.click(screen.getByRole("link", { name: "Settings" }));
