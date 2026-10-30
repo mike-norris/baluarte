@@ -72,13 +72,14 @@ describe("header freshness indicator", () => {
     let status: FreshnessReport["status"] = "fresh";
     api(() => json(freshness({ status })));
     const user = userEvent.setup();
-    renderAt("/policies");
+    const { router } = renderAt("/policies");
 
     await indicator("GitLab data: Up to date");
     expect(liveRegion()).toBeEmptyDOMElement();
 
     status = "stale";
-    await user.click(screen.getByRole("link", { name: "Settings" }));
+    // Settings is hidden from analysts' navigation, and makes no API calls for them.
+    await act(() => router.navigate("/settings"));
     await indicator("GitLab data: Stale");
     expect(liveRegion()).toHaveTextContent("GitLab data is stale.");
     const region = liveRegion();
@@ -102,12 +103,11 @@ describe("header freshness indicator", () => {
   it("replaces an earlier result with status unknown when a re-check fails", async () => {
     let fail = false;
     api(() => (fail ? Promise.reject(new TypeError("offline")) : json(freshness())));
-    const user = userEvent.setup();
-    renderAt("/policies");
+    const { router } = renderAt("/policies");
 
     await indicator("GitLab data: Up to date");
     fail = true;
-    await user.click(screen.getByRole("link", { name: "Settings" }));
+    await act(() => router.navigate("/settings"));
 
     await indicator("GitLab data: Status unknown");
   });
@@ -123,13 +123,12 @@ describe("header freshness indicator", () => {
 
   it("re-checks on navigation", async () => {
     const calls = api(() => json(freshness()));
-    const user = userEvent.setup();
-    renderAt("/policies");
+    const { router } = renderAt("/policies");
     // Wait for the settled result: "Checking…" can render before the first request is made.
     await indicator("GitLab data: Up to date");
     const before = freshnessCalls(calls);
 
-    await user.click(screen.getByRole("link", { name: "Settings" }));
+    await act(() => router.navigate("/settings"));
 
     await vi.waitFor(() => {
       expect(freshnessCalls(calls)).toBe(before + 1);

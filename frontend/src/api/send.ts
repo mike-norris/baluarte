@@ -48,24 +48,33 @@ export function changeFailure(status: number, detail: string | null): string {
       return `Not possible now: ${detail ?? "the record changed"}.`;
     case 422:
       return `Refused: ${detail ?? "the request is not valid"}`;
+    case 429:
+      return "Too many attempts. Wait a few minutes and try again.";
     default:
       return `The API returned an error (${String(status)}).`;
   }
 }
 
-/** POST ``body`` as JSON with the session's CSRF token; resolves to the JSON response. */
-export async function postJson<T>(path: string, body: unknown, csrfToken: string): Promise<T> {
+type Method = "POST" | "PUT" | "DELETE";
+
+/** Send ``body`` as JSON with a CSRF token; resolves to the JSON response, or null for 204. */
+export async function sendJson<T>(
+  method: Method,
+  path: string,
+  body: unknown,
+  csrfToken: string,
+): Promise<T | null> {
   let response: Response;
   try {
     response = await fetch(path, {
-      method: "POST",
+      method,
       credentials: "same-origin",
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
         "X-CSRF-Token": csrfToken,
       },
-      body: JSON.stringify(body),
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
   } catch {
     throw new ApiError(0, "The API could not be reached.");
@@ -76,5 +85,13 @@ export async function postJson<T>(path: string, body: unknown, csrfToken: string
       changeFailure(response.status, await responseDetail(response)),
     );
   }
+  if (response.status === 204) return null;
   return (await response.json()) as T;
+}
+
+/** POST ``body`` as JSON with the session's CSRF token; resolves to the JSON response. */
+export async function postJson<T>(path: string, body: unknown, csrfToken: string): Promise<T> {
+  const result = await sendJson<T>("POST", path, body, csrfToken);
+  if (result === null) throw new ApiError(204, "The API returned no content.");
+  return result;
 }
