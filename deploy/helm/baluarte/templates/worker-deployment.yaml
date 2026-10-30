@@ -42,6 +42,7 @@ spec:
           env:
             {{- include "baluarte.databaseEnv" . | nindent 12 }}
             {{- include "baluarte.loggingEnv" . | nindent 12 }}
+            {{- include "baluarte.secretKeyEnv" . | nindent 12 }}
             {{- with include "baluarte.gitlabEnv" . | trim }}
             {{- . | nindent 12 }}
             {{- end }}
@@ -67,6 +68,7 @@ spec:
             - name: tmp
               mountPath: /tmp
             {{- include "baluarte.databaseVolumeMount" . | nindent 12 }}
+            {{- include "baluarte.secretKeyVolumeMount" . | nindent 12 }}
             {{- with include "baluarte.gitlabVolumeMount" . | trim }}
             {{- . | nindent 12 }}
             {{- end }}
@@ -75,6 +77,7 @@ spec:
           emptyDir:
             sizeLimit: 64Mi
         {{- include "baluarte.databaseVolume" . | nindent 8 }}
+        {{- include "baluarte.secretKeyVolume" . | nindent 8 }}
         {{- with include "baluarte.gitlabVolume" . | trim }}
         {{- . | nindent 8 }}
         {{- end }}

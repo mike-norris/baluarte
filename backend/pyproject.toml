@@ -11,6 +11,7 @@ license = "MPL-2.0"
 requires-python = ">=3.12"
 dependencies = [
   "alembic>=1.20",
+  "cryptography>=45",
   "fastapi>=0.162",
   "httpx>=0.28",
   "psycopg[binary]>=3.3",
@@ -33,6 +34,8 @@ dev = [
 baluarte-migrate = "baluarte.db.migrate:main"
 baluarte-worker = "baluarte.jobs.worker:main"
 baluarte-verify-export = "baluarte.evidence.verify:main"
+baluarte-setup-code = "baluarte.configuration.cli:setup_code"
+baluarte-reencrypt-secrets = "baluarte.configuration.cli:reencrypt_secrets"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/baluarte"]

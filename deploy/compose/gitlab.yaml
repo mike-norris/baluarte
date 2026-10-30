@@ -1,4 +1,5 @@
-# Opt-in GitLab connection for the Compose stack:
+# Opt-in GitLab connection set by the deployment instead of the web UI. While this override is
+# used, the Settings page shows the connection as managed by the deployment and read-only:
 #
 #   printf '%s' "$TOKEN" > secrets/gitlab_token     # read_api scope only
 #   BALUARTE_GITLAB_URL=https://gitlab.example.internal \
@@ -15,10 +16,10 @@ services:
   # Diagnostics run in the API; capability detection and collection run in the worker.
   api:
     environment: *gitlab-env
-    secrets: [postgres_password, gitlab_token]
+    secrets: [postgres_password, secret_key, gitlab_token]
   worker:
     environment: *gitlab-env
-    secrets: [postgres_password, gitlab_token]
+    secrets: [postgres_password, secret_key, gitlab_token]
 
 secrets:
   gitlab_token:

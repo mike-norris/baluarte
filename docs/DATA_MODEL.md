@@ -1,6 +1,6 @@
 # Data model
 
-Implemented in `backend/src/baluarte/db/models.py`; migrations `0001` (inventory, policy and evidence), `0002` (users and sessions), `0003` (job lease constraints), `0004` (collection runs and resource errors), `0005` (immutable policy versions), `0006` (policy assignment rules) and `0007` (project namespace kinds) create it. All primary keys are `bigint` identity columns, all timestamps are `timestamptz` (UTC instants), and status-like columns are `text` with CHECK constraints rather than PostgreSQL enum types. SHA-256 digests are stored as 64-character lowercase hex and checked by constraint.
+Implemented in `backend/src/baluarte/db/models.py`; migrations `0001` (inventory, policy and evidence), `0002` (users and sessions), `0003` (job lease constraints), `0004` (collection runs and resource errors), `0005` (immutable policy versions), `0006` (policy assignment rules), `0007` (project namespace kinds), and later revisions through `0012` (settings and setup) create it. All primary keys are `bigint` identity columns, all timestamps are `timestamptz` (UTC instants), and status-like columns are `text` with CHECK constraints rather than PostgreSQL enum types. SHA-256 digests are stored as 64-character lowercase hex and checked by constraint.
 
 | Table | Key fields | Notes |
 |---|---|---|
@@ -22,6 +22,10 @@ Implemented in `backend/src/baluarte/db/models.py`; migrations `0001` (inventory
 | app_user | id, issuer, subject, email, display_name, created_at, last_login_at | Unique `(issuer, subject)`; created on first sign-in |
 | user_session | id, token_digest (unique), user_id, roles, created_at, last_seen_at, expires_at, revoked_at | SHA-256 of the session cookie, never the cookie itself; roles limited to `admin`, `analyst`, `auditor` and non-empty |
 | oidc_login | state_digest (primary key), nonce, code_verifier, return_to, expires_at | Sign-ins sent to the identity provider; single use, expire after 10 minutes |
+| app_setting | key (primary key), value, updated_at, updated_by | Settings entered in the web UI ([ADR-0008](architecture/ADR-0008-settings-in-the-database.md)). Key `oidc` or `gitlab`; `value` holds the non-secret fields. Used only when the deployment's environment does not set that section |
+| app_secret | name (primary key), key_id, nonce, ciphertext, updated_at, updated_by | Secrets entered in the web UI, sealed with AES-256-GCM: `oidc_client_secret` or `gitlab_token`. `key_id` identifies the key that sealed it (16 hex characters); the nonce is 12 bytes. Never plaintext |
+| setup_state | id (always 1), code_digest, code_issued_at, failed_attempts, failures_since, completed_at, completed_by_user_id | First-run setup: the SHA-256 of the current setup code and the shared count of wrong attempts. Checked: completed exactly when `completed_by_user_id` is set; the code is cleared once complete |
+| setup_session | token_digest (primary key), created_at, expires_at | Browsers that entered the setup code; SHA-256 of the cookie only, 60-minute lifetime, all removed when setup completes |
 
 ## Immutability
 

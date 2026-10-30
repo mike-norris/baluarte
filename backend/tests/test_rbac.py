@@ -25,6 +25,18 @@ PUBLIC_ROUTES = {
     ("GET", "/api/v1/auth/login"),
     ("GET", "/api/v1/auth/callback"),
 }
+# First-run setup needs a setup session instead (tests/test_setup.py checks each route).
+SETUP_ROUTES = {
+    ("GET", "/api/v1/setup/status"),
+    ("POST", "/api/v1/setup/session"),
+    ("DELETE", "/api/v1/setup/session"),
+    ("GET", "/api/v1/setup/oidc"),
+    ("PUT", "/api/v1/setup/oidc"),
+    ("POST", "/api/v1/setup/oidc/test"),
+    ("GET", "/api/v1/setup/gitlab"),
+    ("PUT", "/api/v1/setup/gitlab"),
+    ("POST", "/api/v1/setup/gitlab/test"),
+}
 
 
 def principal(*roles: Role) -> Principal:
@@ -68,8 +80,9 @@ def app() -> FastAPI:
 def test_every_route_outside_the_allowlist_rejects_anonymous_requests(app: FastAPI) -> None:
     client = TestClient(app, base_url="https://baluarte.example.test")
     routes = api_routes(app)
-    assert routes >= PUBLIC_ROUTES
-    protected = routes - PUBLIC_ROUTES
+    assert routes >= PUBLIC_ROUTES | SETUP_ROUTES
+    assert {route for route in routes if route[1].startswith("/api/v1/setup")} == SETUP_ROUTES
+    protected = routes - PUBLIC_ROUTES - SETUP_ROUTES
     assert protected, "expected at least one protected route"
 
     for method, path in protected:

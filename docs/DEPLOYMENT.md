@@ -2,7 +2,7 @@
 
 ## Common contract
 
-One set of versioned OCI images: `baluarte-web`, `baluarte-app` (API and worker commands). Configuration through environment variables and mounted secrets. The same images run in Docker Compose and Kubernetes.
+One set of versioned OCI images: `baluarte-web`, `baluarte-app` (API and worker commands). Configuration through environment variables and mounted secrets, or for the identity provider and GitLab connection, the web UI setup wizard ([ADR-0008](architecture/ADR-0008-settings-in-the-database.md)). The same images run in Docker Compose and Kubernetes.
 
 ## Docker Compose
 

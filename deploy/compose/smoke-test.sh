@@ -6,20 +6,22 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 project=baluarte-smoke
 compose=(docker compose -p "$project")
-created_secret=false
+created=()
 
 cleanup() {
   "${compose[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
-  if $created_secret; then rm -f secrets/postgres_password; fi
+  for file in "${created[@]}"; do rm -f "$file"; done
 }
 trap cleanup EXIT
 
-if [[ ! -f secrets/postgres_password ]]; then
-  mkdir -p secrets
-  # Readable by the non-root API container on Linux bind mounts; dev-only secret.
-  (umask 022 && openssl rand -base64 32 > secrets/postgres_password)
-  created_secret=true
-fi
+for file in secrets/postgres_password secrets/secret_key; do
+  if [[ ! -f $file ]]; then
+    mkdir -p secrets
+    # Readable by the non-root API container on Linux bind mounts; dev-only secrets.
+    (umask 022 && openssl rand -base64 32 > "$file")
+    created+=("$file")
+  fi
+done
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
@@ -47,6 +49,29 @@ echo "ok  web proxy /api/v1/auth/me refused without OIDC (503)"
 status=$(curl -sS -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8080/api/v1/gitlab/diagnostics)
 [[ $status == 503 ]] || fail "unconfigured POST /api/v1/gitlab/diagnostics returned $status, expected 503"
 echo "ok  web proxy /api/v1/gitlab/diagnostics refused without OIDC (503)"
+# First-run setup: a fresh stack needs setting up, and the code from the API log unlocks it.
+body=$(curl -fsS http://127.0.0.1:8080/api/v1/setup/status) || fail "setup status unreachable"
+grep -q '"state":"needs_setup"' <<<"$body" || fail "setup status body: $body"
+grep -q '"secret_key_configured":true' <<<"$body" || fail "secret key not mounted: $body"
+echo "ok  web proxy /api/v1/setup/status (needs_setup, secret key mounted)"
+code=""
+for _ in $(seq 1 20); do
+  code=$("${compose[@]}" logs --no-log-prefix api | grep -oE 'setup code [A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}' | tail -1 | cut -d' ' -f3) || true
+  [[ -n $code ]] && break
+  sleep 1
+done
+[[ -n $code ]] || fail "no setup code in the api log"
+status=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+  -d '{"code":"AAAA-AAAA-AAAA"}' http://127.0.0.1:8080/api/v1/setup/session)
+[[ $status == 401 ]] || fail "wrong setup code returned $status, expected 401"
+status=$(curl -sS -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+  -d "{\"code\":\"$code\"}" http://127.0.0.1:8080/api/v1/setup/session)
+[[ $status == 200 ]] || fail "setup code from the log returned $status, expected 200"
+echo "ok  setup code from the api log starts a setup session"
+code=$("${compose[@]}" exec -T api baluarte-setup-code | tail -1)
+[[ $code =~ ^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$ ]] || fail "baluarte-setup-code printed: $code"
+echo "ok  baluarte-setup-code issues a new code"
+
 BALUARTE_GITLAB_URL=https://gitlab.example.test docker compose -f compose.yaml -f deploy/compose/gitlab.yaml config -q \
   || fail "GitLab Compose override does not render"
 echo "ok  GitLab Compose override renders"

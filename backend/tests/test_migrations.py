@@ -12,6 +12,8 @@ pytestmark = pytest.mark.db
 
 TABLES = {
     "alembic_version",
+    "app_secret",
+    "app_setting",
     "app_user",
     "audit_event",
     "collection_job",
@@ -29,6 +31,8 @@ TABLES = {
     "policy_assignment",
     "policy_exception",
     "remediation_plan",
+    "setup_session",
+    "setup_state",
     "user_session",
 }
 

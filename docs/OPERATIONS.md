@@ -2,17 +2,20 @@
 
 ## What to back up
 
-All Baluarte state is in **one PostgreSQL database**: inventory (`gitlab_*`), collection jobs and runs, observations, evaluations, findings, policies, the audit trail (`audit_event`), users and sessions. The containers are stateless and the web image is static, so nothing else needs a backup.
+All Baluarte state is in **one PostgreSQL database**: inventory (`gitlab_*`), collection jobs and runs, observations, evaluations, findings, policies, the audit trail (`audit_event`), users and sessions, and the settings entered in the web UI. The containers are stateless and the web image is static, so nothing else needs a backup.
 
-Secrets are not in the database and must be kept in your secret store, separately from database backups:
+Keep these secrets in your secret store, separately from database backups:
 
 | Secret | Used by | Losing it |
 |---|---|---|
 | Database password | migrate, API, worker | Reset it in PostgreSQL and the secret |
-| OIDC client secret (if any) | API | Rotate at the identity provider |
-| GitLab token | API, worker | Issue a new `read_api` token |
+| Secret key (`BALUARTE_SECRET_KEY_FILE`) | API, worker | The client secret and GitLab token entered in the web UI can no longer be read: enter them again on the Settings page |
+| OIDC client secret (if set by the deployment) | API | Rotate at the identity provider |
+| GitLab token (if set by the deployment) | API, worker | Issue a new `read_api` token |
 
-Backups contain inventory, evidence and audit history (user subjects, emails, GitLab paths). Encrypt them at rest, keep a copy off the database host, and restrict who can read or restore them as tightly as the database itself. They contain no GitLab token or OIDC secret, and session cookies are stored only as SHA-256 digests.
+A client secret or GitLab token entered in the web UI is in the database, sealed with the secret key ([ADR-0008](architecture/ADR-0008-settings-in-the-database.md)). Restoring a backup needs the key that was in use when it was taken. Rotate the key as described in [SECURITY.md](SECURITY.md#setup-and-secrets-entered-in-the-web-ui).
+
+Backups contain inventory, evidence and audit history (user subjects, emails, GitLab paths). Encrypt them at rest, keep a copy off the database host, and restrict who can read or restore them as tightly as the database itself. They contain no plaintext GitLab token or OIDC secret, and session cookies and the setup code are stored only as SHA-256 digests.
 
 ## Docker Compose
 
@@ -76,6 +79,8 @@ To restore, scale the API and worker to zero, restore the database with your pro
 | `remediation_plan` | Kept indefinitely; a trigger rejects `DELETE` and allows only state transitions (migration `0011`) |
 | `collection_job`, `collection_run`, `evaluation_run` | Kept indefinitely; the run history feeds freshness |
 | `user_session`, `oidc_login` | Expire logically (idle, absolute and 10-minute limits) but rows remain |
+| `app_setting`, `app_secret` | Current settings only; replaced when changed, removed when GitLab is disconnected. Changes are in `audit_event` |
+| `setup_state`, `setup_session` | One state row; expired setup sessions are removed when another starts, and all of them when setup completes |
 | `gitlab_group`, `gitlab_project` | Kept; deleted or hidden resources become `missing`, not removed |
 
 Not implemented: a retention period, an expiry job, legal hold, archival before deletion, and pruning of expired sessions or old jobs. The retention period is an open product question ([PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md)); each organization must decide it with its compliance owner, together with how long backups are kept, since a backup retains whatever a later deletion removes.

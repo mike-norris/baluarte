@@ -15,10 +15,10 @@ from baluarte.integrations.gitlab.jobs import (
     DETECT_CAPABILITIES,
     DISCOVER_GROUPS,
     DISCOVER_PROJECTS,
+    ConfiguredSchedule,
     Schedule,
     make_detect_capabilities,
     make_discover_groups,
-    scheduler,
 )
 from baluarte.integrations.gitlab.runs import INTERRUPTED, finish_run, start_run
 from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_settings
@@ -270,16 +270,32 @@ def test_worker_calls_the_schedule(migrated_engine: Engine) -> None:
     assert calls == [1]
 
 
-def test_scheduler_only_when_configured(monkeypatch: pytest.MonkeyPatch, gitlab_env: None) -> None:
-    engine: Any = object()
+def test_the_schedule_follows_the_settings(
+    monkeypatch: pytest.MonkeyPatch, gitlab_env: None
+) -> None:
+    calls: list[int] = []
+    monkeypatch.setattr(Schedule, "__call__", lambda self: calls.append(self.interval))
+    now = [0.0]
+    schedule = ConfiguredSchedule(object(), check_every=60, clock=lambda: now[0])  # type: ignore[arg-type]
 
-    assert isinstance(scheduler(engine), Schedule)
-    monkeypatch.setenv("BALUARTE_GITLAB_SYNC_INTERVAL_MINUTES", "0")
-    assert scheduler(engine) is None
-    monkeypatch.setenv("BALUARTE_GITLAB_SYNC_INTERVAL_MINUTES", "1")
-    assert scheduler(engine) is None
-    monkeypatch.delenv("BALUARTE_GITLAB_URL")
-    assert scheduler(engine) is None
+    def tick(after: float, **env: str) -> int | None:
+        for name, value in env.items():
+            if value:
+                monkeypatch.setenv(name, value)
+            else:
+                monkeypatch.delenv(name, raising=False)
+        now[0] += after
+        schedule()
+        return schedule.interval_minutes
+
+    assert tick(0) == 360
+    # Settings are only rechecked every check_every seconds.
+    assert tick(10, BALUARTE_GITLAB_SYNC_INTERVAL_MINUTES="60") == 360
+    assert tick(60) == 60
+    assert tick(60, BALUARTE_GITLAB_SYNC_INTERVAL_MINUTES="0") is None
+    assert tick(60, BALUARTE_GITLAB_SYNC_INTERVAL_MINUTES="1") is None  # invalid: not scheduled
+    assert tick(60, BALUARTE_GITLAB_SYNC_INTERVAL_MINUTES="", BALUARTE_GITLAB_URL="") is None
+    assert calls == [360 * 60, 360 * 60, 60 * 60]
 
 
 # Freshness

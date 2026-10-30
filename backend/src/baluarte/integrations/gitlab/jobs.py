@@ -204,13 +204,54 @@ class Schedule:
         logger.info("gitlab: scheduled collection %s (jobs %s)", bucket, queued)
 
 
-def scheduler(engine: Engine) -> Schedule | None:
-    """The schedule for this deployment, or None when GitLab or scheduling is off."""
-    try:
-        settings = load_gitlab_settings()
-    except ConfigurationError as exc:
-        logger.error("gitlab: collection is not scheduled: %s", exc)
-        return None
-    if settings is None or settings.sync_interval_minutes == 0:
-        return None
-    return Schedule(engine, settings.sync_interval_minutes)
+class ConfiguredSchedule:
+    """Follows the GitLab settings in force, rechecked every ``check_every`` seconds.
+
+    GitLab connected, changed or disconnected in the web UI (ADR-0008) is scheduled, rescheduled
+    or unscheduled without restarting the worker.
+    """
+
+    def __init__(
+        self,
+        engine: Engine,
+        check_every: float = 60.0,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.engine = engine
+        self.check_every = check_every
+        self.clock = clock
+        self._next_check = 0.0
+        self._schedule: Schedule | None = None
+        self._problem: str | None = None
+
+    @property
+    def interval_minutes(self) -> int | None:
+        """The interval being scheduled, or None when collection is not scheduled."""
+        return self._schedule.interval // 60 if self._schedule is not None else None
+
+    def _interval(self) -> int | None:
+        try:
+            settings = load_gitlab_settings()
+        except ConfigurationError as exc:
+            if str(exc) != self._problem:
+                logger.error("gitlab: collection is not scheduled: %s", exc)
+            self._problem = str(exc)
+            return None
+        self._problem = None
+        if settings is None or settings.sync_interval_minutes == 0:
+            return None
+        return settings.sync_interval_minutes
+
+    def __call__(self) -> None:
+        if self.clock() >= self._next_check:
+            self._next_check = self.clock() + self.check_every
+            interval = self._interval()
+            if interval is None:
+                self._schedule = None
+            elif self._schedule is None or self._schedule.interval != interval * 60:
+                logger.info("gitlab: collecting every %s minutes", interval)
+                self._schedule = Schedule(
+                    self.engine, interval, check_every=self.check_every, clock=self.clock
+                )
+        if self._schedule is not None:
+            self._schedule()
