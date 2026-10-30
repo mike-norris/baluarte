@@ -14,6 +14,9 @@ import { FindingsPage } from "./pages/FindingsPage";
 import { InventoryPage } from "./pages/InventoryPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { RemediationNewPage } from "./pages/RemediationNewPage";
+import { RemediationPage } from "./pages/RemediationPage";
+import { RemediationPlanPage } from "./pages/RemediationPlanPage";
 import { SignInPage } from "./pages/SignInPage";
 
 /** Sections that are implemented; the rest render a placeholder. */
@@ -23,6 +26,7 @@ const pages: Partial<Record<string, ReactNode>> = {
   "/findings": <FindingsPage />,
   "/evidence": <EvidencePage />,
   "/exceptions": <ExceptionsPage />,
+  "/remediation": <RemediationPage />,
 };
 
 export const routes: RouteObject[] = [
@@ -45,6 +49,8 @@ export const routes: RouteObject[] = [
           })),
           { path: "/findings/:findingId", element: <FindingDetailPage /> },
           { path: "/exceptions/:exceptionId", element: <ExceptionDetailPage /> },
+          { path: "/remediation/new", element: <RemediationNewPage /> },
+          { path: "/remediation/:planId", element: <RemediationPlanPage /> },
         ],
       },
       { path: "*", element: <NotFoundPage /> },

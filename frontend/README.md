@@ -86,3 +86,23 @@ An exception waives one rule for one project for a limited time (`GET/POST /api/
   - Every change sends the `X-CSRF-Token` header and is audited.
 - **Separation of duties:** the page hides approve and reject when the request's `requested_by.user_id` is the signed-in user's `user_id` from `/auth/me`. The API refuses self-approval regardless, and its reason is shown.
 - **Effect:** an excepted finding shows its expiry in the findings list and on its detail page, and is never counted as passing. The dashboard keeps `excepted` out of the pass share.
+
+## Remediation
+
+Dry-run plans of the GitLab changes that would fix failing findings (`/api/v1/remediation/plans`, docs/REMEDIATION.md). Every remediation screen carries a notice that Baluarte makes no change to GitLab: execution is not available, so approving a plan changes nothing.
+
+- **Listing:** `/remediation` lists plans, filtered by `state` in the URL. `expired` counts any plan past its expiry.
+- **Creating:** `/remediation/new` takes finding IDs, or a project GitLab ID, policy and rule. It's only for users with `remediation:plan` (admins and analysts).
+  - The form is prefilled from `?finding=5&finding=6` or `?project=105&policy=…&rule=…`.
+  - "Plan a dry-run fix" links on the findings list (when it filters by project, policy or rule) and on an open, failing finding's detail page lead there. The findings list link says which of its filters a plan ignores.
+  - The form checks the API's limits first: one kind of scope, at most 100 findings, and 1 to 72 hours.
+  - When nothing can be planned, the API's reason for each finding is listed.
+- **Reviewing:** `/remediation/:id` shows the plan.
+  - **Changes:** each step as current → intended, the policy's expected value, and the exact request that would be sent, in a labelled code block. It also shows the verification read, the preconditions, the blast radius, and the finding, evaluation and evidence it rests on.
+  - **What isn't planned:** the skipped findings with their reasons, and the actions remediation never takes.
+  - **Integrity:** the plan digest, with a warning when the stored plan no longer matches it. Stale reasons are shown before anyone tries to approve.
+- **Deciding:**
+  - **Submitting:** the creator submits a draft.
+  - **Approving and rejecting:** users with `remediation:approve` (admins) approve or reject a submitted plan after a confirmation step. The step states the digest the approval binds to, and approval sends that `plan_digest`. Rejecting needs a reason.
+  - **Refusals:** a 409 lists the API's staleness reasons.
+  - **The creator:** the page compares the plan's `created_by_user_id` with `user_id` from `/auth/me`. It offers submitting only to the creator and hides the decision from them. The API refuses the creator's decision regardless, and its reason is shown.

@@ -15,6 +15,8 @@ import { ErrorMessage } from "../components/ErrorMessage";
 import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
 import { ExportLink } from "../evidence/ExportLink";
 import { findingsExportLink } from "../evidence/scope";
+import { findingsPlanLink } from "../remediation/format";
+import { PlanLink } from "../remediation/PlanLink";
 import { EvaluationNote } from "../findings/EvaluationNote";
 import {
   hasFindingFilters,
@@ -243,6 +245,7 @@ function Listing({ filters }: { filters: FindingFilters }) {
 export function FindingsPage() {
   const [params] = useSearchParams();
   const filters = readFindingFilters(params);
+  const planLink = findingsPlanLink(filters);
 
   return (
     <section aria-labelledby="page-title" className="space-y-6">
@@ -258,6 +261,7 @@ export function FindingsPage() {
       <EvaluationNote />
       <Filters filters={filters} />
       <ExportLink label="Export evidence for this view" {...findingsExportLink(filters)} />
+      {planLink && <PlanLink label="Plan a dry-run fix for this view" {...planLink} />}
       <Listing filters={filters} />
     </section>
   );

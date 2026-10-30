@@ -27,6 +27,11 @@ export const navItems: readonly NavItem[] = [
     description: "Time-limited, approved waivers of known failures.",
   },
   {
+    path: "/remediation",
+    label: "Remediation",
+    description: "Dry-run plans to fix failing findings; nothing is changed in GitLab.",
+  },
+  {
     path: "/policies",
     label: "Policies",
     description: "Versioned YAML baselines and their scope.",
