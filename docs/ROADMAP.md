@@ -6,6 +6,6 @@
 - **M3 — Policy evaluation:** schema, inheritance, visibility and default-branch rules, findings.
 - **M4 — Dashboard:** posture, drill-down, filters, freshness, failure states.
 - **M5 — Evidence:** observation history, digests, export manifests, CSV/JSON.
-- **M6 — Remediation (post-v0.1):** approval, dry run, idempotent GitLab writes, verification, exception lifecycle. See the [remediation research](REMEDIATION_RESEARCH.md) and [ADR-0007](architecture/ADR-0007-remediation-constraints.md).
+- **M6 — Remediation:** in v0.1, dry-run plans with separate approval (BAL-031) and the exception lifecycle (BAL-033). Deferred past v0.1: idempotent GitLab writes with verification (BAL-032); approved plans are applied by hand ([REMEDIATION.md](REMEDIATION.md#applying-an-approved-plan-in-v01)). See the [remediation research](REMEDIATION_RESEARCH.md) and [ADR-0007](architecture/ADR-0007-remediation-constraints.md).
 
 **v0.1** targets M0–M5 in read-only mode. No delivery dates are promised until GitLab edition/version, project scale, and contributor capacity are established. Milestone work is tracked in GitHub issues.

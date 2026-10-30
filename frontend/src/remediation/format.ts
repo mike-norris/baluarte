@@ -26,7 +26,8 @@ export const planStateMeaning: Record<PlanState, string> = {
   submitted: "Waiting for someone other than its creator to approve or reject it.",
   approved:
     "Approved for the digest shown. Nothing has been changed in GitLab: execution is not " +
-    "available in this version.",
+    "available in this version. Apply the steps by hand in GitLab, then run project discovery " +
+    "to verify them.",
   rejected: "Rejected; nothing will be done with it.",
   expired: "Past its expiry; it can no longer be submitted or approved.",
 };

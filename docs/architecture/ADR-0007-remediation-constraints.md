@@ -1,6 +1,6 @@
 # ADR-0007: Constraints for GitLab remediation (M6)
 
-- Status: Proposed. The plan and approval constraints are implemented (BAL-031); execution is pending (BAL-032)
+- Status: Proposed. The plan and approval constraints are implemented (BAL-031). Execution (BAL-032) is deferred past v0.1 (decided 2026-10-30): v0.1 stays read-only and approved plans are applied by hand
 - Date: 2026-10-29
 
 ## Context
@@ -53,7 +53,7 @@ Not yet implemented:
 - verification after a write
 - rollback plans
 
-Baluarte remains read-only, so this ADR stays Proposed until the open questions are answered and BAL-032 is designed against them.
+Baluarte remains read-only in v0.1, so this ADR stays Proposed until the open questions are answered and BAL-032 is designed against them. Accepting it for execution would also need a decision record superseding [ADR-0003](ADR-0003-read-only-v0-1.md) for that feature.
 
 ## Revisit when
 
