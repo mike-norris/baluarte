@@ -18,6 +18,8 @@ import { ExportLink } from "../evidence/ExportLink";
 import { evidenceHref } from "../evidence/scope";
 import { ExceptionPanel } from "../exceptions/ExceptionPanel";
 import { EvaluationNote } from "../findings/EvaluationNote";
+import { writePlanScope } from "../remediation/format";
+import { PlanLink } from "../remediation/PlanLink";
 import {
   capabilityLabels,
   findingStateLabels,
@@ -447,6 +449,12 @@ export function FindingDetailPage() {
           rule: finding.rule_id,
         })}
       />
+      {finding.state === "open" && finding.latest_outcome === "fail" && (
+        <PlanLink
+          label="Plan a dry-run fix for this finding"
+          href={`/remediation/new?${writePlanScope({ finding_ids: [finding.id] }).toString()}`}
+        />
+      )}
     </section>
   );
 }
