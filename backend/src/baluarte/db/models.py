@@ -47,6 +47,10 @@ FINDING_RESOLUTIONS = ("passed", "no_longer_applies")
 EXCEPTION_STATES = ("requested", "approved", "rejected", "revoked", "expired")
 # Longest an exception may last, from its request.
 MAX_EXCEPTION_DAYS = 365
+PLAN_STATES = ("draft", "submitted", "approved", "rejected", "expired")
+# Longest a remediation plan stays valid, from its creation, and the most steps it may hold.
+MAX_PLAN_HOURS = 72
+MAX_PLAN_STEPS = 100
 
 
 def one_of(column: str, values: Iterable[str]) -> CheckConstraint:
@@ -487,6 +491,78 @@ class PolicyException(Base):
     ended_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     end_note: Mapped[str | None] = mapped_column(Text)
+
+
+class RemediationPlan(Base):
+    """A dry-run remediation plan (BAL-031): the GitLab changes that would fix open findings.
+
+    The plan document and its digest never change. ``draft`` becomes ``submitted`` (by its
+    creator), then ``approved`` or ``rejected`` by someone else; ``draft``, ``submitted`` or
+    ``approved`` becomes ``expired`` once ``expires_at`` has passed. Approval records the digest
+    the approver reviewed, which must equal the plan's. A trigger enforces the transitions,
+    keeps the plan unchanged and rejects ``DELETE``. Nothing here changes GitLab: execution is
+    BAL-032.
+    """
+
+    __tablename__ = "remediation_plan"
+    __table_args__ = (
+        Index("ix_remediation_plan_state", "instance_id", "state", "id"),
+        one_of("state", PLAN_STATES),
+        sha256_hex("plan_digest"),
+        CheckConstraint(
+            f"expires_at > created_at AND expires_at <= created_at + "
+            f"interval '{MAX_PLAN_HOURS} hours'",
+            name="expiry_bounded",
+        ),
+        CheckConstraint(f"steps BETWEEN 1 AND {MAX_PLAN_STEPS}", name="steps_bounded"),
+        CheckConstraint("skipped >= 0", name="skipped_non_negative"),
+        CheckConstraint(
+            "decided_by_user_id IS NULL OR decided_by_user_id <> created_by_user_id",
+            name="decided_by_another_user",
+        ),
+        CheckConstraint(
+            "(decided_at IS NULL) = (decided_by_user_id IS NULL)", name="decision_complete"
+        ),
+        CheckConstraint(
+            "state NOT IN ('approved', 'rejected') OR decided_at IS NOT NULL",
+            name="decided_has_decision",
+        ),
+        CheckConstraint(
+            "state NOT IN ('submitted', 'approved', 'rejected') OR submitted_at IS NOT NULL",
+            name="submitted_has_time",
+        ),
+        CheckConstraint(
+            "state <> 'approved' OR approved_digest IS NOT NULL", name="approved_has_digest"
+        ),
+        CheckConstraint(
+            "state NOT IN ('draft', 'submitted', 'rejected') OR approved_digest IS NULL",
+            name="unapproved_has_no_digest",
+        ),
+        CheckConstraint(
+            "approved_digest IS NULL OR approved_digest = plan_digest",
+            name="approval_binds_digest",
+        ),
+        CheckConstraint("(state = 'expired') = (ended_at IS NOT NULL)", name="expired_has_time"),
+    )
+
+    id: Mapped[int] = pk()
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    state: Mapped[str] = mapped_column(Text, server_default="draft")
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = utc_now()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # The canonical plan document; ``plan_digest`` is the SHA-256 of its canonical JSON.
+    plan: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    plan_digest: Mapped[str] = mapped_column(Text)
+    steps: Mapped[int] = mapped_column(Integer)
+    skipped: Mapped[int] = mapped_column(Integer)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_note: Mapped[str | None] = mapped_column(Text)
+    # The digest the approver reviewed; equal to ``plan_digest`` when approved.
+    approved_digest: Mapped[str | None] = mapped_column(Text)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class AuditEvent(Base):

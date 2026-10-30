@@ -1,6 +1,6 @@
 # ADR-0007: Constraints for GitLab remediation (M6)
 
-- Status: Proposed
+- Status: Proposed. The plan and approval constraints are implemented (BAL-031); execution is pending (BAL-032)
 - Date: 2026-10-29
 
 ## Context
@@ -37,6 +37,23 @@ Proposed for BAL-031 and BAL-032. It does not change v0.1.
 - **More operator setup:** operators who enable remediation must provision a second, write-capable identity. On versions without fine-grained tokens, that identity holds a broad `api` scope bounded only by its role.
 - **Free-tier audit gap:** on Free, Baluarte's audit trail is the only record of a change.
 - **Open questions first:** the open questions in the research must be answered by tests against real versions and tiers before this ADR is accepted.
+
+## Implementation status
+
+BAL-031 implements the planning half ([REMEDIATION.md](../REMEDIATION.md)):
+- **Plans:** dry-run plans built only from open, failing, evidence-backed findings, with expiry.
+- **Approval:** bound to the plan digest, with requester and approver kept separate.
+- **Allowlist:** restricting project visibility and protecting the default branch. Changes that widen access, and the excluded actions, are refused.
+- **Per-step records:** idempotency keys, preconditions, effects and prior values.
+- **Audit:** of every transition.
+
+Not yet implemented:
+- the write credential
+- execution
+- verification after a write
+- rollback plans
+
+Baluarte remains read-only, so this ADR stays Proposed until the open questions are answered and BAL-032 is designed against them.
 
 ## Revisit when
 

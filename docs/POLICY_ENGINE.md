@@ -208,4 +208,4 @@ Evaluations reference immutable policy versions and observation IDs ([EVALUATION
 - reason
 - GitLab capability status
 
-v0.1 does not auto-remediate.
+v0.1 does not auto-remediate. Dry-run remediation plans, built from open failing findings and approved by someone other than their creator, are described in [REMEDIATION.md](REMEDIATION.md); they change nothing in GitLab.

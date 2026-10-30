@@ -73,6 +73,7 @@ To restore, scale the API and worker to zero, restore the database with your pro
 | `evaluation` growth | Unlike observations, a row is added for every rule and project on every evaluation run, so each check is on record: about rules × projects × runs per day (2 rules, 10,000 projects and 4 runs a day is 80,000 rows a day). Plan the retention period with this in mind |
 | `finding` | Mutable current state; resolved findings are kept |
 | `policy_exception` | Kept indefinitely; a trigger rejects `DELETE` and allows only state transitions (migration `0010`) |
+| `remediation_plan` | Kept indefinitely; a trigger rejects `DELETE` and allows only state transitions (migration `0011`) |
 | `collection_job`, `collection_run`, `evaluation_run` | Kept indefinitely; the run history feeds freshness |
 | `user_session`, `oidc_login` | Expire logically (idle, absolute and 10-minute limits) but rows remain |
 | `gitlab_group`, `gitlab_project` | Kept; deleted or hidden resources become `missing`, not removed |

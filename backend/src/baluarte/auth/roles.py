@@ -23,6 +23,10 @@ class Permission(StrEnum):
     EXCEPTION_REQUEST = "exception:request"
     # Approve, reject or revoke one; never one's own request (enforced separately).
     EXCEPTION_APPROVE = "exception:approve"
+    # Draft and submit dry-run remediation plans; never changes GitLab.
+    REMEDIATION_PLAN = "remediation:plan"
+    # Approve or reject a submitted plan; never one's own (enforced separately).
+    REMEDIATION_APPROVE = "remediation:approve"
     SETTINGS_MANAGE = "settings:manage"
     AUDIT_LOG_READ = "audit_log:read"
     JOBS_READ = "jobs:read"
@@ -32,7 +36,8 @@ _READ = frozenset({Permission.INVENTORY_READ, Permission.FINDINGS_READ, Permissi
 
 ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = {
     Role.ADMIN: frozenset(Permission),
-    Role.ANALYST: _READ | {Permission.POLICY_WRITE, Permission.EXCEPTION_REQUEST},
+    Role.ANALYST: _READ
+    | {Permission.POLICY_WRITE, Permission.EXCEPTION_REQUEST, Permission.REMEDIATION_PLAN},
     Role.AUDITOR: _READ | {Permission.EVIDENCE_EXPORT, Permission.AUDIT_LOG_READ},
 }
 
