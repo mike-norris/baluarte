@@ -1,6 +1,6 @@
 # Remediation plans
 
-Implemented in `baluarte.remediation.plans` and `/api/v1/remediation/plans` (BAL-031). **A plan is a dry run: it describes the GitLab changes that would fix open findings, and nothing in Baluarte sends them.** Baluarte still makes only `GET` requests to GitLab with a `read_api` token ([ADR-0003](architecture/ADR-0003-read-only-v0-1.md)). Executing an approved plan needs a separate write credential, and is BAL-032.
+Implemented in `baluarte.remediation.plans` and `/api/v1/remediation/plans` (BAL-031). **A plan is a dry run: it describes the GitLab changes that would fix open findings, and nothing in Baluarte sends them.** Baluarte still makes only `GET` requests to GitLab with a `read_api` token ([ADR-0003](architecture/ADR-0003-read-only-v0-1.md)). Executing plans from Baluarte (BAL-032) is deferred past v0.1: in v0.1 an approved plan is applied by hand (see [Applying an approved plan](#applying-an-approved-plan-in-v01)).
 
 The design follows the [remediation research](REMEDIATION_RESEARCH.md) and [ADR-0007](architecture/ADR-0007-remediation-constraints.md).
 
@@ -77,7 +77,18 @@ Each step records:
   `stale_reasons` on a draft or submitted plan shows this before anyone tries to approve. A stale plan can still be rejected; create a new one instead.
 - **Expiry:** expiry takes effect at `expires_at` in every response, and `expire_due` marks rows `expired` when a plan is created.
 - **Audit:** every transition is audited as `remediation_plan.created`, `.submitted`, `.approved`, `.rejected` or `.expired`, with the plan digest.
-- **Approval changes nothing in GitLab.** An approved plan waits for BAL-032, and expires if not executed in time.
+- **Approval changes nothing in GitLab.** In v0.1 someone applies an approved plan by hand; see below.
+
+## Applying an approved plan in v0.1
+
+Baluarte does not execute plans in v0.1. An approved plan is a reviewed, audited instruction list:
+
+1. **Who applies it:** someone with the GitLab role each step names (the plan records the role and tier), using their own GitLab account, in the GitLab UI or with their own token. Baluarte's `read_api` token is never used for this.
+2. **Before each step:** check its `preconditions` in GitLab. If one no longer holds, skip the step: the plan is out of date. Make each change exactly as the step's request describes, no wider.
+3. **Afterwards:** run project discovery, which queues an evaluation (or wait for the next scheduled collection). A fixed finding resolves only when fresh evidence shows the expected value, so verification goes through the normal read path.
+4. **Records:** the approval is in Baluarte's audit log as `remediation_plan.approved`, with the digest. The change itself is recorded by GitLab only on Premium and Ultimate. On Free, keep your own record, for example a ticket that names the plan ID and digest.
+
+Apply a plan before it expires (24 hours by default, at most 72). After that, create a new plan from current evidence.
 
 ## Guarantees and their tests
 
@@ -98,7 +109,7 @@ All in `backend/tests/test_remediation_plans.py`.
 
 ## Not yet
 
-- **Execution (BAL-032):**
+- **Execution from Baluarte (BAL-032), deferred past v0.1:**
   - a separate write credential, mounted only into the worker that executes
   - re-checking `preconditions` with a fresh read
   - one request per step, with no blind retries of writes
@@ -106,4 +117,3 @@ All in `backend/tests/test_remediation_plans.py`.
   - auditing every request and result
 - **Rollback plans:** each step records the prior value (`current`) so a reverse plan can be generated later.
 - **More actions:** for example tightening an existing protection with `PATCH`.
-- **Frontend:** screens to review and approve plans.
