@@ -14,6 +14,8 @@ const FRESHNESS = "GET /api/v1/gitlab/freshness";
 const FINDING = "GET /api/v1/findings/5";
 const HISTORY = "GET /api/v1/findings/5/evaluations?limit=50";
 const EVIDENCE = "GET /api/v1/gitlab/projects/105/observations?before_id=10&limit=1";
+const EXCEPTIONS =
+  "GET /api/v1/exceptions?project=105&policy=corporate-default&rule=project-visibility&limit=50";
 
 function history(items: Evaluation[], next: number | null = null) {
   return json({ items, next_before_id: next });
@@ -27,6 +29,7 @@ function api(detail: FindingDetail, routes: Record<string, () => Response> = {})
     [FINDING]: () => json(detail),
     [HISTORY]: () => history([detail.latest_evaluation]),
     [EVIDENCE]: () => json({ items: [observation(9)], next_before_id: 8 }),
+    [EXCEPTIONS]: () => json({ items: [], next_after_id: null }),
     ...routes,
   });
 }

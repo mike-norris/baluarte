@@ -146,7 +146,14 @@ function FindingRows({ findings }: { findings: Finding[] }) {
         <span className="text-slate-600">{`v${String(finding.policy.version)}`}</span>
       </td>
       <td className={cell}>{severityLabels[finding.severity] ?? finding.severity}</td>
-      <td className={cell}>{findingStateLabels[finding.state]}</td>
+      <td className={cell}>
+        {findingStateLabels[finding.state]}
+        {finding.state === "excepted" && finding.exception && (
+          <span className="block text-xs text-slate-600">
+            {`until ${formatTime(finding.exception.expires_at)}; not passing`}
+          </span>
+        )}
+      </td>
       <OutcomeCell finding={finding} />
       <td className={`${cell} whitespace-nowrap`}>{formatTime(finding.first_seen_at)}</td>
       <td className={`${cell} whitespace-nowrap`}>{formatTime(finding.last_seen_at)}</td>

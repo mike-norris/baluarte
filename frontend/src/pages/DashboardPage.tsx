@@ -161,8 +161,8 @@ function RuleResults({ run, newest }: { run: EvaluationRun | null; newest: Evalu
       ) : (
         <p className="mt-3 text-sm">
           {`${String(passed)} of ${String(total)} rule results passed (${percent(passed, total)}). `}
-          The rest failed, could not be decided or could not be checked; none of them count as
-          passing.
+          The rest failed, were waived by an exception, could not be decided or could not be
+          checked; none of them count as passing.
         </p>
       )}
       <table className={tableClass}>

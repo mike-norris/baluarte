@@ -14,7 +14,8 @@ export const outcomeMeaning: Record<Outcome, string> = {
   unknown:
     "Could not be decided: data missing, stale, unreadable or incomplete. Not counted as passing.",
   unsupported: "This GitLab instance cannot report the setting. Not counted as passing.",
-  excepted: "Covered by an approved exception.",
+  excepted:
+    "A known failure waived by an approved exception until it expires. Not counted as passing.",
 };
 
 export const severityLabels: Record<string, string> = {
