@@ -131,8 +131,9 @@ migrations:
     limits:
       memory: 256Mi
 
-# OIDC sign-in (authorization code flow with PKCE). With oidc.issuer empty, sign-in and every
-# protected endpoint answer 503; health and readiness still work.
+# OIDC sign-in (authorization code flow with PKCE). With oidc.issuer empty, an administrator
+# enters the identity provider in the web UI's setup wizard instead (unlocked by the setup code
+# in the API log); until then sign-in and every protected endpoint answer 503.
 auth:
   # Browser-facing https origin. Defaults to https://<ingress.host> when ingress.enabled.
   publicUrl: ""
@@ -155,7 +156,7 @@ auth:
 
 # The one self-managed GitLab instance to govern (ADR-0004). Access is read-only: create a
 # token with the read_api scope only, ideally for a non-admin bot or auditor user. With url
-# empty, GitLab is not configured and diagnostics report that.
+# empty, an administrator can connect GitLab in the web UI instead.
 gitlab:
   # https URL of the instance, e.g. https://gitlab.example.internal (no /api/v4).
   url: ""
@@ -167,6 +168,14 @@ gitlab:
   # How often the worker collects capabilities, groups and projects: 15 to 10080 minutes, or
   # 0 to collect only on request. Data older than twice this is reported as stale.
   syncIntervalMinutes: 360
+
+# Key that seals the GitLab token and OIDC client secret entered in the web UI (ADR-0008):
+# 32 random bytes, base64-encoded. With existingSecret empty the chart generates one on install,
+# keeps it across upgrades and leaves it behind on uninstall. Back it up with the database:
+# without it, stored secrets cannot be read and must be entered again.
+secretKey:
+  existingSecret: ""
+  key: secret-key
 
 # Single-pod PostgreSQL for evaluation and CI only: no backups, no high availability.
 # A random password is generated on install and kept across upgrades.

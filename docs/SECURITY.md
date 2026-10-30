@@ -41,14 +41,34 @@ Sign-in, failed sign-in (with a reason code) and sign-out are written to `audit_
 
 ## Secrets and logs
 
-- Secrets are read only from files named by `<NAME>_FILE` (Docker or Kubernetes secret mounts). Setting a secret directly in the environment, or a password inside `BALUARTE_DATABASE_URL`, is a configuration error. Secret values are never returned by the API: `GET /api/v1/settings` reports them only as `configured` or `not_set`.
+- Secrets set by the deployment are read only from files named by `<NAME>_FILE` (Docker or Kubernetes secret mounts). Setting a secret directly in the environment, or a password inside `BALUARTE_DATABASE_URL`, is a configuration error. Secret values are never returned by the API: `GET /api/v1/settings` reports them only as `configured` or `not_set`.
+- The GitLab token and OIDC client secret can instead be entered in the web UI. See the next section.
 - All processes log one JSON object per line to stdout (`BALUARTE_LOG_FORMAT=text` for development). Uvicorn's loggers are routed through the same handler.
 - Every log line is redacted after formatting: values of secrets read from files, credentials in URLs, `Bearer`/`Basic` credentials, GitLab tokens (`glpat-` and other `gl*-` prefixes), JWTs, and the values of sensitive parameters (`private_token`, `access_token`, `token`, `password`, `secret`, `client_secret`, `code`, `state`, ...). This covers the authorization code and state in the OIDC callback's access-log line. Redaction is pattern-based defence in depth; code must still avoid logging secrets.
 - Background job errors store only messages written for storage; unexpected exceptions are recorded by type name.
 
+## Setup and secrets entered in the web UI
+
+[ADR-0008](architecture/ADR-0008-settings-in-the-database.md) has the reasoning.
+
+- **Setup code.**
+  - Until setup completes, each API start logs a new one-time code at WARNING (`setup: ... setup code XXXX-XXXX-XXXX`). `baluarte-setup-code`, run in the API or worker container, issues a new one and ends every setup session.
+  - Only its SHA-256 digest is stored. Five wrong codes within 15 minutes return 429 until the window ends. Wrong codes are logged, not audited, so anonymous requests cannot grow the audit table.
+  - The code unlocks a 60-minute setup session (cookie and CSRF token, as for sign-in) that can save and test the identity provider and GitLab settings.
+- **Completion.** Setup completes when the first user who maps to `admin` signs in through the settings entered in the wizard. After that every setup endpoint answers 409, and changes need `settings:manage` on the Settings page (`/api/v1/settings/oidc`, `/api/v1/settings/gitlab`, CSRF-protected).
+- **Precedence.** When the environment configures sign-in or GitLab, that section comes only from the environment and the UI cannot change it (409). When sign-in comes from the environment there is no setup step and no setup code.
+- **Sealing.**
+  - Stored secrets are sealed with AES-256-GCM under the key in `BALUARTE_SECRET_KEY_FILE` (32 random bytes, base64: `openssl rand -base64 32`), with a random nonce and the secret's name as associated data. They are never returned, and audit events record only that a secret was replaced or cleared.
+  - Without the key, secrets cannot be saved. With a different key, they cannot be read, and sign-in or collection reports a configuration error.
+  - Back up the key separately from the database: a database backup alone does not expose the secrets, and the key alone is useless.
+- **Rotating the key.** Write a new key to `BALUARTE_SECRET_KEY_FILE`, the old one to `BALUARTE_SECRET_KEY_PREVIOUS_FILE` (read only to decrypt), restart, run `baluarte-reencrypt-secrets`, then remove the previous key. If the key is lost, enter the GitLab token and client secret again on the Settings page; nothing else is affected.
+- **Where stored secrets go.** A stored secret is only ever sent to the host it was entered for. Changing the issuer or GitLab URL requires entering it again, and "test with the stored token" works only for the stored URL.
+- **Outbound requests.** The discovery and connection tests make the API send `GET` requests to the URL entered, https only, never following redirects.
+- **Risk while setup is open.** Anyone who can read the API log or run a command in its container can complete setup. Complete it promptly after installing, and keep API logs private.
+
 ## GitLab credential
 
-- One token for one instance (ADR-0004), read from `BALUARTE_GITLAB_TOKEN_FILE`. Baluarte only issues `GET` requests and needs only the `read_api` scope. Use a dedicated non-admin bot or auditor user; an administrator token sees everything and is flagged by diagnostics.
+- One token for one instance (ADR-0004), read from `BALUARTE_GITLAB_TOKEN_FILE` or entered in the web UI (sealed, see above). Baluarte only issues `GET` requests and needs only the `read_api` scope. Use a dedicated non-admin bot or auditor user; an administrator token sees everything and is flagged by diagnostics.
 - The token travels only in the `PRIVATE-TOKEN` header to `BALUARTE_GITLAB_URL`, which must be `https`. Redirects are never followed, and pagination refuses `Link` next-page URLs outside the configured API, so neither can forward the token to another host. TLS verification is always on; a private CA is added with `SSL_CERT_FILE`.
 - Error messages stored or returned for GitLab failures contain the status and endpoint path only, never response bodies, query strings or the token.
 - The token is mounted into the API (diagnostics) and the worker (capability detection and collection) only. Capability detection calls `GET /license`, which is administrator-only; a least-privilege token gets 403 there by design and the tier is reported as unknown.

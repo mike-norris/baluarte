@@ -146,7 +146,13 @@ def test_misconfigured_reports_the_error(
 def test_settings_include_gitlab_without_token(migrated_engine: Engine, gitlab_env: None) -> None:
     response = client_as(migrated_engine, FakeGitLab(), Role.ADMIN).get("/api/v1/settings")
 
-    assert response.json()["gitlab"] == {"url": URL, "token": "configured", "timeout_seconds": 15.0}
+    assert response.json()["gitlab"] == {
+        "source": "deployment",
+        "url": URL,
+        "token": "configured",
+        "timeout_seconds": 15.0,
+        "sync_interval_minutes": 360,
+    }
     assert TOKEN not in response.text
 
 

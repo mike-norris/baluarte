@@ -1,7 +1,7 @@
 """Version 1 of the HTTP API, mounted at /api/v1.
 
-Deny by default: routers included in ``protected`` require a signed-in session. Only probes and
-the sign-in redirects are public.
+Deny by default: routers included in ``protected`` require a signed-in session. Only probes, the
+sign-in redirects and first-run setup are public; setup needs the one-time setup code instead.
 """
 
 from fastapi import APIRouter, Depends
@@ -20,6 +20,7 @@ from baluarte.api.v1 import (
     policy_assignments,
     ready,
     remediation,
+    setup,
     system,
 )
 from baluarte.auth.dependencies import current_principal
@@ -28,6 +29,7 @@ public = APIRouter()
 public.include_router(health.router)
 public.include_router(ready.router)
 public.include_router(auth.public_router)
+public.include_router(setup.router)
 
 protected = APIRouter(
     dependencies=[Depends(current_principal)],

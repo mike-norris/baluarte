@@ -38,6 +38,7 @@ from baluarte.auth.sessions import (
     upsert_user,
 )
 from baluarte.auth.settings import AuthSettings
+from baluarte.configuration.setup import complete_setup
 from baluarte.db.models import UserSession
 
 logger = logging.getLogger(__name__)
@@ -214,6 +215,15 @@ def callback(
         resource_type="session",
         details={"roles": sorted(roles)},
     )
+    # The first admin to sign in through settings entered in the setup wizard completes setup.
+    if Role.ADMIN in roles and settings.source == "database" and complete_setup(db, user.id):
+        audit.record(
+            db,
+            actor=f"user:{user.id}",
+            action="setup.completed",
+            resource_type="setup",
+            details={"issuer": settings.issuer},
+        )
     db.commit()
 
     response = RedirectResponse(pending.return_to, status.HTTP_303_SEE_OTHER)

@@ -44,6 +44,14 @@ echo "ok  migration job 1 completed"
 helm test "$release" --kube-context "kind-$cluster" --namespace "$namespace" --logs
 
 password=$("${kubectl[@]}" get secret "$release-postgresql" -o jsonpath='{.data.password}')
+secret_key=$("${kubectl[@]}" get secret "$release-secret-key" -o jsonpath='{.data.secret-key}')
+[[ $(base64 -d <<<"$secret_key" | base64 -d | wc -c) -eq 32 ]] || fail "secret key is not 32 bytes"
+echo "ok  secret key generated"
+
+api=$("${kubectl[@]}" get pod -l app.kubernetes.io/component=api -o jsonpath='{.items[0].metadata.name}')
+code=$("${kubectl[@]}" exec "$api" -- baluarte-setup-code | tail -1)
+[[ $code =~ ^[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$ ]] || fail "baluarte-setup-code printed: $code"
+echo "ok  baluarte-setup-code issues a setup code"
 
 for component in api web worker; do
   pod=$("${kubectl[@]}" get pod -l "app.kubernetes.io/component=$component" -o jsonpath='{.items[0].metadata.name}')
@@ -78,9 +86,13 @@ helm upgrade "$release" "$chart" \
 password_before=$password
 password=$("${kubectl[@]}" get secret "$release-postgresql" -o jsonpath='{.data.password}')
 [[ "$password" == "$password_before" ]] || fail "dev database password changed on upgrade"
-echo "ok  helm upgrade (re-ran migrations, kept database password)"
+[[ $("${kubectl[@]}" get secret "$release-secret-key" -o jsonpath='{.data.secret-key}') == "$secret_key" ]] \
+  || fail "secret key changed on upgrade"
+echo "ok  helm upgrade (re-ran migrations, kept database password and secret key)"
 
 helm uninstall "$release" --kube-context "kind-$cluster" --namespace "$namespace" --wait >/dev/null
+# The secret key is kept on purpose (helm.sh/resource-policy: keep); remove it to check the rest.
+"${kubectl[@]}" delete secret "$release-secret-key" >/dev/null || fail "secret key was not kept on uninstall"
 [[ -z $("${kubectl[@]}" get deploy,sts,svc,cm,sa,secret,job -l "app.kubernetes.io/instance=$release" -o name) ]] \
   || fail "resources left after uninstall"
 echo "ok  helm uninstall"

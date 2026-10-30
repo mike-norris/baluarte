@@ -1,5 +1,5 @@
 # Local development stack. Not a production configuration: see docs/DEPLOYMENT.md.
-# Create the database password first: see README.md "Run locally".
+# Create the database password and the secret key first: see README.md "Run locally".
 name: baluarte
 
 x-hardening: &hardening
@@ -18,6 +18,10 @@ x-app-env: &app-env
 x-database: &database
   environment: *app-env
   secrets: [postgres_password]
+
+# Seals the GitLab token and OIDC client secret entered in the web UI (docs/SECURITY.md).
+x-secret-key-env: &secret-key-env
+  BALUARTE_SECRET_KEY_FILE: /run/secrets/secret_key
 
 services:
   db:
@@ -51,7 +55,7 @@ services:
     <<: [*hardening, *database]
     image: baluarte-app:dev
     environment:
-      <<: *app-env
+      <<: [*app-env, *secret-key-env]
       # OIDC sign-in, read from the shell or a .env file. Until it is configured, sign-in and
       # every protected endpoint answer 503. See backend/README.md.
       BALUARTE_PUBLIC_URL: ${BALUARTE_PUBLIC_URL:-}
@@ -61,6 +65,7 @@ services:
       BALUARTE_OIDC_ADMIN_GROUPS: ${BALUARTE_OIDC_ADMIN_GROUPS:-}
       BALUARTE_OIDC_ANALYST_GROUPS: ${BALUARTE_OIDC_ANALYST_GROUPS:-}
       BALUARTE_OIDC_AUDITOR_GROUPS: ${BALUARTE_OIDC_AUDITOR_GROUPS:-}
+    secrets: [postgres_password, secret_key]
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -72,6 +77,9 @@ services:
     <<: [*hardening, *database]
     image: baluarte-app:dev
     command: ["baluarte-worker"]
+    environment:
+      <<: [*app-env, *secret-key-env]
+    secrets: [postgres_password, secret_key]
     stop_grace_period: 60s
     depends_on:
       migrate:
@@ -96,6 +104,8 @@ services:
 secrets:
   postgres_password:
     file: ./secrets/postgres_password
+  secret_key:
+    file: ./secrets/secret_key
 
 volumes:
   db-data:

@@ -8,6 +8,8 @@ Self-managed GitLab REST API, one instance, read-only credential, group/subgroup
 
 Configured with `BALUARTE_GITLAB_URL` (https, no `/api/v4`; relative-URL installs such as `https://example.internal/gitlab` work), `BALUARTE_GITLAB_TOKEN_FILE` and optionally `BALUARTE_GITLAB_TIMEOUT_SECONDS` (default 15). The client lives in `baluarte.integrations.gitlab`.
 
+When `BALUARTE_GITLAB_URL` is not set, an administrator can enter the same values in the web UI: in the setup wizard or on the Settings page (`PUT /api/v1/settings/gitlab`). The token is sealed in the database ([ADR-0008](architecture/ADR-0008-settings-in-the-database.md)). The same checks apply. "Test connection" (`POST /api/v1/settings/gitlab/test`) runs the diagnostics below with the values entered, before saving. API and worker processes pick up a saved change within 10 seconds, and the worker reschedules collection within a minute. Disconnecting (`DELETE /api/v1/settings/gitlab`) removes the URL and token but keeps everything collected.
+
 Requests are retried up to three attempts on 429, 502, 503, 504, timeouts and connection errors, with exponential backoff and `Retry-After` honoured up to 30 seconds. 401, 403 and 404 are reported as `unauthorized`, `forbidden` and `not_found` and never retried; TLS failures are `tls_error`.
 
 ## Diagnostics
@@ -87,7 +89,7 @@ After a complete project listing and reconciliation, project discovery reads the
 
 ## Scheduling and freshness
 
-- **Schedule:** the worker queues capability detection, group discovery and project discovery every `BALUARTE_GITLAB_SYNC_INTERVAL_MINUTES` (default 360; `0` collects only on request). The interval is divided into buckets on the database clock, and each job's idempotency key names its bucket, so any number of workers queue each collection once per interval. Scheduled jobs have three attempts.
+- **Schedule:** the worker queues capability detection, group discovery and project discovery every `BALUARTE_GITLAB_SYNC_INTERVAL_MINUTES` (default 360; `0` collects only on request), or the interval saved in the web UI. It re-reads the setting every minute. The interval is divided into buckets on the database clock, and each job's idempotency key names its bucket, so any number of workers queue each collection once per interval. Scheduled jobs have three attempts.
 - **Runs:** every job attempt writes a `collection_run` row before calling GitLab and closes it as `succeeded`, `partial` (some resources could not be confirmed, or some capabilities are not supported) or `failed`, with counts and the safe error. Default-branch protection reads that fail do not yet make a project run `partial` (see [Default-branch protection](#default-branch-protection)). The row is closed even when the job will be retried. A run left `running` by a worker that died is closed as failed (`interrupted: ...`) when a later attempt of the same kind starts, provided its own job attempt is no longer running.
 - **Per resource:** a group or project whose reconciliation lookup failed keeps its state and gets `last_error` and `last_error_at`. These are cleared when it is listed again.
 - **Freshness:** `GET /api/v1/gitlab/freshness` reports each kind as:

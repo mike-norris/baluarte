@@ -6,7 +6,17 @@ import pytest
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import URL, make_url
 
+from baluarte.configuration import effective
 from baluarte.db.migrate import upgrade
+
+
+@pytest.fixture(autouse=True)
+def no_stored_settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Settings come only from the environment unless a test points the store at a database."""
+    monkeypatch.setattr(effective, "engine_provider", lambda: None)
+    effective.invalidate()
+    yield
+    effective.invalidate()
 
 
 def _admin_url() -> URL:

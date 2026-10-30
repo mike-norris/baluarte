@@ -21,7 +21,16 @@ helm install baluarte deploy/helm/baluarte \
 helm test baluarte -n baluarte
 ```
 
-To enable sign-in, register a client with your identity provider (redirect URI `https://baluarte.example.internal/api/v1/auth/callback`), store its secret, and upgrade:
+Then open the web UI. A new installation shows a setup wizard where an administrator enters the identity provider and, optionally, the GitLab connection. The wizard is unlocked by a one-time setup code that the API logs at startup; to read it, or to issue a new one:
+
+```sh
+kubectl -n baluarte logs deploy/baluarte-api | grep 'setup code'
+kubectl -n baluarte exec deploy/baluarte-api -- baluarte-setup-code
+```
+
+The API Deployment is named `<release>-baluarte-api`, or `<release>-api` when the release name already contains `baluarte` (as here). Setup completes when the first user in an admin group signs in. Secrets entered in the UI are sealed with a key the chart generates (see `secretKey` below); back that Secret up with the database.
+
+To configure sign-in in the chart instead, register a client with your identity provider (redirect URI `https://baluarte.example.internal/api/v1/auth/callback`), store its secret, and upgrade. Settings from the chart take precedence and are read-only in the UI:
 
 ```sh
 kubectl -n baluarte create secret generic baluarte-oidc --from-file=client-secret=./oidc-client-secret
@@ -51,13 +60,14 @@ For evaluation only, `--set devDatabase.enabled=true` runs a single PostgreSQL p
 | `logging.level`, `logging.format` | `INFO`, `json` | Log level and format for the API, worker and migration Job; secrets are redacted |
 | `migrations.waitTimeoutSeconds` | `120` | How long the migration Job waits for PostgreSQL |
 | `devDatabase.enabled` | `false` | Single-pod PostgreSQL for evaluation and CI |
-| `auth.oidc.issuer`, `auth.oidc.clientId` | `""` | OIDC provider and client. Empty issuer leaves sign-in off: protected endpoints answer 503 |
+| `secretKey.existingSecret`, `secretKey.key` | `""`, `secret-key` | Key that seals secrets entered in the web UI (32 random bytes, base64). Empty generates `<fullname>-secret-key` on install, kept across upgrades and on uninstall |
+| `auth.oidc.issuer`, `auth.oidc.clientId` | `""` | OIDC provider and client. Empty issuer leaves sign-in to the setup wizard; until it is set up, protected endpoints answer 503 |
 | `auth.publicUrl` | `https://<ingress.host>` | Browser-facing https origin; register `<publicUrl>/api/v1/auth/callback` with the provider |
 | `auth.oidc.existingSecret`, `auth.oidc.clientSecretKey` | `""`, `client-secret` | Secret holding the client secret; empty for a PKCE-only public client |
 | `auth.oidc.adminGroups`, `analystGroups`, `auditorGroups` | `[]` | Provider groups granted each role; at least one is required |
 | `auth.oidc.rolesClaim`, `auth.oidc.scopes` | `groups`, `openid profile email` | Groups claim and requested scopes |
 | `auth.session.idleMinutes`, `auth.session.lifetimeMinutes` | `60`, `480` | Session idle and absolute expiry |
-| `gitlab.url` | `""` | https URL of the GitLab instance; empty leaves GitLab unconfigured |
+| `gitlab.url` | `""` | https URL of the GitLab instance; empty lets an administrator connect GitLab in the web UI |
 | `gitlab.existingSecret`, `gitlab.tokenKey` | `""`, `token` | Secret and key holding a `read_api` token; required with `gitlab.url`. Mounted into the API and worker |
 | `gitlab.timeoutSeconds` | `15` | Per-request timeout |
 | `gitlab.syncIntervalMinutes` | `360` | Scheduled collection interval (15 to 10080), or `0` for on request only; data older than twice this is stale |

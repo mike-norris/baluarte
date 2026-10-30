@@ -8,4 +8,17 @@ No Ingress is enabled. To reach the UI locally:
   open http://127.0.0.1:8080
 {{- end }}
 
+{{- if not .Values.auth.oidc.issuer }}
+
+Finish setup in the web UI. It asks for the one-time setup code from the API log:
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "baluarte.apiName" . }} | grep 'setup code'
+or issue a new one:
+  kubectl -n {{ .Release.Namespace }} exec deploy/{{ include "baluarte.apiName" . }} -- baluarte-setup-code
+{{- end }}
+{{- if not .Values.secretKey.existingSecret }}
+
+Secrets entered in the web UI are sealed with the key in Secret {{ include "baluarte.secretKeyName" . }}.
+Back it up with the database; it is kept when the release is uninstalled.
+{{- end }}
+
 Check the release with: helm test {{ .Release.Name }} -n {{ .Release.Namespace }}

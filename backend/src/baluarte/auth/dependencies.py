@@ -6,10 +6,10 @@ session unless it is deliberately added to the public router.
 
 import hmac
 import logging
+import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import datetime
-from functools import lru_cache
 from typing import Annotated
 
 import httpx
@@ -20,8 +20,9 @@ from sqlalchemy.orm import Session
 from baluarte.auth.oidc import OidcClient
 from baluarte.auth.roles import Permission, Role, permissions_for
 from baluarte.auth.sessions import csrf_token, resolve_session
-from baluarte.auth.settings import AuthSettings, load_auth_settings
+from baluarte.auth.settings import AuthSettings
 from baluarte.config import ConfigurationError
+from baluarte.configuration.effective import effective_auth_settings
 from baluarte.db.session import get_engine
 
 logger = logging.getLogger(__name__)
@@ -33,14 +34,10 @@ IDP_TIMEOUT = httpx.Timeout(10.0)
 _UNAUTHENTICATED = HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated")
 
 
-@lru_cache(maxsize=1)
-def _settings() -> AuthSettings | None:
-    return load_auth_settings()
-
-
 def auth_settings() -> AuthSettings:
+    """The sign-in settings in force: the deployment's, else those entered in the web UI."""
     try:
-        settings = _settings()
+        settings = effective_auth_settings()
     except ConfigurationError as exc:
         logger.error("auth: %s", exc)
         settings = None
@@ -49,15 +46,26 @@ def auth_settings() -> AuthSettings:
     return settings
 
 
-@lru_cache(maxsize=1)
-def _oidc_client() -> OidcClient:
-    # Certificate verification stays on; trust_env lets SSL_CERT_FILE add a private CA.
-    http = httpx.Client(timeout=IDP_TIMEOUT, follow_redirects=False)
-    return OidcClient(auth_settings(), http)
+_client_lock = threading.Lock()
+_client: tuple[AuthSettings, OidcClient, httpx.Client] | None = None
+
+
+def _oidc_client(settings: AuthSettings) -> OidcClient:
+    """One client per process, rebuilt when the settings change in the web UI."""
+    global _client
+    with _client_lock:
+        if _client is not None and _client[0] == settings:
+            return _client[1]
+        if _client is not None:
+            _client[2].close()
+        # Certificate verification stays on; trust_env lets SSL_CERT_FILE add a private CA.
+        http = httpx.Client(timeout=IDP_TIMEOUT, follow_redirects=False)
+        _client = (settings, OidcClient(settings, http), http)
+        return _client[1]
 
 
 def oidc_client(settings: Annotated[AuthSettings, Depends(auth_settings)]) -> OidcClient:
-    return _oidc_client()
+    return _oidc_client(settings)
 
 
 def database_engine() -> Engine:

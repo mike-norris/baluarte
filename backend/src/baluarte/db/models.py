@@ -18,6 +18,7 @@ from sqlalchemy import (
     Identity,
     Index,
     Integer,
+    LargeBinary,
     Text,
     UniqueConstraint,
     func,
@@ -51,6 +52,9 @@ PLAN_STATES = ("draft", "submitted", "approved", "rejected", "expired")
 # Longest a remediation plan stays valid, from its creation, and the most steps it may hold.
 MAX_PLAN_HOURS = 72
 MAX_PLAN_STEPS = 100
+# Sections and secrets that can be stored through the web UI (ADR-0008).
+SETTING_KEYS = ("oidc", "gitlab")
+SECRET_NAMES = ("oidc_client_secret", "gitlab_token")
 
 
 def one_of(column: str, values: Iterable[str]) -> CheckConstraint:
@@ -658,5 +662,81 @@ class OidcLogin(Base):
     nonce: Mapped[str] = mapped_column(Text)
     code_verifier: Mapped[str] = mapped_column(Text)
     return_to: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = utc_now()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+class StoredSetting(Base):
+    """Settings entered through the web UI; one row per section, used when the deployment sets
+    none for that section (ADR-0008). Secret values live in ``app_secret``."""
+
+    __tablename__ = "app_setting"
+    __table_args__ = (one_of("key", SETTING_KEYS),)
+
+    key: Mapped[str] = mapped_column(Text, primary_key=True)
+    value: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    updated_at: Mapped[datetime] = utc_now()
+    updated_by: Mapped[str] = mapped_column(Text)
+
+
+class StoredSecret(Base):
+    """A secret entered through the web UI, sealed with AES-256-GCM (ADR-0008).
+
+    ``key_id`` names the key that sealed it; the plaintext is never stored.
+    """
+
+    __tablename__ = "app_secret"
+    __table_args__ = (
+        one_of("name", SECRET_NAMES),
+        CheckConstraint("key_id ~ '^[0-9a-f]{16}$'", name="key_id_format"),
+        CheckConstraint("octet_length(nonce) = 12", name="nonce_length"),
+        CheckConstraint("octet_length(ciphertext) > 16", name="ciphertext_length"),
+    )
+
+    name: Mapped[str] = mapped_column(Text, primary_key=True)
+    key_id: Mapped[str] = mapped_column(Text)
+    nonce: Mapped[bytes] = mapped_column(LargeBinary)
+    ciphertext: Mapped[bytes] = mapped_column(LargeBinary)
+    updated_at: Mapped[datetime] = utc_now()
+    updated_by: Mapped[str] = mapped_column(Text)
+
+
+class SetupState(Base):
+    """First-run setup: a single row. Only the SHA-256 digest of the setup code is stored.
+
+    Setup completes, once, when the first user with the admin role signs in through the identity
+    provider configured during setup; the code is cleared at that point.
+    """
+
+    __tablename__ = "setup_state"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="single_row"),
+        sha256_hex("code_digest"),
+        CheckConstraint("failed_attempts >= 0", name="failed_attempts_nonnegative"),
+        CheckConstraint(
+            "(completed_at IS NULL) = (completed_by_user_id IS NULL)", name="completed_by_whom"
+        ),
+        CheckConstraint("completed_at IS NULL OR code_digest IS NULL", name="code_cleared"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=False)
+    code_digest: Mapped[str | None] = mapped_column(Text)
+    code_issued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failed_attempts: Mapped[int] = mapped_column(Integer, server_default="0")
+    failures_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+
+
+class SetupSession(Base):
+    """A browser that entered the setup code. Only the SHA-256 digest of the cookie is stored."""
+
+    __tablename__ = "setup_session"
+    __table_args__ = (
+        sha256_hex("token_digest"),
+        CheckConstraint("expires_at > created_at", name="expires_after_created"),
+    )
+
+    token_digest: Mapped[str] = mapped_column(Text, primary_key=True)
     created_at: Mapped[datetime] = utc_now()
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)

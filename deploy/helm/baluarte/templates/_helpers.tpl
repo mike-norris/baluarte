@@ -222,3 +222,28 @@ https://{{ .Values.ingress.host }}
         path: token
 {{- end }}
 {{- end }}
+
+{{- define "baluarte.secretKeyName" -}}
+{{- printf "%s-secret-key" (include "baluarte.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- end }}
+
+{{- define "baluarte.secretKeyEnv" -}}
+- name: BALUARTE_SECRET_KEY_FILE
+  value: /var/run/secrets/baluarte/secret-key/key
+{{- end }}
+
+{{- define "baluarte.secretKeyVolumeMount" -}}
+- name: secret-key
+  mountPath: /var/run/secrets/baluarte/secret-key
+  readOnly: true
+{{- end }}
+
+{{- define "baluarte.secretKeyVolume" -}}
+- name: secret-key
+  secret:
+    secretName: {{ .Values.secretKey.existingSecret | default (include "baluarte.secretKeyName" .) }}
+    defaultMode: 0440
+    items:
+      - key: {{ .Values.secretKey.key }}
+        path: key
+{{- end }}
