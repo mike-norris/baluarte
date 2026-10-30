@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { navItems } from "./navigation";
 import { routes } from "./routes";
-import { signedIn } from "./test/api";
+import { analyst, signedIn } from "./test/api";
 
 function renderAt(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
@@ -22,12 +22,32 @@ describe("navigation", () => {
     vi.unstubAllGlobals();
   });
 
-  it("lists every section in the primary nav", async () => {
+  it("lists every section the user may see in the primary nav", async () => {
     renderAt("/");
 
     const nav = await screen.findByRole("navigation", { name: "Primary" });
     const links = within(nav).getAllByRole("link");
-    expect(links.map((link) => link.textContent)).toEqual(navItems.map((item) => item.label));
+    expect(links.map((link) => link.textContent)).toEqual(
+      navItems.filter((item) => item.path !== "/settings").map((item) => item.label),
+    );
+  });
+
+  it("shows Settings only to users who manage settings", async () => {
+    vi.unstubAllGlobals();
+    signedIn({
+      ...analyst,
+      roles: ["admin"],
+      permissions: [...analyst.permissions, "settings:manage"],
+    });
+
+    renderAt("/policies");
+
+    const nav = await screen.findByRole("navigation", { name: "Primary" });
+    expect(
+      within(nav)
+        .getAllByRole("link")
+        .map((link) => link.textContent),
+    ).toEqual(navItems.map((item) => item.label));
   });
 
   it("marks only the current section with aria-current", async () => {

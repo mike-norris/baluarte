@@ -19,6 +19,30 @@ The app asks `GET /api/v1/auth/me` for the session on load and shows sections on
 
 Hiding sections in the browser is a convenience only: the API enforces every permission. To sign in through the Vite dev server, set the backend's `BALUARTE_PUBLIC_URL=http://localhost:5173` and register `http://localhost:5173/api/v1/auth/callback` with your identity provider.
 
+## Setup and Settings
+
+`/setup` is the first-run wizard. It sits outside the signed-in shell and uses the API in `src/api/setup.ts`.
+
+- **Routing:** a visitor without a session (401 or 503 from `/auth/me`) is sent to `/setup` when `GET /api/v1/setup/status` reports `needs_setup` or `awaiting_admin_sign_in`. A 404 (an API without setup) or any failure keeps the usual sign-in prompt.
+- **Setup code:** the code from the API's log, or from `baluarte-setup-code`, is exchanged at `POST /api/v1/setup/session` for an `HttpOnly` setup cookie and a CSRF token. The token is kept in `sessionStorage` for that tab only, so a reload keeps the wizard open. Setup endpoints answer 409 once setup is complete, 401 without a setup session, and 403 when the CSRF token or Origin is refused.
+  - **401 or 403:** the token is dropped and the code is asked for again, with a notice.
+  - **409:** the status is fetched again. If setup is complete, the page leaves `/setup`, for `/sign-in`, or `/` when signed in. Otherwise the 409 was a refused change, and its reason is shown on the form.
+
+  The Helm help notes that the API deployment is `<release>-api` when the release name already contains "baluarte", and that `fullnameOverride` changes it too.
+- **Steps:**
+  1. **Identity provider:** the address is prefilled from the page's origin, and the redirect URI to register is shown with a copy button. "Test discovery" checks the issuer. Groups are entered one per line, with at least one admin group required. There are hints for GitLab as the provider.
+  2. **GitLab (optional):** "Test connection" shows the version, the token's user, its scopes and expiry, a warning for an administrator token, and every check. The step can be skipped.
+  3. **Review and finish:** the saved values, then "Sign in to finish setup". The first sign-in by a user in an admin group completes setup on the server.
+- **Read-only cases:** sections whose `source` is `deployment` are shown read-only. When `secret_key_configured` is false, the page explains `BALUARTE_SECRET_KEY_FILE` instead of asking for secrets.
+
+`/settings` is for users with `settings:manage` (admins). The navigation hides it from everyone else, and the page fetches nothing for them.
+
+- **GitLab connection:** edit, test, replace the token (it is never shown; a blank field keeps it) and disconnect after a confirmation.
+- **Identity provider:** edit and test, with a warning that changing the issuer, client or admin groups can lock administrators out.
+- **System:** version, database, logging, the secret-key state and session lifetimes, all read-only.
+
+Both pages share the forms in `src/settings/`. Every check there is repeated by the API.
+
 ## Inventory
 
 `/inventory` lists GitLab projects and groups from `GET /api/v1/gitlab/projects` and `/groups`, with the collection status from `GET /api/v1/gitlab/freshness` above them:

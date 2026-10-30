@@ -17,6 +17,8 @@ import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { RemediationNewPage } from "./pages/RemediationNewPage";
 import { RemediationPage } from "./pages/RemediationPage";
 import { RemediationPlanPage } from "./pages/RemediationPlanPage";
+import { SettingsPage } from "./pages/SettingsPage";
+import { SetupPage } from "./pages/SetupPage";
 import { SignInPage } from "./pages/SignInPage";
 
 /** Sections that are implemented; the rest render a placeholder. */
@@ -27,6 +29,7 @@ const pages: Partial<Record<string, ReactNode>> = {
   "/evidence": <EvidencePage />,
   "/exceptions": <ExceptionsPage />,
   "/remediation": <RemediationPage />,
+  "/settings": <SettingsPage />,
 };
 
 export const routes: RouteObject[] = [
@@ -38,6 +41,7 @@ export const routes: RouteObject[] = [
     ),
     children: [
       { path: "/sign-in", element: <SignInPage /> },
+      { path: "/setup", element: <SetupPage /> },
       {
         element: <RequireSession />,
         children: [

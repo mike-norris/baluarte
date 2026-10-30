@@ -2,6 +2,13 @@ export interface NavItem {
   path: string;
   label: string;
   description: string;
+  /** Shown only to users with this permission; the API enforces it regardless. */
+  permission?: string;
+}
+
+/** The sections a user with these permissions sees. */
+export function visibleNavItems(permissions: readonly string[]): NavItem[] {
+  return navItems.filter((item) => !item.permission || permissions.includes(item.permission));
 }
 
 /** Primary sections, in navigation order. Each maps to a v0.1 milestone in docs/ROADMAP.md. */
@@ -44,6 +51,7 @@ export const navItems: readonly NavItem[] = [
   {
     path: "/settings",
     label: "Settings",
-    description: "GitLab connection and administration.",
+    description: "Identity provider, GitLab connection and system information.",
+    permission: "settings:manage",
   },
 ];

@@ -1,15 +1,58 @@
-import { Outlet, useLocation } from "react-router";
+import { useEffect, useState } from "react";
+import { Navigate, Outlet, useLocation } from "react-router";
 
+import { getSetupStatus, type SetupState } from "../api/setup";
 import { useAuth } from "./context";
 import { signInHref } from "./session";
 
 const buttonClass =
   "inline-block rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600";
 
+/**
+ * Without a session, whether Baluarte still needs installing. Any failure counts as complete, so
+ * the usual sign-in prompt is shown rather than the setup wizard.
+ */
+function useSetupState(check: boolean): SetupState | "checking" {
+  const [state, setState] = useState<SetupState | null>(null);
+
+  useEffect(() => {
+    if (!check) return;
+    const controller = new AbortController();
+    getSetupStatus(controller.signal).then(
+      (status) => {
+        setState(status.state);
+      },
+      () => {
+        if (!controller.signal.aborted) setState("complete");
+      },
+    );
+    return () => {
+      controller.abort();
+    };
+  }, [check]);
+
+  return state ?? "checking";
+}
+
 /** Renders child routes only with a session; otherwise explains why and offers sign-in. */
 export function RequireSession() {
   const { session, refresh } = useAuth();
   const location = useLocation();
+  const setup = useSetupState(
+    session.status === "signed_out" || session.status === "not_configured",
+  );
+
+  if (
+    (session.status === "signed_out" || session.status === "not_configured") &&
+    setup !== "complete"
+  ) {
+    if (setup !== "checking") return <Navigate to="/setup" replace />;
+    return (
+      <p role="status" className="text-slate-600">
+        Checking your session…
+      </p>
+    );
+  }
 
   switch (session.status) {
     case "signed_in":
@@ -29,7 +72,10 @@ export function RequireSession() {
           <p className="mt-2 text-slate-600">
             Use your organization&apos;s single sign-on account to continue.
           </p>
-          <a href={signInHref(location.pathname + location.search)} className={`mt-6 ${buttonClass}`}>
+          <a
+            href={signInHref(location.pathname + location.search)}
+            className={`mt-6 ${buttonClass}`}
+          >
             Sign in
           </a>
         </section>
