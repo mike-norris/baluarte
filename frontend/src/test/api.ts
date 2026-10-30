@@ -3,6 +3,7 @@ import { vi } from "vitest";
 import type { CurrentUser } from "../auth/session";
 
 export const analyst: CurrentUser = {
+  user_id: 1,
   subject: "user-1",
   email: "ada@example.test",
   display_name: "Ada Lovelace",

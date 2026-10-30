@@ -14,6 +14,10 @@ Sections, in this order (each later section only references rows of earlier ones
 - ``observations``: every observation the exported evaluations and findings reference, with
   ``digest_valid`` recomputed now.
 - ``policies``: every policy version the exported evaluations and findings reference.
+- ``exceptions``: policy exceptions in scope (by project, group, policy, rule and time window;
+  outcome and finding state do not narrow them), plus every exception an exported evaluation or
+  finding references. ``effective_state`` counts a requested or approved exception past its
+  expiry as expired, as the API does. People appear only as ``user:<id>``.
 - ``collection_errors``: projects and groups in scope that are missing, inaccessible or carry a
   collection error. Unknown state is exported, never dropped.
 - ``collection_runs``: collection and evaluation runs (all started inside the time window, or
@@ -40,7 +44,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, PositiveInt, model_validator
-from sqlalchemy import ColumnElement, Engine, and_, exists, func, or_, select, text
+from sqlalchemy import ColumnElement, Engine, and_, case, exists, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from baluarte import __version__
@@ -55,6 +59,7 @@ from baluarte.db.models import (
     GitLabProject,
     Observation,
     Policy,
+    PolicyException,
 )
 from baluarte.evidence import manifest
 from baluarte.evidence.observations import verify
@@ -62,8 +67,10 @@ from baluarte.integrations.gitlab import freshness as collection_freshness
 from baluarte.integrations.gitlab.settings import GitLabSettings
 from baluarte.logs import redact_value
 from baluarte.policy.evaluation import freshness as evaluation_freshness
+from baluarte.policy.exceptions import effective_state
 
-FORMAT = "baluarte.evidence-export/v1"
+# v2 (exceptions): adds the exceptions section and exception_id on evaluations and findings.
+FORMAT = "baluarte.evidence-export/v2"
 MAX_ROWS = 100_000
 PAGE = 500
 
@@ -98,6 +105,9 @@ observations.jsonl     The evidence the exported evaluations and findings refere
                        object per line. digest_valid recomputes the SHA-256 of the payload's
                        canonical JSON now; false means the stored payload no longer matches.
 policies.csv           The exact policy versions referenced, with their YAML and its digest.
+exceptions.csv         Policy exceptions in scope and those the results reference. An
+                       excepted result is a waived failure, not a pass. effective_state counts
+                       an exception past its expiry as expired. People appear as user:<id>.
 collection_errors.csv  Projects and groups in scope that are missing, inaccessible or failed to
                        collect. Unknown state is listed here, never dropped.
 collection_runs.csv    Collection and evaluation runs for the window (or the latest of each).
@@ -199,6 +209,11 @@ def _like_prefix(path: str) -> str:
     return f"{escaped}/%"
 
 
+def _user(user_id: int | None) -> str | None:
+    """People as the audit log names them: the internal ID, never a name or email."""
+    return None if user_id is None else f"user:{user_id}"
+
+
 def _safe(row: dict[str, Any]) -> dict[str, Any]:
     redacted: dict[str, Any] = redact_value(row)
     return redacted
@@ -234,6 +249,7 @@ class EvidenceExport:
             raise
         self._observation_ids: set[int] = set()
         self._policy_ids: set[int] = set()
+        self._exception_ids: set[int] = set()
         self.result = ExportResult()
         self.summary = manifest.Summary()
 
@@ -347,6 +363,28 @@ class EvidenceExport:
             conditions.append(still_open)
         return conditions
 
+    def _exception_conditions(self) -> list[ColumnElement[bool]]:
+        """Exceptions in scope; with a window, those in force or pending at some point in it."""
+        scope = self.scope
+        conditions = self._project_scope()
+        if scope.policy is not None:
+            conditions.append(PolicyException.policy_name == scope.policy)
+        if scope.rule is not None:
+            conditions.append(PolicyException.rule_id == scope.rule)
+        if scope.until is not None:
+            conditions.append(PolicyException.requested_at < scope.until)
+        if scope.since is not None:
+            # When it stopped mattering: revoked or expired, rejected, or else its expiry.
+            ended = func.coalesce(
+                PolicyException.ended_at,
+                case(
+                    (PolicyException.state == "rejected", PolicyException.decided_at),
+                    else_=PolicyException.expires_at,
+                ),
+            )
+            conditions.append(ended >= scope.since)
+        return conditions
+
     def _project_error_conditions(self) -> list[ColumnElement[bool]]:
         return [
             *self._project_scope(),
@@ -385,6 +423,13 @@ class EvidenceExport:
             "findings": self._count(findings.subquery(), []),
             "collection_errors": self._count(GitLabProject, self._project_error_conditions())
             + self._count(GitLabGroup, self._group_error_conditions()),
+            "exceptions": self._count(
+                select(PolicyException.id)
+                .join(GitLabProject, GitLabProject.id == PolicyException.project_id)
+                .where(*self._exception_conditions())
+                .subquery(),
+                [],
+            ),
         }
         total = sum(counts.values())
         if total > MAX_ROWS:
@@ -444,6 +489,8 @@ class EvidenceExport:
             if evaluation.observation_id is not None:
                 self._observation_ids.add(evaluation.observation_id)
             self._policy_ids.add(evaluation.policy_id)
+            if evaluation.exception_id is not None:
+                self._exception_ids.add(evaluation.exception_id)
             yield _safe(
                 {
                     "id": evaluation.id,
@@ -471,6 +518,7 @@ class EvidenceExport:
                     "collection_status": evaluation.collection_status,
                     "collection_last_success_at": _ts(evaluation.collection_last_success_at),
                     "ancestry": evaluation.ancestry,
+                    "exception_id": evaluation.exception_id,
                 }
             )
 
@@ -491,6 +539,8 @@ class EvidenceExport:
             if observation_id is not None:
                 self._observation_ids.add(observation_id)
             self._policy_ids.add(finding.policy_id)
+            if finding.exception_id is not None:
+                self._exception_ids.add(finding.exception_id)
             yield _safe(
                 {
                     "id": finding.id,
@@ -508,6 +558,7 @@ class EvidenceExport:
                     "first_seen_at": _ts(finding.first_seen_at),
                     "last_seen_at": _ts(finding.last_seen_at),
                     "resolved_at": _ts(finding.resolved_at),
+                    "exception_id": finding.exception_id,
                 }
             )
 
@@ -561,6 +612,49 @@ class EvidenceExport:
                     "source_yaml_redacted": source != policy.source_yaml,
                     "source_yaml": source,
                 }
+
+    def exceptions(self) -> Iterator[dict[str, Any]]:
+        in_scope = (
+            select(PolicyException.id)
+            .join(GitLabProject, GitLabProject.id == PolicyException.project_id)
+            .where(*self._exception_conditions())
+        )
+        ids = sorted(set(self.db.scalars(in_scope)) | self._exception_ids)
+        for start in range(0, len(ids), PAGE):
+            rows = self.db.execute(
+                select(
+                    PolicyException,
+                    effective_state(),
+                    GitLabProject.gitlab_id,
+                    GitLabProject.path_with_namespace,
+                )
+                .join(GitLabProject, GitLabProject.id == PolicyException.project_id)
+                .where(PolicyException.id.in_(ids[start : start + PAGE]))
+                .order_by(PolicyException.id)
+            ).all()
+            for row, effective, gitlab_id, path in rows:
+                yield _safe(
+                    {
+                        "id": row.id,
+                        "project_gitlab_id": gitlab_id,
+                        "project_path": path,
+                        "policy_name": row.policy_name,
+                        "rule_id": row.rule_id,
+                        "state": row.state,
+                        # The database clock of this export's snapshot, as the API reads it.
+                        "effective_state": effective,
+                        "justification": row.justification,
+                        "requested_by": _user(row.requested_by_user_id),
+                        "requested_at": _ts(row.requested_at),
+                        "expires_at": _ts(row.expires_at),
+                        "decided_by": _user(row.decided_by_user_id),
+                        "decided_at": _ts(row.decided_at),
+                        "decision_note": row.decision_note,
+                        "ended_by": _user(row.ended_by_user_id),
+                        "ended_at": _ts(row.ended_at),
+                        "end_note": row.end_note,
+                    }
+                )
 
     def collection_errors(self) -> Iterator[dict[str, Any]]:
         projects = select(GitLabProject, GitLabProject.id).where(*self._project_error_conditions())
@@ -676,6 +770,7 @@ class EvidenceExport:
             ("findings", self.findings),
             ("observations", self.observations),
             ("policies", self.policies),
+            ("exceptions", self.exceptions),
             ("collection_errors", self.collection_errors),
             ("collection_runs", self.collection_runs),
         ]
@@ -834,6 +929,7 @@ COLUMNS: dict[str, tuple[str, ...]] = {
         "collection_status",
         "collection_last_success_at",
         "ancestry",
+        "exception_id",
     ),
     "findings": (
         "id",
@@ -851,6 +947,7 @@ COLUMNS: dict[str, tuple[str, ...]] = {
         "first_seen_at",
         "last_seen_at",
         "resolved_at",
+        "exception_id",
     ),
     "policies": (
         "id",
@@ -861,6 +958,25 @@ COLUMNS: dict[str, tuple[str, ...]] = {
         "created_at",
         "source_yaml_redacted",
         "source_yaml",
+    ),
+    "exceptions": (
+        "id",
+        "project_gitlab_id",
+        "project_path",
+        "policy_name",
+        "rule_id",
+        "state",
+        "effective_state",
+        "justification",
+        "requested_by",
+        "requested_at",
+        "expires_at",
+        "decided_by",
+        "decided_at",
+        "decision_note",
+        "ended_by",
+        "ended_at",
+        "end_note",
     ),
     "collection_errors": (
         "resource_type",

@@ -111,6 +111,8 @@ def test_sign_in_creates_a_session(harness: Harness) -> None:
     me = harness.me()
     assert me.status_code == 200
     body = me.json()
+    # The caller's own internal ID, the one the audit log names below.
+    assert body["user_id"] == 1
     assert body["subject"] == "user-1"
     assert body["email"] == "ada@example.test"
     assert body["display_name"] == "Ada Lovelace"

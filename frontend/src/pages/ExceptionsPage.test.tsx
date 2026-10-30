@@ -27,6 +27,7 @@ const requester: CurrentUser = {
 };
 const approver: CurrentUser = {
   ...analyst,
+  user_id: 2,
   subject: "user-2",
   display_name: "Grace Hopper",
   roles: ["admin"],
@@ -339,17 +340,27 @@ describe("deciding an exception", () => {
     expect(steps[1]).toHaveTextContent("by Grace Hopper");
   });
 
-  it("hides approve and reject on what looks like the user's own request", async () => {
-    api({ ...approver, display_name: "Ada Lovelace" }, { [EXCEPTION]: () => json(exception(31)) });
+  it("hides approve and reject on the user's own request, by user ID", async () => {
+    // The request is user 1's; this approver is user 1 under another display name.
+    api({ ...approver, user_id: 1 }, { [EXCEPTION]: () => json(exception(31)) });
     renderAt("/exceptions/31");
 
     const decision = await screen.findByRole("region", { name: "Decision" });
     expect(decision).toHaveTextContent(
-      "This appears to be your own request. Someone else must approve or reject it.",
+      "This is your own request. Someone else must approve or reject it.",
     );
     expect(within(decision).queryByRole("button", { name: "Approve…" })).toBeNull();
     expect(within(decision).queryByRole("button", { name: "Reject…" })).toBeNull();
     expect(within(decision).getByRole("button", { name: "Revoke…" })).toBeInTheDocument();
+  });
+
+  it("offers approval to another user who shares the requester's display name", async () => {
+    api({ ...approver, display_name: "Ada Lovelace" }, { [EXCEPTION]: () => json(exception(31)) });
+    renderAt("/exceptions/31");
+
+    const decision = await screen.findByRole("region", { name: "Decision" });
+    expect(within(decision).getByRole("button", { name: "Approve…" })).toBeInTheDocument();
+    expect(decision).not.toHaveTextContent("This is your own request.");
   });
 
   it("shows the API's separation-of-duties refusal", async () => {
