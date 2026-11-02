@@ -126,13 +126,16 @@ identity=$(docker run --rm --entrypoint age-keygen baluarte-backup:dev 2>/dev/nu
 recipient=$(grep -oE 'age1[0-9a-z]+' <<<"$identity" | head -1)
 BALUARTE_BACKUP_RECIPIENT=$recipient BALUARTE_BACKUP_DIR=$backup_dir \
   "${compose[@]}" --profile backup run --rm backup once >/dev/null || fail "backup run failed"
-file=$(cd "$backup_dir" && ls baluarte-*.dump.age)
+# Backups are written 0600 for uid 70, so inspect them from inside the image.
+in_backup() { docker run --rm -v "$backup_dir:/backups:ro" --entrypoint sh baluarte-backup:dev -c "$@"; }
+file=$(in_backup 'cd /backups && ls baluarte-*.dump.age')
 [[ -n $file ]] || fail "no backup file written"
 recorded=$("${compose[@]}" exec -T db psql -U baluarte -d baluarte -tAc \
   "SELECT status || ' ' || file_name || ' ' || sha256 FROM backup_run ORDER BY id DESC LIMIT 1")
-[[ $recorded == "succeeded $file $(shasum -a 256 "$backup_dir/$file" | cut -d' ' -f1)" ]] \
+[[ $recorded == "succeeded $file $(in_backup "sha256sum /backups/$file" | cut -d' ' -f1)" ]] \
   || fail "backup_run does not match the file: $recorded"
-! grep -qa 'audit_event' "$backup_dir/$file" || fail "backup file is not encrypted"
+[[ $(in_backup "head -c 21 /backups/$file") == "age-encryption.org/v1" ]] || fail "backup file is not age-encrypted"
+in_backup "! grep -qa audit_event /backups/$file" || fail "backup file contains plaintext"
 docker run --rm -i -v "$backup_dir:/backups:ro" -e IDENTITY="$(grep '^AGE-SECRET-KEY-' <<<"$identity")" \
   --entrypoint sh baluarte-backup:dev -c \
   "printf '%s\\n' \"\$IDENTITY\" > /tmp/key && age -d -i /tmp/key /backups/$file | pg_restore --list" \
