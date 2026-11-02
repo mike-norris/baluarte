@@ -24,6 +24,7 @@ export interface ComplianceSettings {
   session_lifetime_minutes: number;
   require_review: boolean;
   legal_hold: boolean;
+  backup_interval_hours: number;
 }
 
 export type SettingName = keyof ComplianceSettings;

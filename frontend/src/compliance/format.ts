@@ -45,6 +45,7 @@ export const frameworkRequirements: Record<
     session_idle_minutes: { op: "<=", value: 30 },
     session_lifetime_minutes: { op: "<=", value: 720 },
     require_review: { op: "==", value: true },
+    backup_interval_hours: { op: "<=", value: 24 },
   },
   iso27001: {
     audit_retention_days: { op: ">=", value: 365 },
@@ -52,6 +53,7 @@ export const frameworkRequirements: Record<
     session_idle_minutes: { op: "<=", value: 30 },
     session_lifetime_minutes: { op: "<=", value: 720 },
     require_review: { op: "==", value: true },
+    backup_interval_hours: { op: "<=", value: 24 },
   },
   nist_800_53_moderate: {
     audit_retention_days: { op: ">=", value: 365 },
@@ -59,6 +61,7 @@ export const frameworkRequirements: Record<
     session_idle_minutes: { op: "<=", value: 15 },
     session_lifetime_minutes: { op: "<=", value: 720 },
     require_review: { op: "==", value: true },
+    backup_interval_hours: { op: "<=", value: 24 },
   },
 };
 
@@ -70,6 +73,7 @@ export const defaultSettings: ComplianceSettings = {
   session_lifetime_minutes: 480,
   require_review: false,
   legal_hold: false,
+  backup_interval_hours: 24,
 };
 
 export interface Strictest extends Requirement {
@@ -124,7 +128,7 @@ export function applyMinimums(
 
 export interface SettingInfo {
   label: string;
-  unit?: "days" | "minutes";
+  unit?: "days" | "hours" | "minutes";
   help: string;
 }
 
@@ -158,6 +162,11 @@ export const settingInfo: Record<SettingName, SettingInfo> = {
     label: "Require a second person to approve baseline changes",
     help: "A new baseline version, or a change to where a baseline applies, takes effect only after someone else approves it.",
   },
+  backup_interval_hours: {
+    label: "Back up the database at least every",
+    unit: "hours",
+    help: "The backup service's schedule. The Compliance page flags a backup older than this plus two hours.",
+  },
   legal_hold: {
     label: "Legal hold: delete nothing",
     help: "Stops the retention job from deleting anything, for example during an investigation or litigation.",
@@ -170,6 +179,7 @@ export const settingOrder: SettingName[] = [
   "job_retention_days",
   "session_idle_minutes",
   "session_lifetime_minutes",
+  "backup_interval_hours",
   "require_review",
   "legal_hold",
 ];

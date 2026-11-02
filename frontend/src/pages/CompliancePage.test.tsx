@@ -305,7 +305,7 @@ describe("compliance exceptions", () => {
 
     await user.type(
       within(form).getByRole("textbox", { name: "Justification" }),
-      "Local UAT only; TLS terminates at the proxy in production.",
+      "Local test stack only; TLS terminates at the proxy in production.",
     );
     await user.clear(expiry);
     await user.type(expiry, "2026-12-31");
@@ -316,7 +316,7 @@ describe("compliance exceptions", () => {
     ).toBeVisible();
     expect(bodyOf(calls, "POST", "/api/v1/compliance/exceptions")).toEqual({
       control_id: "tls-web",
-      justification: "Local UAT only; TLS terminates at the proxy in production.",
+      justification: "Local test stack only; TLS terminates at the proxy in production.",
       expires_on: "2026-12-31",
     });
   });

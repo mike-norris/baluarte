@@ -18,6 +18,7 @@ export function profile(extra: Partial<Profile> = {}): Profile {
       session_lifetime_minutes: 480,
       require_review: false,
       legal_hold: false,
+      backup_interval_hours: 24,
     },
     sources: {
       audit_retention_days: "default",
@@ -27,6 +28,7 @@ export function profile(extra: Partial<Profile> = {}): Profile {
       session_lifetime_minutes: "default",
       require_review: "default",
       legal_hold: "default",
+      backup_interval_hours: "default",
     },
     minimums: {},
     updated_by: null,
@@ -147,7 +149,7 @@ export function controlException(extra: Partial<ControlException> = {}): Control
   return {
     id: 7,
     control_id: "tls-web",
-    justification: "Local UAT only; TLS terminates at the proxy in production.",
+    justification: "Local test stack only; TLS terminates at the proxy in production.",
     expires_on: "2026-12-31",
     state: "proposed",
     in_force: false,
