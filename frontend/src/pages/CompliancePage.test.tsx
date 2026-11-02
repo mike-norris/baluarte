@@ -7,7 +7,15 @@ import type { ControlException, Posture } from "../api/compliance";
 import type { CurrentUser } from "../auth/session";
 import { routes } from "../routes";
 import { analyst, json, mockApi, type Call } from "../test/api";
-import { catalogue, control, controlException, posture } from "../test/compliance";
+import {
+  backupRun,
+  backups,
+  catalogue,
+  control,
+  controlException,
+  posture,
+  service,
+} from "../test/compliance";
 import { EVALUATION_FRESHNESS, evaluationFreshness, freshness } from "../test/freshness";
 
 const auditor: CurrentUser = {
@@ -41,6 +49,8 @@ function api(
     [POSTURE]: () => json(current()),
     "GET /api/v1/compliance/catalogue": () => json(catalogue),
     [EXCEPTIONS]: () => json(exceptions()),
+    "GET /api/v1/compliance/services": () => json([]),
+    "GET /api/v1/compliance/backups": () => json(backups()),
     ...extra,
   });
 }
@@ -184,6 +194,169 @@ describe("compliance page", () => {
     renderAt("/compliance");
 
     expect(await screen.findByText(/Ask a Baluarte administrator/)).toBeVisible();
+  });
+
+  it("offers an attestation on a check control that accepts one, and not on others", async () => {
+    const shipping = {
+      id: "log-shipping",
+      title: "Audit events are shipped off the host",
+      area: "Logging and audit",
+      kind: "check" as const,
+      description: "Audit events reach a log store outside Baluarte.",
+      how_to: "Configure audit log shipping, or attest that a platform collector ships them.",
+      mappings: { soc2: ["CC7.2"] },
+      setting: null,
+      requirements: null,
+      attestation_days: 90,
+    };
+    mockApi({
+      "GET /api/v1/auth/me": () => json(admin),
+      "GET /api/v1/gitlab/freshness": () => json(freshness()),
+      [EVALUATION_FRESHNESS]: () => json(evaluationFreshness()),
+      [POSTURE]: () =>
+        json(
+          posture({
+            controls: [
+              control({ id: "log-shipping", title: shipping.title, status: "not_met" }),
+              control({ id: "tls-web", status: "not_met" }),
+            ],
+          }),
+        ),
+      "GET /api/v1/compliance/catalogue": () =>
+        json({ ...catalogue, controls: [...catalogue.controls, shipping] }),
+      [EXCEPTIONS]: () => json([]),
+      "GET /api/v1/compliance/services": () => json([]),
+      "GET /api/v1/compliance/backups": () => json(backups()),
+    });
+    const user = userEvent.setup();
+    renderAt("/compliance");
+
+    const list = await screen.findByRole("list", { name: "Controls" });
+    const [tls, logs] = within(list).getAllByRole("listitem") as [HTMLElement, HTMLElement];
+    await user.click(within(logs).getByText(/Details and how to fix/));
+    expect(within(logs).getByRole("button", { name: /Attest/ })).toBeInTheDocument();
+    await user.click(within(tls).getByText(/Details and how to fix/));
+    expect(within(tls).queryByRole("button", { name: /Attest/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("compliance services and backups", () => {
+  it("shows each service's state, with how-to tabs and the generated configuration", async () => {
+    let created: Blob | null = null;
+    let saved = "";
+    URL.createObjectURL = vi.fn((blob: Blob) => {
+      created = blob;
+      return "blob:config";
+    });
+    URL.revokeObjectURL = vi.fn();
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(function (this: HTMLAnchorElement) {
+        saved = this.download;
+      });
+    api(admin, () => posture(), () => [], {
+      "GET /api/v1/compliance/services": () =>
+        json([
+          service({
+            id: "backup",
+            detail: "No backup has been reported.",
+            config: {
+              compose: { file_name: "backup.env", content: "BALUARTE_BACKUP_INTERVAL_HOURS=24\n" },
+              helm: { file_name: "backup-values.yaml", content: "backup:\n  enabled: true\n" },
+            },
+          }),
+          service({
+            id: "audit-shipping",
+            required: false,
+            detected: true,
+            healthy: true,
+          }),
+        ]),
+    });
+    const user = userEvent.setup();
+    renderAt("/compliance");
+
+    const list = await screen.findByRole("list", { name: "Services" });
+    const [backup, shipping] = within(list).getAllByRole("listitem") as [HTMLElement, HTMLElement];
+    expect(backup).toHaveTextContent("Not detected");
+    expect(backup).toHaveTextContent("Required by the profile");
+    expect(backup).toHaveTextContent("No backup has been reported.");
+    expect(shipping).toHaveTextContent("Running and healthy");
+    expect(within(shipping).getByRole("link", { name: /Configure audit log shipping/ })).toHaveAttribute(
+      "href",
+      "/settings#audit-shipping",
+    );
+
+    // A required service that is not running opens its instructions.
+    const tabs = within(backup).getByRole("tablist", { name: "How to run Database backups" });
+    const compose = within(tabs).getByRole("tab", { name: "Docker Compose" });
+    expect(compose).toHaveAttribute("aria-selected", "true");
+    expect(within(backup).getByText("docker compose --profile backup up -d")).toBeVisible();
+    expect(
+      within(backup).getByRole("button", { name: "Copy Database backups, Docker Compose step 1" }),
+    ).toBeInTheDocument();
+
+    await user.click(within(backup).getByRole("button", { name: "Download backup.env" }));
+    expect(saved).toBe("backup.env");
+    expect(await (created as Blob | null)?.text()).toBe("BALUARTE_BACKUP_INTERVAL_HOURS=24\n");
+
+    // Arrow keys move between the tabs.
+    compose.focus();
+    await user.keyboard("{ArrowRight}");
+    const helm = within(tabs).getByRole("tab", { name: "Kubernetes (Helm)" });
+    expect(helm).toHaveAttribute("aria-selected", "true");
+    expect(helm).toHaveFocus();
+    expect(within(backup).getByText(/--set backup.enabled=true/)).toBeVisible();
+    await user.click(within(backup).getByRole("button", { name: "Download backup-values.yaml" }));
+    expect(saved).toBe("backup-values.yaml");
+    click.mockRestore();
+  });
+
+  it("lists recent backups with the last success", async () => {
+    api(admin, () => posture(), () => [], {
+      "GET /api/v1/compliance/backups": () =>
+        json(
+          backups({
+            last_success: backupRun(),
+            runs: [
+              backupRun(),
+              backupRun({
+                id: 2,
+                status: "failed",
+                file_name: null,
+                size_bytes: null,
+                sha256: null,
+                encrypted: false,
+                error: "pg_dump: connection refused",
+              }),
+            ],
+          }),
+        ),
+    });
+    renderAt("/compliance");
+
+    const panel = await screen.findByRole("region", { name: "Backups" });
+    expect(panel).toHaveTextContent("Expected at least every 24 hours.");
+    expect(panel).toHaveTextContent("2.5 MB, encrypted");
+    const table = within(panel).getByRole("table", { name: "Recent backups" });
+    const rows = within(table).getAllByRole("row");
+    expect(rows[1]).toHaveTextContent("Succeeded");
+    expect(rows[1]).toHaveTextContent("1 min 5 s");
+    expect(rows[1]).toHaveTextContent("9f2c1b7e4a3d…");
+    expect(
+      within(rows[1] as HTMLElement).getByRole("button", { name: /Copy SHA-256 9f2c1b7e/ }),
+    ).toBeInTheDocument();
+    expect(rows[2]).toHaveTextContent("Failed");
+    expect(rows[2]).toHaveTextContent("pg_dump: connection refused");
+  });
+
+  it("says when no backup has been reported", async () => {
+    api(auditor);
+    renderAt("/compliance");
+
+    const panel = await screen.findByRole("region", { name: "Backups" });
+    expect(panel).toHaveTextContent("No successful backup has been reported.");
+    expect(panel).toHaveTextContent("The backup service has not reported any runs.");
   });
 });
 

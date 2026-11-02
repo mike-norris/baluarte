@@ -1,9 +1,14 @@
 import type {
+  AuditShippingConfig,
+  BackupRun,
+  Backups,
   Catalogue,
   ControlException,
   ControlPosture,
   Posture,
   Profile,
+  Service,
+  ShippingStatus,
 } from "../api/compliance";
 
 export function profile(extra: Partial<Profile> = {}): Profile {
@@ -159,6 +164,82 @@ export function controlException(extra: Partial<ControlException> = {}): Control
     decided_at: null,
     self_approved: false,
     note: null,
+    ...extra,
+  };
+}
+
+export function backupRun(extra: Partial<BackupRun> = {}): BackupRun {
+  return {
+    id: 3,
+    started_at: "2026-11-02T02:00:00Z",
+    finished_at: "2026-11-02T02:01:05Z",
+    status: "succeeded",
+    file_name: "baluarte-20261102T020000Z.dump.age",
+    size_bytes: 2_621_440,
+    sha256: "9f2c1b7e4a3d5c6b8e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d",
+    encrypted: true,
+    recipient: "age1examplerecipientpublickey0000000000000000000000000000000",
+    error: null,
+    host: "backup",
+    reported_by: "baluarte_backup",
+    ...extra,
+  };
+}
+
+export function backups(extra: Partial<Backups> = {}): Backups {
+  return { interval_hours: 24, last_success: null, runs: [], ...extra };
+}
+
+export function service(extra: Partial<Service> & { id: Service["id"] }): Service {
+  return {
+    name: extra.id === "backup" ? "Database backups" : "Audit log shipping",
+    purpose:
+      extra.id === "backup"
+        ? "Encrypted database backups on a schedule."
+        : "Sends audit events to a log store outside Baluarte.",
+    required: true,
+    detected: false,
+    healthy: false,
+    detail: "",
+    how_to: {
+      compose: "Run:\n\n```\ndocker compose --profile backup up -d\n```",
+      helm: "Run:\n\n```\nhelm upgrade baluarte deploy/helm/baluarte --set backup.enabled=true\n```",
+    },
+    config: null,
+    ...extra,
+  };
+}
+
+export function shippingConfig(extra: Partial<AuditShippingConfig> = {}): AuditShippingConfig {
+  return {
+    enabled: false,
+    type: "syslog_tls",
+    syslog: { host: "", port: 6514, server_name: null, ca_pem: null },
+    elasticsearch: {
+      url: "",
+      index: "baluarte-audit",
+      auth: "api_key",
+      username: null,
+      ca_pem: null,
+    },
+    api_key: "not_set",
+    password: "not_set",
+    ...extra,
+  };
+}
+
+export function shippingStatus(extra: Partial<ShippingStatus> = {}): ShippingStatus {
+  return {
+    enabled: false,
+    type: null,
+    destination: null,
+    latest_event_id: 42,
+    last_shipped_id: null,
+    lag_events: 0,
+    oldest_unshipped_at: null,
+    last_success_at: null,
+    last_error: null,
+    consecutive_failures: 0,
     ...extra,
   };
 }
