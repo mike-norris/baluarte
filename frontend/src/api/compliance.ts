@@ -24,6 +24,7 @@ export interface ComplianceSettings {
   session_lifetime_minutes: number;
   require_review: boolean;
   legal_hold: boolean;
+  backup_interval_hours: number;
 }
 
 export type SettingName = keyof ComplianceSettings;
@@ -232,4 +233,136 @@ export function attest(
   csrfToken: string,
 ): Promise<Attestation> {
   return postJson(`${BASE}/attestations`, request, csrfToken);
+}
+
+// Audit log shipping: the worker sends audit events from the database to one destination.
+
+export type ShippingType = "syslog_tls" | "elasticsearch";
+export type SecretState = "configured" | "not_set";
+
+export interface SyslogDestination {
+  host: string;
+  port: number;
+  /** TLS server name to verify, when it differs from the host. */
+  server_name: string | null;
+  ca_pem: string | null;
+}
+
+export interface ElasticsearchDestination {
+  url: string;
+  index: string;
+  auth: "api_key" | "basic";
+  username: string | null;
+  ca_pem: string | null;
+}
+
+export interface AuditShippingConfig {
+  enabled: boolean;
+  type: ShippingType;
+  syslog: SyslogDestination;
+  elasticsearch: ElasticsearchDestination;
+  api_key: SecretState;
+  password: SecretState;
+}
+
+/** Null secrets keep the stored value. */
+export interface AuditShippingUpdate {
+  enabled: boolean;
+  type: ShippingType;
+  syslog: SyslogDestination;
+  elasticsearch: ElasticsearchDestination;
+  api_key: string | null;
+  password: string | null;
+}
+
+export interface ShippingTestResult {
+  ok: boolean;
+  detail: string;
+}
+
+export interface ShippingStatus {
+  enabled: boolean;
+  type: ShippingType | null;
+  destination: string | null;
+  latest_event_id: number | null;
+  last_shipped_id: number | null;
+  lag_events: number;
+  oldest_unshipped_at: string | null;
+  last_success_at: string | null;
+  last_error: string | null;
+  consecutive_failures: number;
+}
+
+const SHIPPING = "/api/v1/settings/audit-shipping";
+
+export function getAuditShipping(signal?: AbortSignal): Promise<AuditShippingConfig> {
+  return getJson(SHIPPING, undefined, signal);
+}
+
+export async function saveAuditShipping(
+  update: AuditShippingUpdate,
+  csrfToken: string,
+): Promise<AuditShippingConfig> {
+  const result = await sendJson<AuditShippingConfig>("PUT", SHIPPING, update, csrfToken);
+  if (result === null) throw new ApiError(204, "The API returned no content.");
+  return result;
+}
+
+export function testAuditShipping(
+  update: AuditShippingUpdate,
+  csrfToken: string,
+): Promise<ShippingTestResult> {
+  return postJson(`${SHIPPING}/test`, update, csrfToken);
+}
+
+export function getShippingStatus(signal?: AbortSignal): Promise<ShippingStatus> {
+  return getJson(`${BASE}/audit-shipping`, undefined, signal);
+}
+
+// Services Baluarte relies on but does not run itself, and the backups one of them makes.
+
+export interface ServiceConfigFile {
+  file_name: string;
+  content: string;
+}
+
+export interface Service {
+  id: "backup" | "audit-shipping";
+  name: string;
+  purpose: string;
+  required: boolean;
+  detected: boolean;
+  healthy: boolean;
+  detail: string;
+  how_to: { compose: string; helm: string };
+  config: { compose: ServiceConfigFile; helm: ServiceConfigFile } | null;
+}
+
+export interface BackupRun {
+  id: number;
+  started_at: string;
+  finished_at: string;
+  status: "succeeded" | "failed";
+  file_name: string | null;
+  size_bytes: number | null;
+  sha256: string | null;
+  encrypted: boolean;
+  recipient: string | null;
+  error: string | null;
+  host: string | null;
+  reported_by: string;
+}
+
+export interface Backups {
+  interval_hours: number;
+  last_success: BackupRun | null;
+  runs: BackupRun[];
+}
+
+export function listServices(signal?: AbortSignal): Promise<Service[]> {
+  return getJson(`${BASE}/services`, undefined, signal);
+}
+
+export function getBackups(signal?: AbortSignal): Promise<Backups> {
+  return getJson(`${BASE}/backups`, undefined, signal);
 }

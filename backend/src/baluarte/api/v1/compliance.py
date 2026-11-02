@@ -14,13 +14,24 @@ from sqlalchemy.orm import Session
 
 from baluarte.auth.dependencies import Principal, database, require
 from baluarte.auth.roles import Permission
-from baluarte.compliance import attestations, exceptions, operations, posture
+from baluarte.compliance import (
+    attestations,
+    backups,
+    exceptions,
+    operations,
+    posture,
+    services,
+    shipping,
+)
 from baluarte.compliance.catalogue import CONTROLS, FRAMEWORKS
 from baluarte.compliance.exceptions import Actor
 from baluarte.compliance.schemas import (
     AttestationIn,
     AttestationOut,
     AttestationRef,
+    AuditShippingStatus,
+    BackupRunOut,
+    BackupsOut,
     Catalogue,
     ComplianceExceptionIn,
     ComplianceExceptionOut,
@@ -36,9 +47,10 @@ from baluarte.compliance.schemas import (
     ProfileOut,
     ProfileUpdate,
     RequirementOut,
+    ServiceOut,
 )
 from baluarte.configuration import effective
-from baluarte.db.models import ComplianceAttestation, ComplianceException
+from baluarte.db.models import BackupRun, ComplianceAttestation, ComplianceException
 
 router = APIRouter(prefix="/compliance", tags=["compliance"])
 
@@ -214,6 +226,49 @@ def read_posture(_: Reader, db: Database) -> PostureOut:
 
 
 @router.get(
+    "/audit-shipping",
+    response_model=AuditShippingStatus,
+    summary="How far audit shipping has got",
+    description="`lag_events` counts the events the destination has not received; 0 while "
+    "shipping is off.",
+)
+def read_audit_shipping_status(_: Reader, db: Database) -> AuditShippingStatus:
+    return AuditShippingStatus.model_validate(shipping.status(db), from_attributes=True)
+
+
+def _backup_run_out(row: BackupRun) -> BackupRunOut:
+    return BackupRunOut.model_validate(row, from_attributes=True)
+
+
+@router.get(
+    "/backups",
+    response_model=BackupsOut,
+    summary="Backup runs the backup service reported, newest first",
+)
+def read_backups(_: Reader, db: Database) -> BackupsOut:
+    overview = backups.overview(db)
+    return BackupsOut(
+        interval_hours=overview.interval_hours,
+        last_success=(
+            _backup_run_out(overview.last_success) if overview.last_success is not None else None
+        ),
+        runs=[_backup_run_out(row) for row in overview.runs],
+    )
+
+
+@router.get(
+    "/services",
+    response_model=list[ServiceOut],
+    summary="Services the profile needs, their state and how to run them",
+    description="Baluarte never starts a container; each service carries Compose and Helm "
+    "steps and, where it has one, a generated configuration file.",
+)
+def read_services(_: Reader, db: Database) -> list[ServiceOut]:
+    result = posture.evaluate(db)
+    return [ServiceOut.model_validate(s.as_dict()) for s in services.services(db, result)]
+
+
+@router.get(
     "/exceptions",
     response_model=list[ComplianceExceptionOut],
     summary="Compliance exceptions, newest first",
@@ -308,7 +363,7 @@ def list_attestations(
     response_model=AttestationOut,
     status_code=status.HTTP_201_CREATED,
     summary="Attest that a control is in place",
-    description="Only attestation controls take one. Audited as `compliance.attested`.",
+    description="Any control with `attestation_days` takes one. Audited as `compliance.attested`.",
 )
 def attest(body: AttestationIn, principal: Admin, db: Database) -> AttestationOut:
     with compliance_errors():

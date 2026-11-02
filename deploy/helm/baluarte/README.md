@@ -69,6 +69,9 @@ For evaluation only, `--set devDatabase.enabled=true` runs a single PostgreSQL p
 | `auth.oidc.existingSecret`, `auth.oidc.clientSecretKey` | `""`, `client-secret` | Secret holding the client secret; empty for a PKCE-only public client |
 | `auth.oidc.adminGroups`, `analystGroups`, `auditorGroups` | `[]` | Provider groups granted each role; at least one is required |
 | `auth.oidc.rolesClaim`, `auth.oidc.scopes` | `groups`, `openid profile email` | Groups claim and requested scopes |
+| `backup.enabled`, `backup.recipient`, `backup.schedule`, `backup.keep` | `false`, `""`, `17 2 * * *`, `14` | Encrypted `pg_dump` CronJob ([OPERATIONS.md](../../../docs/OPERATIONS.md#scheduled-backups)). `recipient` is an age public key and is required when enabled |
+| `backup.user`, `backup.existingSecret`, `backup.passwordKey` | `baluarte_backup`, `""`, `password` | Read-only role the migration Job creates for backups; `existingSecret` holds its password and is required with an external database |
+| `backup.existingClaim` | `""` | PersistentVolumeClaim you create for the backup files; required when enabled, and not removed on uninstall |
 | `auth.session.idleMinutes`, `auth.session.lifetimeMinutes` | empty | Session idle and absolute expiry in minutes. Empty leaves them to the operating profile chosen in the web UI (defaults 60 and 480); a value here overrides the profile and is reported on the Compliance page if it misses the profile's limit |
 | `gitlab.url` | `""` | https URL of the GitLab instance; empty lets an administrator connect GitLab in the web UI |
 | `gitlab.existingSecret`, `gitlab.tokenKey` | `""`, `token` | Secret and key holding a `read_api` token; required with `gitlab.url`. Mounted into the API and worker |

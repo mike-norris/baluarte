@@ -139,6 +139,30 @@ app.kubernetes.io/component: {{ .component }}
 - name: BALUARTE_APP_DATABASE_PASSWORD_FILE
   value: /var/run/secrets/baluarte/database/password
 {{- end }}
+{{- if .Values.backup.enabled }}
+- name: BALUARTE_BACKUP_DATABASE_USER
+  value: {{ .Values.backup.user | quote }}
+- name: BALUARTE_BACKUP_DATABASE_PASSWORD_FILE
+  value: /var/run/secrets/baluarte/backup-database/password
+{{- end }}
+{{- end }}
+
+{{- define "baluarte.backupSecretName" -}}
+{{- if .Values.devDatabase.enabled }}
+{{- include "baluarte.devDatabaseName" . }}
+{{- else }}
+{{- required "Set backup.existingSecret to a Secret holding the backup role's password" .Values.backup.existingSecret }}
+{{- end }}
+{{- end }}
+
+{{- define "baluarte.backupVolume" -}}
+- name: backup-database-password
+  secret:
+    secretName: {{ include "baluarte.backupSecretName" . }}
+    defaultMode: 0440
+    items:
+      - key: {{ ternary "backup-password" .Values.backup.passwordKey .Values.devDatabase.enabled }}
+        path: password
 {{- end }}
 
 {{- define "baluarte.migrateDatabaseVolumeMount" -}}
@@ -147,6 +171,11 @@ app.kubernetes.io/component: {{ .component }}
   readOnly: true
 {{- if include "baluarte.appRoleEnabled" . }}
 {{ include "baluarte.databaseVolumeMount" . }}
+{{- end }}
+{{- if .Values.backup.enabled }}
+- name: backup-database-password
+  mountPath: /var/run/secrets/baluarte/backup-database
+  readOnly: true
 {{- end }}
 {{- end }}
 
@@ -160,6 +189,9 @@ app.kubernetes.io/component: {{ .component }}
         path: password
 {{- if include "baluarte.appRoleEnabled" . }}
 {{ include "baluarte.databaseVolume" . }}
+{{- end }}
+{{- if .Values.backup.enabled }}
+{{ include "baluarte.backupVolume" . }}
 {{- end }}
 {{- end }}
 

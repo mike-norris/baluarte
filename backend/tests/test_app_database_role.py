@@ -8,7 +8,12 @@ from sqlalchemy.engine import URL
 from sqlalchemy.exc import ProgrammingError
 
 from baluarte.db import migrate
-from baluarte.db.migrate import ConfigurationError, ensure_app_role, scram_verifier
+from baluarte.db.migrate import (
+    ConfigurationError,
+    ensure_app_role,
+    ensure_backup_role,
+    scram_verifier,
+)
 
 pytestmark = pytest.mark.db
 
@@ -130,3 +135,44 @@ def test_the_password_file_is_required(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(ConfigurationError, match="BALUARTE_APP_DATABASE_PASSWORD_FILE"):
         migrate.app_role_settings()
+
+
+def test_the_backup_role_reads_everything_and_only_records_backups(
+    migrated_engine: Engine, database_url: URL, role: str
+) -> None:
+    ensure_backup_role(migrated_engine, role, "backup-password")
+    backup = connect_as(database_url, role, "backup-password")
+    try:
+        with backup.begin() as connection:
+            connection.execute(text("SELECT count(*) FROM audit_event")).scalar_one()
+            connection.execute(text("SELECT count(*) FROM app_secret")).scalar_one()
+            # The columns deploy/backup/baluarte-backup.sh writes.
+            connection.execute(
+                text(
+                    "INSERT INTO backup_run (started_at, status, file_name, size_bytes, sha256, "
+                    "encrypted, recipient, error, host) VALUES (now(), 'succeeded', "
+                    "'baluarte-20261102T000000Z.dump.age', 1024, repeat('a', 64), true, "
+                    "'age1example', NULL, 'backup')"
+                )
+            )
+            assert connection.execute(text("SELECT reported_by FROM backup_run")).scalar_one() == (
+                connection.execute(text("SELECT current_user")).scalar_one()
+            )
+        for statement in (
+            "UPDATE backup_run SET status = 'failed'",
+            "DELETE FROM backup_run",
+            "INSERT INTO app_setting (key, value, updated_by) VALUES ('x', '{}', 'x')",
+            "DELETE FROM audit_event",
+            "SELECT nextval(pg_get_serial_sequence('public.audit_event', 'id'))",
+            "CREATE TABLE public.intruder (id int)",
+        ):
+            with pytest.raises(ProgrammingError), backup.begin() as connection:
+                connection.execute(text(statement))
+    finally:
+        backup.dispose()
+
+
+def test_the_backup_role_is_optional(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("BALUARTE_BACKUP_DATABASE_USER", raising=False)
+
+    assert migrate.backup_role_settings() is None

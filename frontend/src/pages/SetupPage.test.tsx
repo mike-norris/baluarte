@@ -756,6 +756,7 @@ describe("compliance step", () => {
         session_lifetime_minutes: 480,
         require_review: true,
         legal_hold: false,
+        backup_interval_hours: 24,
       },
     });
     const put = calls.find((call) => call.init?.method === "PUT");

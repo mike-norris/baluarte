@@ -4,9 +4,11 @@ import { Link } from "react-router";
 import {
   attest,
   decideControlException,
+  getBackups,
   getCatalogue,
   getPosture,
   listControlExceptions,
+  listServices,
   type Catalogue,
   type CatalogueControl,
   type ControlException,
@@ -19,6 +21,7 @@ import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
 import { ExceptionRequestForm, requestedMessage } from "../compliance/ExceptionRequestForm";
+import { BackupsPanel, ServicesSection } from "../compliance/Services";
 import {
   frameworkList,
   frameworks,
@@ -210,7 +213,7 @@ function ControlItem({
               {`Attested by ${posture.attestation.attested_by} on ${formatTime(posture.attestation.attested_at)}; valid until ${formatTime(posture.attestation.expires_at)}.`}
             </p>
           )}
-          {csrf && control?.kind === "attestation" && (
+          {csrf && control && control.attestation_days !== null && (
             <AttestForm control={control} csrf={csrf} onDone={onChanged} />
           )}
         </div>
@@ -486,6 +489,8 @@ export function CompliancePage() {
   const posture = useLoad(`compliance-posture${key}`, getPosture);
   const catalogue = useLoad("compliance-catalogue", getCatalogue);
   const exceptions = useLoad(`compliance-exceptions${key}`, listControlExceptions);
+  const services = useLoad(`compliance-services${key}`, listServices);
+  const backups = useLoad(`compliance-backups${key}`, getBackups);
 
   const changed = (text: string) => {
     setMessage(text);
@@ -570,6 +575,24 @@ export function CompliancePage() {
             ))}
           </ul>
         </section>
+        {services.error ? (
+          <ErrorMessage error={services.error} retry={services.retry} />
+        ) : services.data ? (
+          <ServicesSection services={services.data} />
+        ) : (
+          <p role="status" className="text-sm text-slate-600">
+            Loading services…
+          </p>
+        )}
+        {backups.error ? (
+          <ErrorMessage error={backups.error} retry={backups.retry} />
+        ) : backups.data ? (
+          <BackupsPanel backups={backups.data} />
+        ) : (
+          <p role="status" className="text-sm text-slate-600">
+            Loading backups…
+          </p>
+        )}
         <Exceptions
           catalogue={controls}
           exceptions={exceptions.data}

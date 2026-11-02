@@ -7,7 +7,7 @@ import type { GitLabConfig, OidcConfig, SettingsInfo } from "../api/setup";
 import type { CurrentUser } from "../auth/session";
 import { routes } from "../routes";
 import { analyst, json, mockApi, type Call } from "../test/api";
-import { controlException, profile } from "../test/compliance";
+import { controlException, profile, shippingConfig, shippingStatus } from "../test/compliance";
 import { EVALUATION_FRESHNESS, evaluationFreshness, freshness } from "../test/freshness";
 
 const admin: CurrentUser = {
@@ -87,6 +87,8 @@ function api(user: CurrentUser, routes: Routes = {}): Call[] {
     "GET /api/v1/settings/oidc": () => json(oidcConfig),
     "GET /api/v1/settings/governance": () => json({ require_review: false }),
     "GET /api/v1/compliance/profile": () => json(socProfile),
+    "GET /api/v1/settings/audit-shipping": () => json(shippingConfig()),
+    "GET /api/v1/compliance/audit-shipping": () => json(shippingStatus()),
     ...routes,
   });
 }
@@ -372,5 +374,154 @@ describe("compliance profile in settings", () => {
     await user.click(within(section).getByRole("checkbox", { name: "Legal hold: delete nothing" }));
 
     expect(within(section).getByText(/the retention job deletes nothing/)).toBeVisible();
+  });
+});
+
+describe("audit log shipping in settings", () => {
+  it("shows the destination and how far delivery has got, without secrets", async () => {
+    api(admin, {
+      "GET /api/v1/settings/audit-shipping": () =>
+        json(
+          shippingConfig({
+            enabled: true,
+            type: "elasticsearch",
+            elasticsearch: {
+              url: "https://logs.example.test:9200",
+              index: "baluarte-audit",
+              auth: "api_key",
+              username: null,
+              ca_pem: null,
+            },
+            api_key: "configured",
+          }),
+        ),
+      "GET /api/v1/compliance/audit-shipping": () =>
+        json(
+          shippingStatus({
+            enabled: true,
+            type: "elasticsearch",
+            destination: "https://logs.example.test:9200 (baluarte-audit)",
+            last_shipped_id: 40,
+            lag_events: 2,
+            oldest_unshipped_at: "2026-11-02T11:59:00Z",
+            last_success_at: "2026-11-02T11:58:00Z",
+            last_error: "connection refused",
+            consecutive_failures: 3,
+          }),
+        ),
+    });
+    renderSettings();
+
+    const section = await card("Audit log shipping");
+    expect(await within(section).findByText("https://logs.example.test:9200")).toBeVisible();
+    expect(section).toHaveTextContent("API key: Configured (hidden)");
+    const status = within(section).getByRole("group", { name: "Shipping status" });
+    expect(status).toHaveTextContent("2 events waiting");
+    expect(status).toHaveTextContent("(up to event 40)");
+    expect(status).toHaveTextContent("connection refused (3 failed attempts in a row)");
+  });
+
+  it("checks the destination, sends a test message and saves", async () => {
+    const calls = api(admin, {
+      "POST /api/v1/settings/audit-shipping/test": () =>
+        json({ ok: true, detail: "Delivered to logs.example.test:6514." }),
+      "PUT /api/v1/settings/audit-shipping": () =>
+        json(
+          shippingConfig({
+            enabled: true,
+            syslog: { host: "logs.example.test", port: 6514, server_name: null, ca_pem: null },
+          }),
+        ),
+    });
+    const user = userEvent.setup();
+    renderSettings();
+
+    const section = await card("Audit log shipping");
+    await user.click(
+      await within(section).findByRole("button", { name: "Edit audit log shipping" }),
+    );
+    await user.click(
+      within(section).getByRole("checkbox", { name: "Ship audit events to this destination" }),
+    );
+    await user.click(within(section).getByRole("button", { name: "Save" }));
+    expect(within(section).getByRole("alert")).toHaveTextContent(
+      "Syslog host: enter the collector's host name.",
+    );
+
+    await user.type(
+      within(section).getByRole("textbox", { name: "Syslog host" }),
+      "logs.example.test",
+    );
+    await user.click(within(section).getByRole("button", { name: "Send test message" }));
+    expect(await within(section).findByText(/Test message delivered/)).toBeVisible();
+
+    await user.click(within(section).getByRole("button", { name: "Save" }));
+    expect(await within(section).findByText(/Audit log shipping saved/)).toBeVisible();
+    const expected = {
+      enabled: true,
+      type: "syslog_tls",
+      syslog: { host: "logs.example.test", port: 6514, server_name: null, ca_pem: null },
+      elasticsearch: {
+        url: "",
+        index: "baluarte-audit",
+        auth: "api_key",
+        username: null,
+        ca_pem: null,
+      },
+      api_key: null,
+      password: null,
+    };
+    expect(bodyOf(calls, "POST", "/api/v1/settings/audit-shipping/test")).toEqual(expected);
+    expect(bodyOf(calls, "PUT", "/api/v1/settings/audit-shipping")).toEqual(expected);
+  });
+
+  it("refuses plain http and asks for the key again when the address changes", async () => {
+    const calls = api(admin, {
+      "GET /api/v1/settings/audit-shipping": () =>
+        json(
+          shippingConfig({
+            enabled: true,
+            type: "elasticsearch",
+            elasticsearch: {
+              url: "https://logs.example.test:9200",
+              index: "baluarte-audit",
+              auth: "api_key",
+              username: null,
+              ca_pem: null,
+            },
+            api_key: "configured",
+          }),
+        ),
+      "PUT /api/v1/settings/audit-shipping": () => json(shippingConfig()),
+    });
+    const user = userEvent.setup();
+    renderSettings();
+
+    const section = await card("Audit log shipping");
+    await user.click(
+      await within(section).findByRole("button", { name: "Edit audit log shipping" }),
+    );
+    const address = within(section).getByRole("textbox", { name: "Address" });
+    await user.clear(address);
+    await user.type(address, "http://logs.example.test:9200");
+    await user.click(within(section).getByRole("button", { name: "Save" }));
+    const alert = within(section).getByRole("alert");
+    expect(alert).toHaveTextContent("enter an https:// address");
+    expect(alert).toHaveTextContent("API key: enter it again, because the address changed.");
+
+    await user.clear(address);
+    await user.type(address, "https://other.example.test:9200");
+    await user.type(
+      within(section).getByLabelText("API key", { selector: "input[type=password]" }),
+      "new-key-value",
+    );
+    await user.click(within(section).getByRole("button", { name: "Save" }));
+    expect(await within(section).findByText(/Audit log shipping saved/)).toBeVisible();
+    expect(bodyOf(calls, "PUT", "/api/v1/settings/audit-shipping")).toMatchObject({
+      type: "elasticsearch",
+      elasticsearch: { url: "https://other.example.test:9200" },
+      api_key: "new-key-value",
+      password: null,
+    });
   });
 });

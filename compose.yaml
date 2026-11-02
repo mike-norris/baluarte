@@ -58,7 +58,9 @@ services:
       BALUARTE_DATABASE_PASSWORD_FILE: /run/secrets/postgres_password
       BALUARTE_APP_DATABASE_USER: baluarte_app
       BALUARTE_APP_DATABASE_PASSWORD_FILE: /run/secrets/app_database_password
-    secrets: [postgres_password, app_database_password]
+      BALUARTE_BACKUP_DATABASE_USER: baluarte_backup
+      BALUARTE_BACKUP_DATABASE_PASSWORD_FILE: /run/secrets/backup_database_password
+    secrets: [postgres_password, app_database_password, backup_database_password]
     restart: "no"
     depends_on:
       db:
@@ -114,11 +116,40 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
 
+  # Encrypted database backups on a schedule; only with --profile backup (docs/OPERATIONS.md).
+  # Set BALUARTE_BACKUP_RECIPIENT to your age public key; the private key stays offline.
+  backup:
+    <<: *hardening
+    profiles: [backup]
+    build: ./deploy/backup
+    image: baluarte-backup:dev
+    environment:
+      PGHOST: db
+      BALUARTE_BACKUP_DATABASE_USER: baluarte_backup
+      BALUARTE_BACKUP_DATABASE_PASSWORD_FILE: /run/secrets/backup_database_password
+      BALUARTE_BACKUP_RECIPIENT: ${BALUARTE_BACKUP_RECIPIENT:-}
+      BALUARTE_BACKUP_INTERVAL_HOURS: ${BALUARTE_BACKUP_INTERVAL_HOURS:-24}
+      BALUARTE_BACKUP_KEEP: ${BALUARTE_BACKUP_KEEP:-14}
+    secrets: [backup_database_password]
+    # Writable by uid 70. Mount storage that is copied off this host.
+    volumes:
+      - ${BALUARTE_BACKUP_DIR:-./backups}:/backups
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "baluarte-backup", "health"]
+      interval: 5m
+      timeout: 10s
+      start_period: 10m
+
 secrets:
   postgres_password:
     file: ./secrets/postgres_password
   app_database_password:
     file: ./secrets/app_database_password
+  backup_database_password:
+    file: ./secrets/backup_database_password
   secret_key:
     file: ./secrets/secret_key
 

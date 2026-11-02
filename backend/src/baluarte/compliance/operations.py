@@ -184,9 +184,14 @@ def violations(
 
 
 def update(db: Session, frameworks: list[str], settings: dict[str, Any], actor: str) -> Profile:
-    """Validate, store and audit a new profile. The caller commits and invalidates the cache."""
+    """Validate, store and audit a new profile. The caller commits and invalidates the cache.
+
+    A setting left out keeps its current value, so a client that predates a setting can still
+    save the profile.
+    """
     chosen = ordered(frameworks)
-    checked = _checked(settings)
+    current = load(db).settings
+    checked = _checked({**current, **settings})
     fixed = deployment_values()
     changed_fixed = sorted(name for name, value in fixed.items() if checked[name] != value)
     if changed_fixed:

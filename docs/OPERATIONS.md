@@ -8,7 +8,9 @@ Keep these secrets in your secret store, separately from database backups:
 
 | Secret | Used by | Losing it |
 |---|---|---|
-| Database password | migrate, API, worker | Reset it in PostgreSQL and the secret |
+| Database owner password | migrate | Reset it in PostgreSQL and the secret |
+| App and backup role passwords | API and worker; backup service | Put a new value in the secret and re-run migrate, which resets the role's password |
+| age private key for backups | nobody online: keep it offline | Backups encrypted to its public key cannot be read |
 | Secret key (`BALUARTE_SECRET_KEY_FILE`) | API, worker | The client secret and GitLab token entered in the web UI can no longer be read: enter them again on the Settings page |
 | OIDC client secret (if set by the deployment) | API | Rotate at the identity provider |
 | GitLab token (if set by the deployment) | API, worker | Issue a new `read_api` token |
@@ -17,7 +19,54 @@ A client secret or GitLab token entered in the web UI is in the database, sealed
 
 Backups contain inventory, evidence and audit history (user subjects, emails, GitLab paths). Encrypt them at rest, keep a copy off the database host, and restrict who can read or restore them as tightly as the database itself. They contain no plaintext GitLab token or OIDC secret, and session cookies and the setup code are stored only as SHA-256 digests.
 
-## Docker Compose
+## Scheduled backups
+
+The `baluarte-backup` image (`deploy/backup/`) does the following on a schedule:
+
+1. Runs `pg_dump` as `baluarte_backup`, a role that can only read data and record its own runs.
+2. Pipes the dump straight into [age](https://age-encryption.org) for one recipient (a public key). No unencrypted copy is ever written.
+3. Writes `baluarte-<UTC timestamp>.dump.age` and keeps the newest `BALUARTE_BACKUP_KEEP` (14) files.
+4. Records each run, failed or not, in `backup_run` with its size and SHA-256.
+
+The Compliance page reads those runs. Its `backups` control is met while the last successful run is within the profile's `backup_interval_hours` (24) plus 2 hours. It lists the runs and generates the configuration below.
+
+Create the key pair once, somewhere safe. Only the public key goes to Baluarte:
+
+```sh
+age-keygen -o baluarte-backup.key     # prints "Public key: age1..."; store the file offline
+```
+
+**Docker Compose:**
+
+```sh
+mkdir -p backups && sudo chown 70:70 backups       # the image runs as uid 70 (Linux)
+BALUARTE_BACKUP_RECIPIENT=age1... docker compose --profile backup up -d
+```
+
+The service backs up once at start, then every `BALUARTE_BACKUP_INTERVAL_HOURS`. Set `BALUARTE_BACKUP_DIR` to storage that is copied off the host, such as a mounted network share, or copy `./backups` elsewhere yourself. That copy is the `backup-offsite` attestation. `secrets/backup_database_password` is created with the other secrets (README).
+
+**Kubernetes:** create a PersistentVolumeClaim for the backup files, then `--set backup.enabled=true --set backup.recipient=age1... --set backup.existingClaim=baluarte-backups`. This adds a CronJob, daily at 02:17 by default. The chart does not create or delete the claim, so backups outlive the release.
+
+```sh
+kubectl -n baluarte apply -f - <<'YAML'
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: baluarte-backups}
+spec: {accessModes: [ReadWriteOnce], resources: {requests: {storage: 20Gi}}}
+YAML
+```
+
+With an external database, also set `backup.existingSecret` to a Secret holding a password for the `baluarte_backup` role, which the migration Job creates. A managed database's own backups can replace this; then attest to them.
+
+**Restore** a scheduled backup by decrypting it with the private key on a trusted machine, then follow the restore steps below:
+
+```sh
+age -d -i baluarte-backup.key baluarte-<timestamp>.dump.age > baluarte-<timestamp>.dump
+```
+
+Rehearse a restore at least once a year, for example into a scratch database, and record it as the `restore-test` attestation.
+
+## Manual backup and restore (Docker Compose)
 
 The Compose stack is for development (see [DEPLOYMENT.md](DEPLOYMENT.md)); the same procedure applies to any PostgreSQL 17 database. `pg_dump` takes a consistent snapshot while Baluarte keeps running.
 

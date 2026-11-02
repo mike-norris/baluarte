@@ -23,4 +23,5 @@ CLAUDE.local.md
 *.p12
 *.pfx
 secrets/
+backups/
 *.log

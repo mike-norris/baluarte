@@ -50,6 +50,7 @@ class OperatingSettings(BaseModel):
     session_lifetime_minutes: int
     require_review: bool
     legal_hold: bool
+    backup_interval_hours: int
 
 
 class MinimumOut(BaseModel):
@@ -152,3 +153,133 @@ class AttestationOut(BaseModel):
 class AttestationIn(BaseModel):
     control_id: str = Field(max_length=64)
     statement: Statement
+
+
+# Audit shipping --------------------------------------------------------------------------------
+
+SecretState = Literal["configured", "not_set"]
+ShippingType = Literal["syslog_tls", "elasticsearch"]
+Pem = Annotated[str, Field(max_length=65536)]
+
+
+class SyslogIn(BaseModel):
+    host: str = Field(min_length=1, max_length=253)
+    port: int = Field(default=6514, ge=1, le=65535)
+    server_name: str | None = Field(default=None, max_length=253)
+    ca_pem: Pem | None = None
+
+
+class ElasticsearchIn(BaseModel):
+    url: str = Field(min_length=1, max_length=2048)
+    index: str = Field(default="baluarte-audit", min_length=1, max_length=255)
+    auth: Literal["api_key", "basic"] = "api_key"
+    username: str | None = Field(default=None, max_length=255)
+    ca_pem: Pem | None = None
+
+
+class AuditShippingUpdate(BaseModel):
+    enabled: bool
+    type: ShippingType
+    syslog: SyslogIn | None = None
+    elasticsearch: ElasticsearchIn | None = None
+    # Null keeps the stored value; it must be entered again when the URL changes.
+    api_key: str | None = Field(default=None, min_length=1, max_length=4096)
+    password: str | None = Field(default=None, min_length=1, max_length=4096)
+
+
+class SyslogOut(BaseModel):
+    host: str
+    port: int
+    server_name: str | None
+    ca_pem: str | None
+
+
+class ElasticsearchOut(BaseModel):
+    url: str
+    index: str
+    auth: Literal["api_key", "basic"]
+    username: str | None
+    ca_pem: str | None
+
+
+class AuditShippingConfig(BaseModel):
+    """Always complete: before anything is saved, shipping is off with the defaults."""
+
+    configured: bool
+    enabled: bool
+    type: ShippingType
+    syslog: SyslogOut
+    elasticsearch: ElasticsearchOut
+    api_key: SecretState
+    password: SecretState
+    updated_by: str | None
+    updated_at: datetime | None
+
+
+class AuditShippingTestResult(BaseModel):
+    ok: bool
+    detail: str
+
+
+class AuditShippingStatus(BaseModel):
+    enabled: bool
+    type: ShippingType | None
+    destination: str | None
+    latest_event_id: int
+    last_shipped_id: int
+    lag_events: int
+    oldest_unshipped_at: datetime | None
+    last_success_at: datetime | None
+    last_error: str | None
+    consecutive_failures: int
+
+
+# Backups and services --------------------------------------------------------------------------
+
+
+class BackupRunOut(BaseModel):
+    id: int
+    started_at: datetime
+    finished_at: datetime
+    status: Literal["succeeded", "failed"]
+    file_name: str | None
+    size_bytes: int | None
+    sha256: str | None
+    encrypted: bool
+    recipient: str | None
+    error: str | None
+    host: str | None
+    reported_by: str
+
+
+class BackupsOut(BaseModel):
+    interval_hours: int
+    last_success: BackupRunOut | None
+    runs: list[BackupRunOut]
+
+
+class ServiceHowTo(BaseModel):
+    compose: str
+    helm: str
+
+
+class ServiceFile(BaseModel):
+    file_name: str
+    content: str
+
+
+class ServiceConfig(BaseModel):
+    compose: ServiceFile
+    helm: ServiceFile
+
+
+class ServiceOut(BaseModel):
+    id: Literal["backup", "audit-shipping"]
+    name: str
+    purpose: str
+    required: bool
+    detected: bool
+    healthy: bool
+    detail: str
+    how_to: ServiceHowTo
+    config: ServiceConfig | None
