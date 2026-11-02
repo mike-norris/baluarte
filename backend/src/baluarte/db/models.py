@@ -70,8 +70,14 @@ PLAN_STATES = ("draft", "submitted", "approved", "rejected", "expired")
 MAX_PLAN_HOURS = 72
 MAX_PLAN_STEPS = 100
 # Sections and secrets that can be stored through the web UI (ADR-0008).
-SETTING_KEYS = ("oidc", "gitlab", "governance", "operations")
-SECRET_NAMES = ("oidc_client_secret", "gitlab_token")
+SETTING_KEYS = ("oidc", "gitlab", "governance", "operations", "audit_shipping")
+SECRET_NAMES = (
+    "oidc_client_secret",
+    "gitlab_token",
+    "audit_shipping_es_api_key",
+    "audit_shipping_es_password",
+)
+BACKUP_STATUSES = ("succeeded", "failed")
 
 
 def one_of(column: str, values: Iterable[str]) -> CheckConstraint:
@@ -884,6 +890,66 @@ class AuditEvent(Base):
     details: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
     details_digest: Mapped[str] = mapped_column(Text)
     occurred_at: Mapped[datetime] = utc_now()
+
+
+class AuditShipment(Base):
+    """Where audit shipping has got to for one destination (``baluarte.compliance.shipping``).
+
+    ``destination_fingerprint`` is the SHA-256 of the destination's type and address, so a new
+    destination starts from the oldest retained event. ``last_shipped_id`` is the highest event
+    ID delivered there; delivery is in ID order and at least once.
+    """
+
+    __tablename__ = "audit_shipment"
+    __table_args__ = (
+        sha256_hex("destination_fingerprint"),
+        CheckConstraint("last_shipped_id >= 0", name="last_shipped_id_nonnegative"),
+        CheckConstraint("consecutive_failures >= 0", name="consecutive_failures_nonnegative"),
+    )
+
+    destination_fingerprint: Mapped[str] = mapped_column(Text, primary_key=True)
+    # A summary without credentials, e.g. "syslog_tls siem.example.internal:6514".
+    destination: Mapped[str] = mapped_column(Text)
+    last_shipped_id: Mapped[int] = mapped_column(BigInteger, server_default="0")
+    last_shipped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, server_default="0")
+    created_at: Mapped[datetime] = utc_now()
+
+
+class BackupRun(Base):
+    """One run of the ``baluarte-backup`` service, reported by it. Rows cannot be updated
+    (migration 0017); retention deletes them with other evidence."""
+
+    __tablename__ = "backup_run"
+    __table_args__ = (
+        Index("ix_backup_run_finished", "finished_at"),
+        one_of("status", BACKUP_STATUSES),
+        sha256_hex("sha256"),
+        CheckConstraint("finished_at >= started_at", name="finished_after_started"),
+        CheckConstraint("size_bytes IS NULL OR size_bytes >= 0", name="size_nonnegative"),
+        CheckConstraint(
+            "status <> 'succeeded' OR (file_name IS NOT NULL AND size_bytes IS NOT NULL "
+            "AND sha256 IS NOT NULL AND encrypted)",
+            name="success_complete",
+        ),
+    )
+
+    id: Mapped[int] = pk()
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime] = utc_now()
+    status: Mapped[str] = mapped_column(Text)
+    file_name: Mapped[str | None] = mapped_column(Text)
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    sha256: Mapped[str | None] = mapped_column(Text)
+    encrypted: Mapped[bool] = mapped_column(Boolean)
+    # The age recipient (a public key) the file was encrypted to; not a secret.
+    recipient: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    host: Mapped[str | None] = mapped_column(Text)
+    reported_by: Mapped[str] = mapped_column(Text, server_default=text("CURRENT_USER"))
 
 
 class ExportJob(Base):

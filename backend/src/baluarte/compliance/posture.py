@@ -36,6 +36,8 @@ Status = Literal["met", "not_met", "needs_attestation", "excepted", "not_applica
 STATUSES: tuple[Status, ...] = ("met", "not_met", "needs_attestation", "excepted", "not_applicable")
 ENCRYPTED_SSL_MODES = ("require", "verify-ca", "verify-full")
 RETENTION_WITHIN = timedelta(hours=48)
+# Audit events may wait this long for shipping, and the last delivery be this old.
+SHIPPING_WITHIN = timedelta(minutes=15)
 # Verifying every audit digest reads the whole table, so a result is reused for a while.
 AUDIT_CHECK_SECONDS = 300.0
 
@@ -329,6 +331,95 @@ def _inventory_population(db: Session, context: Context) -> Result:
     )
 
 
+def _current_attestation(db: Session, control_id: str) -> ComplianceAttestation | None:
+    now: datetime = db.execute(select(func.now())).scalar_one()
+    latest = attestations.latest(db).get(control_id)
+    return latest if latest is not None and latest.expires_at > now else None
+
+
+def _log_shipping(db: Session, _context: Context) -> Result:
+    from baluarte.compliance import shipping
+
+    now: datetime = db.execute(select(func.now())).scalar_one()
+    state = shipping.status(db)
+    evidence: dict[str, Any] = {
+        "enabled": state.enabled,
+        "destination": state.destination,
+        "lag_events": state.lag_events,
+        "last_shipped_id": state.last_shipped_id,
+        "last_success_at": state.last_success_at.isoformat() if state.last_success_at else None,
+    }
+    if state.enabled:
+        target = state.destination or "the destination"
+        if state.lag_events == 0:
+            return Result("met", f"Every audit event has been shipped to {target}.", evidence)
+        oldest = state.oldest_unshipped_at
+        succeeded = state.last_success_at
+        if (
+            oldest is not None
+            and now - oldest <= SHIPPING_WITHIN
+            and succeeded is not None
+            and now - succeeded <= SHIPPING_WITHIN
+        ):
+            return Result(
+                "met",
+                f"Shipping to {target}; {state.lag_events} recent events are on their way.",
+                evidence,
+            )
+        since = f" since {oldest.isoformat()}" if oldest is not None else ""
+        error = f" Last error: {state.last_error}" if state.last_error else ""
+        return Result(
+            "not_met",
+            f"{state.lag_events} audit events have waited{since} to be shipped to {target}.{error}",
+            evidence,
+        )
+    attested = _current_attestation(db, "log-shipping")
+    if attested is not None:
+        evidence["attestation_id"] = attested.id
+        return Result(
+            "met",
+            "Audit shipping is off; the platform's log collector ships audit events, as "
+            f"{attested.attested_by} attested, current until {attested.expires_at.isoformat()}.",
+            evidence,
+        )
+    return Result(
+        "not_met",
+        "Audit shipping is off, and nobody has attested that the platform's log collector "
+        "ships audit events.",
+        evidence,
+    )
+
+
+def _backups(db: Session, _context: Context) -> Result:
+    from baluarte.compliance import backups
+
+    now: datetime = db.execute(select(func.now())).scalar_one()
+    hours = backups.interval_hours(db)
+    last = backups.last_success(db)
+    evidence: dict[str, Any] = {"interval_hours": hours}
+    if last is None:
+        return Result(
+            "not_met", "The backup service has not reported an encrypted backup.", evidence
+        )
+    evidence.update(
+        {
+            "backup_run_id": last.id,
+            "finished_at": last.finished_at.isoformat(),
+            "file_name": last.file_name,
+            "sha256": last.sha256,
+        }
+    )
+    named = f"{last.file_name} finished at {last.finished_at.isoformat()}"
+    if now <= backups.due_by(last, hours):
+        return Result("met", f"The last encrypted backup, {named}.", evidence)
+    return Result(
+        "not_met",
+        f"The last encrypted backup, {named}, is older than the {hours}-hour interval plus "
+        "2 hours.",
+        evidence,
+    )
+
+
 CHECKS: dict[str, Callable[[Session, Context], Result]] = {
     "audit-integrity": _audit_integrity,
     "audit-protection": _audit_protection,
@@ -337,6 +428,8 @@ CHECKS: dict[str, Callable[[Session, Context], Result]] = {
     "tls-database": _tls_database,
     "tls-gitlab": _tls_gitlab,
     "retention-running": _retention_running,
+    "log-shipping": _log_shipping,
+    "backups": _backups,
     "collection-health": _collection_health,
     "inventory-population": _inventory_population,
 }
@@ -405,7 +498,9 @@ def evaluate(db: Session, context: Context | None = None) -> Posture:
                     if exception is not None
                     else None
                 ),
-                attestation=latest.get(control.id) if control.kind == "attestation" else None,
+                attestation=(
+                    latest.get(control.id) if control.attestation_days is not None else None
+                ),
             )
         )
     return Posture(

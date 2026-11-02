@@ -12,6 +12,7 @@ from collections.abc import Callable, Mapping
 from sqlalchemy import Engine
 
 from baluarte.compliance.retention import RETENTION_EXPIRE, handle_expire
+from baluarte.compliance.shipping import AUDIT_SHIP, handle_ship
 from baluarte.integrations.gitlab.jobs import (
     DETECT_CAPABILITIES,
     DISCOVER_GROUPS,
@@ -34,4 +35,5 @@ HANDLERS: Mapping[str, Handler] = {
     DISCOVER_SECURITY_POLICIES: make_discover_security_policies(),
     EVALUATE: evaluate,
     RETENTION_EXPIRE: handle_expire,
+    AUDIT_SHIP: handle_ship,
 }

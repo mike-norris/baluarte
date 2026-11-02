@@ -68,6 +68,7 @@ SETTINGS: tuple[SettingSpec, ...] = (
     SettingSpec("session_lifetime_minutes", 480, 15, 10080, "BALUARTE_SESSION_LIFETIME_MINUTES"),
     SettingSpec("require_review", False),
     SettingSpec("legal_hold", False),
+    SettingSpec("backup_interval_hours", 24, 1, 168),
 )
 SETTING_NAMES: tuple[str, ...] = tuple(spec.name for spec in SETTINGS)
 SPECS = {spec.name: spec for spec in SETTINGS}
@@ -85,6 +86,7 @@ REQUIREMENTS: dict[str, dict[FrameworkId, Requirement]] = {
     },
     "session_lifetime_minutes": {f: Requirement("<=", 720) for f in _EVERY},
     "require_review": {f: Requirement("==", True) for f in _EVERY},
+    "backup_interval_hours": {f: Requirement("<=", 24) for f in _EVERY},
 }
 
 
@@ -144,7 +146,8 @@ class Control:
     mappings: dict[FrameworkId, tuple[str, ...]]
     # ``setting`` controls: the operating setting they govern.
     setting: str | None = None
-    # ``attestation`` controls: how long an attestation stays current.
+    # How long an attestation stays current: required for ``attestation`` controls, and on a
+    # ``check`` it allows an attestation as the alternative way to meet it.
     attestation_days: int | None = None
 
     def requirements(self) -> dict[FrameworkId, Requirement] | None:
@@ -315,30 +318,68 @@ CONTROLS: tuple[Control, ...] = (
     ),
     Control(
         "log-shipping",
-        "Logs are shipped off the host",
+        "Audit events are shipped off the host",
         "Logging and audit",
-        "attestation",
-        "Baluarte's logs, including the `baluarte.audit` stream, are collected from the "
-        "containers and kept in a log store outside Baluarte for at least the audit retention "
-        "period.",
-        "Collect the containers' stdout with your platform's log collector (for example a "
-        "Docker logging driver or a Kubernetes log agent) and send it to your SIEM. Then attest "
-        "to it here, naming the destination.",
+        "check",
+        "Every audit event is copied, in order and without gaps, to a log store outside "
+        "Baluarte and its database (a SIEM over syslog with TLS, or Elasticsearch/OpenSearch), "
+        "where Baluarte's own database role cannot change it.",
+        "Turn on **Audit log shipping** in Settings and send it to your SIEM. Baluarte ships "
+        "from the database with a cursor, so nothing is lost while the destination is down. If "
+        "your platform's log collector already ships the `baluarte.audit` log stream, attest to "
+        "it here instead, naming the destination.",
         _maps(["CC7.2"], ["A.8.15"], ["AU-4", "AU-9"]),
         attestation_days=90,
     ),
     Control(
+        "backup-frequency",
+        "Backups run often enough",
+        "Resilience",
+        "setting",
+        "The database is backed up at least as often as the profile requires, so no more than "
+        "that much evidence and audit history can be lost.",
+        "Set **Backup interval** in Settings > Compliance, and run the backup service with the "
+        "same interval (Compliance > Services gives the configuration).",
+        _maps(["A1.2"], ["A.8.13"], ["CP-9"]),
+        setting="backup_interval_hours",
+    ),
+    Control(
         "backups",
-        "Backups are encrypted, off-host and tested",
+        "Backups are taken and encrypted",
+        "Resilience",
+        "check",
+        "The backup service has reported an encrypted backup within the backup interval, plus "
+        "two hours' grace.",
+        "Run the `baluarte-backup` service (Compose: the `backup` profile; Helm: "
+        "`backup.enabled`) with an age public key, and keep the private key offline. "
+        "Compliance > Services has the exact commands.",
+        _maps(["A1.2"], ["A.8.13"], ["CP-9"]),
+    ),
+    Control(
+        "backup-offsite",
+        "Backups are copied off the database host",
         "Resilience",
         "attestation",
-        "The database is backed up on a schedule, backups are encrypted and stored off the "
-        "database host, and a restore was tested in the last 12 months.",
-        "Follow docs/OPERATIONS.md (Backup, restore and retention) and run "
-        "`deploy/compose/backup-restore-test.sh` or a restore to a scratch database. Then "
-        "attest to it here, naming where backups are kept and when the restore was tested.",
-        _maps(["A1.2"], ["A.8.13"], ["CP-9", "CP-4"]),
+        "The encrypted backup files are copied to storage outside the database host and outside "
+        "the reach of anyone who can delete the database.",
+        "Mount the backup directory on network storage, or copy it off the host on a schedule "
+        "(object storage with versioning or retention lock is best). Then attest to it here, "
+        "naming the location.",
+        _maps(["A1.2"], ["A.8.13"], ["CP-9"]),
         attestation_days=90,
+    ),
+    Control(
+        "restore-test",
+        "A restore was tested in the last 12 months",
+        "Resilience",
+        "attestation",
+        "A backup was restored into a scratch database in the last 12 months and the result was "
+        "checked, including the audit trail's digests.",
+        "Decrypt a backup with the age private key, restore it into a scratch database and run "
+        "the checks in docs/OPERATIONS.md (Verifying a restore). Then attest to it here, naming "
+        "the backup and the date.",
+        _maps(["A1.3"], ["A.8.13"], ["CP-4"]),
+        attestation_days=365,
     ),
     Control(
         "encryption-at-rest",

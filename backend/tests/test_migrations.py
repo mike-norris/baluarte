@@ -16,6 +16,8 @@ TABLES = {
     "app_setting",
     "app_user",
     "audit_event",
+    "audit_shipment",
+    "backup_run",
     "collection_job",
     "collection_run",
     "compliance_attestation",

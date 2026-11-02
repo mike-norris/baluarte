@@ -25,6 +25,9 @@ OIDC = "oidc"
 GITLAB = "gitlab"
 # The operating profile (baluarte.compliance.operations).
 OPERATIONS = "operations"
+AUDIT_SHIPPING = "audit_shipping"
+AUDIT_SHIPPING_ES_API_KEY = "audit_shipping_es_api_key"
+AUDIT_SHIPPING_ES_PASSWORD = "audit_shipping_es_password"  # noqa: S105
 # Names of stored secrets, not secret values.
 OIDC_CLIENT_SECRET = "oidc_client_secret"  # noqa: S105
 GITLAB_TOKEN = "gitlab_token"  # noqa: S105

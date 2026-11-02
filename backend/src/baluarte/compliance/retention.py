@@ -9,7 +9,10 @@ The ``retention.expire`` job runs once a day (``RetentionSchedule``) and, in one
 * finished jobs and exports older than the job period that nothing still refers to;
 * sessions, sign-ins and setup sessions that ended more than ``SESSION_DAYS`` ago;
 * audit events older than the audit period, through ``baluarte_expire_audit`` (migration 0016),
-  which the application's database role may run although it cannot delete audit events itself.
+  which the application's database role may run although it cannot delete audit events itself;
+  while audit shipping is on, never one the destination has not received
+  (``baluarte.compliance.shipping``);
+* backup runs older than the evidence period, except the latest successful one.
 
 Legal hold deletes nothing. Every run is audited as ``retention.expired`` with the cutoffs, the
 counts and, for audit events, the first and last IDs and a SHA-256 over their digests.
@@ -26,6 +29,7 @@ from sqlalchemy.orm import Session
 
 from baluarte import audit
 from baluarte.compliance import operations
+from baluarte.compliance.shipping import oldest_unshipped
 from baluarte.jobs import queue
 from baluarte.jobs.queue import ClaimedJob
 
@@ -111,6 +115,18 @@ _DELETE: list[tuple[str, str, str]] = [
          WHERE s.expires_at < :cutoff OR s.revoked_at < :cutoff
         """,
     ),
+    (
+        "backup_run",
+        "evidence",
+        """
+        DELETE FROM backup_run b
+         WHERE b.finished_at < :cutoff
+           AND b.id IS DISTINCT FROM (
+               SELECT l.id FROM backup_run l
+                WHERE l.status = 'succeeded' AND l.encrypted
+                ORDER BY l.finished_at DESC, l.id DESC LIMIT 1)
+        """,
+    ),
     ("oidc_login", "sessions", "DELETE FROM oidc_login l WHERE l.expires_at < :cutoff"),
     ("setup_session", "sessions", "DELETE FROM setup_session s WHERE s.expires_at < :cutoff"),
 ]
@@ -127,8 +143,12 @@ def expire(db: Session) -> dict[str, Any]:
         "jobs": now - timedelta(days=int(settings["job_retention_days"])),
         "sessions": now - timedelta(days=SESSION_DAYS),
     }
+    unshipped = oldest_unshipped(db)
+    if unshipped is not None and unshipped < cutoffs["audit"]:
+        cutoffs["audit"] = unshipped
     details: dict[str, Any] = {
         "legal_hold": bool(settings["legal_hold"]),
+        "audit_held_for_shipping": unshipped is not None and cutoffs["audit"] == unshipped,
         "cutoffs": {name: cutoff.isoformat() for name, cutoff in cutoffs.items()},
         "deleted": {},
         "audit_events": None,

@@ -49,6 +49,7 @@ SETTINGS = {
     "session_lifetime_minutes": 480,
     "require_review": True,
     "legal_hold": False,
+    "backup_interval_hours": 24,
 }
 
 
@@ -67,7 +68,12 @@ def test_every_control_maps_to_every_framework() -> None:
     for control in CONTROLS:
         assert set(control.mappings) == set(FRAMEWORK_IDS), control.id
         assert all(control.mappings.values()), control.id
-        assert (control.kind == "attestation") == (control.attestation_days is not None)
+        if control.kind == "attestation":
+            assert control.attestation_days is not None, control.id
+        if control.kind == "setting":
+            assert control.attestation_days is None, control.id
+        if control.kind == "check":
+            assert control.id in posture.CHECKS, control.id
         assert (control.kind == "setting") == (control.setting is not None)
 
 
@@ -161,7 +167,7 @@ def test_reading_needs_compliance_read_and_changing_needs_settings_manage(engine
     assert (
         auditor.post(
             "/api/v1/compliance/attestations",
-            json={"control_id": "backups", "statement": "Backed up nightly"},
+            json={"control_id": "backup-offsite", "statement": "Backed up nightly"},
         ).status_code
         == 403
     )
@@ -466,7 +472,10 @@ def test_attestations(engine: Engine) -> None:
     )
     attested = admin.post(
         "/api/v1/compliance/attestations",
-        json={"control_id": "backups", "statement": "Nightly encrypted backups to S3, tested 10/1"},
+        json={
+            "control_id": "backup-offsite",
+            "statement": "Backups copied nightly to versioned object storage",
+        },
     )
 
     assert refused.status_code == 422
@@ -476,10 +485,10 @@ def test_attestations(engine: Engine) -> None:
     expires = datetime.fromisoformat(row["expires_at"]) - datetime.fromisoformat(row["attested_at"])
     assert expires == timedelta(days=90)
     controls = {c["id"]: c for c in admin.get("/api/v1/compliance/posture").json()["controls"]}
-    assert controls["backups"]["status"] == "met"
-    assert controls["backups"]["attestation"]["id"] == row["id"]
+    assert controls["backup-offsite"]["status"] == "met"
+    assert controls["backup-offsite"]["attestation"]["id"] == row["id"]
     assert controls["identity-mfa"]["status"] == "needs_attestation"
-    listed = admin.get("/api/v1/compliance/attestations", params={"control_id": "backups"})
+    listed = admin.get("/api/v1/compliance/attestations", params={"control_id": "backup-offsite"})
     assert [a["id"] for a in listed.json()] == [row["id"]]
     assert "compliance.attested" in actions(engine)
     # An expired attestation no longer counts; rows cannot be changed.
