@@ -25,7 +25,7 @@ Roles come from the identity provider's groups claim (`BALUARTE_OIDC_*_GROUPS`);
 | Permission | admin | analyst | auditor |
 |---|---|---|---|
 | `inventory:read`, `findings:read`, `evidence:read` | yes | yes | yes |
-| `policy:write` | yes | yes | no |
+| `policy:write` (change baselines and where they apply; approve or reject others' proposed changes, never one's own) | yes | yes | no |
 | `exception:request` | yes | yes | no |
 | `exception:approve` (approve, reject, revoke; never one's own request) | yes | no | no |
 | `remediation:plan` (create and submit dry-run remediation plans) | yes | yes | no |
@@ -34,8 +34,11 @@ Roles come from the identity provider's groups claim (`BALUARTE_OIDC_*_GROUPS`);
 | `audit_log:read` | yes | no | yes |
 | `settings:manage` (includes running GitLab diagnostics) | yes | no | no |
 | `jobs:read` | yes | no | no |
+| `compliance:read` (the operating profile, posture, compliance exceptions and attestations; changing them needs `settings:manage`) | yes | no | yes |
 
 Exceptions separate duties: the user who requests one cannot approve or reject it, which the API and a database constraint both enforce. With the default role mapping only admins approve, so a deployment that wants two people involved needs at least two admins, or an analyst requesting and an admin approving.
+
+Baseline changes can separate duties too: with "Require a second person to approve baseline changes" on (Settings, off by default), a new version, assignment or unassignment waits until another user with `policy:write` approves it, enforced by the API and the database. While it is off, each change is still recorded, marked self-approved ([POLICY_ENGINE.md](POLICY_ENGINE.md#reviewing-baseline-changes)).
 
 Sign-in, failed sign-in (with a reason code) and sign-out are written to `audit_event`. Callbacks that do not match a sign-in started by the same browser are logged but not audited, so anonymous requests cannot grow the append-only audit table. Rate limiting of the sign-in endpoints is not built yet; apply it at the ingress.
 
@@ -68,7 +71,7 @@ Sign-in, failed sign-in (with a reason code) and sign-out are written to `audit_
 
 ## GitLab credential
 
-- One token for one instance (ADR-0004), read from `BALUARTE_GITLAB_TOKEN_FILE` or entered in the web UI (sealed, see above). Baluarte only issues `GET` requests and needs only the `read_api` scope. Use a dedicated non-admin bot or auditor user; an administrator token sees everything and is flagged by diagnostics.
+- One token for one instance (ADR-0004), read from `BALUARTE_GITLAB_TOKEN_FILE` or entered in the web UI (sealed, see above). Baluarte only issues `GET` requests (GraphQL queries for security policies included, see [GITLAB_INTEGRATION.md](GITLAB_INTEGRATION.md#graphql-over-get)) and needs only the `read_api` scope. Use a dedicated non-admin bot or auditor user. To cover the whole instance without an auditor user, an administrator can issue a token with `read_api` and `admin_mode`: `admin_mode` grants no write access by itself, it only lets the token use administrator access when Admin Mode is on. Diagnostics flag an administrator's token only when it can write or its scopes cannot be read; a `read_api` (+ `admin_mode`) token passes. The population statement says the inventory covers the whole instance only once an admin-only read succeeds.
 - The token travels only in the `PRIVATE-TOKEN` header to `BALUARTE_GITLAB_URL`, which must be `https`. Redirects are never followed, and pagination refuses `Link` next-page URLs outside the configured API, so neither can forward the token to another host. TLS verification is always on; a private CA is added with `SSL_CERT_FILE`.
 - Error messages stored or returned for GitLab failures contain the status and endpoint path only, never response bodies, query strings or the token.
 - The token is mounted into the API (diagnostics) and the worker (capability detection and collection) only. Capability detection calls `GET /license`, which is administrator-only; a least-privilege token gets 403 there by design and the tier is reported as unknown.
@@ -84,11 +87,13 @@ Plans separate duties like exceptions: the creator cannot approve or reject thei
 
 ## Audit trail
 
-`audit_event` rows are append-only (database triggers) and carry a SHA-256 digest of their canonical details. Details are redacted before hashing. Each committed event is also written to the `baluarte.audit` logger as a JSON line with an `audit` field (id, actor, action, resource, details, digest), so a log collector can keep an independent copy; rolled-back actions are not logged. Admins and auditors read the trail through `GET /api/v1/audit-events`.
+`audit_event` rows are append-only (database triggers) and carry a SHA-256 digest of their canonical details. Details are redacted before hashing. Each committed event is also written to the `baluarte.audit` logger as a JSON line with an `audit` field (id, actor, action, resource, details, digest), so a log collector can keep an independent copy; rolled-back actions are not logged. Admins and auditors read the trail through `GET /api/v1/audit-events`, which recomputes each digest (`digest_valid`), and on the web UI's Audit log page.
+
+The application's database role may only read and add audit events ([DEPLOYMENT.md](DEPLOYMENT.md#database-roles)). Old events are removed only by the retention job through `baluarte_expire_audit`, a `SECURITY DEFINER` function owned by the schema owner that never deletes events younger than 30 days and records a digest of what it deleted; `baluarte-migrate` must grant the application role `EXECUTE` on it. The posture checks both: `audit-protection` is met only when the role is not a superuser, does not own `audit_event` and holds no `UPDATE`, `DELETE` or `TRUNCATE` on it, and `audit-integrity` recomputes every digest ([COMPLIANCE.md](COMPLIANCE.md)).
 
 ## Backups
 
-Database backups contain inventory, evidence and the audit trail but no GitLab token or OIDC secret, and session cookies only as digests. Encrypt them, store a copy off the database host, restrict restore access like database access, and revoke all sessions after restoring to an earlier point. Procedures, verification and the current retention gaps are in [OPERATIONS.md](OPERATIONS.md); what the audit trail can and cannot prove is in [AUDIT_EVIDENCE.md](AUDIT_EVIDENCE.md#audit-limitations).
+Database backups contain inventory, evidence and the audit trail but no GitLab token or OIDC secret, and session cookies only as digests. Encrypt them, store a copy off the database host, restrict restore access like database access, and revoke all sessions after restoring to an earlier point. Procedures, verification and retention are in [OPERATIONS.md](OPERATIONS.md); what the audit trail can and cannot prove is in [AUDIT_EVIDENCE.md](AUDIT_EVIDENCE.md#audit-limitations).
 
 ## Threats to test
 

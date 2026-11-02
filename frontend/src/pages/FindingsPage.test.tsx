@@ -56,6 +56,24 @@ describe("findings list", () => {
     expect(row).toHaveTextContent("Excepteduntil 31 Jan 2027, 23:59 UTC; not passing");
   });
 
+  it("says when a finding was resolved because its project was archived", async () => {
+    api({
+      [ALL]: () =>
+        page([
+          finding(1, {
+            state: "resolved",
+            resolution: "project_archived",
+            resolved_at: "2026-11-01T06:12:00Z",
+          }),
+        ]),
+    });
+    renderAt("/findings");
+
+    const table = await screen.findByRole("table", { name: "Findings" });
+    const row = within(table).getByRole("rowheader", { name: "platform/p1" }).closest("tr");
+    expect(row).toHaveTextContent("Resolvedproject archived; not checked");
+  });
+
   it("lists findings with policy version, severity, state and latest outcome", async () => {
     api({
       [ALL]: () =>

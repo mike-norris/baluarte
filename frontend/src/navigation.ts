@@ -39,14 +39,26 @@ export const navItems: readonly NavItem[] = [
     description: "Dry-run plans to fix failing findings; nothing is changed in GitLab.",
   },
   {
-    path: "/policies",
-    label: "Policies",
-    description: "Versioned YAML baselines and their scope.",
+    path: "/governance",
+    label: "Governance",
+    description: "Baselines Baluarte checks, and GitLab security policies GitLab enforces.",
   },
   {
     path: "/evidence",
     label: "Evidence",
     description: "Observation history and scoped evidence exports.",
+  },
+  {
+    path: "/compliance",
+    label: "Compliance",
+    description: "How Baluarte itself meets SOC 2, ISO 27001 and NIST 800-53 controls.",
+    permission: "compliance:read",
+  },
+  {
+    path: "/audit-log",
+    label: "Audit log",
+    description: "Who did what in Baluarte, with each event's digest check.",
+    permission: "audit_log:read",
   },
   {
     path: "/settings",

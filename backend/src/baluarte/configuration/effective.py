@@ -4,6 +4,9 @@ Precedence is per section. When the environment configures sign-in (or GitLab) a
 section comes only from the environment and the web UI cannot change it. Otherwise the section
 stored in the database applies.
 
+Session limits come from the environment when it sets them, else from the operating profile
+(``baluarte.compliance.operations``), else the defaults, whichever section sign-in comes from.
+
 Stored results are cached for ``CACHE_SECONDS``, so every API and worker process picks up a change
 made in the web UI within that time without a restart; the process that made the change calls
 ``invalidate`` and sees it at once. Failures, and the environment's settings, are not cached.
@@ -13,12 +16,15 @@ import logging
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import replace
+from datetime import timedelta
 
 from sqlalchemy import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from baluarte.auth.settings import AuthSettings, deployment_auth_present, load_auth_settings
+from baluarte.compliance.operations import session_minutes
 from baluarte.configuration.crypto import load_secret_box
 from baluarte.configuration.store import load_stored_auth, load_stored_gitlab
 from baluarte.db.session import get_engine
@@ -82,17 +88,32 @@ def _from_store[T](read: Callable[[Session], T | None]) -> T | None:
         ) from exc
 
 
+def _with_session_limits(settings: AuthSettings | None) -> AuthSettings | None:
+    if settings is None:
+        return None
+    limits = _cached("sessions", lambda: _from_store(session_minutes))
+    if limits is None:
+        return settings
+    idle, lifetime = limits
+    return replace(
+        settings,
+        # An idle limit longer than the lifetime could never apply.
+        session_idle=timedelta(minutes=min(idle, lifetime)),
+        session_lifetime=timedelta(minutes=lifetime),
+    )
+
+
 def effective_auth_settings() -> AuthSettings | None:
     """Sign-in settings in force, or None when neither the deployment nor the UI sets them."""
 
     if deployment_auth_present():
-        return load_auth_settings()
+        return _with_session_limits(load_auth_settings())
 
     def load() -> AuthSettings | None:
         box = load_secret_box()
         return _from_store(lambda db: load_stored_auth(db, box))
 
-    return _cached("auth", load)
+    return _with_session_limits(_cached("auth", load))
 
 
 def effective_gitlab_settings() -> GitLabSettings | None:

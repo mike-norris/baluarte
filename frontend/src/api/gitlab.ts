@@ -53,6 +53,29 @@ export interface KindFreshness {
   running: boolean;
   last_run: Run | null;
   last_success_at: string | null;
+  /** Finished runs since the last success that failed, and when the first of them started. */
+  consecutive_failures?: number;
+  failing_since?: string | null;
+}
+
+/** Collection is unhealthy: failing repeatedly, or overdue on its schedule. */
+export interface CollectionAlert {
+  reason: "failing" | "overdue";
+  kinds: CollectionKind[];
+  consecutive_failures: number;
+  failing_since: string | null;
+  last_success_at: string | null;
+  last_error: string | null;
+  message: string;
+}
+
+/** Which groups and projects the inventory can cover: what the token's user can see. */
+export interface Population {
+  basis: "instance" | "token_visibility" | "unknown";
+  token_username: string | null;
+  is_admin: boolean | null;
+  admin_access?: boolean | null;
+  statement: string;
 }
 
 export interface ResourceCounts {
@@ -69,6 +92,8 @@ export interface FreshnessReport {
   sync_interval_minutes: number | null;
   collections: Partial<Record<CollectionKind, KindFreshness>>;
   resources: Partial<Record<"groups" | "projects", ResourceCounts>>;
+  alert?: CollectionAlert | null;
+  population?: Population | null;
 }
 
 export interface InventoryFilters {
@@ -111,4 +136,44 @@ export function listGroups(
   signal?: AbortSignal,
 ): Promise<Page<Group>> {
   return getJson("/api/v1/gitlab/groups", common(filters, afterId), signal);
+}
+
+/** A group or project's groups, nearest first; ``incomplete`` when one can't be followed. */
+export interface Ancestry {
+  groups: { gitlab_id: number; full_path: string; state: InventoryState }[];
+  status: "complete" | "incomplete";
+  gaps: { gitlab_id: number; reason: string }[];
+}
+
+export interface GroupDetail {
+  group: Group;
+  ancestry: Ancestry;
+  /** Direct subgroups and projects, personal projects excluded. */
+  subgroups: number;
+  projects: number;
+  collection: KindFreshness;
+}
+
+export interface ProjectDetail {
+  project: Project;
+  ancestry: Ancestry;
+  collection: KindFreshness;
+  /** Why baselines are not evaluated for this project, or null when they are. */
+  not_evaluated: "archived" | null;
+}
+
+export function getGroup(gitlabId: number, signal?: AbortSignal): Promise<GroupDetail> {
+  return getJson(`/api/v1/gitlab/groups/${String(gitlabId)}`, undefined, signal);
+}
+
+export function getProject(gitlabId: number, signal?: AbortSignal): Promise<ProjectDetail> {
+  return getJson(`/api/v1/gitlab/projects/${String(gitlabId)}`, undefined, signal);
+}
+
+export function groupHref(gitlabId: number): string {
+  return `/inventory/groups/${String(gitlabId)}`;
+}
+
+export function projectHref(gitlabId: number): string {
+  return `/inventory/projects/${String(gitlabId)}`;
 }

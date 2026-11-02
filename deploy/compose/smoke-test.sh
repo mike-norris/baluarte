@@ -14,7 +14,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-for file in secrets/postgres_password secrets/secret_key; do
+for file in secrets/postgres_password secrets/app_database_password secrets/secret_key; do
   if [[ ! -f $file ]]; then
     mkdir -p secrets
     # Readable by the non-root API container on Linux bind mounts; dev-only secrets.

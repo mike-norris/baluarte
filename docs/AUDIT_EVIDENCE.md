@@ -14,14 +14,14 @@ Every discovery and capability detection records what it read as an `observation
   |---|---|---|
   | Project | `GET /projects` (listing) or `GET /projects/:id` (reconciliation) | `gitlab_id`, `path_with_namespace`, `name`, `namespace_gitlab_id`, `namespace_kind`, `visibility`, `archived`, `default_branch` |
   | Group | `GET /groups` or `GET /groups/:id` | `gitlab_id`, `parent_gitlab_id`, `full_path`, `name`, `visibility` |
-  | Instance | `capabilities` | `version`, `edition`, `tier`, `probes` (status, endpoint, HTTP status, detail of each probe) |
+  | Instance | `capabilities` | `version`, `edition`, `tier`, `probes` (status, endpoint, HTTP status, detail of each probe), `token_user` (`username`, `is_admin`, `admin_access`) |
 
   Values are stored as Baluarte normalized them: an unrecognised visibility or namespace kind is null, exactly as in the inventory.
 - **Provenance:** `source` (endpoint template), `source_ref` (API-relative path such as `/projects/42`), `collected_at` (database clock), `collection_run_id` and `collection_job_id`.
 - **Digest:** `payload_digest` is the SHA-256 of the payload's canonical JSON (sorted keys, no insignificant whitespace, UTF-8), the same algorithm as `audit_event.details_digest`. The observation API returns `digest_valid` by recomputing it.
 - **Could not observe:** a resource the reconciliation lookup could not read gets an observation with no payload, `collection_status` `forbidden` (401/403), `not_found` (404) or `failed` (any other error), and the safe client error. A failed capability detection is recorded the same way.
 - **Growth:** a new row is written only when a target's `collection_status`, `payload_digest` or `error` differs from its latest observation. Unchanged data is not copied each run: the latest observation remains the evidence, and the resource's `last_seen_at` and the collection runs show it was confirmed since. Evaluations reference the observation they judged, which never changes (a trigger rejects `UPDATE`).
-- **Not yet:** `retention_until` is not set and nothing expires observations ([OPERATIONS.md](OPERATIONS.md#retention)). A listing that fails part way records no per-resource observation; the failed collection run is the evidence.
+- **Retention:** observations older than the evidence period are deleted daily, except the newest of each target and any an evaluation still refers to ([OPERATIONS.md](OPERATIONS.md#retention)). `retention_until` is not used. A listing that fails part way records no per-resource observation; the failed collection run is the evidence.
 
 Each stored evaluation names the observation it judged (`evaluation.observation_id`). A `pass` or `fail` is never stored without an `ok` observation whose payload holds the judged value; otherwise the result is `unknown` (see [DATA_MODEL.md](DATA_MODEL.md#evaluations-and-findings)).
 
@@ -77,7 +77,7 @@ Every export carries a manifest (BAL-028): `manifest.json` in a ZIP, written aft
 
 | Field | Holds |
 |---|---|
-| `manifest_format`, `export_format`, `package` | `baluarte.evidence-manifest/v2`, `baluarte.evidence-export/v2`, and `zip` or `json`. Version 2 added the exceptions section, `exception_id` on evaluations and findings, and the manifest's `exceptions` summary. |
+| `manifest_format`, `export_format`, `package` | `baluarte.evidence-manifest/v3`, `baluarte.evidence-export/v2`, and `zip` or `json`. Version 2 added the exceptions section, `exception_id` on evaluations and findings, and the manifest's `exceptions` summary. Manifest version 3 added `population`; the export format did not change. |
 | `export_id`, `generated_at`, `baluarte_version`, `instance`, `scope` | What was exported, when (database clock), by which version, from which GitLab. |
 | `requested_by` | The requester's internal user ID (`user:<id>`), as in the audit log. Names and email addresses are not copied into the package; the audit log and user table resolve the ID. |
 | `files` (ZIP) | Every other file except `SHA256SUMS`: name, rows (CSV records without the header, or JSON lines), bytes and SHA-256 of its bytes. |
@@ -91,13 +91,16 @@ Every export carries a manifest (BAL-028): `manifest.json` in a ZIP, written aft
 | `runs_not_succeeded` | Exported collection and evaluation runs that failed, were partial or were still running, with their (redacted) error. |
 | `freshness` | Collection status per kind with its last success, and evaluation status, at export time. |
 | `digests` | How every hash in the package is computed. |
-| `limitations`, `verification` | What the export does not establish, and how to check it. |
+| `population` | Which groups and projects the export can cover: `basis` (`instance`, `token_visibility` or `unknown`), `token_username`, `is_admin`, `admin_access` and `statement`, from the collection freshness at export time. Projects the token cannot see are absent from every section. Added in manifest v3. |
+| `governance` | `require_review`: whether a baseline change needed a second person's approval when the export was made. Each change's own record (`policy_change`) says whether review was required for it and who approved it. |
+| `operations` | The operating profile Baluarte itself ran to when the export was made ([COMPLIANCE.md](COMPLIANCE.md)): `configured`, `frameworks`, the operating `settings` (retention periods, session limits, review, legal hold), the `posture` (`summary` by status and each control's `status`) and `exceptions_in_force` (`id`, `control_id`, `expires_on`). It describes Baluarte's own operation, not the GitLab instance. |
+| `limitations`, `verification` | What the export does not establish, and how to check it. The population statement is the last limitation. |
 
 Hashes use SHA-256. Canonical JSON means keys sorted, no insignificant whitespace, non-ASCII characters unescaped, UTF-8: the same form as observation and audit digests. A ZIP's `SHA256SUMS` lists every file including `manifest.json` in `sha256sum` format, so `sha256sum -c SHA256SUMS` (or `shasum -a 256 -c SHA256SUMS`) checks an extracted package with standard tools.
 
 **Anchoring the manifest.** A file cannot hold its own hash, and anyone who can edit a package can rewrite its manifest and `SHA256SUMS` to match. So `manifest_sha256`, the SHA-256 of the manifest's canonical JSON, is recorded in the `evidence.export_completed` audit event and nowhere in the package. Comparing the two is what ties a package to what Baluarte produced; it is only as trustworthy as the audit record it is compared with, so prefer the copy in the `baluarte.audit` log stream kept outside the database (see [Audit limitations](#audit-limitations)).
 
-**Verifying.** `baluarte-verify-export <file> --manifest-sha256 <value from the audit event>` checks a ZIP or JSON export offline, with no database: every file or section against the manifest, a ZIP against `SHA256SUMS`, no file missing or unlisted, the counts, and every observation's `payload_digest` recomputed from its payload. It exits 0 when every check passes, 1 when any fails and 2 when the file cannot be read. Evidence that was already invalid when exported (`digest_valid: false`) and withheld payloads are reported as warnings: the export shows them truthfully, so they do not fail the package. Without `--manifest-sha256` it says the manifest itself was not checked. A `baluarte.evidence-export/v2` package must contain its exceptions (`exceptions.csv`, or the `exceptions` section), and the manifest's exception count must match; a package from before exceptions (`v1`) is still accepted and checked against what its own manifest lists. The verifier is one standard-library file (`backend/src/baluarte/evidence/verify.py`) and also runs as `python3 verify.py <file>` on Python 3.9 or later.
+**Verifying.** `baluarte-verify-export <file> --manifest-sha256 <value from the audit event>` checks a ZIP or JSON export offline, with no database: every file or section against the manifest, a ZIP against `SHA256SUMS`, no file missing or unlisted, the counts, and every observation's `payload_digest` recomputed from its payload. It exits 0 when every check passes, 1 when any fails and 2 when the file cannot be read. The verifier prints the manifest's population statement when it has one; a manifest from before population (v2) still verifies. Evidence that was already invalid when exported (`digest_valid: false`) and withheld payloads are reported as warnings: the export shows them truthfully, so they do not fail the package. Without `--manifest-sha256` it says the manifest itself was not checked. A `baluarte.evidence-export/v2` package must contain its exceptions (`exceptions.csv`, or the `exceptions` section), and the manifest's exception count must match; a package from before exceptions (`v1`) is still accepted and checked against what its own manifest lists. The verifier is one standard-library file (`backend/src/baluarte/evidence/verify.py`) and also runs as `python3 verify.py <file>` on Python 3.9 or later.
 
 What verification does not show: rows changed in the database before the export together with their digests, deleted or forged rows, or anything about GitLab's own records. The digests are not anchored outside the database.
 
@@ -107,7 +110,9 @@ A rule evaluation is supporting evidence for an organization-defined control obj
 
 ## Retention
 
-Nothing is deleted automatically yet; see [OPERATIONS.md](OPERATIONS.md#retention) for what accumulates and what is not implemented. A configurable policy must be designed before production GA: retention period, deletion and legal-hold semantics, storage encryption, backup retention and independent integrity anchors. Never export credentials or sensitive token values.
+The operating profile sets how long audit events, evidence and jobs are kept (365 days or more for audit events and evidence under SOC 2, ISO 27001 and NIST 800-53), and a daily job deletes what has expired; legal hold stops it. See [OPERATIONS.md](OPERATIONS.md#retention) for exactly what is deleted and what is always kept, and [COMPLIANCE.md](COMPLIANCE.md) for the profile.
+
+Expiring audit events is itself evidence: each run is audited as `retention.expired` with the cutoffs, the counts per table and, for audit events, the first and last IDs deleted and a SHA-256 over their `details_digest` values in ID order. An export made before the deletion lets an auditor recompute that digest and confirm exactly which events were removed. Keep exports for at least as long as the period they cover. Not implemented: archiving before deletion, storage encryption (attested in the posture, not observed) and independent integrity anchors. Never export credentials or sensitive token values.
 
 ## Audit limitations
 
@@ -119,7 +124,9 @@ What the audit trail and evidence do and do not establish today:
 - **Restores lose recent history.** Restoring a backup discards every event, observation and run recorded after the backup point. Record the restore itself (time, backup used, operator) outside Baluarte.
 - **Time comes from the database clock.** `occurred_at` and run times are PostgreSQL's `now()`; keep the database host on NTP.
 - **Collection is at least once.** A job can run more than once after a crash or expired lease. Inventory upserts are idempotent, but run history can show an interrupted attempt next to the retry.
+- **The inventory is what the token can see.** A token that is not a GitLab administrator sees only its user's groups and projects, so others are neither inventoried nor checked. The freshness report, the Dashboard, the Inventory page and every export state this population (`population`), but Baluarte cannot list what the token cannot see.
 - **GitLab limits what can be shown.** Results depend on the token's visibility, the GitLab edition and tier, and GitLab's own retention of audit events and artifacts; `missing` means deleted or hidden, and capability probes record what was refused rather than inferring it.
+- **The audit log checks itself on read.** `GET /api/v1/audit-events` (and the Audit log page) reports `digest_valid` for each event, recomputed from its stored details; like every digest here, it catches an edit that left the digest unchanged, not a rewrite.
 - **Evidence is not certification.** See [Audit language](#audit-language): Baluarte records configuration evidence; it does not by itself establish compliance with any framework.
 
 `deploy/compose/backup-restore-test.sh` demonstrates both the digest check and its limit: it rewrites a row with the trigger disabled and shows that the check catches it only because the digest was left unchanged.

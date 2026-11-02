@@ -41,6 +41,7 @@ from baluarte.configuration.store import (
     GITLAB_TOKEN,
     OIDC,
     OIDC_CLIENT_SECRET,
+    OPERATIONS,
     auth_from_value,
     delete_secret,
     delete_setting,
@@ -112,9 +113,15 @@ def setup_status(db: Session, has_session: bool) -> SetupStatus:
     state = setup_state(db)
     if state == "complete":
         return SetupStatus(
-            state=state, setup_session=False, secret_key_configured=None, oidc=None, gitlab=None
+            state=state,
+            setup_session=False,
+            secret_key_configured=None,
+            oidc=None,
+            gitlab=None,
+            compliance=None,
         )
     oidc_stored = read_setting(db, OIDC) is not None
+    profile_stored = read_setting(db, OPERATIONS) is not None
     if deployment_gitlab_present():
         gitlab = SectionStatus(source="deployment", configured=True)
     elif read_setting(db, GITLAB) is not None:
@@ -127,6 +134,9 @@ def setup_status(db: Session, has_session: bool) -> SetupStatus:
         secret_key_configured=secret_key_configured(),
         oidc=SectionStatus(source="database" if oidc_stored else None, configured=oidc_stored),
         gitlab=gitlab,
+        compliance=SectionStatus(
+            source="database" if profile_stored else None, configured=profile_stored
+        ),
     )
 
 

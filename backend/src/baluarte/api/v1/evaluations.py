@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import ColumnElement, Select, and_, func, or_, select
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.orm import Session
@@ -324,6 +324,164 @@ def read_freshness(
     return freshness.report(db, _instance_id(db, settings), settings)
 
 
+class OutcomeCounts(BaseModel):
+    pass_: int = Field(default=0, alias="pass")
+    fail: int = 0
+    unknown: int = 0
+    unsupported: int = 0
+    excepted: int = 0
+
+    # Responses serialise by alias, so the field reads ``pass`` like the outcome it counts.
+    model_config = ConfigDict(populate_by_name=True)
+
+    def add(self, outcome: str, count: int = 1) -> None:
+        name = "pass_" if outcome == "pass" else outcome
+        setattr(self, name, getattr(self, name) + count)
+
+    def merge(self, other: "OutcomeCounts") -> None:
+        for outcome in _PROJECT_ORDER:
+            self.add(outcome, other.count(outcome))
+
+    def count(self, outcome: str) -> int:
+        return int(getattr(self, "pass_" if outcome == "pass" else outcome))
+
+
+class RuleResults(BaseModel):
+    rule_id: str
+    rule_type: str
+    severity: str
+    # One result per evaluated project.
+    results: OutcomeCounts
+
+
+class VersionResults(BaseModel):
+    policy_id: int
+    version: int
+    yaml_digest: str
+    # Projects by their worst result for this version: fail, then unknown, then unsupported,
+    # then excepted; pass only when every rule passed.
+    projects: OutcomeCounts
+    rules: list[RuleResults]
+
+
+class BaselineResults(BaseModel):
+    name: str
+    projects: OutcomeCounts
+    versions: list[VersionResults]
+
+
+class EvaluationSummary(BaseModel):
+    # The run the counts come from: the latest successful one. Null when none has succeeded.
+    evaluation_run: EvaluationRunOut | None
+    freshness: EvaluationFreshness
+    baselines: list[BaselineResults]
+
+
+# Worst first: a project's result for a version is the first of these that any rule gave.
+_PROJECT_ORDER = ("fail", "unknown", "unsupported", "excepted", "pass")
+
+
+@router.get(
+    "/evaluations/summary",
+    response_model=EvaluationSummary,
+    summary="Result counts per baseline, version and rule",
+    description="From the latest successful evaluation run, which judges every project once per "
+    "rule in force, so the counts are a consistent snapshot; results of a run that failed or is "
+    "still running are not counted. Rule counts are results (one per project); `projects` "
+    "counts each project once by its worst result. `unknown` and `unsupported` are never "
+    "counted as passing. Read with `freshness`: old counts are not current compliance. Filter "
+    "with `policy` (a baseline name).",
+)
+def evaluation_summary(
+    _: Annotated[Principal, Depends(require(Permission.FINDINGS_READ))],
+    db: Annotated[Session, Depends(database)],
+    policy: Annotated[str | None, Query(max_length=63)] = None,
+) -> EvaluationSummary:
+    settings = _settings()
+    instance_id = _instance_id(db, settings)
+    report = freshness.report(db, instance_id, settings)
+    run = db.scalars(
+        select(EvaluationRun)
+        .where(EvaluationRun.instance_id == (instance_id or 0), EvaluationRun.status == "succeeded")
+        .order_by(EvaluationRun.started_at.desc(), EvaluationRun.id.desc())
+        .limit(1)
+    ).first()
+    if run is None:
+        return EvaluationSummary(evaluation_run=None, freshness=report, baselines=[])
+    statement = (
+        select(
+            Evaluation.policy_name,
+            Evaluation.policy_id,
+            Policy.version,
+            Policy.yaml_digest,
+            Evaluation.rule_id,
+            Evaluation.rule_type,
+            Evaluation.severity,
+            Evaluation.project_id,
+            Evaluation.outcome,
+        )
+        .join(Policy, Policy.id == Evaluation.policy_id)
+        .where(Evaluation.evaluation_run_id == run.id)
+    )
+    if policy is not None:
+        statement = statement.where(Evaluation.policy_name == policy)
+    rules: dict[tuple[int, str], RuleResults] = {}
+    versions: dict[int, tuple[str, int, str]] = {}
+    worst: dict[tuple[int, int], str] = {}
+    for (
+        name,
+        policy_id,
+        version,
+        digest,
+        rule_id,
+        rule_type,
+        severity,
+        project,
+        outcome,
+    ) in db.execute(statement):
+        versions[policy_id] = (name, version, digest)
+        entry = rules.setdefault(
+            (policy_id, rule_id),
+            RuleResults(
+                rule_id=rule_id, rule_type=rule_type, severity=severity, results=OutcomeCounts()
+            ),
+        )
+        entry.results.add(outcome)
+        current = worst.get((policy_id, project))
+        if current is None or _PROJECT_ORDER.index(outcome) < _PROJECT_ORDER.index(current):
+            worst[(policy_id, project)] = outcome
+    baselines: dict[str, BaselineResults] = {}
+    for policy_id, (name, version, digest) in sorted(
+        versions.items(), key=lambda item: (item[1][0], -item[1][1])
+    ):
+        projects = OutcomeCounts()
+        for (counted_policy, _project), outcome in worst.items():
+            if counted_policy == policy_id:
+                projects.add(outcome)
+        baseline = baselines.setdefault(
+            name, BaselineResults(name=name, projects=OutcomeCounts(), versions=[])
+        )
+        # One run judges a project under one version of each baseline, so versions add up.
+        baseline.projects.merge(projects)
+        baseline.versions.append(
+            VersionResults(
+                policy_id=policy_id,
+                version=version,
+                yaml_digest=digest,
+                projects=projects,
+                rules=sorted(
+                    (rule for (pid, _rule), rule in rules.items() if pid == policy_id),
+                    key=lambda rule: rule.rule_id,
+                ),
+            )
+        )
+    return EvaluationSummary(
+        evaluation_run=EvaluationRunOut.model_validate(run, from_attributes=True),
+        freshness=report,
+        baselines=list(baselines.values()),
+    )
+
+
 @router.get(
     "/evaluations/runs",
     response_model=RunPage,
@@ -349,7 +507,8 @@ def list_runs(
     response_model=FindingPage,
     summary="Findings: rules a project failed, followed until they pass",
     description="A finding opens when a rule fails and resolves when it passes "
-    "(`resolution = passed`) or no longer applies (`no_longer_applies`). An `unknown` or "
+    "(`resolution = passed`), no longer applies (`no_longer_applies`) or its project is archived "
+    "(`project_archived`: archived projects are not evaluated). An `unknown` or "
     "`unsupported` result never opens or resolves one; `latest_outcome` shows it. A failure "
     "waived by an approved exception is `excepted` until the exception expires or is revoked, "
     "then `open` again. Filter by "

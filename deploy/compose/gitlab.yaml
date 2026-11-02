@@ -16,10 +16,10 @@ services:
   # Diagnostics run in the API; capability detection and collection run in the worker.
   api:
     environment: *gitlab-env
-    secrets: [postgres_password, secret_key, gitlab_token]
+    secrets: [app_database_password, secret_key, gitlab_token]
   worker:
     environment: *gitlab-env
-    secrets: [postgres_password, secret_key, gitlab_token]
+    secrets: [app_database_password, secret_key, gitlab_token]
 
 secrets:
   gitlab_token:

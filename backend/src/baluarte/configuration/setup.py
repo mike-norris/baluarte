@@ -6,8 +6,9 @@ the code's SHA-256 digest is stored, and failed attempts are limited in the data
 every API replica shares the limit.
 
 Setup completes when the first user with the admin role signs in through the identity provider
-entered during setup. From then on the setup endpoints refuse every request and settings change
-only through the admin Settings page. When the deployment's environment configures sign-in,
+entered during setup, once the operating profile has been chosen too. From then on
+the setup endpoints refuse every request and settings change only through the admin Settings
+page. When the deployment's environment configures sign-in,
 there is nothing to set up and the state is always ``complete``.
 """
 
@@ -26,7 +27,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from baluarte.auth.settings import deployment_auth_present
-from baluarte.configuration.store import OIDC, read_setting
+from baluarte.configuration.store import OIDC, OPERATIONS, read_setting
 from baluarte.db.models import SetupSession, SetupState
 
 logger = logging.getLogger(__name__)
@@ -85,7 +86,7 @@ def setup_state(db: Session) -> State:
         return "complete"
     if _row(db).completed_at is not None:
         return "complete"
-    if read_setting(db, OIDC) is not None:
+    if read_setting(db, OIDC) is not None and read_setting(db, OPERATIONS) is not None:
         return "awaiting_admin_sign_in"
     return "needs_setup"
 

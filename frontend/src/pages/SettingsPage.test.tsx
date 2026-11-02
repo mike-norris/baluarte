@@ -7,6 +7,7 @@ import type { GitLabConfig, OidcConfig, SettingsInfo } from "../api/setup";
 import type { CurrentUser } from "../auth/session";
 import { routes } from "../routes";
 import { analyst, json, mockApi, type Call } from "../test/api";
+import { controlException, profile } from "../test/compliance";
 import { EVALUATION_FRESHNESS, evaluationFreshness, freshness } from "../test/freshness";
 
 const admin: CurrentUser = {
@@ -67,6 +68,15 @@ const info: SettingsInfo = {
 
 type Routes = Record<string, (init?: RequestInit) => Response>;
 
+const socProfile = profile({
+  frameworks: ["soc2"],
+  configured: true,
+  settings: { ...profile().settings, session_idle_minutes: 30, require_review: true },
+  sources: { ...profile().sources, session_lifetime_minutes: "deployment" },
+  updated_by: "user:1",
+  updated_at: "2026-11-02T09:00:00Z",
+});
+
 function api(user: CurrentUser, routes: Routes = {}): Call[] {
   return mockApi({
     "GET /api/v1/auth/me": () => json(user),
@@ -75,6 +85,8 @@ function api(user: CurrentUser, routes: Routes = {}): Call[] {
     "GET /api/v1/settings": () => json(info),
     "GET /api/v1/settings/gitlab": () => json(gitlabConfig),
     "GET /api/v1/settings/oidc": () => json(oidcConfig),
+    "GET /api/v1/settings/governance": () => json({ require_review: false }),
+    "GET /api/v1/compliance/profile": () => json(socProfile),
     ...routes,
   });
 }
@@ -226,5 +238,139 @@ describe("settings page", () => {
       admin_groups: ["platform/security"],
       analyst_groups: ["platform"],
     });
+  });
+
+  it("turns on two-person review of baseline changes", async () => {
+    let required = false;
+    const calls = api(admin, {
+      "GET /api/v1/settings/governance": () => json({ require_review: required }),
+      "PUT /api/v1/settings/governance": (init) => {
+        required = (JSON.parse(String(init?.body)) as { require_review: boolean }).require_review;
+        return json({ require_review: required });
+      },
+    });
+    const user = userEvent.setup();
+    render(
+      <RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/settings"] })} />,
+    );
+
+    const card = await screen.findByRole("region", { name: "Baseline change review" });
+    const toggle = await within(card).findByRole("checkbox", {
+      name: "Require a second person to approve baseline changes",
+    });
+    expect(toggle).not.toBeChecked();
+
+    await user.click(toggle);
+
+    expect(
+      await within(card).findByText(
+        "Baseline changes now wait for a second person to approve them.",
+      ),
+    ).toBeInTheDocument();
+    expect(await within(card).findByRole("checkbox")).toBeChecked();
+    const put = calls.find((call) => call.init?.method === "PUT");
+    expect(put?.url).toBe("/api/v1/settings/governance");
+    expect((put?.init?.headers as Record<string, string>)["X-CSRF-Token"]).toBe(admin.csrf_token);
+  });
+});
+
+describe("compliance profile in settings", () => {
+  it("shows the frameworks and settings, marking what the deployment sets", async () => {
+    api(admin);
+    renderSettings();
+
+    const section = await card("Compliance profile");
+    expect(await within(section).findByText("SOC 2 Type II")).toBeInTheDocument();
+    expect(within(section).getByText("30 minutes")).toBeInTheDocument();
+    expect(within(section).getByText("480 minutes (set by the deployment)")).toBeInTheDocument();
+    expect(
+      within(section).getByRole("link", { name: "See the compliance posture" }),
+    ).toHaveAttribute("href", "/compliance");
+  });
+
+  it("asks for a profile when none has been chosen", async () => {
+    api(admin, { "GET /api/v1/compliance/profile": () => json(profile()) });
+    renderSettings();
+
+    const section = await card("Compliance profile");
+    expect(await within(section).findByText(/No compliance profile has been chosen/)).toBeVisible();
+    expect(within(section).getByRole("button", { name: "Choose a profile" })).toBeInTheDocument();
+  });
+
+  it("offers an exception for each value the API refuses as below the minimum", async () => {
+    const calls = api(admin, {
+      "PUT /api/v1/compliance/profile": () =>
+        json(
+          {
+            detail: {
+              code: "below_minimum",
+              violations: [
+                {
+                  control_id: "session-idle",
+                  setting: "session_idle_minutes",
+                  value: 45,
+                  required: { op: "<=", value: 30 },
+                  frameworks: ["soc2"],
+                },
+              ],
+            },
+          },
+          409,
+        ),
+      "POST /api/v1/compliance/exceptions": () =>
+        json(controlException({ control_id: "session-idle" }), 201),
+    });
+    const user = userEvent.setup();
+    renderSettings();
+
+    const section = await card("Compliance profile");
+    await user.click(await within(section).findByRole("button", { name: "Edit profile" }));
+    expect(within(section).getByRole("checkbox", { name: "SOC 2 Type II" })).toBeChecked();
+    expect(
+      within(section).getByRole("textbox", { name: "Sign out after at most (minutes)" }),
+    ).toBeDisabled();
+    const idle = within(section).getByRole("textbox", {
+      name: "Sign out after inactivity of (minutes)",
+    });
+    await user.clear(idle);
+    await user.type(idle, "45");
+    expect(idle).toHaveAccessibleDescription(/saving needs an exception in force/);
+    await user.click(within(section).getByRole("button", { name: "Save" }));
+
+    const refusal = await within(section).findByText(/Not saved: these values do not meet/);
+    expect(refusal.parentElement).toHaveTextContent(
+      "Sign out after inactivity of: 45. At most 30 minutes (SOC 2).",
+    );
+    expect(bodyOf(calls, "PUT", "/api/v1/compliance/profile")).toMatchObject({
+      frameworks: ["soc2"],
+      settings: { session_idle_minutes: 45, require_review: true },
+    });
+
+    await user.click(within(section).getByRole("button", { name: /Request an exception/ }));
+    const form = within(section).getByRole("form", { name: "Request an exception" });
+    expect(within(form).getByRole("combobox", { name: "Control" })).toBeDisabled();
+    await user.type(
+      within(form).getByRole("textbox", { name: "Justification" }),
+      "Operators work long investigations; reviewed monthly.",
+    );
+    await user.click(within(form).getByRole("button", { name: "Request exception" }));
+
+    expect(await within(section).findByText(/waiting for another administrator/)).toBeVisible();
+    expect(bodyOf(calls, "POST", "/api/v1/compliance/exceptions")).toMatchObject({
+      control_id: "session-idle",
+      justification: "Operators work long investigations; reviewed monthly.",
+    });
+  });
+
+  it("warns what legal hold does before it is saved", async () => {
+    api(admin);
+    const user = userEvent.setup();
+    renderSettings();
+
+    const section = await card("Compliance profile");
+    await user.click(await within(section).findByRole("button", { name: "Edit profile" }));
+    await user.click(within(section).getByRole("checkbox", { name: "Legal hold: delete nothing" }));
+
+    expect(within(section).getByText(/the retention job deletes nothing/)).toBeVisible();
   });
 });

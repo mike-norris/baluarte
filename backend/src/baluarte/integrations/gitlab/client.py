@@ -1,6 +1,8 @@
-"""Minimal read-only GitLab REST client.
+"""Minimal read-only GitLab client: REST, and GraphQL queries sent with GET.
 
-- Only GET requests: v0.1 never writes to GitLab (ADR-0003).
+- Only GET requests: v0.1 never writes to GitLab (ADR-0003). GraphQL queries go to
+  ``/api/graphql`` as GET query parameters, which GitLab accepts for queries but never for
+  mutations, so the GraphQL helper cannot change anything either.
 - The token is sent in the ``PRIVATE-TOKEN`` header. Redirects are never followed, so a
   misconfigured or hostile endpoint cannot have the token forwarded to another host.
 - 429, 502, 503, 504, timeouts and connection errors are retried a bounded number of times
@@ -12,11 +14,13 @@
   contains the token, response bodies or query strings.
 """
 
+import json
 import logging
 import ssl
 import time
 from collections.abc import Callable, Iterator
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 
@@ -32,6 +36,12 @@ MAX_RETRY_AFTER_SECONDS = 30.0
 PER_PAGE = 100
 # Guards against a next link that never ends: 100,000 pages of 100 items.
 MAX_PAGES = 100_000
+GRAPHQL_PATH = "/api/graphql"
+GRAPHQL_ENDPOINT = f"GET {GRAPHQL_PATH}"
+# The encoded query string of a GraphQL GET, kept well under common 8 KiB request-line limits.
+MAX_GRAPHQL_REQUEST_BYTES = 6000
+# GraphQL error messages are shown and stored; longer ones are cut.
+MAX_GRAPHQL_MESSAGE = 200
 
 
 class GitLabError(Exception):
@@ -76,6 +86,36 @@ class InvalidResponse(GitLabError):
     reason = "invalid_response"
 
 
+class GraphQLError(InvalidResponse):
+    """GraphQL answered with ``errors``: the query as a whole was refused or failed."""
+
+    reason = "graphql_error"
+
+
+class UnsupportedField(GraphQLError):
+    """The query names a field this GitLab version or edition does not have."""
+
+    reason = "unsupported"
+
+
+class GraphQLForbidden(Forbidden):
+    """GraphQL refused the object: hidden from the token, or not licensed for its tier."""
+
+
+def _graphql_error(errors: Any) -> GitLabError:
+    first = errors[0] if isinstance(errors, list) and errors else None
+    raw = first.get("message") if isinstance(first, dict) else None
+    message = raw if isinstance(raw, str) else "the query failed"
+    if len(message) > MAX_GRAPHQL_MESSAGE:
+        message = message[: MAX_GRAPHQL_MESSAGE - 1] + "…"
+    lowered = message.lower()
+    if "doesn't exist on type" in lowered or "does not exist on type" in lowered:
+        return UnsupportedField(f"GraphQL: {message}")
+    if "permission" in lowered or "not licensed" in lowered:
+        return GraphQLForbidden(f"GraphQL: {message}")
+    return GraphQLError(f"GraphQL: {message}")
+
+
 def _is_tls_failure(exc: BaseException) -> bool:
     current: BaseException | None = exc
     while current is not None:
@@ -103,6 +143,8 @@ class GitLabClient:
     ) -> None:
         self._sleep = sleep
         self._api_prefix = settings.api_url + "/"
+        # Built from the configured URL only, so a query is never sent to another host.
+        self._graphql_url = settings.url + GRAPHQL_PATH
         self._http = httpx.Client(
             base_url=settings.api_url,
             headers={
@@ -128,6 +170,9 @@ class GitLabClient:
         """GET ``path`` (relative to /api/v4) and return a 2xx response, or raise GitLabError."""
         # Next-page links are absolute; messages and logs use the API-relative path.
         endpoint = path.split("?", 1)[0].removeprefix(self._api_prefix[:-1])
+        return self._send(path, params, endpoint)
+
+    def _send(self, path: str, params: dict[str, Any] | None, endpoint: str) -> httpx.Response:
         for attempt in range(1, MAX_ATTEMPTS + 1):
             delay = BACKOFF_SECONDS * 2 ** (attempt - 1)
             try:
@@ -159,6 +204,31 @@ class GitLabClient:
 
     def get_json(self, path: str, params: dict[str, Any] | None = None) -> Any:
         return self._json(self.get(path, params), path)
+
+    def graphql(self, query: str, variables: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Run a GraphQL query with GET and return its ``data``.
+
+        Raises UnsupportedField when GitLab does not know a field, GraphQLForbidden when it
+        refuses the object, and GraphQLError for any other ``errors``, even when some ``data``
+        came back: a partly answered query is not evidence.
+        """
+        if not query.lstrip().startswith(("query", "{")):
+            raise ValueError("only GraphQL queries can be sent")
+        params = {"query": query}
+        if variables:
+            params["variables"] = json.dumps(variables, separators=(",", ":"), sort_keys=True)
+        if len(urlencode(params)) > MAX_GRAPHQL_REQUEST_BYTES:
+            raise ValueError(f"GraphQL request exceeds {MAX_GRAPHQL_REQUEST_BYTES} bytes")
+        response = self._send(self._graphql_url, params, GRAPHQL_PATH)
+        body = self._json(response, GRAPHQL_PATH)
+        if not isinstance(body, dict):
+            raise InvalidResponse(f"{GRAPHQL_ENDPOINT} did not return a JSON object")
+        if body.get("errors"):
+            raise _graphql_error(body["errors"])
+        data = body.get("data")
+        if not isinstance(data, dict):
+            raise InvalidResponse(f"{GRAPHQL_ENDPOINT} returned no data")
+        return data
 
     def paginate(
         self, path: str, params: dict[str, Any] | None = None

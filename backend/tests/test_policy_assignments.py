@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from gitlab_fake import TOKEN, URL
 from oidc_fake import make_settings
-from sqlalchemy import Engine, insert, select
+from sqlalchemy import Engine, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from test_policy_schema import BASELINE
@@ -391,6 +391,24 @@ def test_project_assignment_overrides_its_groups(migrated_engine: Engine, instan
     ]
 
 
+def test_an_archived_project_resolves_but_is_not_evaluated(
+    migrated_engine: Engine, instance_id: int
+) -> None:
+    admin = client_as(migrated_engine, Role.ADMIN)
+    assign(admin, DEFAULT, 1, "project", 100)
+    with Session(migrated_engine) as db:
+        db.execute(
+            update(GitLabProject).where(GitLabProject.gitlab_id == 100).values(archived=True)
+        )
+        db.commit()
+
+    body = admin.get("/api/v1/gitlab/projects/100/effective-policies").json()
+
+    assert summary(body) == [(DEFAULT, 1, "project", 100, "effective")]
+    assert body["not_evaluated"] == "archived"
+    assert admin.get("/api/v1/gitlab/groups/12/effective-policies").json()["not_evaluated"] is None
+
+
 def test_assignments_elsewhere_do_not_apply(migrated_engine: Engine, instance_id: int) -> None:
     admin = client_as(migrated_engine, Role.ADMIN)
     assign(admin, DEFAULT, 1, "group", 11)
@@ -619,3 +637,150 @@ def test_unknown_namespace_kind_is_never_complete(
     assert body["ancestry"] == "incomplete"
     assert body["gaps"] == [{"gitlab_id": 501, "reason": "not_in_inventory"}]
     assert summary(body, "policies") == [(DEFAULT, 1, "instance", instance_id, "effective")]
+
+
+def _tree_effects(node: dict[str, Any]) -> list[tuple[Any, ...]]:
+    return [
+        (
+            effect["name"],
+            effect["version"],
+            effect["status"],
+            effect["assigned_to"]["target_type"],
+            effect["assigned_to"]["target_id"],
+            [(entry["version"], entry["assigned_to"]["target_id"]) for entry in effect["replaces"]],
+        )
+        for effect in node["in_effect"]
+    ]
+
+
+def _expected_effects(resolution: dict[str, Any]) -> list[tuple[Any, ...]]:
+    """What a tree node should say, derived from the effective-policies read."""
+    target = (resolution["target"]["target_type"], resolution["target"]["target_id"])
+    expected = []
+    for entry in resolution["considered"]:
+        if entry["outcome"] == "overridden":
+            continue
+        here = (entry["assigned_to"]["target_type"], entry["assigned_to"]["target_id"]) == target
+        if entry["outcome"] == "out_of_scope":
+            status = "out_of_scope"
+        else:
+            status = "set_here" if here else "inherited"
+        replaces = [
+            (other["version"], other["assigned_to"]["target_id"])
+            for other in resolution["considered"]
+            if other["name"] == entry["name"] and other["outcome"] == "overridden"
+        ]
+        expected.append(
+            (
+                entry["name"],
+                entry["version"],
+                status,
+                entry["assigned_to"]["target_type"],
+                entry["assigned_to"]["target_id"],
+                replaces,
+            )
+        )
+    return expected
+
+
+def test_tree_matches_every_effective_policies_read(
+    migrated_engine: Engine, instance_id: int
+) -> None:
+    admin = client_as(migrated_engine, Role.ADMIN)
+    assign(admin, DEFAULT, 1, "instance")
+    assign(admin, DEFAULT, 2, "group", 10)
+    assign(admin, DEFAULT, 3, "group", 12)  # scoped to platform/backend
+    assign(admin, "strict", 1, "group", 11)
+    assign(admin, "backend-only", 1, "instance")
+    assign(admin, "strict", 1, "project", 101)
+    assign(admin, DEFAULT, 1, "project", 102)
+    auditor = client_as(migrated_engine, Role.AUDITOR)
+
+    response = auditor.get("/api/v1/policy-assignments/tree")
+
+    assert response.status_code == 200
+    tree = response.json()
+    assert tree["instance"]["target_id"] == instance_id
+    assert [(item["name"], item["version"]) for item in tree["instance_assignments"]] == [
+        (DEFAULT, 1),
+        ("backend-only", 1),
+    ]
+    assert [node["target"]["path"] for node in tree["groups"]] == sorted(
+        path for _, path, _, _ in GROUPS
+    )
+    for node in tree["groups"]:
+        gitlab_id = node["target"]["target_id"]
+        read = auditor.get(f"/api/v1/gitlab/groups/{gitlab_id}/effective-policies").json()
+        assert _tree_effects(node) == _expected_effects(read), node["target"]["path"]
+        assert (node["ancestry"], node["gaps"]) == (read["ancestry"], read["gaps"])
+    assert [node["target"]["target_id"] for node in tree["projects"]] == [102, 101]
+    for node in tree["projects"]:
+        gitlab_id = node["target"]["target_id"]
+        read = auditor.get(f"/api/v1/gitlab/projects/{gitlab_id}/effective-policies").json()
+        assert _tree_effects(node) == _expected_effects(read), node["target"]["path"]
+        assert (node["ancestry"], node["gaps"]) == (read["ancestry"], read["gaps"])
+
+
+def test_tree_says_where_each_baseline_comes_from(
+    migrated_engine: Engine, instance_id: int
+) -> None:
+    admin = client_as(migrated_engine, Role.ADMIN)
+    assign(admin, DEFAULT, 1, "instance")
+    assign(admin, DEFAULT, 2, "group", 10)
+    assign(admin, "backend-only", 1, "instance")
+    assign(admin, "strict", 1, "project", 100)
+
+    tree = admin.get("/api/v1/policy-assignments/tree").json()
+    nodes = {node["target"]["path"]: node for node in tree["groups"]}
+
+    assert _tree_effects(nodes["platform"]) == [
+        ("backend-only", 1, "out_of_scope", "instance", instance_id, []),
+        (DEFAULT, 2, "set_here", "group", 10, [(1, instance_id)]),
+    ]
+    assert [(item["name"], item["version"]) for item in nodes["platform"]["assignments"]] == [
+        (DEFAULT, 2)
+    ]
+    assert _tree_effects(nodes["platform/backend/api"]) == [
+        ("backend-only", 1, "inherited", "instance", instance_id, []),
+        (DEFAULT, 2, "inherited", "group", 10, [(1, instance_id)]),
+    ]
+    assert nodes["platform/backend/api"]["parent_gitlab_id"] == 11
+    assert nodes["platform/backend/api"]["assignments"] == []
+    # A group whose parent the inventory lacks is partly unknown.
+    assert nodes["orphans/sub"]["ancestry"] == "incomplete"
+    assert nodes["orphans/sub"]["gaps"] == [{"gitlab_id": 99, "reason": "not_in_inventory"}]
+    assert nodes["gone/child"]["gaps"] == [{"gitlab_id": 30, "reason": "missing"}]
+    [project] = tree["projects"]
+    assert project["target"]["path"] == "platform/backend/api/svc"
+    assert (project["parent_gitlab_id"], project["namespace_kind"]) == (12, "group")
+    assert [(item["name"], item["version"]) for item in project["assignments"]] == [("strict", 1)]
+    assert ("strict", 1, "set_here", "project", 100, []) in _tree_effects(project)
+
+
+def test_personal_project_in_the_tree_has_no_parent_group(
+    migrated_engine: Engine, instance_id: int
+) -> None:
+    admin = client_as(migrated_engine, Role.ADMIN)
+    assign(admin, DEFAULT, 1, "project", 102)
+
+    [project] = admin.get("/api/v1/policy-assignments/tree").json()["projects"]
+
+    assert (project["parent_gitlab_id"], project["namespace_kind"]) == (None, "user")
+    assert project["ancestry"] == "complete"
+
+
+def test_tree_without_assignments_lists_groups_with_nothing_in_effect(
+    migrated_engine: Engine, instance_id: int
+) -> None:
+    tree = client_as(migrated_engine, Role.AUDITOR).get("/api/v1/policy-assignments/tree").json()
+
+    assert tree["instance_assignments"] == []
+    assert tree["projects"] == []
+    assert len(tree["groups"]) == len(GROUPS)
+    assert all(node["in_effect"] == [] for node in tree["groups"])
+
+
+def test_tree_is_not_found_without_gitlab(migrated_engine: Engine) -> None:
+    response = client_as(migrated_engine, Role.ADMIN).get("/api/v1/policy-assignments/tree")
+
+    assert response.status_code == 404

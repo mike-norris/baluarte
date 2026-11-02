@@ -3,6 +3,8 @@ import { Link, useSearchParams } from "react-router";
 
 import {
   getFreshness,
+  groupHref,
+  projectHref,
   listGroups,
   listProjects,
   type Group,
@@ -14,14 +16,10 @@ import {
 import { usePaged } from "../api/usePaged";
 import { useLoad } from "../api/useLoad";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, secondaryClass } from "../components/styles";
+import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
 import { FreshnessPanel } from "../freshness/FreshnessPanel";
-import {
-  isFiltered,
-  readFilters,
-  writeFilters,
-  type InventoryView,
-} from "../inventory/filters";
+import { PopulationNote } from "../freshness/PopulationNote";
+import { isFiltered, readFilters, writeFilters, type InventoryView } from "../inventory/filters";
 import { stateHelp, stateLabels, visibilityLabel } from "../inventory/format";
 import { formatTime } from "../time";
 
@@ -49,7 +47,15 @@ function ErrorCell({ error, at }: { error: string | null; at: string | null }) {
   );
 }
 
-function Table({ caption, headers, children }: { caption: string; headers: string[]; children: ReactNode }) {
+function Table({
+  caption,
+  headers,
+  children,
+}: {
+  caption: string;
+  headers: string[];
+  children: ReactNode;
+}) {
   return (
     <div className="overflow-x-auto rounded border border-slate-200 bg-white">
       <table className="w-full text-left text-sm">
@@ -73,14 +79,19 @@ function ProjectRows({ projects }: { projects: Project[] }) {
   return projects.map((project) => (
     <tr key={project.id}>
       <th scope="row" className="px-3 py-2 font-medium">
-        {project.path_with_namespace}
+        <Link to={projectHref(project.gitlab_id)} className={linkClass}>
+          {project.path_with_namespace}
+        </Link>
         {project.namespace_kind === "user" && (
           <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-xs font-normal">
             Personal
           </span>
         )}
         {project.archived && (
-          <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-xs font-normal">
+          <span
+            className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-xs font-normal"
+            title="Archived projects are not checked by baselines."
+          >
             Archived
           </span>
         )}
@@ -100,7 +111,9 @@ function GroupRows({ groups }: { groups: Group[] }) {
   return groups.map((group) => (
     <tr key={group.id}>
       <th scope="row" className="px-3 py-2 font-medium">
-        {group.full_path}
+        <Link to={groupHref(group.gitlab_id)} className={linkClass}>
+          {group.full_path}
+        </Link>
       </th>
       <td className="px-3 py-2">{visibilityLabel(group.visibility)}</td>
       <StateCell state={group.state} />
@@ -259,7 +272,9 @@ function Listing<T>({
         Showing {paged.items.length} {noun}
         {paged.next !== null ? " (more available)" : ""}.
       </p>
-      {paged.moreError && <ErrorMessage error={paged.moreError} retry={() => void paged.loadMore()} />}
+      {paged.moreError && (
+        <ErrorMessage error={paged.moreError} retry={() => void paged.loadMore()} />
+      )}
       {paged.next !== null && (
         <button
           type="button"
@@ -292,6 +307,7 @@ export function InventoryPage() {
         <p className="mt-2 text-slate-600">
           GitLab groups, subgroups and projects visible to Baluarte&apos;s read-only token.
         </p>
+        <PopulationNote population={freshness.data?.population} />
       </div>
 
       {freshness.error ? (
@@ -312,7 +328,9 @@ export function InventoryPage() {
                 to={`?${writeFilters(tab.view, filters).toString()}`}
                 aria-current={tab.view === view ? "page" : undefined}
                 className={`block rounded px-3 py-2 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 ${
-                  tab.view === view ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
+                  tab.view === view
+                    ? "bg-slate-900 text-white"
+                    : "text-slate-700 hover:bg-slate-100"
                 }`}
               >
                 {tab.label}
@@ -330,7 +348,14 @@ export function InventoryPage() {
           filters={filters}
           load={(after, signal) => listProjects(filters, after, signal)}
           render={(items) => <ProjectRows projects={items} />}
-          headers={["Project", "Visibility", "Default branch", "State", "Last seen", "Collection error"]}
+          headers={[
+            "Project",
+            "Visibility",
+            "Default branch",
+            "State",
+            "Last seen",
+            "Collection error",
+          ]}
         />
       ) : (
         <Listing<Group>

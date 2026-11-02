@@ -78,14 +78,27 @@ app.kubernetes.io/component: {{ .component }}
 {{- end }}
 
 {{- define "baluarte.databaseUrl" -}}
-{{- $sslMode := ternary "disable" .Values.database.sslMode .Values.devDatabase.enabled }}
-{{- printf "postgresql://%s@%s:%v/%s?sslmode=%s" .Values.database.user (include "baluarte.databaseHost" .) .Values.database.port .Values.database.name $sslMode }}
+{{- $sslMode := ternary "disable" .ctx.Values.database.sslMode .ctx.Values.devDatabase.enabled }}
+{{- printf "postgresql://%s@%s:%v/%s?sslmode=%s" .user (include "baluarte.databaseHost" .ctx) .ctx.Values.database.port .ctx.Values.database.name $sslMode }}
 {{- end }}
 
-{{/* Container env and volume mount for database access. */}}
+{{/* The API and worker connect as database.app.user when set (the default), not the owner. */}}
+{{- define "baluarte.appRoleEnabled" -}}
+{{- if .Values.database.app.user }}true{{ end }}
+{{- end }}
+
+{{- define "baluarte.appDatabaseSecretName" -}}
+{{- if .Values.devDatabase.enabled }}
+{{- include "baluarte.devDatabaseName" . }}
+{{- else }}
+{{- required "Set database.app.existingSecret to a Secret holding the app role's password (or database.app.user to \"\" to connect as the owner)" .Values.database.app.existingSecret }}
+{{- end }}
+{{- end }}
+
+{{/* API and worker: env, volume mount and volume for database access. */}}
 {{- define "baluarte.databaseEnv" -}}
 - name: BALUARTE_DATABASE_URL
-  value: {{ include "baluarte.databaseUrl" . | quote }}
+  value: {{ include "baluarte.databaseUrl" (dict "ctx" . "user" (ternary .Values.database.app.user .Values.database.user (eq (include "baluarte.appRoleEnabled" .) "true"))) | quote }}
 - name: BALUARTE_DATABASE_PASSWORD_FILE
   value: /var/run/secrets/baluarte/database/password
 {{- end }}
@@ -99,11 +112,55 @@ app.kubernetes.io/component: {{ .component }}
 {{- define "baluarte.databaseVolume" -}}
 - name: database-password
   secret:
+{{- if include "baluarte.appRoleEnabled" . }}
+    secretName: {{ include "baluarte.appDatabaseSecretName" . }}
+    defaultMode: 0440
+    items:
+      - key: {{ ternary "app-password" .Values.database.app.passwordKey .Values.devDatabase.enabled }}
+        path: password
+{{- else }}
     secretName: {{ include "baluarte.databaseSecretName" . }}
     defaultMode: 0440
     items:
       - key: {{ ternary "password" .Values.database.passwordKey .Values.devDatabase.enabled }}
         path: password
+{{- end }}
+{{- end }}
+
+{{/* Migrations: run as the schema owner, then set up the app role. */}}
+{{- define "baluarte.migrateDatabaseEnv" -}}
+- name: BALUARTE_DATABASE_URL
+  value: {{ include "baluarte.databaseUrl" (dict "ctx" . "user" .Values.database.user) | quote }}
+- name: BALUARTE_DATABASE_PASSWORD_FILE
+  value: /var/run/secrets/baluarte/database-owner/password
+{{- if include "baluarte.appRoleEnabled" . }}
+- name: BALUARTE_APP_DATABASE_USER
+  value: {{ .Values.database.app.user | quote }}
+- name: BALUARTE_APP_DATABASE_PASSWORD_FILE
+  value: /var/run/secrets/baluarte/database/password
+{{- end }}
+{{- end }}
+
+{{- define "baluarte.migrateDatabaseVolumeMount" -}}
+- name: database-owner-password
+  mountPath: /var/run/secrets/baluarte/database-owner
+  readOnly: true
+{{- if include "baluarte.appRoleEnabled" . }}
+{{ include "baluarte.databaseVolumeMount" . }}
+{{- end }}
+{{- end }}
+
+{{- define "baluarte.migrateDatabaseVolume" -}}
+- name: database-owner-password
+  secret:
+    secretName: {{ include "baluarte.databaseSecretName" . }}
+    defaultMode: 0440
+    items:
+      - key: {{ ternary "password" .Values.database.passwordKey .Values.devDatabase.enabled }}
+        path: password
+{{- if include "baluarte.appRoleEnabled" . }}
+{{ include "baluarte.databaseVolume" . }}
+{{- end }}
 {{- end }}
 
 {{- define "baluarte.publicUrl" -}}
@@ -144,10 +201,14 @@ https://{{ .Values.ingress.host }}
   value: {{ join "," $oidc.analystGroups | quote }}
 - name: BALUARTE_OIDC_AUDITOR_GROUPS
   value: {{ join "," $oidc.auditorGroups | quote }}
+{{- with .Values.auth.session.idleMinutes }}
 - name: BALUARTE_SESSION_IDLE_MINUTES
-  value: {{ .Values.auth.session.idleMinutes | quote }}
+  value: {{ . | quote }}
+{{- end }}
+{{- with .Values.auth.session.lifetimeMinutes }}
 - name: BALUARTE_SESSION_LIFETIME_MINUTES
-  value: {{ .Values.auth.session.lifetimeMinutes | quote }}
+  value: {{ . | quote }}
+{{- end }}
 {{- if $oidc.existingSecret }}
 - name: BALUARTE_OIDC_CLIENT_SECRET_FILE
   value: /var/run/secrets/baluarte/oidc/client-secret

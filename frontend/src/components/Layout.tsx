@@ -1,6 +1,8 @@
 import { NavLink, Outlet } from "react-router";
 
 import { useAuth } from "../auth/context";
+import { ComplianceAlertBanner } from "../compliance/ComplianceAlertBanner";
+import { CollectionAlertBanner } from "../freshness/CollectionAlertBanner";
 import { FreshnessIndicator } from "../freshness/FreshnessIndicator";
 import { FreshnessProvider } from "../freshness/FreshnessProvider";
 import { visibleNavItems } from "../navigation";
@@ -50,6 +52,10 @@ export function Layout() {
             </div>
           </div>
         </header>
+        {signedIn && <CollectionAlertBanner />}
+        {session.status === "signed_in" && session.user.permissions.includes("compliance:read") && (
+          <ComplianceAlertBanner />
+        )}
         <main id="main" tabIndex={-1} className="mx-auto max-w-6xl px-4 py-8 focus:outline-none">
           <Outlet />
         </main>

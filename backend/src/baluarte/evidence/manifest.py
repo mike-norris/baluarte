@@ -15,7 +15,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 # v2: adds the exceptions summary (export format v2).
-MANIFEST_FORMAT = "baluarte.evidence-manifest/v2"
+# v3: adds ``population`` and its limitation (export format unchanged).
+MANIFEST_FORMAT = "baluarte.evidence-manifest/v3"
 # Invalid observation IDs listed by ID; beyond this only the count is given.
 MAX_LISTED = 1000
 
@@ -144,6 +145,24 @@ def _freshness(meta: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+UNKNOWN_POPULATION = {
+    "basis": "unknown",
+    "token_username": None,
+    "is_admin": None,
+    "statement": (
+        "Baluarte has not confirmed which GitLab account the token belongs to, so it cannot say "
+        "whether the inventory covers the whole instance. Projects the token cannot see are not "
+        "included and are not checked."
+    ),
+}
+
+
+def population(meta: dict[str, Any]) -> dict[str, Any]:
+    """Which groups and projects the export can cover, from the collection freshness."""
+    found = meta["freshness"]["collection"].get("population")
+    return found if isinstance(found, dict) else UNKNOWN_POPULATION
+
+
 def build(
     *,
     meta: dict[str, Any],
@@ -154,6 +173,8 @@ def build(
     contents: list[dict[str, Any]],
     summary: Summary,
     metadata_sha256: str | None = None,
+    governance: dict[str, Any] | None = None,
+    operations: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The manifest. ``contents`` lists the ZIP's files, or the JSON document's sections."""
     manifest: dict[str, Any] = {
@@ -197,7 +218,13 @@ def build(
         },
         "runs_not_succeeded": summary.runs,
         "freshness": _freshness(meta),
-        "limitations": LIMITATIONS,
+        # Who the token acts as bounds everything above: projects it cannot see are absent.
+        "population": population(meta),
+        # Whether a baseline change needed a second person when this export was made.
+        "governance": governance if governance is not None else {"require_review": None},
+        # The operating profile Baluarte itself ran to, and its posture, when this was made.
+        "operations": operations,
+        "limitations": [*LIMITATIONS, population(meta)["statement"]],
         "verification": VERIFICATION,
     }
     if metadata_sha256 is not None:

@@ -1,4 +1,5 @@
-"""First-run setup: enter the identity provider and GitLab settings before anyone can sign in.
+"""First-run setup: enter the identity provider, GitLab and the operating profile before anyone
+can sign in.
 
 Mounted on the public router because no one can sign in yet. Instead of a session, these
 endpoints need a setup session, started by entering the one-time setup code from the API log
@@ -18,8 +19,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from baluarte import audit
+from baluarte.api.v1.compliance import profile_out, update_profile
 from baluarte.api.v1.gitlab import gitlab_transport
 from baluarte.auth.dependencies import CSRF_HEADER, SAFE_METHODS, database
+from baluarte.compliance import operations
+from baluarte.compliance.schemas import ProfileOut, ProfileUpdate
 from baluarte.configuration import service
 from baluarte.configuration.schemas import (
     GitLabConfig,
@@ -249,3 +253,25 @@ def test_gitlab(
 ) -> GitLabTestResult:
     with http_errors():
         return service.check_gitlab_connection(db, body, transport)
+
+
+@router.get(
+    "/compliance",
+    response_model=ProfileOut,
+    summary="The operating profile chosen so far (the defaults until one is saved)",
+    dependencies=[SetupSession],
+)
+def read_compliance(db: Database) -> ProfileOut:
+    return profile_out(operations.load(db))
+
+
+@router.put(
+    "/compliance",
+    response_model=ProfileOut,
+    summary="Choose the frameworks Baluarte itself must meet, and its operating settings",
+    description="Required before setup can complete. 409 `below_minimum` when a value misses "
+    "the selected frameworks' minimum: no exception can be recorded before anyone signs in.",
+    dependencies=[SetupSession],
+)
+def write_compliance(body: ProfileUpdate, db: Database) -> ProfileOut:
+    return update_profile(db, body, ACTOR)

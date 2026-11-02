@@ -28,19 +28,19 @@ describe("navigation", () => {
     const nav = await screen.findByRole("navigation", { name: "Primary" });
     const links = within(nav).getAllByRole("link");
     expect(links.map((link) => link.textContent)).toEqual(
-      navItems.filter((item) => item.path !== "/settings").map((item) => item.label),
+      navItems.filter((item) => !item.permission).map((item) => item.label),
     );
   });
 
-  it("shows Settings only to users who manage settings", async () => {
+  it("shows Settings, Compliance and the Audit log only to users with their permissions", async () => {
     vi.unstubAllGlobals();
     signedIn({
       ...analyst,
       roles: ["admin"],
-      permissions: [...analyst.permissions, "settings:manage"],
+      permissions: [...analyst.permissions, "settings:manage", "audit_log:read", "compliance:read"],
     });
 
-    renderAt("/policies");
+    renderAt("/governance");
 
     const nav = await screen.findByRole("navigation", { name: "Primary" });
     expect(
@@ -70,7 +70,7 @@ describe("navigation", () => {
     await user.click(await screen.findByRole("link", { name: "Findings" }));
 
     expect(router.state.location.pathname).toBe("/findings");
-    expect(screen.getByRole("heading", { level: 1, name: "Findings" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Findings" })).toBeInTheDocument();
   });
 
   it.each(navItems)("renders a page heading for $label", async ({ path, label }) => {

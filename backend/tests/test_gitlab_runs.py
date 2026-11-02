@@ -93,12 +93,46 @@ def test_handlers_record_successful_runs(migrated_engine: Engine, gitlab_env: No
 
     groups_run, capabilities_run = runs(migrated_engine)
     assert (groups_run.kind, groups_run.status, groups_run.seen) == ("groups", "succeeded", 2)
-    assert groups_run.counts == {"active": 0, "inaccessible": 0, "missing": 0, "unchanged": 0}
+    assert groups_run.counts == {
+        "active": 0,
+        "inaccessible": 0,
+        "missing": 0,
+        "unchanged": 0,
+        "listed": {"new": 2, "known": 0, "restored": 0},
+    }
     assert groups_run.finished_at is not None
     assert groups_run.attempt == 1
     assert groups_run.collection_job_id is not None
     assert (capabilities_run.kind, capabilities_run.status) == ("capabilities", "succeeded")
     assert capabilities_run.counts == {"not_supported": ["license.read"]}
+
+
+@pytest.mark.db
+def test_counts_and_log_separate_new_known_and_restored_rows(
+    migrated_engine: Engine, gitlab_env: None, caplog: pytest.LogCaptureFixture
+) -> None:
+    # A first collection lists everything as new; the old log read "reconciled {active: 0}".
+    run_job(migrated_engine, DISCOVER_GROUPS, make_discover_groups(groups_fake().transport))
+    with Session(migrated_engine) as db:
+        db.execute(update(GitLabGroup).where(GitLabGroup.gitlab_id == 2).values(state="missing"))
+        db.commit()
+
+    caplog.set_level("INFO", logger="baluarte.integrations.gitlab.jobs")
+    three = [[group(1, "platform"), group(2, "platform/api", 1), group(3, "platform/web", 1)]]
+    with Session(migrated_engine) as db:
+        queue.enqueue(db, DISCOVER_GROUPS, "second")
+        db.commit()
+    handler = make_discover_groups(groups_fake(three).transport)
+    assert Worker(migrated_engine, {DISCOVER_GROUPS: handler}).run_once()
+
+    first, second = runs(migrated_engine)
+    assert first.counts["listed"] == {"new": 2, "known": 0, "restored": 0}
+    assert second.counts["listed"] == {"new": 1, "known": 1, "restored": 1}
+    assert second.seen == 3
+    assert (
+        "gitlab groups: 3 listed (1 new, 1 known, 1 restored); 0 not listed: 0 still active, "
+        "0 inaccessible, 0 missing, 0 could not be confirmed"
+    ) in caplog.messages
 
 
 @pytest.mark.db
@@ -253,7 +287,9 @@ def test_schedule_queues_each_collection_once_per_interval(migrated_engine: Engi
         f"{kind}:scheduled:{bucket}"
         for kind in (DETECT_CAPABILITIES, DISCOVER_GROUPS, DISCOVER_PROJECTS)
     }
-    assert {job.max_attempts for job in jobs} == {3}
+    # A 6-hour interval fits every scheduled retry: 1, 5 and 15 minutes after each failure.
+    assert {job.max_attempts for job in jobs} == {4}
+    assert {tuple(job.payload[queue.RETRY_DELAYS]) for job in jobs} == {(60, 300, 900)}
 
 
 @pytest.mark.db

@@ -64,6 +64,17 @@ export async function sendJson<T>(
   body: unknown,
   csrfToken: string,
 ): Promise<T | null> {
+  const { data } = await sendJsonWithStatus<T>(method, path, body, csrfToken);
+  return data;
+}
+
+/** As ``sendJson``, keeping the success status for endpoints where 200 and 201 differ. */
+export async function sendJsonWithStatus<T>(
+  method: Method,
+  path: string,
+  body: unknown,
+  csrfToken: string,
+): Promise<{ status: number; data: T | null }> {
   let response: Response;
   try {
     response = await fetch(path, {
@@ -85,8 +96,8 @@ export async function sendJson<T>(
       changeFailure(response.status, await responseDetail(response)),
     );
   }
-  if (response.status === 204) return null;
-  return (await response.json()) as T;
+  if (response.status === 204) return { status: 204, data: null };
+  return { status: response.status, data: (await response.json()) as T };
 }
 
 /** POST ``body`` as JSON with the session's CSRF token; resolves to the JSON response. */

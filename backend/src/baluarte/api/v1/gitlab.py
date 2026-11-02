@@ -5,9 +5,9 @@ from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from baluarte import audit
@@ -21,15 +21,25 @@ from baluarte.integrations.gitlab.diagnostics import (
     not_configured,
     run_diagnostics,
 )
-from baluarte.integrations.gitlab.freshness import FreshnessReport, RunOut, report, stale_after
+from baluarte.integrations.gitlab.freshness import (
+    FreshnessReport,
+    KindFreshness,
+    RunOut,
+    kind_freshness,
+    report,
+    stale_after,
+)
 from baluarte.integrations.gitlab.instances import instance_id_for
 from baluarte.integrations.gitlab.jobs import (
     DETECT_CAPABILITIES,
     DISCOVER_GROUPS,
     DISCOVER_PROJECTS,
+    DISCOVER_SECURITY_POLICIES,
 )
 from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_settings
 from baluarte.jobs import queue
+from baluarte.policy.assignments import Gap, group_ancestry
+from baluarte.policy.evaluation.runner import not_evaluated
 from baluarte.settings import ConfigurationError
 
 logger = logging.getLogger(__name__)
@@ -225,6 +235,26 @@ def discover_projects(
     return _queue(db, principal, DISCOVER_PROJECTS, "gitlab.project_discovery_requested", 5)
 
 
+@router.post(
+    "/security-policies/discover",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=JobQueued,
+    summary="Queue GitLab security policy discovery",
+    description="Reads the security policies reaching every active group and project with "
+    "GraphQL queries sent as GET. Also queued after each project discovery when capability "
+    "detection found security policies readable; a run when they are not readable fails "
+    "with that reason. " + _QUEUED_DOC,
+    responses={409: {"description": "GitLab is not configured"}},
+)
+def discover_security_policies(
+    principal: Annotated[Principal, Depends(require(Permission.SETTINGS_MANAGE))],
+    db: Annotated[Session, Depends(database)],
+) -> JobQueued:
+    return _queue(
+        db, principal, DISCOVER_SECURITY_POLICIES, "gitlab.security_policy_discovery_requested", 3
+    )
+
+
 InventoryState = Literal["active", "missing", "inaccessible"]
 _STATE_DOC = (
     "`state` is `active`, `inaccessible` (exists, but the token may not read it) or `missing` "
@@ -379,6 +409,149 @@ def list_projects(
     return ProjectPage(items=items, next_after_id=items[-1].id if len(rows) > limit else None)
 
 
+class Ancestor(BaseModel):
+    gitlab_id: int
+    full_path: str
+    state: str | None
+
+
+class AncestryOut(BaseModel):
+    # Nearest first, up to the top-level group, as the inventory records them.
+    groups: list[Ancestor]
+    status: Literal["complete", "incomplete"]
+    gaps: list[Gap]
+
+
+class GroupDetail(BaseModel):
+    group: GroupOut
+    # The group's parents; empty for a top-level group.
+    ancestry: AncestryOut
+    subgroups: int
+    projects: int
+    collection: KindFreshness
+
+
+class ProjectDetail(BaseModel):
+    project: ProjectOut
+    # The namespace group and its parents; empty for a personal project.
+    ancestry: AncestryOut
+    collection: KindFreshness
+    # Why baselines are not evaluated for this project: "archived", or null when they are.
+    not_evaluated: Literal["archived"] | None
+
+
+def _ancestry_out(db: Session, instance_id: int, start: int | None, seen: set[int]) -> AncestryOut:
+    groups, gaps = group_ancestry(db, instance_id, start, seen)
+    return AncestryOut(
+        groups=[
+            Ancestor(gitlab_id=group.target_id, full_path=group.path, state=group.state)
+            for group in groups
+        ],
+        status="incomplete" if gaps else "complete",
+        gaps=gaps,
+    )
+
+
+def _instance_row(db: Session) -> tuple[GitLabSettings, GitLabInstance] | None:
+    settings = _configured()
+    if settings is None:
+        return None
+    instance = db.scalars(
+        select(GitLabInstance).where(GitLabInstance.base_url == settings.url)
+    ).first()
+    return (settings, instance) if instance is not None else None
+
+
+_DETAIL_DOC = (
+    "Keyed by GitLab ID, like the effective-policies and evaluations reads. `collection` is the "
+    "freshness of the discovery that records it: read the item with it, since a `state` from a "
+    "failed or stale collection is not current. "
+)
+
+
+@router.get(
+    "/groups/{gitlab_id}",
+    response_model=GroupDetail,
+    summary="One discovered group, its parents and collection freshness",
+    description=_DETAIL_DOC
+    + "`subgroups` and `projects` count its direct children in the inventory. "
+    + _STATE_DOC,
+    responses={404: {"description": "The group is not in the inventory"}},
+)
+def read_group(
+    gitlab_id: Annotated[int, Path(gt=0)],
+    _: Annotated[Principal, Depends(require(Permission.INVENTORY_READ))],
+    db: Annotated[Session, Depends(database)],
+) -> GroupDetail:
+    configured = _instance_row(db)
+    group = (
+        db.scalars(
+            select(GitLabGroup).where(
+                GitLabGroup.instance_id == configured[1].id, GitLabGroup.gitlab_id == gitlab_id
+            )
+        ).first()
+        if configured
+        else None
+    )
+    if configured is None or group is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such group in the inventory")
+    settings, instance = configured
+    subgroups = db.execute(
+        select(func.count()).where(
+            GitLabGroup.instance_id == instance.id, GitLabGroup.parent_gitlab_id == gitlab_id
+        )
+    ).scalar_one()
+    projects = db.execute(
+        select(func.count()).where(
+            GitLabProject.instance_id == instance.id,
+            GitLabProject.namespace_gitlab_id == gitlab_id,
+            GitLabProject.namespace_kind.is_distinct_from("user"),
+        )
+    ).scalar_one()
+    return GroupDetail(
+        group=GroupOut.model_validate(group, from_attributes=True),
+        ancestry=_ancestry_out(db, instance.id, group.parent_gitlab_id, {gitlab_id}),
+        subgroups=subgroups,
+        projects=projects,
+        collection=kind_freshness(db, instance.id, "groups", settings),
+    )
+
+
+@router.get(
+    "/projects/{gitlab_id}",
+    response_model=ProjectDetail,
+    summary="One discovered project, its groups and collection freshness",
+    description=_DETAIL_DOC + _STATE_DOC,
+    responses={404: {"description": "The project is not in the inventory"}},
+)
+def read_project(
+    gitlab_id: Annotated[int, Path(gt=0)],
+    _: Annotated[Principal, Depends(require(Permission.INVENTORY_READ))],
+    db: Annotated[Session, Depends(database)],
+) -> ProjectDetail:
+    configured = _instance_row(db)
+    project = (
+        db.scalars(
+            select(GitLabProject).where(
+                GitLabProject.instance_id == configured[1].id,
+                GitLabProject.gitlab_id == gitlab_id,
+            )
+        ).first()
+        if configured
+        else None
+    )
+    if configured is None or project is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such project in the inventory")
+    settings, instance = configured
+    start = None if project.namespace_kind == "user" else project.namespace_gitlab_id
+    return ProjectDetail(
+        project=ProjectOut.model_validate(project, from_attributes=True),
+        ancestry=_ancestry_out(db, instance.id, start, set()),
+        collection=kind_freshness(db, instance.id, "projects", settings),
+        not_evaluated=not_evaluated(project),
+    )
+
+
 @router.get(
     "/freshness",
     response_model=FreshnessReport,
@@ -411,7 +584,9 @@ class RunPage(BaseModel):
 def list_runs(
     _: Annotated[Principal, Depends(require(Permission.INVENTORY_READ))],
     db: Annotated[Session, Depends(database)],
-    kind: Annotated[Literal["capabilities", "groups", "projects"] | None, Query()] = None,
+    kind: Annotated[
+        Literal["capabilities", "groups", "projects", "security_policies"] | None, Query()
+    ] = None,
     run_status: Annotated[
         Literal["running", "succeeded", "partial", "failed"] | None, Query(alias="status")
     ] = None,

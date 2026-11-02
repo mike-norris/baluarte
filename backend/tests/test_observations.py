@@ -314,7 +314,7 @@ def test_capability_snapshots_are_instance_evidence(
     assert (row.project_id, row.group_id, row.source) == (None, None, "capabilities")
     assert row.collection_status == "ok"
     assert row.payload is not None
-    assert set(row.payload) == {"version", "edition", "tier", "probes"}
+    assert set(row.payload) == {"version", "edition", "tier", "probes", "token_user"}
     assert row.payload["version"] == "17.5.1-ee"
     assert verify(row)
 

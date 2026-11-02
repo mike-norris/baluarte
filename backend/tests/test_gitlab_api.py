@@ -552,3 +552,122 @@ def test_has_error_filter(migrated_engine: Engine, gitlab_env: None) -> None:
     ]
     assert "platform/back_end" not in group_paths(clean)
     assert project_paths(projects) == ["platform/api"]
+
+
+@pytest.mark.parametrize("role", [Role.ADMIN, Role.ANALYST, Role.AUDITOR])
+def test_one_group_with_its_parents_children_and_freshness(
+    migrated_engine: Engine, gitlab_env: None, role: Role
+) -> None:
+    seed_groups(migrated_engine)
+    seed_projects(migrated_engine)
+    seed_runs(migrated_engine)
+    client = client_as(migrated_engine, FakeGitLab(), role)
+
+    top = client.get("/api/v1/gitlab/groups/1")
+    child = client.get("/api/v1/gitlab/groups/2").json()
+
+    assert top.status_code == 200
+    body = top.json()
+    assert (body["group"]["gitlab_id"], body["group"]["full_path"]) == (1, "platform")
+    assert body["ancestry"] == {"groups": [], "status": "complete", "gaps": []}
+    # Two subgroups; two projects in the group itself (the personal project is not counted).
+    assert (body["subgroups"], body["projects"]) == (2, 2)
+    assert body["collection"]["status"] == "partial"
+    assert child["ancestry"]["groups"] == [
+        {"gitlab_id": 1, "full_path": "platform", "state": "active"}
+    ]
+    assert (child["subgroups"], child["projects"]) == (0, 0)
+
+
+def test_one_group_reports_an_unconfirmed_parent(migrated_engine: Engine, gitlab_env: None) -> None:
+    seed_groups(migrated_engine)
+    with Session(migrated_engine) as db:
+        db.execute(update(GitLabGroup).where(GitLabGroup.gitlab_id == 1).values(state="missing"))
+        db.commit()
+
+    body = client_as(migrated_engine, FakeGitLab(), Role.AUDITOR).get("/api/v1/gitlab/groups/3")
+
+    assert body.json()["ancestry"] == {
+        "groups": [{"gitlab_id": 1, "full_path": "platform", "state": "missing"}],
+        "status": "incomplete",
+        "gaps": [{"gitlab_id": 1, "reason": "missing"}],
+    }
+
+
+@pytest.mark.parametrize("role", [Role.ADMIN, Role.ANALYST, Role.AUDITOR])
+def test_one_project_with_its_groups_and_freshness(
+    migrated_engine: Engine, gitlab_env: None, role: Role
+) -> None:
+    seed_groups(migrated_engine)
+    seed_projects(migrated_engine)
+    seed_runs(migrated_engine)
+    client = client_as(migrated_engine, FakeGitLab(), role)
+
+    response = client.get("/api/v1/gitlab/projects/10")
+    personal = client.get("/api/v1/gitlab/projects/12").json()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["project"]["path_with_namespace"], body["project"]["visibility"]) == (
+        "platform/api",
+        "internal",
+    )
+    assert body["ancestry"]["groups"] == [
+        {"gitlab_id": 1, "full_path": "platform", "state": "active"}
+    ]
+    assert body["ancestry"]["status"] == "complete"
+    assert body["collection"]["status"] == "failed"
+    assert body["collection"]["last_run"]["error"] == "boom"
+    # A personal project's namespace is a user, not a group.
+    assert (personal["project"]["state"], personal["ancestry"]["groups"]) == ("inaccessible", [])
+    assert personal["ancestry"]["status"] == "complete"
+    assert body["not_evaluated"] is None
+
+
+def test_an_archived_project_says_it_is_not_evaluated(
+    migrated_engine: Engine, gitlab_env: None
+) -> None:
+    seed_groups(migrated_engine)
+    seed_projects(migrated_engine)
+    with Session(migrated_engine) as db:
+        db.execute(update(GitLabProject).where(GitLabProject.gitlab_id == 10).values(archived=True))
+        db.commit()
+
+    body = client_as(migrated_engine, FakeGitLab(), Role.AUDITOR).get("/api/v1/gitlab/projects/10")
+
+    assert body.json()["not_evaluated"] == "archived"
+
+
+def test_project_whose_group_is_not_collected_is_incomplete(
+    migrated_engine: Engine, gitlab_env: None
+) -> None:
+    seed_projects(migrated_engine)
+
+    body = client_as(migrated_engine, FakeGitLab(), Role.AUDITOR).get("/api/v1/gitlab/projects/10")
+
+    assert body.json()["ancestry"] == {
+        "groups": [],
+        "status": "incomplete",
+        "gaps": [{"gitlab_id": 1, "reason": "not_in_inventory"}],
+    }
+
+
+@pytest.mark.parametrize("path", ["/api/v1/gitlab/groups/999", "/api/v1/gitlab/projects/999"])
+def test_unknown_single_items_are_not_found(
+    migrated_engine: Engine, gitlab_env: None, path: str
+) -> None:
+    seed_groups(migrated_engine)
+    seed_projects(migrated_engine)
+
+    assert client_as(migrated_engine, FakeGitLab(), Role.ADMIN).get(path).status_code == 404
+
+
+@pytest.mark.parametrize("path", ["/api/v1/gitlab/groups/1", "/api/v1/gitlab/projects/10"])
+def test_single_items_are_not_found_without_gitlab(
+    migrated_engine: Engine, gitlab_env: None, monkeypatch: pytest.MonkeyPatch, path: str
+) -> None:
+    seed_groups(migrated_engine)
+    seed_projects(migrated_engine)
+    monkeypatch.delenv("BALUARTE_GITLAB_URL")
+
+    assert client_as(migrated_engine, FakeGitLab(), Role.ADMIN).get(path).status_code == 404

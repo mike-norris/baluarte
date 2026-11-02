@@ -34,6 +34,7 @@ export const findingStateLabels: Record<FindingState, string> = {
 export const resolutionLabels: Record<string, string> = {
   passed: "the rule passed",
   no_longer_applies: "the rule no longer applies to this project",
+  project_archived: "the project was archived, and archived projects are not checked",
 };
 
 /** Why a rule could not be decided (docs/EVALUATION.md); the API lists them in rank order. */
@@ -56,6 +57,16 @@ export const reasonHelp: Record<UnknownReason, string> = {
     "The evidence record's SHA-256 digest no longer matches its contents: " +
     "it may have been altered.",
   evidence_mismatch: "The evidence record does not hold the value that was judged.",
+  security_policies_unread:
+    "This project's GitLab security policies have never been read, the last read failed, " +
+    "or this policy type wasn't read.",
+  security_policy_type_unsupported: "This GitLab can't list this type of GitLab security policy.",
+  security_policy_truncated:
+    "GitLab listed more security policies of this type than were read, so one that counts " +
+    "may be missing.",
+  security_policy_yaml_invalid:
+    "A GitLab security policy reaching this project has YAML Baluarte can't read, or no " +
+    "clear enabled setting.",
 };
 
 export const capabilityLabels: Record<string, string> = {

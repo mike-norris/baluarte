@@ -15,7 +15,7 @@ import uuid
 from datetime import timedelta
 from typing import Literal
 
-from sqlalchemy import Engine, exists, func, or_, select, update
+from sqlalchemy import Engine, and_, exists, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from baluarte.db.models import (
@@ -35,7 +35,7 @@ from baluarte.policy.evaluation.project import (
     collection_contexts,
     evaluate_project,
 )
-from baluarte.policy.evaluation.store import Tally, store_project
+from baluarte.policy.evaluation.store import Tally, close_archived, store_project
 from baluarte.policy.exceptions import expire_due
 from baluarte.settings import ConfigurationError
 
@@ -115,10 +115,23 @@ def finish_run(
         db.commit()
 
 
-def _page(db: Session, instance_id: int, after_id: int) -> list[GitLabProject]:
-    """Active projects, and any other project with an open or excepted finding.
+def not_evaluated(project: GitLabProject) -> Literal["archived"] | None:
+    """Why an inventory project is not evaluated, or None when it is.
 
-    So a finding on a project that left the inventory shows its latest result as unknown.
+    Archived projects are skipped: GitLab makes them read-only, so a baseline result
+    could not lead to a change. Only active projects are skipped this way; a missing or
+    inaccessible project's archived flag is from its last sighting.
+    """
+    if project.archived and project.state == "active":
+        return "archived"
+    return None
+
+
+def _page(db: Session, instance_id: int, after_id: int) -> list[GitLabProject]:
+    """Active, unarchived projects, and any other project with an open or excepted finding.
+
+    So a finding on a project that left the inventory shows its latest result as unknown, and a
+    finding on a project that was archived is resolved.
     """
     has_open_finding = exists().where(
         Finding.project_id == GitLabProject.id, Finding.state.in_(("open", "excepted"))
@@ -129,7 +142,10 @@ def _page(db: Session, instance_id: int, after_id: int) -> list[GitLabProject]:
             .where(
                 GitLabProject.instance_id == instance_id,
                 GitLabProject.id > after_id,
-                or_(GitLabProject.state == "active", has_open_finding),
+                or_(
+                    and_(GitLabProject.state == "active", GitLabProject.archived.is_(False)),
+                    has_open_finding,
+                ),
             )
             .order_by(GitLabProject.id)
             .limit(PAGE_SIZE)
@@ -140,7 +156,11 @@ def _page(db: Session, instance_id: int, after_id: int) -> list[GitLabProject]:
 def evaluate_all(
     engine: Engine, settings: GitLabSettings, job: ClaimedJob | None = None
 ) -> tuple[int, Tally]:
-    """Evaluate every project; returns the run ID and its counts."""
+    """Evaluate every project; returns the run ID and its counts.
+
+    The run's ``projects`` counts projects evaluated: archived projects are skipped, and the
+    findings they resolve are counted under ``findings.project_archived``.
+    """
     with Session(engine) as db:
         instance_id = instance_for(db, settings.url).id
         db.commit()
@@ -170,12 +190,15 @@ def evaluate_all(
                 if not page:
                     break
                 for project in page:
+                    if not_evaluated(project) == "archived":
+                        close_archived(db, project, tally)
+                        continue
+                    projects += 1
                     resolution = resolve_project(db, instance, project)
                     results = evaluate_project(db, project, resolution, collections, capabilities)
                     store_project(db, instance_id, project, resolution, results, run_id, tally)
                 db.commit()
                 after_id = page[-1].id
-                projects += len(page)
     except Exception as exc:
         finish_run(
             engine, run_id, "failed", projects, tally, f"unexpected error: {type(exc).__name__}"
@@ -192,7 +215,7 @@ def evaluate(job: ClaimedJob, engine: Engine) -> None:
 
 
 def queue_after_collection(db: Session, collection_run_id: int) -> int:
-    """Queue an evaluation for a finished project discovery; once per collection run."""
+    """Queue an evaluation for a finished project or security policy discovery; once per run."""
     return queue.enqueue(
         db, EVALUATE, f"{EVALUATE}:after-run:{collection_run_id}", max_attempts=MAX_ATTEMPTS
     )

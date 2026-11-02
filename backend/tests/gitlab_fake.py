@@ -1,10 +1,12 @@
 """A scripted GitLab API for tests, served through httpx.MockTransport."""
 
-from collections.abc import Callable
+import json
+from collections.abc import Callable, Collection
 from typing import Any
 
 import httpx
 
+from baluarte.integrations.gitlab.security_policies import FIELDS
 from baluarte.integrations.gitlab.settings import GitLabSettings
 
 TOKEN = "fake-gitlab-token-value"
@@ -59,7 +61,109 @@ def healthy_routes() -> dict[str, list[Reply]]:
         ],
         "/api/v4/projects/42/approvals": [httpx.Response(200, json={"approvals_before_merge": 0})],
         "/api/v4/license": [httpx.Response(403, json={"message": "403 Forbidden"})],
+        "/api/graphql": [graphql()],
     }
+
+
+def policy_node(
+    name: str,
+    source: str,
+    *,
+    inherited: bool = False,
+    enabled: bool = True,
+    source_type: str = "group",
+    updated_at: str = "2026-10-23T14:06:13Z",
+    yaml: str | None = None,
+    excluding_projects: Collection[str] = (),
+) -> dict[str, Any]:
+    """A security policy node as GitLab's GraphQL API returns it."""
+
+    def paths(values: Collection[str]) -> dict[str, Any]:
+        return {
+            "nodes": [{"fullPath": value} for value in values],
+            "pageInfo": {"hasNextPage": False},
+        }
+
+    source_node = (
+        {
+            "__typename": "GroupSecurityPolicySource",
+            "inherited": inherited,
+            "namespace": {"fullPath": source},
+        }
+        if source_type == "group"
+        else {"__typename": "ProjectSecurityPolicySource", "project": {"fullPath": source}}
+    )
+    return {
+        "name": name,
+        "description": f"{name} description",
+        "enabled": enabled,
+        "yaml": yaml
+        if yaml is not None
+        else f"- name: {name}\n  enabled: {str(enabled).lower()}\n",
+        "updatedAt": updated_at,
+        "source": source_node,
+        "policyScope": {
+            "complianceFrameworks": {"nodes": [], "pageInfo": {"hasNextPage": False}},
+            "includingProjects": paths(()),
+            "excludingProjects": paths(excluding_projects),
+            "includingGroups": paths(()),
+            "excludingGroups": paths(()),
+            "excludingArchivedProjects": False,
+            "excludingPersonalProjects": False,
+        },
+    }
+
+
+def graphql(
+    policies: dict[str, dict[str, list[dict[str, Any]]]] | None = None,
+    links: dict[str, str] | None = None,
+    *,
+    unsupported: Collection[str] = (),
+    forbidden: Collection[str] = (),
+    hidden: Collection[str] = (),
+    truncated: Collection[str] = (),
+) -> Reply:
+    """Answer security policy queries like GitLab's GraphQL API.
+
+    ``policies`` maps a group or project path to its policy nodes per type, ``links`` a path to
+    its directly linked policy project. A query naming a field in ``unsupported`` fails as an
+    unknown field; a path in ``forbidden`` is refused, one in ``hidden`` comes back null, and a
+    path in ``truncated`` reports another page.
+    """
+    policies = policies or {}
+    links = links or {}
+
+    def errors(message: str) -> httpx.Response:
+        return httpx.Response(200, json={"errors": [{"message": message}]})
+
+    def reply(request: httpx.Request) -> httpx.Response:
+        if request.method != "GET":
+            return httpx.Response(405)
+        query = request.url.params["query"]
+        path = json.loads(request.url.params.get("variables", "{}")).get("path")
+        for field in unsupported:
+            if field + "(" in query:
+                return errors(f"Field '{field}' doesn't exist on type 'Group'")
+        root = "target" if "target:" in query else "group"
+        if path in forbidden:
+            return errors(
+                "The resource that you are attempting to access does not exist or you don't "
+                "have permission to perform this action"
+            )
+        if path in hidden:
+            return httpx.Response(200, json={"data": {root: None}})
+        found: dict[str, Any] = {
+            "securityPolicyProject": {"fullPath": links[path]} if path in links else None
+        }
+        for policy_type, field in FIELDS.items():
+            if f"{policy_type}: {field}(" in query:
+                found[policy_type] = {
+                    "nodes": policies.get(path, {}).get(policy_type, []),
+                    "pageInfo": {"hasNextPage": path in truncated},
+                }
+        return httpx.Response(200, json={"data": {root: found}})
+
+    return reply
 
 
 class FakeGitLab:
@@ -71,6 +175,9 @@ class FakeGitLab:
 
     def set(self, path: str, *replies: Reply) -> None:
         self.routes["/api/v4" + path] = list(replies)
+
+    def graphql(self, *replies: Reply) -> None:
+        self.routes["/api/graphql"] = list(replies)
 
     def json(self, path: str, status: int = 200, body: Any = None) -> None:
         self.set(path, httpx.Response(status, json=body))

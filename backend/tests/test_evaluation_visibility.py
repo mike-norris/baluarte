@@ -124,7 +124,8 @@ def test_pass_reason_names_the_value_and_the_allowed_set() -> None:
     assert result.reason == "Visibility is private, which is allowed (private, internal)."
 
 
-def test_archived_projects_are_evaluated_like_any_other() -> None:
+def test_the_rule_itself_ignores_the_archived_flag() -> None:
+    # The runner skips archived projects; the rule only judges visibility.
     result = evaluate_rule(
         VISIBILITY,
         POLICY,

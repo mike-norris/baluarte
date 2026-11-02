@@ -37,6 +37,7 @@ import csv
 import hashlib
 import io
 import json
+import textwrap
 import zipfile
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
@@ -49,6 +50,7 @@ from sqlalchemy.orm import Session
 
 from baluarte import __version__
 from baluarte.audit import details_digest
+from baluarte.compliance.posture import operations_summary
 from baluarte.db.models import (
     CollectionRun,
     Evaluation,
@@ -66,6 +68,7 @@ from baluarte.evidence.observations import verify
 from baluarte.integrations.gitlab import freshness as collection_freshness
 from baluarte.integrations.gitlab.settings import GitLabSettings
 from baluarte.logs import redact_value
+from baluarte.policy import changes as policy_changes
 from baluarte.policy.evaluation import freshness as evaluation_freshness
 from baluarte.policy.exceptions import effective_state
 
@@ -91,6 +94,10 @@ Generated at:  {generated_at} (database clock, UTC)
 GitLab:        {instance}
 Format:        {format}
 Scope:         {scope}
+
+Population
+----------
+{population}
 
 Files
 -----
@@ -126,6 +133,7 @@ Limitations
   is not a SOC 2 certification, ISO 27001 certification, or NIST authorization.
 - Digests show whether a row changed after it was written. They are not anchored outside the
   database, so a database superuser could rewrite a row and its digest together.
+- The export covers only what the GitLab token can see; see Population above.
 - Cells that a spreadsheet would read as formulas start with an apostrophe.
 """
 
@@ -759,6 +767,8 @@ class EvidenceExport:
             contents=contents,
             summary=self.summary,
             metadata_sha256=metadata_sha256,
+            governance={"require_review": policy_changes.review_required(self.db)},
+            operations=operations_summary(self.db),
         )
         self.result.manifest_sha256 = details_digest(built)
         return built
@@ -833,6 +843,7 @@ class EvidenceExport:
             instance=meta["instance"],
             format=FORMAT,
             scope=_dumps(meta["scope"]),
+            population=textwrap.fill(manifest.population(meta)["statement"], width=92),
         )
         yield from self._zip_file(archive, sink, "README.txt", iter([readme]), rows=False)
         meta_text = json.dumps(meta, ensure_ascii=False, indent=2) + "\n"

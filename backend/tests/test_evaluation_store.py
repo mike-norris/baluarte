@@ -466,6 +466,84 @@ def test_missing_projects_are_evaluated_only_while_they_have_an_open_finding(
     assert run.projects == 1
 
 
+def set_archived(world: World, project_id: int, archived: bool) -> None:
+    with Session(world.engine) as db:
+        db.execute(
+            update(GitLabProject).where(GitLabProject.id == project_id).values(archived=archived)
+        )
+        db.commit()
+
+
+def test_archived_projects_are_not_evaluated(world: World) -> None:
+    archived = world.project(1, "public")
+    set_archived(world, archived, True)
+    world.project(2, "private")
+
+    run = world.run()
+
+    assert [e.project_id for e in world.evaluations()] == [archived + 1]
+    assert world.findings() == []
+    assert run.projects == 1
+    assert run.counts == {"outcomes": {"pass": 1}, "findings": {}}
+
+
+def test_archiving_a_project_resolves_its_findings(world: World) -> None:
+    project_id = world.project(1, "public")
+    world.run()
+    set_archived(world, project_id, True)
+
+    run = world.run()
+
+    (finding,) = world.findings()
+    assert (finding.state, finding.resolution) == ("resolved", "project_archived")
+    assert finding.resolved_at is not None
+    assert finding.latest_outcome == "fail"
+    assert len(world.evaluations()) == 1
+    assert run.projects == 0
+    assert run.counts["findings"] == {"project_archived": 1}
+
+    # Resolved, it is no longer read on later runs.
+    again = world.run()
+    assert again.counts == {"outcomes": {}, "findings": {}}
+
+
+def test_unarchiving_a_project_judges_it_again(world: World) -> None:
+    project_id = world.project(1, "public")
+    world.run()
+    (opened,) = world.findings()
+    set_archived(world, project_id, True)
+    world.run()
+    set_archived(world, project_id, False)
+
+    run = world.run()
+
+    (finding,) = world.findings()
+    assert finding.id == opened.id
+    assert (finding.state, finding.resolution) == ("open", None)
+    assert run.counts["findings"] == {"reopened": 1}
+    assert [e.outcome for e in world.evaluations()] == ["fail", "fail"]
+
+
+def test_an_archived_missing_project_keeps_its_finding_open(world: World) -> None:
+    # A missing project's archived flag is from its last sighting; like any missing project
+    # with an open finding it is judged unknown, which resolves nothing.
+    project_id = world.project(1, "public")
+    world.run()
+    with Session(world.engine) as db:
+        db.execute(
+            update(GitLabProject)
+            .where(GitLabProject.id == project_id)
+            .values(archived=True, state="missing")
+        )
+        db.commit()
+
+    world.run()
+
+    (finding,) = world.findings()
+    assert finding.state == "open"
+    assert world.evaluations()[-1].outcome == "unknown"
+
+
 def test_evaluations_cannot_be_updated(world: World) -> None:
     world.project(1, "public")
     world.run()

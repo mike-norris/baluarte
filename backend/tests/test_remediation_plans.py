@@ -719,5 +719,6 @@ def test_the_gitlab_client_can_only_send_get() -> None:
     }
     source = inspect.getsource(gitlab_client)
 
-    assert public == {"close", "get", "get_json", "paginate"}
+    # graphql sends its queries with GET too (test_gitlab_client.py checks the method).
+    assert public == {"close", "get", "get_json", "graphql", "paginate"}
     assert re.findall(r"self\._http\.(\w+)\(", source) == ["close", "get"]

@@ -96,6 +96,9 @@ def test_missing_version_is_unknown_not_ok() -> None:
         (token(scopes=["api"]), "warning", "write scopes (api)"),
         (token(scopes=["read_api", "write_repository"]), "warning", "write_repository"),
         (token(scopes=["read_user"]), "failed", "lacks the read_api scope"),
+        # admin_mode changes nothing by itself: with read_api the token only reads.
+        (token(scopes=["read_api", "admin_mode"]), "ok", "read_api and admin_mode"),
+        (token(scopes=["api", "admin_mode"]), "warning", "write scopes (api)"),
         (token(revoked=True), "failed", "revoked or inactive"),
         (token(active=False), "failed", "revoked or inactive"),
         (token(expires_at="2026-10-27"), "failed", "expired on 2026-10-27"),
@@ -134,7 +137,8 @@ def test_token_details_forbidden_is_failed() -> None:
 @pytest.mark.parametrize(
     ("user", "status"),
     [
-        ({"username": "root", "state": "active", "is_admin": True}, "warning"),
+        # The fake token is read_api only, so an administrator is not a concern.
+        ({"username": "root", "state": "active", "is_admin": True}, "ok"),
         ({"username": "gone", "state": "blocked"}, "failed"),
         ({"username": "plain", "state": "active"}, "ok"),
     ],
@@ -144,6 +148,28 @@ def test_user_checks(user: dict[str, Any], status: str) -> None:
     fake.json("/user", body=user)
 
     assert statuses(diagnose(fake))["user"] == status
+
+
+@pytest.mark.parametrize(
+    ("scopes", "status"),
+    [(["api"], "warning"), (["read_api", "write_repository"], "warning"), (["read_api"], "ok")],
+)
+def test_an_administrator_is_flagged_only_when_the_token_can_write(
+    scopes: list[str], status: str
+) -> None:
+    fake = FakeGitLab()
+    fake.json("/personal_access_tokens/self", body=token(scopes=scopes))
+    fake.json("/user", body={"username": "root", "state": "active", "is_admin": True})
+
+    assert statuses(diagnose(fake))["user"] == status
+
+
+def test_an_administrator_is_flagged_when_the_scopes_are_unknown() -> None:
+    fake = FakeGitLab()
+    fake.json("/personal_access_tokens/self", 404, {"message": "404 Not Found"})
+    fake.json("/user", body={"username": "root", "state": "active", "is_admin": True})
+
+    assert statuses(diagnose(fake))["user"] == "warning"
 
 
 @pytest.mark.parametrize(

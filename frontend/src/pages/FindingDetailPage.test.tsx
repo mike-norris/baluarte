@@ -70,7 +70,7 @@ describe("finding detail", () => {
     expect(summary).toHaveTextContent("project-visibility (gitlab.project.visibility)");
     expect(within(summary).getByRole("link", { name: "platform/api" })).toHaveAttribute(
       "href",
-      "/inventory?search=platform%2Fapi",
+      "/inventory/projects/105",
     );
   });
 
@@ -92,12 +92,23 @@ describe("finding detail", () => {
     );
   });
 
+  it("says a finding was resolved because its project was archived", async () => {
+    api(
+      findingDetail(5, evaluation(21), {
+        state: "resolved",
+        resolution: "project_archived",
+        resolved_at: "2026-11-01T06:12:00Z",
+      }),
+    );
+    renderAt();
+
+    expect(await screen.findByRole("region", { name: "Summary" })).toHaveTextContent(
+      "because the project was archived, and archived projects are not checked",
+    );
+  });
+
   it.each([
-    [
-      "unknown",
-      ["collection_stale", "value_unknown"],
-      "The projects inventory is stale.",
-    ],
+    ["unknown", ["collection_stale", "value_unknown"], "The projects inventory is stale."],
     ["unsupported", [], "This GitLab instance cannot report protected branches."],
   ] as const)("never shows a value for an %s result", async (outcome, reasons, reason) => {
     api(

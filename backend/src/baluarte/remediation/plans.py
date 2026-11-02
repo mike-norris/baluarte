@@ -351,7 +351,8 @@ def _plan_one(db: Session, instance_id: int, finding: Finding, built: _Built) ->
         step, skipped = _visibility_step(project, rule, evaluation.observed)
     elif isinstance(rule, DefaultBranchProtectedRule):
         step, skipped = _protection_step(project, rule, evaluation.observed)
-    else:  # pragma: no cover - every rule type is handled above
+    else:
+        # GitLab security policies live in a policy project; Baluarte plans no change to them.
         step, skipped = None, ("no_action", f"No remediation action exists for {rule.type}.")
     if step is None:
         skip(*(skipped or ("no_action", f"No remediation action exists for {rule.type}.")))

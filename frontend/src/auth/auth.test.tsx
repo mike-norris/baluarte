@@ -123,11 +123,13 @@ describe("account menu", () => {
     mockApi({
       "GET /api/v1/auth/me": () => json(analyst),
       "POST /api/v1/auth/logout": () => json({ detail: "Missing or invalid CSRF token" }, 403),
+      // Empty lists, so the only alert is the sign-out error.
+      "GET /api/v1/policies": () => json([]),
+      "GET /api/v1/policy-assignments?limit=100": () => json({ items: [], next_after_id: null }),
     });
     const user = userEvent.setup();
 
-    // A section that makes no API calls of its own, so the only alert is the sign-out error.
-    renderAt("/policies");
+    renderAt("/governance");
     await user.click(await screen.findByRole("button", { name: "Sign out" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Sign-out failed");

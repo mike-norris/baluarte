@@ -21,8 +21,8 @@ Pre-release (v0.1 in development): read-only GitLab inventory, policy evaluation
 Requires Docker with Compose v2. The stack is for development only; it binds to 127.0.0.1 and is not a production configuration.
 
 ```sh
-mkdir -p secrets && (umask 022 && openssl rand -base64 32 > secrets/postgres_password \
-  && openssl rand -base64 32 > secrets/secret_key)
+mkdir -p secrets && (umask 022 && for name in postgres_password app_database_password secret_key; do
+  [ -f secrets/$name ] || openssl rand -base64 32 > secrets/$name; done)
 docker compose up -d --build --wait
 docker compose logs api | grep 'setup code'
 ```
@@ -31,6 +31,8 @@ docker compose logs api | grep 'setup code'
 - API health: http://127.0.0.1:8000/api/v1/health (readiness, including migrations: `/api/v1/ready`)
 
 Open the web UI and follow the setup wizard. It asks for the one-time setup code from the API log (or run `docker compose exec api baluarte-setup-code` for a new one), then for your identity provider and, optionally, your GitLab URL and `read_api` token. Register `http://127.0.0.1:8080/api/v1/auth/callback` with the provider. Setup completes when the first user in an admin group signs in; after that, admins change these settings on the Settings page.
+
+`secrets/postgres_password` is the schema owner's, used only by `migrate`. The API and worker connect as `baluarte_app` with `secrets/app_database_password`; it can read and write data but cannot change the schema or alter audit events.
 
 `secrets/secret_key` seals the client secret and GitLab token in the database. Keep it with your database backups: without it they must be entered again. See [docs/SECURITY.md](docs/SECURITY.md#setup-and-secrets-entered-in-the-web-ui).
 

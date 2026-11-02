@@ -86,8 +86,61 @@ class DefaultBranchProtectedRule(_Rule):
     required: bool
 
 
-Rule = Annotated[ProjectVisibilityRule | DefaultBranchProtectedRule, Field(discriminator="type")]
-RULE_TYPES = ("gitlab.project.visibility", "gitlab.branch.default_protected")
+Scan = Literal[
+    "secret_detection", "sast", "sast_iac", "dependency_scanning", "container_scanning", "dast"
+]
+
+
+class SecurityPolicyScanExecutionRule(_Rule):
+    """Passes when the enabled GitLab scan execution policies that reach the project, taken
+    together, run every scan in ``scans`` on its default branch."""
+
+    type: Literal["gitlab.security_policy.scan_execution"]
+    scans: Annotated[list[Scan], Field(min_length=1, max_length=6)]
+    allow_skip_ci: Annotated[
+        bool,
+        Field(
+            description="When false, a policy that lets pipelines skip it with [skip ci] "
+            "(skip_ci.allowed: true, GitLab's default) does not count."
+        ),
+    ] = True
+
+    @model_validator(mode="after")
+    def _unique(self) -> "SecurityPolicyScanExecutionRule":
+        if len(set(self.scans)) != len(self.scans):
+            raise ValueError("scans must not repeat a scan")
+        return self
+
+
+class SecurityPolicyApprovalRule(_Rule):
+    """Passes when an enabled GitLab approval policy that reaches the project requires at least
+    ``min_approvals`` approvals on every merge request to its protected branches."""
+
+    type: Literal["gitlab.security_policy.approval"]
+    min_approvals: Annotated[int, Field(ge=1, le=20)]
+    forbid_author_approval: Annotated[
+        bool,
+        Field(description="Require approval_settings.prevent_approval_by_author: true."),
+    ] = False
+    forbid_committer_approval: Annotated[
+        bool,
+        Field(description="Require approval_settings.prevent_approval_by_commit_author: true."),
+    ] = False
+
+
+Rule = Annotated[
+    ProjectVisibilityRule
+    | DefaultBranchProtectedRule
+    | SecurityPolicyScanExecutionRule
+    | SecurityPolicyApprovalRule,
+    Field(discriminator="type"),
+]
+RULE_TYPES = (
+    "gitlab.project.visibility",
+    "gitlab.branch.default_protected",
+    "gitlab.security_policy.scan_execution",
+    "gitlab.security_policy.approval",
+)
 
 
 class Spec(_Strict):

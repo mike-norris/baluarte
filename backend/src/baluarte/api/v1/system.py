@@ -12,6 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from baluarte import __version__
+from baluarte.api.v1.compliance import compliance_errors
 from baluarte.api.v1.gitlab import gitlab_transport
 from baluarte.api.v1.setup import http_errors, oidc_transport
 from baluarte.auth.dependencies import Principal, auth_settings, database, require
@@ -31,6 +32,7 @@ from baluarte.configuration.schemas import (
     Source,
 )
 from baluarte.integrations.gitlab.settings import load_gitlab_settings
+from baluarte.policy import changes
 from baluarte.settings import ConfigurationError, load_logging_settings
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -224,3 +226,34 @@ def test_gitlab(
 ) -> GitLabTestResult:
     with http_errors():
         return service.check_gitlab_connection(db, body, transport)
+
+
+class GovernanceSettings(BaseModel):
+    # Baseline changes (new versions, assignments, unassignments) wait for someone other than
+    # the proposer to approve them. Off by default, so a single-user install is not locked out.
+    require_review: bool
+
+
+@router.get(
+    "/governance", response_model=GovernanceSettings, summary="Baseline change review setting"
+)
+def read_governance(_: Admin, db: Database) -> GovernanceSettings:
+    return GovernanceSettings(require_review=changes.review_required(db))
+
+
+@router.put(
+    "/governance",
+    response_model=GovernanceSettings,
+    summary="Require a second person to approve baseline changes",
+    description="Applies to changes made from now on; changes already in force stay. Turning "
+    "it off leaves proposed changes waiting for a decision. 409 `below_minimum` when the "
+    "operating profile requires review and no compliance exception for `change-review` is in "
+    "force. Audited as `settings.governance_updated`.",
+)
+def write_governance(
+    body: GovernanceSettings, principal: Admin, db: Database
+) -> GovernanceSettings:
+    with compliance_errors():
+        changes.set_review_required(db, body.require_review, principal.actor)
+    db.commit()
+    return GovernanceSettings(require_review=changes.review_required(db))

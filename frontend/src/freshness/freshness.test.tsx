@@ -15,6 +15,8 @@ import { worst } from "./status";
 const ME = "GET /api/v1/auth/me";
 const FRESHNESS = "GET /api/v1/gitlab/freshness";
 const FRESHNESS_URL = "/api/v1/gitlab/freshness";
+/** A signed-in page that loads nothing of its own, so only freshness calls reach the API. */
+const NO_DATA_PAGE = "/no-such-page";
 
 function renderAt(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
@@ -62,7 +64,7 @@ describe("header freshness indicator", () => {
     ["not_configured", "Not configured"],
   ] as const)("shows %s as text and links to the inventory", async (status, label) => {
     api(() => json(freshness({ status })));
-    renderAt("/policies");
+    renderAt(NO_DATA_PAGE);
 
     const link = await indicator(`GitLab data: ${label}`);
     expect(link).toHaveAttribute("href", "/inventory");
@@ -72,7 +74,7 @@ describe("header freshness indicator", () => {
     let status: FreshnessReport["status"] = "fresh";
     api(() => json(freshness({ status })));
     const user = userEvent.setup();
-    const { router } = renderAt("/policies");
+    const { router } = renderAt(NO_DATA_PAGE);
 
     await indicator("GitLab data: Up to date");
     expect(liveRegion()).toBeEmptyDOMElement();
@@ -86,7 +88,7 @@ describe("header freshness indicator", () => {
 
     // Another navigation re-checks; the same status leaves the region unchanged, so it is
     // not announced again.
-    await user.click(screen.getByRole("link", { name: "Policies" }));
+    await user.click(screen.getByRole("link", { name: "Governance" }));
     await indicator("GitLab data: Stale");
     expect(liveRegion()).toBe(region);
     expect(region).toHaveTextContent("GitLab data is stale.");
@@ -94,7 +96,7 @@ describe("header freshness indicator", () => {
 
   it("shows status unknown when the check fails", async () => {
     api(() => json({ detail: "boom" }, 500));
-    renderAt("/policies");
+    renderAt(NO_DATA_PAGE);
 
     await indicator("GitLab data: Status unknown");
     expect(liveRegion()).toHaveTextContent("GitLab collection status could not be checked.");
@@ -103,7 +105,7 @@ describe("header freshness indicator", () => {
   it("replaces an earlier result with status unknown when a re-check fails", async () => {
     let fail = false;
     api(() => (fail ? Promise.reject(new TypeError("offline")) : json(freshness())));
-    const { router } = renderAt("/policies");
+    const { router } = renderAt(NO_DATA_PAGE);
 
     await indicator("GitLab data: Up to date");
     fail = true;
@@ -123,7 +125,7 @@ describe("header freshness indicator", () => {
 
   it("re-checks on navigation", async () => {
     const calls = api(() => json(freshness()));
-    const { router } = renderAt("/policies");
+    const { router } = renderAt(NO_DATA_PAGE);
     // Wait for the settled result: "Checking…" can render before the first request is made.
     await indicator("GitLab data: Up to date");
     const before = freshnessCalls(calls);
@@ -139,7 +141,7 @@ describe("header freshness indicator", () => {
     vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
     let status: FreshnessReport["status"] = "fresh";
     const calls = api(() => json(freshness({ status })));
-    renderAt("/policies");
+    renderAt(NO_DATA_PAGE);
     await indicator("GitLab data: Up to date");
     const before = freshnessCalls(calls);
 
@@ -154,7 +156,7 @@ describe("header freshness indicator", () => {
 
   it("aborts an in-flight check when unmounted", async () => {
     const calls = api(() => new Promise<Response>(() => undefined));
-    const { view } = renderAt("/policies");
+    const { view } = renderAt(NO_DATA_PAGE);
     await indicator("GitLab data: Checking…");
 
     view.unmount();
@@ -177,7 +179,7 @@ describe("collection context on GitLab-derived pages", () => {
       renderAt(path);
       await indicator("GitLab data: Stale");
 
-      const note = screen.getByRole("complementary", { name: "Data freshness" });
+      const note = await screen.findByRole("complementary", { name: "Data freshness" });
       expect(note).toHaveTextContent("GitLab collection status: Stale");
       expect(note).toHaveTextContent("Oldest successful collection: 29 Oct 2026, 06:00 UTC");
       expect(note).toHaveTextContent("Policy evaluation status: Up to date");
@@ -194,7 +196,7 @@ describe("collection context on GitLab-derived pages", () => {
     renderAt("/evidence");
     await indicator("GitLab data: Up to date");
 
-    const note = screen.getByRole("complementary", { name: "Data freshness" });
+    const note = await screen.findByRole("complementary", { name: "Data freshness" });
     await vi.waitFor(() => {
       expect(note).toHaveTextContent("collected after the last successful evaluation");
     });
@@ -205,14 +207,14 @@ describe("collection context on GitLab-derived pages", () => {
     renderAt("/evidence");
     await indicator("GitLab data: Status unknown");
 
-    const note = screen.getByRole("complementary", { name: "Data freshness" });
+    const note = await screen.findByRole("complementary", { name: "Data freshness" });
     expect(note).toHaveTextContent("GitLab collection status: Status unknown");
     expect(note).not.toHaveTextContent("Oldest successful collection");
   });
 
   it("is not shown on pages that do not use GitLab data", async () => {
     api(() => json(freshness()));
-    renderAt("/policies");
+    renderAt(NO_DATA_PAGE);
 
     await indicator();
     expect(screen.queryByRole("complementary", { name: "Data freshness" })).not.toBeInTheDocument();
@@ -276,7 +278,7 @@ describe("header with evaluation freshness", () => {
       () => json(freshness()),
       () => json(evaluationFreshness({ status: "failed" })),
     );
-    renderAt("/policies");
+    renderAt(NO_DATA_PAGE);
 
     const link = await indicator("GitLab data: Failed");
     expect(link).toHaveAttribute("href", "/");
@@ -297,7 +299,7 @@ describe("header with evaluation freshness", () => {
           }),
         ),
     );
-    renderAt("/policies");
+    renderAt(NO_DATA_PAGE);
 
     await indicator("GitLab data: Never evaluated");
   });
@@ -307,7 +309,7 @@ describe("header with evaluation freshness", () => {
       () => json(freshness()),
       () => json({ detail: "boom" }, 500),
     );
-    renderAt("/policies");
+    renderAt(NO_DATA_PAGE);
 
     await indicator("GitLab data: Status unknown");
     expect(liveRegion()).toHaveTextContent("Policy evaluation status could not be checked.");
@@ -318,7 +320,7 @@ describe("header with evaluation freshness", () => {
       () => json(freshness({ status: "failed" })),
       () => json(evaluationFreshness({ status: "failed" })),
     );
-    renderAt("/policies");
+    renderAt(NO_DATA_PAGE);
 
     expect(await indicator("GitLab data: Failed")).toHaveAttribute("href", "/inventory");
   });

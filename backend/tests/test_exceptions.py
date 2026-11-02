@@ -312,6 +312,28 @@ def test_a_rule_that_no_longer_applies_resolves_a_waived_finding(
     )
 
 
+def test_archiving_a_project_resolves_a_waived_finding(
+    world: World, people: dict[str, int]
+) -> None:
+    project_id = world.project(1, "public")
+    add_exception(world, project_id, people["ana"], approver=people["bea"])
+    world.run()
+    with Session(world.engine) as db:
+        db.execute(
+            update(GitLabProject).where(GitLabProject.id == project_id).values(archived=True)
+        )
+        db.commit()
+
+    world.run()
+
+    (finding,) = world.findings()
+    assert (finding.state, finding.resolution, finding.exception_id) == (
+        "resolved",
+        "project_archived",
+        None,
+    )
+
+
 # --- Database rules --------------------------------------------------------------------------
 
 
