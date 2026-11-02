@@ -123,12 +123,13 @@ Baluarte, can read a backup.
 
    The public key is printed and is also on the `# public key:` line of the file.
 
-2. Create the backup role's password. `baluarte-migrate` creates the `baluarte_backup` role \
-from it, with read access only.
+2. Create the backup role's password, unless the README's setup already did. \
+`baluarte-migrate` creates the `baluarte_backup` role from it, with read access only. The file \
+must be readable inside the container, as the other files in `secrets/` are.
 
    ```sh
-   openssl rand -base64 32 > secrets/backup_database_password
-   chmod 600 secrets/backup_database_password
+   [ -f secrets/backup_database_password ] || \
+     (umask 022 && openssl rand -base64 32 > secrets/backup_database_password)
    ```
 
 3. Create the backup directory, writable by the service (uid 70).
