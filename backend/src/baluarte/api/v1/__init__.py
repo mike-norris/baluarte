@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends
 from baluarte.api.v1 import (
     audit_events,
     auth,
+    compliance,
     evaluations,
     exceptions,
     exports,
@@ -18,8 +19,10 @@ from baluarte.api.v1 import (
     observations,
     policies,
     policy_assignments,
+    policy_changes,
     ready,
     remediation,
+    security_policies,
     setup,
     system,
 )
@@ -44,13 +47,16 @@ protected.include_router(jobs.router)
 protected.include_router(audit_events.router)
 protected.include_router(system.router)
 protected.include_router(gitlab.router)
+protected.include_router(security_policies.router)
 protected.include_router(observations.router)
 protected.include_router(policies.router)
 protected.include_router(policy_assignments.router)
+protected.include_router(policy_changes.router)
 protected.include_router(evaluations.router)
 protected.include_router(exceptions.router)
 protected.include_router(exports.router)
 protected.include_router(remediation.router)
+protected.include_router(compliance.router)
 
 router = APIRouter(prefix="/api/v1")
 router.include_router(public)

@@ -27,6 +27,11 @@ UnknownReason = Literal[
     "target_collection_error",
     "ancestry_incomplete",
     "capability_unknown",
+    # GitLab security policy rules: why the policies reaching the project are not known.
+    "security_policies_unread",
+    "security_policy_type_unsupported",
+    "security_policy_truncated",
+    "security_policy_yaml_invalid",
     "value_unknown",
     # Set when a result is stored (BAL-021): a pass or fail must be backed by an observation.
     "evidence_missing",
@@ -44,6 +49,10 @@ UNKNOWN_PRECEDENCE: tuple[UnknownReason, ...] = (
     "target_collection_error",
     "ancestry_incomplete",
     "capability_unknown",
+    "security_policies_unread",
+    "security_policy_type_unsupported",
+    "security_policy_truncated",
+    "security_policy_yaml_invalid",
     "value_unknown",
     "evidence_missing",
     "evidence_digest_mismatch",

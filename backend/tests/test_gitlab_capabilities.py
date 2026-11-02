@@ -40,6 +40,7 @@ def test_full_detection_on_a_healthy_instance() -> None:
     assert snapshot.checked_at == NOW
     assert statuses(snapshot) == {
         "version": "supported",
+        "user.read": "supported",
         "groups.list": "supported",
         "groups.visibility": "supported",
         "projects.list": "supported",
@@ -48,6 +49,11 @@ def test_full_detection_on_a_healthy_instance() -> None:
         "protected_branches.read": "supported",
         "merge_request_approvals.read": "supported",
         "license.read": "forbidden",
+        "security_policies.read": "supported",
+        "security_policies.scan_execution": "supported",
+        "security_policies.approval": "supported",
+        "security_policies.pipeline_execution": "supported",
+        "security_policies.vulnerability_management": "supported",
     }
     assert snapshot.probes["protected_branches.read"].endpoint == (
         "GET /projects/:id/protected_branches"

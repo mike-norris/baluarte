@@ -154,24 +154,30 @@ def digest(source: str) -> str:
     return hashlib.sha256(source.encode("utf-8")).hexdigest()
 
 
-def parse_policy(source: str) -> ParsedPolicy:
-    """Parse and validate ``source``; raise PolicyInvalid with every error found."""
+def load_yaml(source: str, max_bytes: int = MAX_SOURCE_BYTES) -> Any:
+    """Load one YAML document with the restricted loader; raise PolicyInvalid if it is unsafe.
+
+    Also used for YAML Baluarte reads but does not author, such as GitLab security policies.
+    """
     try:
         encoded = source.encode("utf-8", errors="strict")
     except UnicodeEncodeError:
         raise PolicyInvalid([PolicyError("(document)", "policy is not valid UTF-8")]) from None
-    if len(encoded) > MAX_SOURCE_BYTES:
-        raise PolicyInvalid(
-            [PolicyError("(document)", f"policy is larger than {MAX_SOURCE_BYTES} bytes")]
-        )
+    if len(encoded) > max_bytes:
+        raise PolicyInvalid([PolicyError("(document)", f"policy is larger than {max_bytes} bytes")])
     try:
-        data = yaml.load(source, Loader=_StrictLoader)  # noqa: S506 (restricted SafeLoader)
+        return yaml.load(source, Loader=_StrictLoader)  # noqa: S506 (restricted SafeLoader)
     except _Rejected as exc:
         raise PolicyInvalid([PolicyError("(document)", f"{exc} (line {exc.line})")]) from None
     except ConstructorError as exc:
         raise PolicyInvalid([_yaml_error(exc)]) from None
     except yaml.YAMLError as exc:
         raise PolicyInvalid([_yaml_error(exc)]) from None
+
+
+def parse_policy(source: str) -> ParsedPolicy:
+    """Parse and validate ``source``; raise PolicyInvalid with every error found."""
+    data = load_yaml(source)
     if not isinstance(data, dict):
         raise PolicyInvalid([PolicyError("(document)", "the document must be a mapping")])
     try:

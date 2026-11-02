@@ -1,0 +1,314 @@
+import { useId, useState, type FormEvent, type ReactNode } from "react";
+
+import { ApiError } from "../api/client";
+import {
+  BelowMinimum,
+  saveProfile,
+  type ComplianceSettings,
+  type FrameworkId,
+  type Profile,
+  type ProfilePath,
+  type SettingName,
+  type Violation,
+} from "../api/compliance";
+import { buttonClass, fieldClass, secondaryClass } from "../components/styles";
+import { asApiError, noteClass, Problems } from "../settings/parts";
+import {
+  applyMinimums,
+  defaultSettings,
+  describeRequirement,
+  frameworks,
+  frameworkShort,
+  meets,
+  settingInfo,
+  settingOrder,
+  strictest,
+} from "./format";
+
+type Draft = Record<SettingName, string | boolean>;
+
+function toDraft(settings: ComplianceSettings): Draft {
+  const draft = {} as Draft;
+  for (const name of settingOrder) {
+    const value = settings[name];
+    draft[name] = typeof value === "boolean" ? value : String(value);
+  }
+  return draft;
+}
+
+/** The draft as settings; NaN for a number field that is not a whole number. */
+function fromDraft(draft: Draft): ComplianceSettings {
+  const settings = {} as Record<SettingName, number | boolean>;
+  for (const name of settingOrder) {
+    const value = draft[name];
+    settings[name] =
+      typeof value === "boolean" ? value : /^\d+$/.test(value.trim()) ? Number(value) : NaN;
+  }
+  return settings as unknown as ComplianceSettings;
+}
+
+export function ViolationList({
+  violations,
+  action,
+}: {
+  violations: Violation[];
+  action?: ((violation: Violation) => ReactNode) | undefined;
+}) {
+  return (
+    <div role="alert" className="space-y-2 rounded border border-red-300 bg-red-50 p-3 text-sm">
+      <p className="font-medium text-red-900">
+        Not saved: these values do not meet the profile, and no exception is in force for them.
+      </p>
+      <ul className="space-y-2">
+        {violations.map((violation) => (
+          <li key={violation.control_id} className="space-y-1">
+            <p className="text-red-900">
+              {`${settingInfo[violation.setting].label}: ${String(violation.value)}. ${describeRequirement(violation.setting, violation.required)} (${violation.frameworks.map(frameworkShort).join(", ")}).`}
+            </p>
+            {action?.(violation)}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * The operating profile: which frameworks Baluarte itself must meet, and the settings they
+ * constrain. Shared by the setup wizard (minimums enforced here) and Settings, where a value
+ * below a minimum is sent so the API can accept it under an exception or list what is missing.
+ */
+export function ComplianceForm({
+  path,
+  csrf,
+  profile,
+  enforceMinimums,
+  submitLabel = "Save",
+  onSaved,
+  onError,
+  onCancel,
+  violationAction,
+}: {
+  path: ProfilePath;
+  csrf: string;
+  profile: Profile | null;
+  enforceMinimums: boolean;
+  submitLabel?: string;
+  onSaved: (profile: Profile) => void;
+  onError?: (error: ApiError) => void;
+  onCancel?: () => void;
+  violationAction?: (violation: Violation) => ReactNode;
+}) {
+  const configured = profile?.configured ?? false;
+  const [selected, setSelected] = useState<FrameworkId[]>(
+    configured ? (profile?.frameworks ?? []) : [],
+  );
+  const [none, setNone] = useState(configured && profile?.frameworks.length === 0);
+  const [draft, setDraft] = useState<Draft>(() => toDraft(profile?.settings ?? defaultSettings));
+  const [problems, setProblems] = useState<string[]>([]);
+  const [violations, setViolations] = useState<Violation[]>([]);
+  const [saving, setSaving] = useState(false);
+  const formId = useId();
+
+  const locked = (name: SettingName) => profile?.sources[name] === "deployment";
+
+  function choose(next: FrameworkId[]) {
+    setSelected(next);
+    setNone(false);
+    const current = fromDraft(draft);
+    // Only raise valid numbers; an unfinished entry is left for the user to correct.
+    const valid = settingOrder.every((name) => !Number.isNaN(current[name]));
+    if (valid) setDraft(toDraft(applyMinimums(current, next, locked)));
+  }
+
+  function validate(settings: ComplianceSettings): string[] {
+    const found: string[] = [];
+    if (selected.length === 0 && !none) {
+      found.push("Choose at least one framework, or None of these.");
+    }
+    for (const name of settingOrder) {
+      const value = settings[name];
+      const info = settingInfo[name];
+      if (typeof value === "number") {
+        if (Number.isNaN(value) || value < 1) {
+          found.push(`${info.label}: enter a whole number of ${info.unit ?? ""} of 1 or more.`);
+          continue;
+        }
+      }
+      const requirement = strictest(selected, name);
+      if (enforceMinimums && requirement && !locked(name) && !meets(value, requirement)) {
+        found.push(`${info.label}: ${describeRequirement(name, requirement).toLowerCase()}.`);
+      }
+    }
+    if (settings.session_idle_minutes > settings.session_lifetime_minutes) {
+      found.push("The inactivity limit cannot be longer than the session limit.");
+    }
+    return found;
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const settings = fromDraft(draft);
+    const found = validate(settings);
+    setProblems(found);
+    setViolations([]);
+    if (found.length > 0) return;
+    setSaving(true);
+    try {
+      onSaved(await saveProfile(path, { frameworks: none ? [] : selected, settings }, csrf));
+    } catch (error) {
+      if (error instanceof BelowMinimum) {
+        setViolations(error.violations);
+      } else {
+        const apiError = asApiError(error);
+        setProblems([apiError.message]);
+        onError?.(apiError);
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form onSubmit={(event) => void submit(event)} noValidate className="space-y-5">
+      <Problems messages={problems} />
+      {violations.length > 0 && <ViolationList violations={violations} action={violationAction} />}
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-semibold">Frameworks Baluarte must meet</legend>
+        <p className="text-sm text-slate-700">
+          This governs how Baluarte itself operates: how long it keeps its audit log and evidence,
+          how long sessions last, and whether baseline changes need a second person. It does not
+          change the baselines Baluarte checks your GitLab projects against.
+        </p>
+        {frameworks.map((framework) => (
+          <label key={framework.id} className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={selected.includes(framework.id)}
+              onChange={(event) => {
+                choose(
+                  event.target.checked
+                    ? [...selected, framework.id]
+                    : selected.filter((id) => id !== framework.id),
+                );
+              }}
+              className="h-4 w-4"
+            />
+            {framework.name}
+          </label>
+        ))}
+        <label className="flex items-center gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={none}
+            onChange={(event) => {
+              setNone(event.target.checked);
+              if (event.target.checked) setSelected([]);
+            }}
+            className="h-4 w-4"
+          />
+          None of these (standard defaults; nothing is enforced)
+        </label>
+        {selected.length > 1 && (
+          <p className="text-xs text-slate-600">
+            Where frameworks differ, the strictest value applies.
+          </p>
+        )}
+      </fieldset>
+
+      <fieldset className="space-y-4">
+        <legend className="text-sm font-semibold">Operating settings</legend>
+        {settingOrder.map((name) => {
+          const info = settingInfo[name];
+          const value = draft[name];
+          const requirement = strictest(selected, name);
+          const fixed = locked(name);
+          const parsed = fromDraft(draft)[name];
+          const below =
+            requirement !== null && !Number.isNaN(parsed) && !meets(parsed, requirement);
+          const fieldId = `${formId}-${name}`;
+          const described = `${fieldId}-hint${below ? ` ${fieldId}-warning` : ""}`;
+          const hint = (
+            <p id={`${fieldId}-hint`} className="text-xs text-slate-600">
+              {info.help}
+              {requirement &&
+                ` ${describeRequirement(name, requirement)} for ${requirement.frameworks.map(frameworkShort).join(", ")}.`}
+              {fixed && " Set by the deployment (environment variable); change it there."}
+            </p>
+          );
+          const warning = below && (
+            <p id={`${fieldId}-warning`} className="text-xs font-medium text-red-800">
+              {fixed
+                ? "The deployment's value does not meet the profile; the Compliance page shows this control as not met."
+                : enforceMinimums
+                  ? `Must be ${describeRequirement(name, requirement).toLowerCase()}.`
+                  : "Below the profile's minimum: saving needs an exception in force for this control."}
+            </p>
+          );
+          if (typeof value === "boolean") {
+            return (
+              <div key={name} className="space-y-1">
+                <label className="flex items-start gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    aria-describedby={described}
+                    checked={value}
+                    disabled={fixed}
+                    onChange={(event) => {
+                      setDraft({ ...draft, [name]: event.target.checked });
+                    }}
+                    className="mt-0.5 h-4 w-4"
+                  />
+                  {info.label}
+                </label>
+                <div className="pl-6">
+                  {hint}
+                  {warning}
+                </div>
+                {name === "legal_hold" && value && (
+                  <p className={noteClass}>
+                    While legal hold is on, the retention job deletes nothing, so the database keeps
+                    growing. Turn it off when the hold ends; the next run then deletes what is past
+                    its retention period.
+                  </p>
+                )}
+              </div>
+            );
+          }
+          return (
+            <div key={name}>
+              <label htmlFor={fieldId} className="block text-sm font-medium">
+                {`${info.label} (${info.unit ?? ""})`}
+              </label>
+              <input
+                id={fieldId}
+                aria-describedby={described}
+                name={name}
+                inputMode="numeric"
+                value={value}
+                disabled={fixed}
+                onChange={(event) => {
+                  setDraft({ ...draft, [name]: event.currentTarget.value });
+                }}
+                className={`${fieldClass} max-w-40`}
+              />
+              {hint}
+              {warning}
+            </div>
+          );
+        })}
+      </fieldset>
+
+      <div className="flex flex-wrap gap-2">
+        <button type="submit" disabled={saving} className={buttonClass}>
+          {saving ? "Saving…" : submitLabel}
+        </button>
+        {onCancel && (
+          <button type="button" onClick={onCancel} className={secondaryClass}>
+            Cancel
+          </button>
+        )}
+      </div>
+    </form>
+  );
+}

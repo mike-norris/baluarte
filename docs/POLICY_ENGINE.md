@@ -44,6 +44,10 @@ Status: the format, its validation and versioned storage (BAL-017), and assignme
 | --- | --- | --- |
 | `gitlab.project.visibility` | `allowed`: 1 to 3 distinct values from `private`, `internal`, `public` | The project's visibility is in `allowed`. |
 | `gitlab.branch.default_protected` | `required`: boolean | With `required: true`, a protected-branch rule (exact or wildcard) covers the project's default branch. `required: false` asserts nothing. An empty repository is `unknown`. |
+| `gitlab.security_policy.scan_execution` | `scans`: 1 to 6 distinct values from `secret_detection`, `sast`, `sast_iac`, `dependency_scanning`, `container_scanning`, `dast`. `allow_skip_ci`: boolean, default `true` | Every scan in `scans` runs on the default branch in an enabled scan execution policy that reaches the project. With `allow_skip_ci: false`, only policies that `[skip ci]` cannot skip count. |
+| `gitlab.security_policy.approval` | `min_approvals`: integer, 1 to 20. `forbid_author_approval`, `forbid_committer_approval`: boolean, default `false` | An enabled approval policy that reaches the project requires at least `min_approvals` approvals on every merge request to protected branches, and prevents approval by the author or committers when asked. |
+
+The security policy rules read what security policy discovery stored; a project whose policies were not read in full is `unknown`. [EVALUATION.md](EVALUATION.md#gitlab-security-policy-rules) gives the exact semantics.
 
 Any other `type` is rejected. New rule types are added to the schema, and old ones are never redefined; incompatible changes get a new `apiVersion`.
 
@@ -84,9 +88,9 @@ Saving a document whose name already exists adds the next version (2, 3, ...). S
 | Endpoint | Permission | Behaviour |
 | --- | --- | --- |
 | `POST /api/v1/policies/validate` | `policy:write` + CSRF | Validates `{"source_yaml": "..."}` without saving. 200 with `valid`, `errors`, and, when valid, `name`, `yaml_digest` and `rule_ids`. |
-| `POST /api/v1/policies` | `policy:write` + CSRF | Saves the next version. 201 when created, 200 when identical to the latest version, 422 with `detail.errors` when invalid. Creating a version writes a `policy.version_created` audit event with the name, version and digest; the source is not copied into the audit log. |
+| `POST /api/v1/policies` | `policy:write` + CSRF | Saves the next version. 201 when created, 200 when identical to the latest version, 422 with `detail.errors` when invalid. Creating a version writes a `policy.version_created` audit event with the name, version, digest and `change_id`; the source is not copied into the audit log. While review is required: 202 with the proposed change (`PolicyChangeDetail`) instead, and 409 when a different version of the same policy is already waiting (see [Reviewing baseline changes](#reviewing-baseline-changes)). |
 | `GET /api/v1/policies` | `findings:read` | Each policy name with its latest version and version count. |
-| `GET /api/v1/policies/{name}/versions?limit=` | `findings:read` | Versions newest first, without the source. |
+| `GET /api/v1/policies/{name}/versions?limit=` | `findings:read` | Versions newest first, without the source. Each carries `review`: the change that put it in force. |
 | `GET /api/v1/policies/{name}/versions/{version}` | `findings:read` | One version: the exact source, its digest and the parsed document. |
 
 Validation also needs `policy:write`, because it exists to support authoring.
@@ -165,13 +169,81 @@ A null `namespace_kind` means the kind is unknown: the project was discovered be
 
 | Endpoint | Permission | Behaviour |
 | --- | --- | --- |
-| `POST /api/v1/policy-assignments` | `policy:write` + CSRF | Body: `policy_name`, `version`, `target_type` (`instance`, `group`, `project`) and `target_id` (the GitLab ID; omitted for the instance).<br>Responses:<ul><li>201 when assigned, with a `policy.assigned` audit event.</li><li>200 when already assigned.</li><li>404 for an unknown version, or a target not in the inventory.</li><li>409 when GitLab is not configured, or the target is not `active`.</li></ul> |
-| `DELETE /api/v1/policy-assignments/{id}` | `policy:write` + CSRF | 204, with a `policy.unassigned` audit event. 404 if there is no such assignment. |
-| `GET /api/v1/policy-assignments` | `findings:read` | Assignments in ID order, with version, digest, and the target's path and state. Filters: `policy_name`, `target_type`, `target_id`. Paged with `after_id` and `limit`. |
-| `GET /api/v1/gitlab/projects/{gitlab_id}/effective-policies` | `findings:read` | Returns:<ul><li>`target` and `path`</li><li>`ancestry` and `gaps`</li><li>`policies`: the effective ones</li><li>`considered`: every assignment on the path with its outcome</li></ul>404 if the project is not in the inventory. |
+| `POST /api/v1/policy-assignments` | `policy:write` + CSRF | Body: `policy_name`, `version`, `target_type` (`instance`, `group`, `project`) and `target_id` (the GitLab ID; omitted for the instance).<br>Responses:<ul><li>201 when assigned, with a `policy.assigned` audit event.</li><li>202 with the proposed change while review is required; 409 when another change to that policy at that target is waiting.</li><li>200 when already assigned.</li><li>404 for an unknown version, or a target not in the inventory.</li><li>409 when GitLab is not configured, or the target is not `active`.</li></ul> |
+| `DELETE /api/v1/policy-assignments/{id}` | `policy:write` + CSRF | 204, with a `policy.unassigned` audit event. 202 with the proposed change while review is required. 404 if there is no such assignment. |
+| `GET /api/v1/policy-assignments` | `findings:read` | Assignments in ID order, with version, digest, the target's path and state, and `review`. Filters: `policy_name`, `target_type`, `target_id`. Paged with `after_id` and `limit`. |
+| `GET /api/v1/gitlab/projects/{gitlab_id}/effective-policies` | `findings:read` | Returns:<ul><li>`target` and `path`</li><li>`ancestry` and `gaps`</li><li>`policies`: the effective ones</li><li>`considered`: every assignment on the path with its outcome</li><li>`not_evaluated`: `"archived"` when evaluation skips the project, otherwise `null` (always `null` for groups)</li></ul>404 if the project is not in the inventory. |
 | `GET /api/v1/gitlab/groups/{gitlab_id}/effective-policies` | `findings:read` | The same, for a group. |
+| `GET /api/v1/policy-assignments/tree` | `findings:read` | Every group, and every project with an assignment of its own, with what it has in effect, in one read (see [The assignment tree](#the-assignment-tree)). 404 when GitLab is not configured or nothing is collected yet. |
+
+#### The assignment tree
+
+The tree applies the same rules as the effective-policies reads to data read once, so its entry for any group or project equals that target's own read (`test_tree_matches_every_effective_policies_read`). The web UI's "Where baselines apply" view is built from it.
+
+```text
+AssignmentTree {
+  instance: Target                      # target_type "instance"
+  instance_assignments: [TreeAssignment]
+  groups:   [TreeNode]                  # every group, ordered by path
+  projects: [TreeProject]               # only projects with their own assignment
+}
+TreeAssignment { assignment_id, policy_id, name, version, yaml_digest }
+TreeNode {
+  target: Target                        # { target_type, target_id (GitLab ID), path, state }
+  parent_gitlab_id: int | null          # a group's parent; a project's namespace group,
+                                        # null for a personal project
+  ancestry: "complete" | "incomplete"
+  gaps: [{ gitlab_id, reason }]         # not_in_inventory, missing, inaccessible, cycle, too_deep
+  assignments: [TreeAssignment]         # made to this target itself
+  in_effect: [TreeEffect]               # one per policy name assigned on its path
+}
+TreeProject = TreeNode + { namespace_gitlab_id, namespace_kind }
+TreeEffect {
+  name, assignment_id, policy_id, version, yaml_digest
+  status: "set_here" | "inherited" | "out_of_scope"
+  assigned_to: Target                   # where the deciding assignment is
+  replaces: [Resolved]                  # farther assignments of the same name it overrides
+}
+```
+
+- **`status`:** `set_here` and `inherited` apply. `out_of_scope` means the deciding version's scope excludes the target, which does not fall back to a farther assignment.
+- **Projects without their own assignment** are not listed: they have what their namespace group has, with the scope judged on that same namespace path. A personal project without its own assignment has only what the instance has.
 
 Audit events record the policy name, version, digest, target type, target ID and target path.
+
+## Reviewing baseline changes
+
+Implemented in `baluarte.policy.changes`. Changing a baseline or where it applies changes what every project is judged against, and removing a rule resolves its findings as `no_longer_applies`, so these changes can require a second person.
+
+- **Setting:** `PUT /api/v1/settings/governance` `{"require_review": true}` (`settings:manage`, audited as `settings.governance_updated`). Off by default, so a single-user install is not locked out; the Governance views warn while it is off.
+- **Every change is recorded** in `policy_change`: a new version, an assignment or an unassignment, with who proposed it, who decided it and when.
+- **Review required:** the change is `proposed` and has no effect. `policy` and `policy_assignment`, which evaluation reads, hold only approved changes. Someone with `policy:write` other than the proposer approves it (optionally with a note), which applies it as if it had just been made and queues an evaluation for an assignment change, or rejects it with a note. The API refuses the proposer (403) and a CHECK constraint enforces it again. Approval fails with 409 when the change can no longer be applied (its target is no longer active, or the assignment is gone); reject it instead.
+- **Review not required:** the change is applied at once and recorded `approved` with `self_approved` true and the proposer as approver, so the record shows no one else reviewed it.
+- **Audit:** `policy.change_proposed`, `policy.change_approved`, `policy.change_rejected`, and on approval the usual `policy.version_created`, `policy.assigned` or `policy.unassigned` with the approver as actor and `change_id` and `proposed_by` in the details.
+- **One at a time:** one proposed version per policy name, and one proposed assignment change per target and policy name; proposing the same change again returns the waiting one.
+
+| Endpoint | Permission | Behaviour |
+| --- | --- | --- |
+| `GET /api/v1/policy-changes` | `findings:read` | `{review_required, items: [PolicyChange], next_before_id}`, newest first. Filters: `state`, `kind`, `policy_name`; paged with `before_id` and `limit` (1–200, default 50). |
+| `GET /api/v1/policy-changes/{id}` | `findings:read` | `PolicyChangeDetail`: the change, plus `source_yaml` and `base_source_yaml` (the version in force when it was proposed) for a version change. |
+| `POST /api/v1/policy-changes/{id}/approve` | `policy:write` + CSRF | Body `{note?}`. 403 for the proposer, 409 when already decided or no longer applicable. |
+| `POST /api/v1/policy-changes/{id}/reject` | `policy:write` + CSRF | Body `{note}` (required). 403 for the proposer, 409 when already decided. |
+
+```text
+PolicyChange {
+  id, kind: "version" | "assign" | "unassign", state: "proposed" | "approved" | "rejected",
+  policy_name,
+  version: int | null          # version: what it became once approved; otherwise the version pinned
+  yaml_digest, base_version    # version changes
+  target_type, target_id, target_path, assignment_id   # assignment changes
+  review_required, self_approved, migrated: bool
+  proposed_by: Person, proposed_at, decided_by: Person | null, decided_at, decision_note
+}
+Person { actor: "user:<id>" | "system:..." | "unknown", user_id: int | null, display_name }
+Review { change_id, reviewed, self_approved, migrated, proposed_by, decided_by, decided_at }
+```
+
+`review` on versions and assignments is the approved change that put them in force; `reviewed` is true only when review was required and someone else approved it.
 
 ## Not yet defined
 

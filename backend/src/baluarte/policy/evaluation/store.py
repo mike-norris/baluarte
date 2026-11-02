@@ -16,6 +16,8 @@ Findings follow a rule for a project by policy name, across versions:
 - A rule that no longer applies to the project resolves its open finding
   (``resolution = no_longer_applies``), but only when the project's policy resolution was
   complete: a gap in the group chain could be hiding the policy, so it proves nothing.
+- An archived project is not evaluated at all: no evaluation rows, and its open and excepted
+  findings are resolved (``resolution = project_archived``). Unarchived, it is judged again.
 - Exceptions (BAL-033): a backed ``fail`` covered by an exception in force is stored as
   ``excepted`` with the exception's ID, keeping the observed value and evidence, and its
   finding becomes ``excepted`` (opened in that state if needed). Once no exception is in
@@ -26,7 +28,7 @@ Findings follow a rule for a project by policy name, across versions:
 
 import logging
 from collections import Counter
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -37,8 +39,10 @@ from baluarte.db.models import Evaluation, Finding, GitLabProject, Observation, 
 from baluarte.evidence.observations import verify
 from baluarte.integrations.gitlab.branches import PROTECTION_SOURCE
 from baluarte.integrations.gitlab.projects import PROJECT_SOURCES
+from baluarte.integrations.gitlab.security_policies import PROJECT_SOURCE as SECURITY_POLICY_SOURCE
 from baluarte.policy.assignments import Resolution
 from baluarte.policy.evaluation.model import RuleResult, UnknownReason
+from baluarte.policy.evaluation.security_policy import summarize
 from baluarte.policy.exceptions import active_for_project
 
 logger = logging.getLogger(__name__)
@@ -47,12 +51,17 @@ logger = logging.getLogger(__name__)
 INVENTORY_SOURCES: tuple[str, ...] = tuple(PROJECT_SOURCES)
 
 
-def _whole(payload: dict[str, Any]) -> Any:
+def _whole(payload: dict[str, Any], result: RuleResult) -> Any:
     return payload
 
 
-def _visibility(payload: dict[str, Any]) -> Any:
+def _visibility(payload: dict[str, Any], result: RuleResult) -> Any:
     return payload.get("visibility")
+
+
+def _security_policies(payload: dict[str, Any], result: RuleResult) -> Any:
+    # The judged value is a summary of the payload; rebuild it the same way.
+    return summarize(result.rule_type, result.target.path, payload)
 
 
 @dataclass(frozen=True)
@@ -62,7 +71,11 @@ class Evidence:
     sources: tuple[str, ...]
     # The value in an observation's payload, compared with the judged value. None when it is
     # not known, so a pass or fail cannot be backed.
-    value: Callable[[dict[str, Any]], Any] | None
+    value: Callable[[dict[str, Any], RuleResult], Any] | None
+    # Observation statuses that can back a value. A security policy observation is "partial"
+    # when some other policy type was not read in full; the rule's own type is checked when it
+    # is judged and again when its value is rebuilt here.
+    statuses: tuple[str, ...] = ("ok",)
 
 
 # Evidence by result ``source``. A rule type whose value lives elsewhere either adds an entry
@@ -71,6 +84,10 @@ EVIDENCE: Mapping[str, Evidence] = {
     "gitlab_project.visibility": Evidence(INVENTORY_SOURCES, _visibility),
     # The default-branch protection rule judges the protection observation's payload itself.
     PROTECTION_SOURCE: Evidence((PROTECTION_SOURCE,), _whole),
+    # Both GitLab security policy rules judge a summary of the project's policy observation.
+    SECURITY_POLICY_SOURCE: Evidence(
+        (SECURITY_POLICY_SOURCE,), _security_policies, ("ok", "partial")
+    ),
 }
 
 
@@ -128,7 +145,11 @@ def backed(result: RuleResult, evidence: Evidence, observation: Observation | No
     if result.outcome not in ("pass", "fail"):
         return result
     path = result.target.path
-    if observation is None or observation.collection_status != "ok" or observation.payload is None:
+    if (
+        observation is None
+        or observation.collection_status not in evidence.statuses
+        or observation.payload is None
+    ):
         return _unbacked(
             result,
             "evidence_missing",
@@ -149,7 +170,7 @@ def backed(result: RuleResult, evidence: Evidence, observation: Observation | No
             f"The stored observation of project {path} fails its integrity check (its SHA-256 "
             "digest does not match its payload), so it cannot back this value.",
         )
-    if evidence.value is None or evidence.value(observation.payload) != result.observed:
+    if evidence.value is None or evidence.value(observation.payload, result) != result.observed:
         return _unbacked(
             result,
             "evidence_mismatch",
@@ -276,15 +297,20 @@ def _follow(
         tally.findings["resolved"] += 1
 
 
-def _close_inapplicable(
-    db: Session, project: GitLabProject, applied: set[tuple[str, str]], tally: Tally
+def _resolve_all(
+    db: Session,
+    project: GitLabProject,
+    resolution: str,
+    tally: Tally,
+    keep: Collection[tuple[str, str]] = (),
 ) -> None:
+    """Resolve the project's open and excepted findings, except those in ``keep``."""
     open_findings = db.scalars(
         select(Finding)
         .where(Finding.project_id == project.id, Finding.state.in_(("open", "excepted")))
         .with_for_update()
     ).all()
-    stale = [f for f in open_findings if (f.policy_name, f.rule_id) not in applied]
+    stale = [f for f in open_findings if (f.policy_name, f.rule_id) not in keep]
     if not stale:
         return
     now = db.execute(select(func.now())).scalar_one()
@@ -292,8 +318,23 @@ def _close_inapplicable(
         finding.exception_id = None
         finding.state = "resolved"
         finding.resolved_at = now
-        finding.resolution = "no_longer_applies"
-        tally.findings["no_longer_applies"] += 1
+        finding.resolution = resolution
+        tally.findings[resolution] += 1
+
+
+def _close_inapplicable(
+    db: Session, project: GitLabProject, applied: set[tuple[str, str]], tally: Tally
+) -> None:
+    _resolve_all(db, project, "no_longer_applies", tally, keep=applied)
+
+
+def close_archived(db: Session, project: GitLabProject, tally: Tally) -> None:
+    """An archived project is not evaluated: resolve its open and excepted findings.
+
+    No evaluation rows are written. If the project is unarchived, the next evaluation judges it
+    again and a ``fail`` reopens the finding. The caller commits.
+    """
+    _resolve_all(db, project, "project_archived", tally)
 
 
 def store_project(

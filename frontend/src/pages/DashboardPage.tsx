@@ -17,7 +17,9 @@ import {
 import { useLoad, type Loaded } from "../api/useLoad";
 import { outcomeLabels, outcomeMeaning, severityLabels } from "../findings/format";
 import { useFreshness } from "../freshness/context";
+import { PopulationNote } from "../freshness/PopulationNote";
 import { freshnessTone, needsAttention, statusLabel } from "../freshness/status";
+import { APPLY_VIEW } from "../policies/format";
 import { formatTime } from "../time";
 
 const linkClass = "text-sky-800 underline";
@@ -156,7 +158,15 @@ function RuleResults({ run, newest }: { run: EvaluationRun | null; newest: Evalu
       )}
       {total === 0 ? (
         <p className="mt-3 text-sm">
-          The run produced no rule results: no policy applies to any project.
+          {"The run produced no rule results: no baseline applies to any project. "}
+          <Link to={APPLY_VIEW} className="text-sky-800 underline">
+            See where baselines apply
+          </Link>
+          {", or open a project or group from the "}
+          <Link to="/inventory" className="text-sky-800 underline">
+            inventory
+          </Link>
+          {" to see what reaches it."}
         </p>
       ) : (
         <p className="mt-3 text-sm">
@@ -334,6 +344,7 @@ export function DashboardPage() {
         Dashboard
       </h1>
       <p className="mt-2 text-slate-600">Compliance posture across groups and projects.</p>
+      <PopulationNote />
       <EvaluationStatus />
       <section aria-labelledby="rule-results" className="mt-8">
         <h2 id="rule-results" className="text-lg font-semibold">

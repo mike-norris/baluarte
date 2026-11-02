@@ -23,6 +23,9 @@ from baluarte.integrations.gitlab.client import GitLabClient, GitLabError, NotFo
 Status = Literal["ok", "warning", "failed", "unknown"]
 
 READ_SCOPES = frozenset({"read_api"})
+# Lets an administrator's token use admin access under Admin Mode. It grants nothing by itself, so
+# with read_api the token still only reads, but across the whole instance.
+ADMIN_READ_SCOPE = "admin_mode"
 # Scopes that let the token change GitLab. v0.1 only reads (ADR-0003).
 WRITE_SCOPES = frozenset(
     {
@@ -30,7 +33,6 @@ WRITE_SCOPES = frozenset(
         "write_repository",
         "write_registry",
         "sudo",
-        "admin_mode",
         "create_runner",
         "manage_runner",
         "k8s_proxy",
@@ -160,10 +162,23 @@ def check_token(client: GitLabClient, today: date) -> Check:
         return Check(
             id="token", status="warning", summary=f"Token expires on {expiry}", details=details
         )
+    if ADMIN_READ_SCOPE in granted:
+        return Check(
+            id="token",
+            status="ok",
+            summary="Token has read_api and admin_mode: it reads the whole instance, read-only",
+            details=details,
+        )
     return Check(id="token", status="ok", summary="Token has read_api only", details=details)
 
 
-def check_user(client: GitLabClient) -> Check:
+def read_only(token: Check) -> bool:
+    """Whether the token check proved the token cannot change GitLab: read_api, no write scope."""
+    scopes = set(token.details.get("scopes") or []) if token.details else set()
+    return token.status != "failed" and bool(scopes & READ_SCOPES) and not scopes & WRITE_SCOPES
+
+
+def check_user(client: GitLabClient, token_read_only: bool = False) -> Check:
     try:
         user = client.get_json("/user")
     except GitLabError as error:
@@ -183,12 +198,21 @@ def check_user(client: GitLabClient) -> Check:
             summary=f"Token user is {user.get('state')}",
             details=details,
         )
-    if user.get("is_admin"):
+    if user.get("is_admin") and not token_read_only:
+        # An administrator's token is a concern only when it could change GitLab.
         return Check(
             id="user",
             status="warning",
-            summary="Token belongs to an administrator; prefer a non-admin or auditor user "
-            "with read_api",
+            summary="Token belongs to an administrator and is not proven read-only; issue it with "
+            "read_api (and admin_mode to cover the whole instance) and no write scope",
+            details=details,
+        )
+    if user.get("is_admin"):
+        return Check(
+            id="user",
+            status="ok",
+            summary=f"Token user is {user.get('username')}, an administrator; the token is "
+            "read-only",
             details=details,
         )
     return Check(
@@ -223,7 +247,8 @@ def run_diagnostics(
         because = "GitLab could not be reached with this token"
         checks += [_skipped(name, because) for name in ("token", "user", "group_visibility")]
     else:
-        checks += [check_token(client, today()), check_user(client), check_group_visibility(client)]
+        token = check_token(client, today())
+        checks += [token, check_user(client, read_only(token)), check_group_visibility(client)]
     return DiagnosticsReport(
         status=overall(checks),
         checked_at=datetime.now(UTC),

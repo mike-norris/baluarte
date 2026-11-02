@@ -247,6 +247,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     print(f"export {manifest.get('export_id')} generated {manifest.get('generated_at')}")
     print(f"manifest sha256 {sha256(canonical(manifest))}")
+    covered = manifest.get("population")
+    if isinstance(covered, dict) and isinstance(covered.get("statement"), str):
+        print(f"population {covered.get('basis')}: {covered['statement']}")
     for warning in report.warnings:
         print(f"WARN {warning}")
     for failure in report.failures:

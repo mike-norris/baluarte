@@ -35,6 +35,15 @@ from baluarte.policy.schema import Rule
 _TARGET_REASONS: frozenset[UnknownReason] = frozenset(
     UNKNOWN_PRECEDENCE[: UNKNOWN_PRECEDENCE.index("ancestry_incomplete") + 1]
 )
+# Reasons an evaluator gives for a value it could not read; its ``value_unknown`` explains them.
+VALUE_REASONS: frozenset[UnknownReason] = frozenset(
+    UNKNOWN_PRECEDENCE[
+        UNKNOWN_PRECEDENCE.index("capability_unknown") + 1 : UNKNOWN_PRECEDENCE.index(
+            "value_unknown"
+        )
+        + 1
+    ]
+)
 _COLLECTION_REASONS: dict[str, UnknownReason] = {
     "not_configured": "collection_not_configured",
     "failed": "collection_failed",
@@ -57,6 +66,20 @@ class BranchProtection:
 
 
 @dataclass(frozen=True)
+class SecurityPolicies:
+    """The latest GitLab security policy observation of a project (security policy discovery)."""
+
+    observation_id: int
+    # The observation's collection status: "ok", "partial" (some type not read in full), or
+    # why it could not be read.
+    status: str
+    collected_at: datetime
+    # The payload (security_policy_project, types) when the project was read.
+    payload: dict[str, Any] | None
+    error: str | None
+
+
+@dataclass(frozen=True)
 class ProjectFacts:
     """A project as recorded in the inventory."""
 
@@ -70,6 +93,8 @@ class ProjectFacts:
     default_branch: str | None = None
     # None when the project's branch protection has never been read.
     protection: BranchProtection | None = None
+    # None when the project's GitLab security policies have never been read.
+    security_policies: SecurityPolicies | None = None
 
 
 @dataclass(frozen=True)
@@ -100,6 +125,10 @@ class RuleEvaluator:
     judge: Callable[[Rule, Any], tuple[bool, str]]
     # Why the value is None, for a target that is otherwise fine.
     value_unknown: Callable[[ProjectFacts], str]
+    # The reason code for a None value; rule types with more specific codes override it.
+    unknown_reason: Callable[[ProjectFacts], UnknownReason] = lambda _: "value_unknown"
+    # When the value was read; the inventory's last sighting unless the rule type says otherwise.
+    observed_at: Callable[[ProjectFacts], datetime | None] = lambda project: project.last_seen_at
 
 
 def _collection(context: EvaluationContext, kind: str) -> CollectionContext:
@@ -120,7 +149,7 @@ def _message(
     evaluator: RuleEvaluator,
 ) -> str:
     path = context.target.path
-    if reason == "value_unknown" and context.project is not None:
+    if reason in VALUE_REASONS and context.project is not None:
         return evaluator.value_unknown(context.project)
     messages: dict[UnknownReason, str] = {
         "target_not_in_inventory": f"Project {path} is not in the inventory.",
@@ -172,7 +201,7 @@ def unknown_reasons(
     if evaluator.capability is not None and _capability(context, evaluator) == "unknown":
         found.add("capability_unknown")
     if project is not None and evaluator.observe(project) is None:
-        found.add("value_unknown")
+        found.add(evaluator.unknown_reason(project))
     return tuple(reason for reason in UNKNOWN_PRECEDENCE if reason in found)
 
 
@@ -207,7 +236,7 @@ def evaluate_rule(
     else:
         project = context.project
         observed = evaluator.observe(project)
-        observed_at = project.last_seen_at
+        observed_at = evaluator.observed_at(project)
         passed, reason = evaluator.judge(rule, observed)
         outcome = "pass" if passed else "fail"
     return RuleResult(

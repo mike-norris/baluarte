@@ -23,9 +23,10 @@ from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.exc import OperationalError, ProgrammingError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from baluarte.compliance.retention import RetentionSchedule
 from baluarte.config import ConfigurationError, database_url
 from baluarte.db.migrate import head_revisions, wait_for_database
-from baluarte.integrations.gitlab.jobs import ConfiguredSchedule
+from baluarte.integrations.gitlab.jobs import CollectionHealth, ConfiguredSchedule, ticks
 from baluarte.jobs import queue
 from baluarte.jobs.handlers import HANDLERS, Handler
 from baluarte.settings import configure_logging_from_env
@@ -213,7 +214,7 @@ def main(argv: list[str] | None = None) -> int:
         lease=lease,
         poll_interval=poll,
         heartbeat_file=HEARTBEAT_FILE,
-        tick=ConfiguredSchedule(engine),
+        tick=ticks(ConfiguredSchedule(engine), CollectionHealth(engine), RetentionSchedule(engine)),
     )
     # Healthy while waiting for the database and migrations; the --timeout bounds that wait.
     worker.beat()

@@ -23,6 +23,8 @@ export interface SetupStatus {
   secret_key_configured: boolean | null;
   oidc: SectionStatus | null;
   gitlab: SectionStatus | null;
+  /** Baluarte's operating compliance profile; absent on older servers. */
+  compliance?: SectionStatus | null;
 }
 
 export interface OidcConfig {

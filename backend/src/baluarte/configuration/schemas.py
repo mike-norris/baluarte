@@ -24,6 +24,9 @@ class SetupStatus(BaseModel):
     secret_key_configured: bool | None
     oidc: SectionStatus | None
     gitlab: SectionStatus | None
+    # The operating profile: required, like the identity provider, before setup can
+    # complete.
+    compliance: SectionStatus | None
 
 
 class SetupCode(BaseModel):

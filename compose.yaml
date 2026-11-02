@@ -8,16 +8,21 @@ x-hardening: &hardening
   security_opt: ["no-new-privileges:true"]
   tmpfs: [/tmp]
 
-x-app-env: &app-env
-  BALUARTE_DATABASE_URL: postgresql://baluarte@db:5432/baluarte
-  BALUARTE_DATABASE_PASSWORD_FILE: /run/secrets/postgres_password
+x-log-env: &log-env
   # JSON lines (default) or text; secrets are redacted in both.
   BALUARTE_LOG_LEVEL: ${BALUARTE_LOG_LEVEL:-INFO}
   BALUARTE_LOG_FORMAT: ${BALUARTE_LOG_FORMAT:-json}
 
+# The API and worker connect as baluarte_app, which migrate creates. It reads and writes data
+# but owns nothing, cannot change the schema and cannot alter audit events (docs/SECURITY.md).
+x-app-env: &app-env
+  <<: *log-env
+  BALUARTE_DATABASE_URL: postgresql://baluarte_app@db:5432/baluarte
+  BALUARTE_DATABASE_PASSWORD_FILE: /run/secrets/app_database_password
+
 x-database: &database
   environment: *app-env
-  secrets: [postgres_password]
+  secrets: [app_database_password]
 
 # Seals the GitLab token and OIDC client secret entered in the web UI (docs/SECURITY.md).
 x-secret-key-env: &secret-key-env
@@ -42,10 +47,18 @@ services:
 
   # One-shot: applies migrations, then exits. Safe to re-run.
   migrate:
-    <<: [*hardening, *database]
+    <<: *hardening
     build: ./backend
     image: baluarte-app:dev
     command: ["baluarte-migrate", "--timeout", "60"]
+    # Runs as the schema owner, then sets up baluarte_app.
+    environment:
+      <<: *log-env
+      BALUARTE_DATABASE_URL: postgresql://baluarte@db:5432/baluarte
+      BALUARTE_DATABASE_PASSWORD_FILE: /run/secrets/postgres_password
+      BALUARTE_APP_DATABASE_USER: baluarte_app
+      BALUARTE_APP_DATABASE_PASSWORD_FILE: /run/secrets/app_database_password
+    secrets: [postgres_password, app_database_password]
     restart: "no"
     depends_on:
       db:
@@ -65,7 +78,7 @@ services:
       BALUARTE_OIDC_ADMIN_GROUPS: ${BALUARTE_OIDC_ADMIN_GROUPS:-}
       BALUARTE_OIDC_ANALYST_GROUPS: ${BALUARTE_OIDC_ANALYST_GROUPS:-}
       BALUARTE_OIDC_AUDITOR_GROUPS: ${BALUARTE_OIDC_AUDITOR_GROUPS:-}
-    secrets: [postgres_password, secret_key]
+    secrets: [app_database_password, secret_key]
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -79,7 +92,7 @@ services:
     command: ["baluarte-worker"]
     environment:
       <<: [*app-env, *secret-key-env]
-    secrets: [postgres_password, secret_key]
+    secrets: [app_database_password, secret_key]
     stop_grace_period: 60s
     depends_on:
       migrate:
@@ -104,6 +117,8 @@ services:
 secrets:
   postgres_password:
     file: ./secrets/postgres_password
+  app_database_password:
+    file: ./secrets/app_database_password
   secret_key:
     file: ./secrets/secret_key
 

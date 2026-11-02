@@ -6,13 +6,14 @@ and stored in UTC.
 """
 
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Identity,
@@ -40,20 +41,36 @@ SEVERITIES = ("low", "medium", "high", "critical")
 FINDING_STATES = ("open", "resolved", "excepted")
 EXPORT_STATES = ("queued", "running", "succeeded", "failed")
 ROLES = ("admin", "analyst", "auditor")
-RUN_KINDS = ("capabilities", "groups", "projects")
+RUN_KINDS = ("capabilities", "groups", "projects", "security_policies")
+SECURITY_POLICY_TYPES = (
+    "scan_execution",
+    "approval",
+    "pipeline_execution",
+    "vulnerability_management",
+)
+# Where a discovered security policy lives: its security policy project, or only the group or
+# project it is linked to when Baluarte cannot see which policy project that is.
+POLICY_ORIGINS = ("policy_project", "linked_source")
 RUN_STATUSES = ("running", "succeeded", "partial", "failed")
 ANCESTRIES = ("complete", "incomplete")
 CAPABILITY_STATUSES = ("not_required", "supported", "unsupported", "unknown")
-FINDING_RESOLUTIONS = ("passed", "no_longer_applies")
+FINDING_RESOLUTIONS = ("passed", "no_longer_applies", "project_archived")
 EXCEPTION_STATES = ("requested", "approved", "rejected", "revoked", "expired")
 # Longest an exception may last, from its request.
 MAX_EXCEPTION_DAYS = 365
+POLICY_CHANGE_KINDS = ("version", "assign", "unassign")
+POLICY_CHANGE_STATES = ("proposed", "approved", "rejected")
+COMPLIANCE_EXCEPTION_STATES = ("proposed", "approved", "rejected", "revoked")
+# Longest a compliance exception may last, from its request, and the length of its texts.
+MAX_COMPLIANCE_EXCEPTION_DAYS = 365
+MIN_STATEMENT = 10
+MAX_STATEMENT = 2000
 PLAN_STATES = ("draft", "submitted", "approved", "rejected", "expired")
 # Longest a remediation plan stays valid, from its creation, and the most steps it may hold.
 MAX_PLAN_HOURS = 72
 MAX_PLAN_STEPS = 100
 # Sections and secrets that can be stored through the web UI (ADR-0008).
-SETTING_KEYS = ("oidc", "gitlab")
+SETTING_KEYS = ("oidc", "gitlab", "governance", "operations")
 SECRET_NAMES = ("oidc_client_secret", "gitlab_token")
 
 
@@ -137,6 +154,51 @@ class GitLabProject(Base):
     # Set when the last attempt to confirm this resource failed; cleared when it is seen again.
     last_error: Mapped[str | None] = mapped_column(Text)
     last_error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class GitLabSecurityPolicy(Base):
+    """A GitLab security policy seen by discovery: current state, rebuilt each complete run.
+
+    One row per policy, keyed by where it lives (``origin_path``) rather than per group it is
+    linked to, so a policy project linked to three groups gives one row per policy. The evidence
+    is the per-group and per-project observations; this table is the catalogue built from them.
+    """
+
+    __tablename__ = "gitlab_security_policy"
+    __table_args__ = (
+        UniqueConstraint(
+            "instance_id",
+            "policy_type",
+            "origin_path",
+            "name",
+            name="uq_gitlab_security_policy_key",
+        ),
+        one_of("policy_type", SECURITY_POLICY_TYPES),
+        one_of("origin_kind", POLICY_ORIGINS),
+        one_of("state", ("active", "missing")),
+        sha256_hex("yaml_digest"),
+    )
+
+    id: Mapped[int] = pk()
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    policy_type: Mapped[str] = mapped_column(Text)
+    name: Mapped[str] = mapped_column(Text)
+    origin_kind: Mapped[str] = mapped_column(Text)
+    # The security policy project's path, or for ``linked_source`` the group or project path.
+    origin_path: Mapped[str] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
+    enabled: Mapped[bool | None] = mapped_column(Boolean)
+    yaml: Mapped[str | None] = mapped_column(Text)
+    yaml_digest: Mapped[str | None] = mapped_column(Text)
+    # When GitLab says the policy YAML last changed.
+    gitlab_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Normalized policy_scope, and the groups and projects the policy is linked through.
+    scope: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
+    linked_from: Mapped[list[Any]] = mapped_column(JSONB, server_default=text("'[]'::jsonb"))
+    state: Mapped[str] = mapped_column(Text, server_default="active")
+    first_seen_at: Mapped[datetime] = utc_now()
+    last_seen_at: Mapped[datetime] = utc_now()
+    last_collection_run_id: Mapped[int | None] = mapped_column(ForeignKey("collection_run.id"))
 
 
 class CollectionJob(Base):
@@ -497,6 +559,241 @@ class PolicyException(Base):
     end_note: Mapped[str | None] = mapped_column(Text)
 
 
+class PolicyChange(Base):
+    """A change to the baselines in force: a new version, an assignment or an unassignment.
+
+    ``policy`` and ``policy_assignment`` hold only what is in force. A change made while review
+    is required (the ``governance`` setting) is ``proposed`` and changes nothing until someone
+    other than the proposer approves it; then it is applied and records its result
+    (``policy_id`` of the new version, ``assignment_id`` of the new assignment). While review is
+    not required a change is applied at once and recorded ``approved`` with the proposer as
+    approver and ``self_approved`` set. Rows from before migration 0015 are ``migrated``.
+
+    A trigger allows only ``proposed`` -> ``approved`` | ``rejected``, keeps what was proposed
+    unchanged and rejects ``DELETE``. User IDs are recorded values, like ``audit_event.actor``,
+    and are not foreign keys.
+    """
+
+    __tablename__ = "policy_change"
+    __table_args__ = (
+        Index(
+            "uq_policy_change_proposed_version",
+            "policy_name",
+            unique=True,
+            postgresql_where=text("state = 'proposed' AND kind = 'version'"),
+        ),
+        Index(
+            "uq_policy_change_proposed_target",
+            "instance_id",
+            "target_type",
+            "target_id",
+            "policy_name",
+            unique=True,
+            postgresql_where=text("state = 'proposed' AND kind <> 'version'"),
+        ),
+        Index("ix_policy_change_policy_id", "policy_id"),
+        Index("ix_policy_change_assignment_id", "assignment_id"),
+        one_of("kind", POLICY_CHANGE_KINDS),
+        one_of("state", POLICY_CHANGE_STATES),
+        CheckConstraint(
+            "kind <> 'version' OR (source_yaml IS NOT NULL AND yaml_digest IS NOT NULL "
+            "AND instance_id IS NULL AND target_type IS NULL AND target_id IS NULL "
+            "AND assignment_id IS NULL)",
+            name="version_shape",
+        ),
+        CheckConstraint(
+            "kind = 'version' OR (source_yaml IS NULL AND yaml_digest IS NULL "
+            "AND instance_id IS NOT NULL AND target_type IS NOT NULL AND target_id IS NOT NULL "
+            "AND policy_id IS NOT NULL)",
+            name="assignment_shape",
+        ),
+        CheckConstraint("kind <> 'unassign' OR assignment_id IS NOT NULL", name="unassign_names"),
+        CheckConstraint(
+            "state <> 'approved' OR kind <> 'version' OR policy_id IS NOT NULL",
+            name="approved_version_has_result",
+        ),
+        CheckConstraint(
+            "state <> 'approved' OR kind <> 'assign' OR assignment_id IS NOT NULL",
+            name="approved_assignment_has_result",
+        ),
+        CheckConstraint(
+            "target_type IS NULL OR target_type IN ('instance', 'group', 'project')",
+            name="target_type_allowed",
+        ),
+        CheckConstraint(
+            "yaml_digest IS NULL OR yaml_digest ~ '^[0-9a-f]{64}$'", name="yaml_digest_sha256"
+        ),
+        CheckConstraint(
+            "(state = 'proposed') = (decided_at IS NULL)", name="decided_unless_proposed"
+        ),
+        CheckConstraint("(decided_at IS NULL) = (decided_by IS NULL)", name="decision_complete"),
+        CheckConstraint(
+            "migrated OR (proposed_by_user_id IS NOT NULL "
+            "AND (decided_at IS NULL) = (decided_by_user_id IS NULL))",
+            name="users_recorded",
+        ),
+        CheckConstraint(
+            "NOT review_required OR decided_by_user_id IS NULL "
+            "OR decided_by_user_id <> proposed_by_user_id",
+            name="decided_by_another_user",
+        ),
+        CheckConstraint("review_required OR state = 'approved'", name="unreviewed_is_applied"),
+        CheckConstraint(
+            "self_approved = (NOT review_required AND NOT migrated)",
+            name="self_approved_when_unreviewed",
+        ),
+        CheckConstraint(
+            "NOT self_approved OR decided_by_user_id = proposed_by_user_id",
+            name="self_approved_by_proposer",
+        ),
+        CheckConstraint("NOT migrated OR NOT review_required", name="migrated_unreviewed"),
+        CheckConstraint(
+            "state <> 'rejected' OR length(decision_note) > 0", name="rejection_explained"
+        ),
+    )
+
+    id: Mapped[int] = pk()
+    kind: Mapped[str] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(Text)
+    policy_name: Mapped[str] = mapped_column(Text)
+    # version: the proposed source; set on approval, policy_id is the version it became.
+    source_yaml: Mapped[str | None] = mapped_column(Text)
+    yaml_digest: Mapped[str | None] = mapped_column(Text)
+    # The latest version in force when the change was proposed, for comparison.
+    base_version: Mapped[int | None] = mapped_column(Integer)
+    # assign: the version to pin; unassign: the version pinned.
+    policy_id: Mapped[int | None] = mapped_column(ForeignKey("policy.id"))
+    instance_id: Mapped[int | None] = mapped_column(ForeignKey("gitlab_instance.id"))
+    target_type: Mapped[str | None] = mapped_column(Text)
+    target_id: Mapped[int | None] = mapped_column(BigInteger)
+    # unassign: the assignment to remove; assign: set on approval to the assignment made.
+    # Not a foreign key: assignments are deleted when removed or replaced.
+    assignment_id: Mapped[int | None] = mapped_column(BigInteger)
+    review_required: Mapped[bool] = mapped_column(Boolean)
+    self_approved: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    migrated: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    proposed_by: Mapped[str] = mapped_column(Text)
+    proposed_by_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    proposed_at: Mapped[datetime] = utc_now()
+    decided_by: Mapped[str | None] = mapped_column(Text)
+    decided_by_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_note: Mapped[str | None] = mapped_column(Text)
+
+
+class ComplianceException(Base):
+    """A recorded, time-limited departure from the operating profile.
+
+    While one is in force (``approved`` and before ``expires_on``, UTC) a control it names may be
+    unmet: a setting may be saved below the profile's minimum, and the posture shows the control
+    ``excepted`` rather than ``not_met``. Made while two-person review is required (the
+    ``governance`` setting) it is ``proposed`` until someone other than the requester approves
+    it; otherwise it is ``approved`` at once with ``self_approved`` set.
+
+    A trigger allows only ``proposed`` -> ``approved`` | ``rejected`` | ``revoked`` and
+    ``approved`` -> ``revoked``, keeps the request and the decision unchanged, and rejects
+    ``DELETE``. User IDs are recorded values, like ``audit_event.actor``.
+    """
+
+    __tablename__ = "compliance_exception"
+    __table_args__ = (
+        Index("ix_compliance_exception_control", "control_id", "state"),
+        Index(
+            "uq_compliance_exception_proposed",
+            "control_id",
+            unique=True,
+            postgresql_where=text("state = 'proposed'"),
+        ),
+        one_of("state", COMPLIANCE_EXCEPTION_STATES),
+        CheckConstraint("control_id ~ '^[a-z][a-z0-9-]{0,63}$'", name="control_id_format"),
+        CheckConstraint(
+            f"length(justification) BETWEEN {MIN_STATEMENT} AND {MAX_STATEMENT}",
+            name="justification_length",
+        ),
+        CheckConstraint(
+            "expires_on > (requested_at AT TIME ZONE 'UTC')::date AND expires_on <= "
+            f"(requested_at AT TIME ZONE 'UTC')::date + {MAX_COMPLIANCE_EXCEPTION_DAYS}",
+            name="expiry_bounded",
+        ),
+        CheckConstraint(
+            "state NOT IN ('approved', 'rejected') OR decided_at IS NOT NULL",
+            name="decided_has_decision",
+        ),
+        CheckConstraint("state <> 'proposed' OR decided_at IS NULL", name="proposed_undecided"),
+        CheckConstraint(
+            "(decided_at IS NULL) = (decided_by IS NULL) "
+            "AND (decided_at IS NULL) = (decided_by_user_id IS NULL)",
+            name="decision_complete",
+        ),
+        CheckConstraint(
+            "(state = 'revoked') = (revoked_at IS NOT NULL) "
+            "AND (revoked_at IS NULL) = (revoked_by IS NULL) "
+            "AND (revoked_at IS NULL) = (revoked_by_user_id IS NULL)",
+            name="revocation_complete",
+        ),
+        CheckConstraint(
+            "NOT review_required OR decided_by_user_id IS NULL "
+            "OR decided_by_user_id <> requested_by_user_id",
+            name="decided_by_another_user",
+        ),
+        CheckConstraint("self_approved = NOT review_required", name="self_approved_unreviewed"),
+        CheckConstraint(
+            "NOT self_approved OR (decided_by_user_id = requested_by_user_id "
+            "AND state IN ('approved', 'revoked'))",
+            name="self_approved_by_requester",
+        ),
+        CheckConstraint(
+            "state <> 'rejected' OR length(decision_note) > 0", name="rejection_explained"
+        ),
+    )
+
+    id: Mapped[int] = pk()
+    # A control in baluarte.compliance.catalogue; not a foreign key, the catalogue is code.
+    control_id: Mapped[str] = mapped_column(Text)
+    justification: Mapped[str] = mapped_column(Text)
+    # The first UTC day it is no longer in force.
+    expires_on: Mapped[date] = mapped_column(Date)
+    state: Mapped[str] = mapped_column(Text)
+    review_required: Mapped[bool] = mapped_column(Boolean)
+    self_approved: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    requested_by: Mapped[str] = mapped_column(Text)
+    requested_by_user_id: Mapped[int] = mapped_column(BigInteger)
+    requested_at: Mapped[datetime] = utc_now()
+    decided_by: Mapped[str | None] = mapped_column(Text)
+    decided_by_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_note: Mapped[str | None] = mapped_column(Text)
+    revoked_by: Mapped[str | None] = mapped_column(Text)
+    revoked_by_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ComplianceAttestation(Base):
+    """An administrator's statement that a control Baluarte cannot observe is in place.
+
+    Current until ``expires_at``; a newer one replaces it. Rows cannot be updated or deleted.
+    """
+
+    __tablename__ = "compliance_attestation"
+    __table_args__ = (
+        Index("ix_compliance_attestation_control", "control_id", "attested_at"),
+        CheckConstraint("control_id ~ '^[a-z][a-z0-9-]{0,63}$'", name="control_id_format"),
+        CheckConstraint(
+            f"length(statement) BETWEEN {MIN_STATEMENT} AND {MAX_STATEMENT}",
+            name="statement_length",
+        ),
+        CheckConstraint("expires_at > attested_at", name="expires_after_attested"),
+    )
+
+    id: Mapped[int] = pk()
+    control_id: Mapped[str] = mapped_column(Text)
+    statement: Mapped[str] = mapped_column(Text)
+    attested_by: Mapped[str] = mapped_column(Text)
+    attested_by_user_id: Mapped[int] = mapped_column(BigInteger)
+    attested_at: Mapped[datetime] = utc_now()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class RemediationPlan(Base):
     """A dry-run remediation plan (BAL-031): the GitLab changes that would fix open findings.
 
@@ -570,7 +867,8 @@ class RemediationPlan(Base):
 
 
 class AuditEvent(Base):
-    """Administrative audit trail. Rows cannot be updated or deleted."""
+    """Administrative audit trail. Rows cannot be updated or deleted, except by the retention
+    function ``baluarte_expire_audit`` (migration 0016)."""
 
     __tablename__ = "audit_event"
     __table_args__ = (

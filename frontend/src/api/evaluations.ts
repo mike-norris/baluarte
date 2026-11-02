@@ -65,7 +65,11 @@ export type UnknownReason =
   | "value_unknown"
   | "evidence_missing"
   | "evidence_digest_mismatch"
-  | "evidence_mismatch";
+  | "evidence_mismatch"
+  | "security_policies_unread"
+  | "security_policy_type_unsupported"
+  | "security_policy_truncated"
+  | "security_policy_yaml_invalid";
 
 /** One stored, immutable rule result. ``observed`` is null when the value is not known. */
 export interface Evaluation {
@@ -265,4 +269,66 @@ export async function getObservation(
   );
   const first = page.items[0];
   return first?.id === observationId ? first : null;
+}
+
+export interface ResultCounts {
+  pass: number;
+  fail: number;
+  unknown: number;
+  unsupported: number;
+  excepted: number;
+}
+
+export interface RuleResults {
+  rule_id: string;
+  rule_type: string;
+  severity: string;
+  results: ResultCounts;
+}
+
+export interface VersionResults {
+  policy_id: number;
+  version: number;
+  yaml_digest: string;
+  /** Each project once, by its worst result for this version. */
+  projects: ResultCounts;
+  rules: RuleResults[];
+}
+
+export interface BaselineResults {
+  name: string;
+  projects: ResultCounts;
+  /** Newest first. */
+  versions: VersionResults[];
+}
+
+/** Counts from the latest successful evaluation run only; read them with ``freshness``. */
+export interface EvaluationSummary {
+  evaluation_run: EvaluationRun | null;
+  freshness: EvaluationFreshness;
+  baselines: BaselineResults[];
+}
+
+export function getEvaluationSummary(
+  policy: string | null,
+  signal?: AbortSignal,
+): Promise<EvaluationSummary> {
+  return getJson<EvaluationSummary>("/api/v1/evaluations/summary", { policy }, signal);
+}
+
+export interface ProjectEvaluations {
+  project: ProjectRef;
+  /** The latest result of each rule in force; empty when the project has none current. */
+  items: Evaluation[];
+}
+
+export function getProjectEvaluations(
+  gitlabId: number,
+  signal?: AbortSignal,
+): Promise<ProjectEvaluations> {
+  return getJson<ProjectEvaluations>(
+    `/api/v1/gitlab/projects/${String(gitlabId)}/evaluations`,
+    {},
+    signal,
+  );
 }

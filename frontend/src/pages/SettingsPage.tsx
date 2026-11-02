@@ -10,7 +10,9 @@ import {
   type OidcConfig,
   type SettingsInfo,
 } from "../api/setup";
+import { getGovernanceSettings, putGovernanceSettings } from "../api/policies";
 import { useLoad } from "../api/useLoad";
+import { ComplianceCard } from "../compliance/ComplianceCard";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { buttonClass, secondaryClass } from "../components/styles";
@@ -328,8 +330,8 @@ export function SettingsPage() {
           Settings
         </h1>
         <p className="mt-2 text-slate-600">
-          The identity provider, the GitLab connection and system information. Every change is
-          audited; secrets can be replaced but are never shown.
+          The identity provider, the GitLab connection, the compliance profile and system
+          information. Every change is audited; secrets can be replaced but are never shown.
         </p>
       </div>
       {allowed ? (
@@ -343,6 +345,72 @@ export function SettingsPage() {
   );
 }
 
+/** Whether baseline changes need a second person (two-person review). */
+function ReviewCard({ csrf }: { csrf: string }) {
+  const { refresh } = useAuth();
+  const [version, setVersion] = useState(0);
+  const loaded = useLoad(`settings-governance#${String(version)}`, (signal) =>
+    getGovernanceSettings(signal),
+  );
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function change(required: boolean) {
+    setSaving(true);
+    setFailure(null);
+    setMessage(null);
+    try {
+      await putGovernanceSettings({ require_review: required }, csrf);
+      setMessage(
+        required
+          ? "Baseline changes now wait for a second person to approve them."
+          : "Baseline changes now take effect without review.",
+      );
+      setVersion((value) => value + 1);
+    } catch (error) {
+      const apiError = asApiError(error);
+      setFailure(apiError.message);
+      if (apiError.status === 401) void refresh();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card id="governance-title" title="Baseline change review">
+      <p className="mt-1 text-sm text-slate-600">
+        When required, a new baseline version, or a change to where a baseline applies, takes effect
+        only after someone other than the person who proposed it approves it under Governance →
+        Changes. Every change is recorded either way, with whether it was reviewed. Turn this on
+        once at least two people can manage baselines.
+      </p>
+      {loaded.error ? (
+        <ErrorMessage error={loaded.error} retry={loaded.retry} />
+      ) : loaded.data ? (
+        <label className="mt-3 flex items-center gap-2 text-sm font-medium">
+          <input
+            type="checkbox"
+            checked={loaded.data.require_review}
+            disabled={saving}
+            onChange={(event) => void change(event.target.checked)}
+            className="h-4 w-4"
+          />
+          Require a second person to approve baseline changes
+        </label>
+      ) : (
+        <Loading what="the review setting" />
+      )}
+      {failure && (
+        <p role="alert" className={errorClass}>
+          {failure}
+        </p>
+      )}
+      <Saved message={message} />
+    </Card>
+  );
+}
+
 function SettingsContent({ csrf }: { csrf: string }) {
   const info = useLoad("settings", getSettings);
   const secretKey =
@@ -352,6 +420,8 @@ function SettingsContent({ csrf }: { csrf: string }) {
     <>
       <GitLabCard csrf={csrf} secretKey={secretKey} />
       <OidcCard csrf={csrf} secretKey={secretKey} />
+      <ReviewCard csrf={csrf} />
+      <ComplianceCard csrf={csrf} />
       {info.error ? (
         <ErrorMessage error={info.error} retry={info.retry} />
       ) : info.data ? (

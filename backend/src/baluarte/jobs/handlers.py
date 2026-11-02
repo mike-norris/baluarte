@@ -11,13 +11,16 @@ from collections.abc import Callable, Mapping
 
 from sqlalchemy import Engine
 
+from baluarte.compliance.retention import RETENTION_EXPIRE, handle_expire
 from baluarte.integrations.gitlab.jobs import (
     DETECT_CAPABILITIES,
     DISCOVER_GROUPS,
     DISCOVER_PROJECTS,
+    DISCOVER_SECURITY_POLICIES,
     make_detect_capabilities,
     make_discover_groups,
     make_discover_projects,
+    make_discover_security_policies,
 )
 from baluarte.jobs.queue import ClaimedJob
 from baluarte.policy.evaluation.runner import EVALUATE, evaluate
@@ -28,5 +31,7 @@ HANDLERS: Mapping[str, Handler] = {
     DETECT_CAPABILITIES: make_detect_capabilities(),
     DISCOVER_GROUPS: make_discover_groups(),
     DISCOVER_PROJECTS: make_discover_projects(),
+    DISCOVER_SECURITY_POLICIES: make_discover_security_policies(),
     EVALUATE: evaluate,
+    RETENTION_EXPIRE: handle_expire,
 }

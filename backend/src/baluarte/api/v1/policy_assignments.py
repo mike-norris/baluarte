@@ -1,7 +1,9 @@
 """Policy assignments and the policies in force for a group or project (BAL-018).
 
 Assigning and unassigning need ``policy:write``, are audited, and queue a policy evaluation.
-Reading needs ``findings:read``, like reading the policies themselves.
+While review is required (``baluarte.policy.changes``) they are proposed instead, and take
+effect when someone else approves them. Reading needs ``findings:read``, like reading the
+policies themselves.
 """
 
 from datetime import datetime
@@ -14,21 +16,24 @@ from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
 from baluarte import audit
+from baluarte.api.v1.policy_changes import PolicyChangeDetail, Review, change_detail, reviews
 from baluarte.auth.dependencies import Principal, database, require
 from baluarte.auth.roles import Permission
 from baluarte.db.models import GitLabGroup, GitLabInstance, GitLabProject, Policy, PolicyAssignment
 from baluarte.integrations.gitlab.instances import instance_for
 from baluarte.integrations.gitlab.settings import load_gitlab_settings
 from baluarte.policy.assignments import (
+    AssignmentTree,
     Resolution,
     Target,
     TargetType,
-    assign,
     find_target,
     resolve_group,
     resolve_project,
+    resolve_tree,
 )
-from baluarte.policy.evaluation.runner import request_evaluation
+from baluarte.policy.changes import Actor, ChangeConflict, propose_assignment, propose_unassignment
+from baluarte.policy.evaluation.runner import not_evaluated, request_evaluation
 from baluarte.policy.schema import NAME_PATTERN
 from baluarte.settings import ConfigurationError
 
@@ -66,6 +71,8 @@ class AssignmentOut(BaseModel):
     target_path: str | None
     target_state: str | None
     created_at: datetime
+    # The change that put this assignment in force; null only if none is recorded.
+    review: Review | None = None
 
 
 class AssignmentPage(BaseModel):
@@ -182,12 +189,48 @@ def list_assignments(
     if after_id is not None:
         statement = statement.where(PolicyAssignment.id > after_id)
     rows = db.execute(statement).all()
-    items = [_out(row) for row in rows[:limit]]
+    items = _reviewed(db, [_out(row) for row in rows[:limit]])
     return AssignmentPage(items=items, next_after_id=items[-1].id if len(rows) > limit else None)
 
 
+@router.get(
+    "/policy-assignments/tree",
+    response_model=AssignmentTree,
+    summary="Policies in effect for every group, and for projects with their own assignment",
+    description="One read for the inheritance view. Each node applies the effective-policies "
+    "rules: per policy name the nearest assignment decides (`set_here` or `inherited`), unless "
+    "its version's scope excludes the node (`out_of_scope`); `replaces` lists the farther "
+    "assignments it overrides. `ancestry` is `incomplete`, with `gaps`, when a group above "
+    "could not be followed. Projects without their own assignment are not listed: they have "
+    "what their namespace group has. 404 when GitLab is not configured or not yet collected.",
+    responses={404: {"description": "GitLab is not configured, or nothing is collected yet"}},
+)
+def assignment_tree(
+    _: Annotated[Principal, Depends(require(Permission.FINDINGS_READ))],
+    db: Annotated[Session, Depends(database)],
+) -> AssignmentTree:
+    instance = _instance(db)
+    if instance is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "GitLab is not configured or collected")
+    return resolve_tree(db, instance)
+
+
+def _reviewed(db: Session, items: list[AssignmentOut]) -> list[AssignmentOut]:
+    found = reviews(db, "assign", [item.id for item in items])
+    for item in items:
+        item.review = found.get(item.id)
+    return items
+
+
 def _read(db: Session, assignment_id: int) -> AssignmentOut:
-    return _out(db.execute(_assignments().where(PolicyAssignment.id == assignment_id)).one())
+    out = _out(db.execute(_assignments().where(PolicyAssignment.id == assignment_id)).one())
+    return _reviewed(db, [out])[0]
+
+
+def _proposed(db: Session, change: Any) -> JSONResponse:
+    db.commit()
+    detail = change_detail(db, change)
+    return JSONResponse(detail.model_dump(mode="json"), status_code=status.HTTP_202_ACCEPTED)
 
 
 @router.post(
@@ -197,11 +240,17 @@ def _read(db: Session, assignment_id: int) -> AssignmentOut:
     summary="Pin a policy version to the instance, a group or a project",
     description="A target holds one version of each policy: assigning another version of the "
     "same policy replaces the current one. 201 when assigned; 200 when this version is already "
-    "assigned there. A change queues a policy evaluation. Requires the `X-CSRF-Token` header.",
+    "assigned there. A change queues a policy evaluation. While review is required, 202 with "
+    "the proposed change (`PolicyChangeDetail`), which takes effect when someone else approves "
+    "it. Requires the `X-CSRF-Token` header.",
     responses={
         200: {"model": AssignmentOut, "description": "Already assigned"},
+        202: {"model": PolicyChangeDetail, "description": "Proposed; waiting for review"},
         404: {"description": "No such policy version, or the target is not in the inventory"},
-        409: {"description": "GitLab is not configured, or the target is missing or inaccessible"},
+        409: {
+            "description": "GitLab is not configured, the target is missing or inaccessible, or "
+            "another change to this policy there is waiting for review"
+        },
     },
 )
 def create_assignment(
@@ -228,13 +277,22 @@ def create_assignment(
     if target.state not in (None, "active"):
         # It cannot be confirmed in GitLab, so what the policy would govern is unknown.
         raise HTTPException(status.HTTP_409_CONFLICT, f"The {body.target_type} is {target.state}")
-    assigned = assign(db, instance.id, policy, target)
+    try:
+        assigned = propose_assignment(
+            db, instance, policy, target, Actor(principal.user_id, principal.actor)
+        )
+    except ChangeConflict as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from None
+    if assigned.assignment is None:
+        return _proposed(db, assigned.change)
     if not assigned.created:
         db.commit()
         existing = _read(db, assigned.assignment.id)
         return JSONResponse(existing.model_dump(mode="json"), status_code=status.HTTP_200_OK)
     out = _read(db, assigned.assignment.id)
     details = _audit_details(out)
+    details["change_id"] = assigned.change.id if assigned.change else None
+    details["self_approved"] = True
     if assigned.replaced is not None:
         details["replaced_assignment_id"] = assigned.replaced.id
         details["replaced_version"] = assigned.replaced_version
@@ -255,8 +313,14 @@ def create_assignment(
     "/policy-assignments/{assignment_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Remove a policy assignment",
-    description="Queues a policy evaluation. Requires the `X-CSRF-Token` header.",
-    responses={404: {"description": "No such assignment"}},
+    description="Queues a policy evaluation. While review is required, 202 with the proposed "
+    "change (`PolicyChangeDetail`) instead, which takes effect when someone else approves it. "
+    "Requires the `X-CSRF-Token` header.",
+    responses={
+        202: {"model": PolicyChangeDetail, "description": "Proposed; waiting for review"},
+        404: {"description": "No such assignment"},
+        409: {"description": "Another change to this policy there is waiting for review"},
+    },
 )
 def delete_assignment(
     assignment_id: Annotated[int, Path(gt=0)],
@@ -268,14 +332,21 @@ def delete_assignment(
     if instance is None or assignment is None or assignment.instance_id != instance.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such assignment")
     out = _read(db, assignment_id)
-    db.delete(assignment)
+    try:
+        change, applied = propose_unassignment(
+            db, assignment, Actor(principal.user_id, principal.actor)
+        )
+    except ChangeConflict as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from None
+    if not applied:
+        return _proposed(db, change)
     audit.record(
         db,
         actor=principal.actor,
         action="policy.unassigned",
         resource_type="policy_assignment",
         resource_id=str(assignment_id),
-        details=_audit_details(out),
+        details={**_audit_details(out), "change_id": change.id, "self_approved": True},
     )
     request_evaluation(db, "assignment")
     db.commit()
@@ -314,7 +385,9 @@ def project_policies(
     )
     if instance is None or project is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such project in the inventory")
-    return resolve_project(db, instance, project)
+    resolution = resolve_project(db, instance, project)
+    resolution.not_evaluated = not_evaluated(project)
+    return resolution
 
 
 @router.get(

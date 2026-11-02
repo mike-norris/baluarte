@@ -36,6 +36,8 @@ SETUP_ROUTES = {
     ("GET", "/api/v1/setup/gitlab"),
     ("PUT", "/api/v1/setup/gitlab"),
     ("POST", "/api/v1/setup/gitlab/test"),
+    ("GET", "/api/v1/setup/compliance"),
+    ("PUT", "/api/v1/setup/compliance"),
 }
 
 

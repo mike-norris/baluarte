@@ -26,6 +26,7 @@ from test_exceptions import add_exception, user
 
 from baluarte.db.models import CollectionRun, GitLabProject
 from baluarte.evidence import verify
+from baluarte.policy import changes as policy_changes
 
 pytestmark = pytest.mark.db
 
@@ -107,7 +108,7 @@ def test_a_zip_ends_with_a_manifest_and_sha256sums(world: World) -> None:
 
     assert archive.namelist() == [*ZIP_FILES, "manifest.json", "SHA256SUMS"]
     manifest = json.loads(archive.read("manifest.json"))
-    assert manifest["manifest_format"] == "baluarte.evidence-manifest/v2"
+    assert manifest["manifest_format"] == "baluarte.evidence-manifest/v3"
     assert manifest["export_format"] == "baluarte.evidence-export/v2"
     assert manifest["package"] == "zip"
     assert manifest["export_id"] == response.headers["x-baluarte-export-id"]
@@ -458,3 +459,96 @@ def test_an_export_from_before_exceptions_still_verifies(world: World, tmp_path:
     status, output = run(save(tmp_path, "export.zip", older))
 
     assert status == 0, output
+
+
+def with_token_user(
+    world: World, username: str, is_admin: bool, admin_access: bool = False
+) -> None:
+    with Session(world.engine) as db:
+        db.execute(
+            text(
+                "UPDATE gitlab_instance SET capability_snapshot = "
+                "jsonb_build_object('token_user', jsonb_build_object("
+                "'username', CAST(:u AS text), 'is_admin', CAST(:a AS boolean), "
+                "'admin_access', CAST(:x AS boolean)))"
+            ),
+            {"u": username, "a": is_admin, "x": admin_access},
+        )
+        db.commit()
+
+
+def test_the_manifest_states_the_population(world: World, tmp_path: Path) -> None:
+    seeded(world)
+    with_token_user(world, "auditor", is_admin=False)
+    response, archive = export_zip(world.engine, all=True)
+    manifest = json.loads(archive.read("manifest.json"))
+    statement = (
+        "Inventory covers only the groups and projects visible to auditor. auditor is not a GitLab "
+        "administrator, so projects this account cannot see are not included and are not checked."
+    )
+
+    assert manifest["manifest_format"] == "baluarte.evidence-manifest/v3"
+    assert manifest["population"] == {
+        "basis": "token_visibility",
+        "token_username": "auditor",
+        "is_admin": False,
+        "admin_access": False,
+        "statement": statement,
+    }
+    assert manifest["limitations"][-1] == statement
+    readme = archive.read("README.txt").decode()
+    assert "Population\n----------\nInventory covers only the groups and projects" in readme
+    assert " ".join(readme.split()).count(statement) == 1
+    metadata = json.loads(archive.read("export.json"))
+    assert metadata["freshness"]["collection"]["population"]["basis"] == "token_visibility"
+
+    status, output = run(save(tmp_path, "export.zip", response.content))
+    assert status == 0, output
+    assert f"population token_visibility: {statement}" in output
+
+
+def test_an_admin_token_covers_the_instance(world: World) -> None:
+    seeded(world)
+    with_token_user(world, "root", is_admin=True, admin_access=True)
+    response = post(world.engine, {"format": "json", "scope": {"all": True}})
+
+    population = response.json()["manifest"]["population"]
+
+    assert (population["basis"], population["is_admin"]) == ("instance", True)
+    assert population["statement"] == "Inventory covers every group and project on the instance."
+
+
+def test_an_unknown_token_user_is_stated_as_unknown(world: World) -> None:
+    seeded(world)
+    _, archive = export_zip(world.engine, all=True)
+
+    population = json.loads(archive.read("manifest.json"))["population"]
+
+    assert (population["basis"], population["token_username"]) == ("unknown", None)
+
+
+def test_the_manifest_states_whether_baseline_changes_needed_review(world: World) -> None:
+    seeded(world)
+    before = post(world.engine, {"format": "json", "scope": {"all": True}}).json()["manifest"]
+    with Session(world.engine) as db:
+        policy_changes.set_review_required(db, True, "user:1")
+        db.commit()
+    after = post(world.engine, {"format": "json", "scope": {"all": True}}).json()["manifest"]
+
+    assert before["governance"] == {"require_review": False}
+    assert after["governance"] == {"require_review": True}
+
+
+def test_a_manifest_from_before_population_still_verifies(world: World, tmp_path: Path) -> None:
+    seeded(world)
+    response, archive = export_zip(world.engine, all=True)
+    manifest = json.loads(archive.read("manifest.json"))
+    manifest["manifest_format"] = "baluarte.evidence-manifest/v2"
+    del manifest["population"]
+    manifest["limitations"] = manifest["limitations"][:-1]
+    older = resum(response.content, {"manifest.json": json.dumps(manifest).encode()})
+
+    status, output = run(save(tmp_path, "export.zip", older))
+
+    assert status == 0, output
+    assert "population" not in output

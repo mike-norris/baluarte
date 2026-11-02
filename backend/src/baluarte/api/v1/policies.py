@@ -2,7 +2,8 @@
 
 Reading needs ``findings:read`` (every role): a baseline explains the findings it produces, and
 auditors must be able to see exactly which version was in force. Validating and saving need
-``policy:write`` (admin, analyst).
+``policy:write`` (admin, analyst). While review is required (``baluarte.policy.changes``) saving
+proposes the version instead, and it becomes a version once someone else approves it.
 """
 
 from datetime import datetime
@@ -15,12 +16,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from baluarte import audit
+from baluarte.api.v1.policy_changes import PolicyChangeDetail, Review, change_detail, reviews
 from baluarte.auth.dependencies import Principal, database, require
 from baluarte.auth.roles import Permission
 from baluarte.db.models import Policy
+from baluarte.policy.changes import Actor, ChangeConflict, propose_version
 from baluarte.policy.loader import MAX_SOURCE_BYTES, PolicyInvalid, parse_policy
 from baluarte.policy.schema import NAME_PATTERN
-from baluarte.policy.store import save_version
 
 router = APIRouter(prefix="/policies", tags=["policies"])
 
@@ -58,6 +60,8 @@ class VersionSummary(BaseModel):
     yaml_digest: str
     effective_at: datetime
     created_at: datetime
+    # The change that put this version in force; null only if none is recorded.
+    review: Review | None = None
 
 
 class VersionOut(VersionSummary):
@@ -100,10 +104,16 @@ def validate(
     )
 
 
-def _version_out(policy: Policy) -> VersionOut:
+def _summary(policy: Policy, found: dict[int, Review]) -> VersionSummary:
+    summary = VersionSummary.model_validate(policy, from_attributes=True)
+    summary.review = found.get(policy.id)
+    return summary
+
+
+def _version_out(db: Session, policy: Policy) -> VersionOut:
     document = parse_policy(policy.source_yaml).document
     return VersionOut(
-        **VersionSummary.model_validate(policy, from_attributes=True).model_dump(),
+        **_summary(policy, reviews(db, "version", [policy.id])).model_dump(),
         source_yaml=policy.source_yaml,
         document=document.model_dump(mode="json"),
     )
@@ -116,9 +126,13 @@ def _version_out(policy: Policy) -> VersionOut:
     summary="Save a baseline as the next version of its policy",
     description="The policy is named by `metadata.name`. 201 with a new version; 200 with the "
     "existing version when the source is identical to the latest one; 422 with `errors` when "
-    "invalid. Requires the `X-CSRF-Token` header.",
+    "invalid. While review is required, 202 with the proposed change (`PolicyChangeDetail`): "
+    "it becomes a version when someone else approves it; 409 when another version of the "
+    "policy is already waiting. Requires the `X-CSRF-Token` header.",
     responses={
         200: {"model": VersionOut, "description": "Identical to the latest version"},
+        202: {"model": PolicyChangeDetail, "description": "Proposed; waiting for review"},
+        409: {"description": "Another version of this policy is waiting for review"},
         422: {"description": "Invalid baseline (`detail.errors`) or malformed request"},
     },
 )
@@ -128,13 +142,19 @@ def create_version(
     db: Annotated[Session, Depends(database)],
 ) -> Any:
     try:
-        saved = save_version(db, body.source_yaml)
+        saved = propose_version(db, body.source_yaml, Actor(principal.user_id, principal.actor))
     except PolicyInvalid as invalid:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             {"errors": [e.model_dump() for e in _errors(invalid)]},
         ) from None
-    if saved.created:
+    except ChangeConflict as error:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from None
+    if saved.policy is None and saved.change is not None:
+        db.commit()
+        change = change_detail(db, saved.change)
+        return JSONResponse(change.model_dump(mode="json"), status_code=status.HTTP_202_ACCEPTED)
+    if saved.created and saved.policy is not None and saved.change is not None:
         audit.record(
             db,
             actor=principal.actor,
@@ -145,10 +165,14 @@ def create_version(
                 "name": saved.policy.name,
                 "version": saved.policy.version,
                 "yaml_digest": saved.policy.yaml_digest,
+                "change_id": saved.change.id,
+                "self_approved": True,
             },
         )
     db.commit()
-    out = _version_out(saved.policy)
+    if saved.policy is None:
+        raise RuntimeError("a saved baseline has a version")
+    out = _version_out(db, saved.policy)
     if not saved.created:
         return JSONResponse(out.model_dump(mode="json"), status_code=status.HTTP_200_OK)
     return out
@@ -192,7 +216,8 @@ def list_versions(
     ).all()
     if not rows:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No policy with this name")
-    return [VersionSummary.model_validate(row, from_attributes=True) for row in rows]
+    found = reviews(db, "version", [row.id for row in rows])
+    return [_summary(row, found) for row in rows]
 
 
 @router.get(
@@ -212,4 +237,4 @@ def read_version(
     ).first()
     if policy is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such version")
-    return _version_out(policy)
+    return _version_out(db, policy)

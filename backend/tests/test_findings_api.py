@@ -10,7 +10,8 @@ from gitlab_fake import TOKEN, URL
 from oidc_fake import make_settings
 from sqlalchemy import Engine, delete, select, update
 from sqlalchemy.orm import Session
-from test_evaluation_store import NEXT_VERSION, World
+from test_evaluation_store import NEXT_VERSION, World, set_archived
+from test_policy_schema import BASELINE
 
 from baluarte.auth.dependencies import Principal, auth_settings, current_principal, database_engine
 from baluarte.auth.roles import Role
@@ -270,6 +271,107 @@ def test_run_history(world: World) -> None:
     assert len(older["items"]) == 1
 
 
+ZERO = {"pass": 0, "fail": 0, "unknown": 0, "unsupported": 0, "excepted": 0}
+# A second baseline allowing only private projects.
+STRICT = NEXT_VERSION.replace("name: default-gitlab-baseline", "name: strict")
+
+
+def counts(**values: int) -> dict[str, int]:
+    return {**ZERO, **{("pass" if key == "passed" else key): n for key, n in values.items()}}
+
+
+def test_summary_before_any_evaluation(world: World) -> None:
+    body = get(world.engine, "/api/v1/evaluations/summary")
+
+    assert body["evaluation_run"] is None
+    assert body["baselines"] == []
+    assert body["freshness"]["status"] == "never"
+
+
+def test_summary_and_project_results_leave_out_archived_projects(world: World) -> None:
+    archived = world.project(1, "public")
+    world.project(2, "private")
+    world.run()
+    set_archived(world, archived, True)
+    world.run()
+
+    body = get(world.engine, "/api/v1/evaluations/summary")
+    (baseline,) = body["baselines"]
+    assert baseline["projects"] == counts(passed=1)
+    assert get(world.engine, "/api/v1/gitlab/projects/1/evaluations")["items"] == []
+    (finding,) = get(world.engine, "/api/v1/findings?state=resolved")["items"]
+    assert finding["resolution"] == "project_archived"
+
+
+def test_summary_counts_results_per_baseline_version_and_rule(world: World) -> None:
+    world.assign(BASELINE)  # version 2 of the same baseline replaces version 1
+    world.project(1, "public")
+    world.project(2, "private")
+    world.project(3, "internal", observe=False)
+    run = world.run()
+
+    body = get(world.engine, "/api/v1/evaluations/summary")
+
+    assert body["evaluation_run"]["id"] == run.id
+    assert body["freshness"]["status"] == "fresh"
+    (baseline,) = body["baselines"]
+    assert baseline["name"] == "default-gitlab-baseline"
+    (version,) = baseline["versions"]
+    assert version["version"] == 2
+    rules = {rule["rule_id"]: rule for rule in version["rules"]}
+    assert list(rules) == ["default-branch-protected", "project-visibility"]
+    assert rules["project-visibility"]["results"] == counts(fail=1, passed=1, unknown=1)
+    assert rules["project-visibility"]["rule_type"] == "gitlab.project.visibility"
+    assert rules["project-visibility"]["severity"] == "medium"
+    # No default branch was observed, so that rule is unknown everywhere and no project passes.
+    assert rules["default-branch-protected"]["results"] == counts(unknown=3)
+    assert version["projects"] == counts(fail=1, unknown=2)
+    assert baseline["projects"] == version["projects"]
+
+
+def test_summary_uses_the_latest_successful_run(world: World) -> None:
+    project_id = world.project(1, "public")
+    first = world.run()
+    world.observe(project_id, "private")
+    with Session(world.engine) as db:
+        db.add(
+            EvaluationRun(
+                instance_id=world.instance_id,
+                status="failed",
+                finished_at=datetime.now(UTC),
+                error="unexpected error: RuntimeError",
+            )
+        )
+        db.commit()
+
+    body = get(world.engine, "/api/v1/evaluations/summary")
+
+    assert body["evaluation_run"]["id"] == first.id
+    assert body["freshness"]["status"] == "failed"
+    assert body["baselines"][0]["projects"] == counts(fail=1)
+
+    second = world.run()
+    after = get(world.engine, "/api/v1/evaluations/summary")
+    assert after["evaluation_run"]["id"] == second.id
+    assert after["baselines"][0]["projects"] == counts(passed=1)
+
+
+def test_summary_lists_each_baseline_and_filters_by_name(world: World) -> None:
+    world.assign(STRICT)
+    world.project(1, "internal")
+    world.run()
+
+    every = get(world.engine, "/api/v1/evaluations/summary")
+    strict = get(world.engine, "/api/v1/evaluations/summary?policy=strict")
+
+    assert [(b["name"], b["projects"]) for b in every["baselines"]] == [
+        ("default-gitlab-baseline", counts(passed=1)),
+        ("strict", counts(fail=1)),
+    ]
+    assert [baseline["name"] for baseline in strict["baselines"]] == ["strict"]
+    assert get(world.engine, "/api/v1/evaluations/summary?policy=absent")["baselines"] == []
+
+
 def test_queueing_an_evaluation_is_audited_and_shared_within_a_minute(
     migrated_engine: Engine,
 ) -> None:
@@ -328,6 +430,7 @@ def test_an_assignment_change_queues_one_evaluation(world: World) -> None:
         "/api/v1/gitlab/projects/1/evaluations",
         "/api/v1/evaluations/freshness",
         "/api/v1/evaluations/runs",
+        "/api/v1/evaluations/summary",
     ],
 )
 def test_reading_needs_findings_read(migrated_engine: Engine, url: str) -> None:

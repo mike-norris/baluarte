@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GitLabConfig, GitLabTestResult, OidcConfig, SetupStatus } from "../api/setup";
 import { routes } from "../routes";
 import { json, mockApi, type Call } from "../test/api";
+import { profile } from "../test/compliance";
 
 const ME = "GET /api/v1/auth/me";
 const STATUS = "GET /api/v1/setup/status";
@@ -433,6 +434,24 @@ describe("GitLab step", () => {
     return { calls, user };
   }
 
+  it("does not warn about an administrator whose token is read-only", async () => {
+    const { user } = await openGitLabStep({
+      [GITLAB]: notFound,
+      "POST /api/v1/setup/gitlab/test": () =>
+        json({ ...adminToken, token_scopes: ["admin_mode", "read_api"], checks: [] }),
+    });
+
+    await user.type(
+      await screen.findByRole("textbox", { name: "GitLab address" }),
+      "https://gitlab.example.test",
+    );
+    await user.type(screen.getByLabelText("Access token"), "glpat-secret");
+    await user.click(screen.getByRole("button", { name: "Test connection" }));
+
+    expect(await screen.findByText("Connection succeeded")).toBeInTheDocument();
+    expect(screen.queryByText(/belongs to a GitLab administrator/)).not.toBeInTheDocument();
+  });
+
   it("tests the connection and warns about an administrator token", async () => {
     const { calls, user } = await openGitLabStep({
       [GITLAB]: notFound,
@@ -643,5 +662,138 @@ describe("setup endpoint refusals", () => {
       ),
     ).toBeInTheDocument();
     expect(screen.getByText(/already contains "baluarte"/)).toBeInTheDocument();
+  });
+});
+
+describe("compliance step", () => {
+  const PROFILE = "GET /api/v1/setup/compliance";
+
+  async function openComplianceStep(routes: Routes = {}) {
+    const calls = inSession(
+      {
+        oidc: { source: "database", configured: true },
+        compliance: { source: null, configured: false },
+      },
+      {
+        [OIDC]: () => json(oidcConfig),
+        [GITLAB]: notFound,
+        [PROFILE]: () => json(profile()),
+        ...routes,
+      },
+    );
+    const user = userEvent.setup();
+    renderAt("/setup");
+    await user.click(await screen.findByRole("button", { name: "Continue without changes" }));
+    await user.click(await screen.findByRole("button", { name: "Skip for now" }));
+    await screen.findByRole("heading", { name: "Step 3 of 4: Compliance" });
+    return { calls, user };
+  }
+
+  it("explains that the profile governs Baluarte itself, not the GitLab baselines", async () => {
+    await openComplianceStep();
+
+    expect(await screen.findByText(/does not change the baselines/)).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "SOC 2 Type II" })).not.toBeChecked();
+    // Nothing chosen yet, so there is no way past this step without saving.
+    expect(
+      screen.queryByRole("button", { name: "Continue without changes" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("requires a choice, and applies the strictest framework's values", async () => {
+    const { calls, user } = await openComplianceStep();
+
+    await user.click(await screen.findByRole("button", { name: "Save and continue" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Choose at least one framework, or None of these.",
+    );
+
+    await user.click(screen.getByRole("checkbox", { name: "SOC 2 Type II" }));
+    const idle = screen.getByRole("textbox", { name: "Sign out after inactivity of (minutes)" });
+    expect(idle).toHaveValue("30");
+    await user.click(screen.getByRole("checkbox", { name: "NIST SP 800-53 Rev 5 Moderate" }));
+    expect(idle).toHaveValue("15");
+    expect(idle).toHaveAccessibleDescription(/At most 15 minutes for NIST 800-53/);
+    expect(
+      screen.getByRole("checkbox", { name: "Require a second person to approve baseline changes" }),
+    ).toBeChecked();
+    expect(screen.getByText("Where frameworks differ, the strictest value applies.")).toBeVisible();
+
+    await user.clear(idle);
+    await user.type(idle, "40");
+    await user.click(screen.getByRole("button", { name: "Save and continue" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Sign out after inactivity of: at most 15 minutes.",
+    );
+    expect(calls.some((call) => call.init?.method === "PUT")).toBe(false);
+  });
+
+  it("saves the profile with the setup session and shows it in the review", async () => {
+    let saved = profile();
+    const { calls, user } = await openComplianceStep({
+      [PROFILE]: () => json(saved),
+      "PUT /api/v1/setup/compliance": (init) => {
+        const body = JSON.parse(String(init?.body)) as { frameworks: []; settings: object };
+        saved = profile({ ...body, configured: true } as Partial<ReturnType<typeof profile>>);
+        return json(saved);
+      },
+    });
+
+    await user.click(await screen.findByRole("checkbox", { name: "ISO/IEC 27001:2022" }));
+    await user.click(screen.getByRole("button", { name: "Save and continue" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Step 4 of 4: Review and finish" }),
+    ).toBeInTheDocument();
+    expect(bodyOf(calls, "PUT /api/v1/setup/compliance")).toEqual({
+      frameworks: ["iso27001"],
+      settings: {
+        audit_retention_days: 365,
+        evidence_retention_days: 365,
+        job_retention_days: 90,
+        session_idle_minutes: 30,
+        session_lifetime_minutes: 480,
+        require_review: true,
+        legal_hold: false,
+      },
+    });
+    const put = calls.find((call) => call.init?.method === "PUT");
+    expect((put?.init?.headers as Record<string, string>)["X-CSRF-Token"]).toBe(CSRF);
+    const review = await screen.findByRole("region", { name: "Compliance profile" });
+    expect(within(review).getByText("ISO/IEC 27001:2022")).toBeInTheDocument();
+    expect(within(review).getByText("30 minutes")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Sign in to finish setup" })).toBeInTheDocument();
+  });
+
+  it("accepts None of these, and holds back sign-in until a profile is chosen", async () => {
+    let saved = profile();
+    const { user } = await openComplianceStep({
+      [PROFILE]: () => json(saved),
+      "PUT /api/v1/setup/compliance": () => {
+        saved = profile({ configured: true });
+        return json(saved);
+      },
+    });
+
+    await user.click(await screen.findByRole("checkbox", { name: /None of these/ }));
+    await user.click(screen.getByRole("button", { name: "Save and continue" }));
+
+    const review = await screen.findByRole("region", { name: "Compliance profile" });
+    expect(within(review).getByText("None (standard defaults)")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Sign in to finish setup" })).toBeInTheDocument();
+  });
+
+  it("does not offer sign-in while the profile is missing", async () => {
+    const { user } = await openComplianceStep({
+      "PUT /api/v1/setup/compliance": () => json(profile()),
+    });
+
+    await user.click(await screen.findByRole("checkbox", { name: /None of these/ }));
+    await user.click(screen.getByRole("button", { name: "Save and continue" }));
+
+    const review = await screen.findByRole("region", { name: "Compliance profile" });
+    expect(within(review).getByRole("alert")).toHaveTextContent("Not chosen.");
+    expect(screen.queryByRole("link", { name: "Sign in to finish setup" })).not.toBeInTheDocument();
   });
 });

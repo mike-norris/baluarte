@@ -23,6 +23,8 @@ from baluarte.logs import register_secret
 
 OIDC = "oidc"
 GITLAB = "gitlab"
+# The operating profile (baluarte.compliance.operations).
+OPERATIONS = "operations"
 # Names of stored secrets, not secret values.
 OIDC_CLIENT_SECRET = "oidc_client_secret"  # noqa: S105
 GITLAB_TOKEN = "gitlab_token"  # noqa: S105

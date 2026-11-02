@@ -2,6 +2,8 @@ database:
   host: postgresql.example.internal
   existingSecret: baluarte-database
   sslMode: verify-full
+  app:
+    existingSecret: baluarte-app-database
 ingress:
   enabled: true
   tls:

@@ -116,6 +116,15 @@ database:
   sslMode: require
   existingSecret: ""
   passwordKey: password
+  # The API and worker connect as this role, which the migration Job creates (or updates) and
+  # grants data access only: it owns nothing, cannot change the schema and cannot alter audit
+  # events. The owner above is used only by migrations. Set user to "" to connect as the owner
+  # (not recommended). The migration user needs CREATEROLE, or create the role yourself.
+  app:
+    user: baluarte_app
+    # Secret holding the app role's password. Not needed with devDatabase.enabled.
+    existingSecret: ""
+    passwordKey: password
 
 # Runs baluarte-migrate as a Job for every install and upgrade. The API reports ready only
 # once the schema is at the latest revision.
@@ -150,9 +159,11 @@ auth:
     adminGroups: []
     analystGroups: []
     auditorGroups: []
+  # Session idle and absolute expiry in minutes. Empty (the default) leaves them to the operating
+  # profile chosen in the web UI; a value here overrides it there.
   session:
-    idleMinutes: 60
-    lifetimeMinutes: 480
+    idleMinutes: null
+    lifetimeMinutes: null
 
 # The one self-managed GitLab instance to govern (ADR-0004). Access is read-only: create a
 # token with the read_api scope only, ideally for a non-admin bot or auditor user. With url

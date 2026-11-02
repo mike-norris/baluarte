@@ -64,23 +64,34 @@ To restore, scale the API and worker to zero, restore the database with your pro
 
 `deploy/compose/backup-restore-test.sh` runs this procedure end to end against throwaway containers. It migrates a database, writes audit events, dumps and restores them, re-runs migrations, checks the revision, the triggers and every digest, and confirms that the digest check detects a rewritten row. It publishes no ports and uses its own network and image tag.
 
+## Monitoring collection
+
+A failed collection is recorded, but nobody is told unless something watches for it. Baluarte gives two signals:
+
+- **Logs:** the worker logs `event: gitlab.collection_unhealthy` (WARNING) once when collection starts failing or falls overdue, and `event: gitlab.collection_recovered` (WARNING) once when it recovers. Route the worker's JSON log to your log platform and alert on the first event. Each worker process logs its own transitions, so with several workers expect one event per worker.
+- **API:** `GET /api/v1/gitlab/freshness` returns `alert` (null while healthy). A probe can alert while it is non-null.
+
+Thresholds: `failing` after 3 failed runs in a row for any kind; `overdue` when scheduled and a kind's last success is older than twice the interval. Scheduled jobs retry after 1, 5 and 15 minutes, so a short network or GitLab outage recovers without an alert ([GITLAB_INTEGRATION.md](GITLAB_INTEGRATION.md#scheduling-and-freshness)).
+
+An auditor reads a gap in successful collection as a period in which the monitoring control did not operate. Keep the alert routed, and record the cause and fix of any outage.
+
 ## Retention
 
-**Nothing is deleted automatically yet.** Rows accumulate until an operator removes them:
+The operating profile ([COMPLIANCE.md](COMPLIANCE.md)) sets how long data is kept: **audit events** (`audit_retention_days`, default 365), **evidence** (`evidence_retention_days`, default 365) and **jobs** (`job_retention_days`, default 90). SOC 2, ISO 27001 and NIST 800-53 profiles require at least 365 days for audit events and evidence. The worker queues the `retention.expire` job once per UTC day; in one transaction it deletes:
 
-| Data | Today |
+| Data | Deleted when |
 |---|---|
-| `audit_event` | Append-only: triggers reject `UPDATE` and `DELETE` |
-| `policy` | Triggers reject `UPDATE` (migration `0005`): a saved version never changes; a new version is a new row |
-| `observation`, `evaluation` | Triggers reject `UPDATE`; `DELETE` is allowed so retention can expire them. An observation is added only when a target's status, payload or error changes, so growth follows the rate of change in GitLab, not the number of runs. `observation.retention_until` exists but nothing sets or enforces it |
-| `evaluation` growth | Unlike observations, a row is added for every rule and project on every evaluation run, so each check is on record: about rules × projects × runs per day (2 rules, 10,000 projects and 4 runs a day is 80,000 rows a day). Plan the retention period with this in mind |
-| `finding` | Mutable current state; resolved findings are kept |
-| `policy_exception` | Kept indefinitely; a trigger rejects `DELETE` and allows only state transitions (migration `0010`) |
-| `remediation_plan` | Kept indefinitely; a trigger rejects `DELETE` and allows only state transitions (migration `0011`) |
-| `collection_job`, `collection_run`, `evaluation_run` | Kept indefinitely; the run history feeds freshness |
-| `user_session`, `oidc_login` | Expire logically (idle, absolute and 10-minute limits) but rows remain |
-| `app_setting`, `app_secret` | Current settings only; replaced when changed, removed when GitLab is disconnected. Changes are in `audit_event` |
-| `setup_state`, `setup_session` | One state row; expired setup sessions are removed when another starts, and all of them when setup completes |
-| `gitlab_group`, `gitlab_project` | Kept; deleted or hidden resources become `missing`, not removed |
+| `audit_event` | Older than the audit period, only through `baluarte_expire_audit` (below). Never younger than 30 days |
+| `evaluation` | Older than the evidence period, unless it is a finding's latest evaluation |
+| `observation` | Older than the evidence period, unless it is the newest of its target (instance, project or group, and source) or an evaluation still refers to it |
+| `evaluation_run`, `collection_run` | Older than the evidence period and finished, unless an evaluation, observation or security policy still refers to it. Runs are evidence of collection failures, so they follow the evidence period, not the job period |
+| `collection_job`, `export_job` | Finished more than the job period ago and not referred to by a run or observation. Queued and running jobs are never deleted |
+| `user_session`, `oidc_login`, `setup_session` | Ended (expired or revoked) more than 30 days ago |
 
-Not implemented: a retention period, an expiry job, legal hold, archival before deletion, and pruning of expired sessions or old jobs. The retention period is an open product question ([PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md)); each organization must decide it with its compliance owner, together with how long backups are kept, since a backup retains whatever a later deletion removes.
+Everything else is kept: `policy`, `policy_change`, `policy_exception`, `remediation_plan`, `compliance_exception`, `compliance_attestation`, `finding`, inventory and settings. An observation is added only when a target's status, payload or error changes, so growth follows the rate of change in GitLab; an evaluation row is added for every rule and project on every run (2 rules, 10,000 projects and 4 runs a day is 80,000 rows a day).
+
+**Audit events** cannot be deleted by the application: its database role has no `DELETE` on `audit_event` ([DEPLOYMENT.md](DEPLOYMENT.md#database-roles)), and a trigger rejects every `UPDATE` and `DELETE`. `baluarte_expire_audit(cutoff)` is a `SECURITY DEFINER` function owned by the schema owner; the trigger lets a delete through only while it runs. It refuses a cutoff less than 30 days ago and returns how many events it deleted, the first and last IDs, and a SHA-256 over their `details_digest` values in ID order. Each run is audited as `retention.expired` with the cutoffs, the counts per table and that digest, so an auditor holding an earlier export can confirm exactly which events were removed.
+
+**Legal hold** (`legal_hold` in the profile) stops every deletion; the job still runs and records `retention.expired` with `legal_hold: true`. The posture's `retention-running` control is not met when the job has not succeeded for 48 hours.
+
+Backups keep whatever a later deletion removes: decide how long backups are kept with the same compliance owner. Not implemented: archiving data before it is deleted, and per-record legal hold.

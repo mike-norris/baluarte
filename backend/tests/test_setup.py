@@ -62,6 +62,22 @@ def oidc_body(**overrides: Any) -> dict[str, Any]:
     } | overrides
 
 
+def profile_body(**settings: Any) -> dict[str, Any]:
+    return {
+        "frameworks": ["soc2"],
+        "settings": {
+            "audit_retention_days": 365,
+            "evidence_retention_days": 365,
+            "job_retention_days": 90,
+            "session_idle_minutes": 30,
+            "session_lifetime_minutes": 480,
+            "require_review": True,
+            "legal_hold": False,
+        }
+        | settings,
+    }
+
+
 def gitlab_body(**overrides: Any) -> dict[str, Any]:
     return {"url": GITLAB_URL, "token": GITLAB_TOKEN, "sync_interval_minutes": 60} | overrides
 
@@ -174,6 +190,7 @@ def test_a_new_installation_needs_setup(harness: Harness) -> None:
         "secret_key_configured": True,
         "oidc": {"source": None, "configured": False},
         "gitlab": {"source": None, "configured": False},
+        "compliance": {"source": None, "configured": False},
     }
     # Nothing can sign in yet.
     assert harness.client.get("/api/v1/auth/login").status_code == 503
@@ -319,7 +336,8 @@ def test_saving_the_identity_provider(harness: Harness) -> None:
         "redirect_uri": f"{PUBLIC_URL}/api/v1/auth/callback",
     }
     assert harness.client.get("/api/v1/setup/oidc").json() == response.json()
-    assert harness.status()["state"] == "awaiting_admin_sign_in"
+    # The operating profile is still to be chosen.
+    assert harness.status()["state"] == "needs_setup"
     assert harness.status()["oidc"] == {"source": "database", "configured": True}
     # The secret is sealed, never stored or audited in the clear.
     assert CLIENT_SECRET not in harness.dump()
@@ -509,7 +527,7 @@ def test_connection_test(harness: Harness) -> None:
     assert {check["name"]: check["status"] for check in body["checks"]} == {
         "connectivity": "pass",
         "token": "pass",
-        "user": "warn",
+        "user": "pass",  # an administrator, but the token is read_api only
         "group_visibility": "pass",
     }
     assert body["error"] is None
@@ -575,8 +593,55 @@ def test_the_deployment_wins(
         "secret_key_configured": None,
         "oidc": None,
         "gitlab": None,
+        "compliance": None,
     }
     assert harness.put("/api/v1/setup/oidc", oidc_body()).status_code == 409
+
+
+# Operating profile
+
+
+def test_choosing_the_operating_profile(harness: Harness) -> None:
+    harness.start()
+    defaults = harness.client.get("/api/v1/setup/compliance")
+    assert defaults.status_code == 200
+    assert defaults.json()["configured"] is False
+
+    # No exception can be recorded before anyone signs in, so the minimums must be met.
+    refused = harness.put(
+        "/api/v1/setup/compliance", profile_body(session_idle_minutes=60, require_review=False)
+    )
+    assert refused.status_code == 409
+    assert refused.json()["detail"]["code"] == "below_minimum"
+    assert [v["control_id"] for v in refused.json()["detail"]["violations"]] == [
+        "session-idle",
+        "change-review",
+    ]
+    assert harness.status()["compliance"] == {"source": None, "configured": False}
+
+    saved = harness.put("/api/v1/setup/compliance", profile_body())
+
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["frameworks"] == ["soc2"]
+    assert saved.json()["updated_by"] == "setup"
+    assert harness.status()["compliance"] == {"source": "database", "configured": True}
+    assert [a for _, a, _ in harness.audit()][-2:] == [
+        "settings.governance_updated",
+        "settings.compliance_updated",
+    ]
+
+
+def test_signing_in_before_the_profile_is_chosen_does_not_complete_setup(
+    harness: Harness,
+) -> None:
+    harness.start()
+    harness.put("/api/v1/setup/oidc", oidc_body())
+
+    assert harness.sign_in("baluarte-admins").status_code == 303
+
+    assert harness.status()["state"] == "needs_setup"
+    assert harness.put("/api/v1/setup/compliance", profile_body()).status_code == 200
+    assert harness.status()["state"] == "awaiting_admin_sign_in"
 
 
 # Completion
@@ -585,6 +650,7 @@ def test_the_deployment_wins(
 def test_the_first_admin_sign_in_completes_setup(harness: Harness) -> None:
     harness.start()
     harness.put("/api/v1/setup/oidc", oidc_body())
+    assert harness.put("/api/v1/setup/compliance", profile_body()).status_code == 200
 
     analyst = harness.sign_in("baluarte-analysts")
     assert analyst.status_code == 303

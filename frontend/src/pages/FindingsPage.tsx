@@ -18,11 +18,7 @@ import { findingsExportLink } from "../evidence/scope";
 import { findingsPlanLink } from "../remediation/format";
 import { PlanLink } from "../remediation/PlanLink";
 import { EvaluationNote } from "../findings/EvaluationNote";
-import {
-  hasFindingFilters,
-  readFindingFilters,
-  writeFindingFilters,
-} from "../findings/filters";
+import { hasFindingFilters, readFindingFilters, writeFindingFilters } from "../findings/filters";
 import {
   findingStateLabels,
   outcomeLabels,
@@ -97,7 +93,12 @@ function Filters({ filters }: { filters: FindingFilters }) {
       </label>
       <label className="text-sm font-medium">
         Rule ID
-        <input name="rule" defaultValue={filters.rule ?? ""} maxLength={63} className={fieldClass} />
+        <input
+          name="rule"
+          defaultValue={filters.rule ?? ""}
+          maxLength={63}
+          className={fieldClass}
+        />
       </label>
       <label className="text-sm font-medium">
         Project GitLab ID
@@ -154,6 +155,9 @@ function FindingRows({ findings }: { findings: Finding[] }) {
           <span className="block text-xs text-slate-600">
             {`until ${formatTime(finding.exception.expires_at)}; not passing`}
           </span>
+        )}
+        {finding.state === "resolved" && finding.resolution === "project_archived" && (
+          <span className="block text-xs text-slate-600">project archived; not checked</span>
         )}
       </td>
       <OutcomeCell finding={finding} />
@@ -254,8 +258,8 @@ export function FindingsPage() {
           Findings
         </h1>
         <p className="mt-2 text-slate-600">
-          Rules a project failed, followed until they pass. An unknown or unsupported latest
-          outcome means the last check could not decide; it never resolves a finding.
+          Rules a project failed, followed until they pass. An unknown or unsupported latest outcome
+          means the last check could not decide; it never resolves a finding.
         </p>
       </div>
       <EvaluationNote />

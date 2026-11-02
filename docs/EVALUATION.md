@@ -62,10 +62,14 @@ All reasons that apply are kept in `unknown_reasons`. The first one, in this ord
 | 8 | `target_collection_error` | The project has a `last_error`: the last collection could not confirm it. |
 | 9 | `ancestry_incomplete` | Policy resolution could not follow every group above the project. A policy, or a nearer version overriding one that was found, may be missing. |
 | 10 | `capability_unknown` | The rule needs a capability probe that has not run. |
-| 11 | `value_unknown` | The project is otherwise fine, but GitLab did not report the value. |
-| 12 | `evidence_missing` | Set when storing: no successful observation of the value's source exists for the project. |
-| 13 | `evidence_digest_mismatch` | Set when storing: the observation's SHA-256 digest no longer matches its payload, so the row was changed after it was written. |
-| 14 | `evidence_mismatch` | Set when storing: the observation's payload does not hold the value judged (the inventory and its evidence disagree). |
+| 11 | `security_policies_unread` | Security policy rules: the project's security policies have never been read, the last read failed (`forbidden`, `not_found`, `failed`), or the rule's policy type was not read (`unknown`). |
+| 12 | `security_policy_type_unsupported` | Security policy rules: this GitLab cannot list the rule's policy type. |
+| 13 | `security_policy_truncated` | Security policy rules: GitLab listed more policies of the type than were read. |
+| 14 | `security_policy_yaml_invalid` | Security policy rules: a policy of the type that reaches the project has YAML the strict loader rejects, or no known `enabled` flag. |
+| 15 | `value_unknown` | The project is otherwise fine, but GitLab did not report the value. |
+| 16 | `evidence_missing` | Set when storing: no successful observation of the value's source exists for the project. |
+| 17 | `evidence_digest_mismatch` | Set when storing: the observation's SHA-256 digest no longer matches its payload, so the row was changed after it was written. |
+| 18 | `evidence_mismatch` | Set when storing: the observation's payload does not hold the value judged (the inventory and its evidence disagree). |
 
 The order puts the most fundamental problem first:
 
@@ -95,7 +99,7 @@ Each rule type names the collection its value comes from. Only that collection's
 | Capability | None. Every supported GitLab version and edition reports project visibility, so this rule is never `unsupported`. |
 | Unknown when | Any reason above applies, including a `NULL` visibility (`value_unknown`). |
 
-Archived projects are evaluated like any other: an archived public project is still public.
+The rule itself ignores the archived flag, but archived projects are not evaluated at all (see [Archived projects](#archived-projects)).
 
 ## `gitlab.branch.default_protected`
 
@@ -119,6 +123,40 @@ How protection is read and matched is described in [GITLAB_INTEGRATION.md](GITLA
 - **Recorded:** only the matching rules are kept, with their access-level summary, force push and code owner approval. Whether a branch counts as protected does not depend on those settings.
 - **Not judged:** who may push or merge is not judged by this rule.
 
+## GitLab security policy rules
+
+`gitlab.security_policy.scan_execution` and `gitlab.security_policy.approval` judge the GitLab security policies that reach a project. They read only the project's latest stored observation from security policy discovery (source `GET /api/graphql project security policies`, see [GITLAB_INTEGRATION.md](GITLAB_INTEGRATION.md#security-policies)) and never call GitLab. Each policy's YAML is parsed with the same strict loader as Baluarte policies (no tags, anchors or duplicate keys, 256 KiB at most).
+
+| | |
+| --- | --- |
+| Value | A summary rebuilt from the observation: `{"policies": [...], "disabled": n}`, one entry per enabled policy of the rule's type that reaches the project, sorted by source and name. `disabled` counts the disabled ones. |
+| Collection | `security_policies`. Its freshness is that of security policy discovery, so a failed or stale discovery makes these rules `unknown`. |
+| Capability | `security_policies.read`. Detection never reports it `unsupported`; a type this GitLab cannot list is `unknown` (`security_policy_type_unsupported`), never `unsupported` or `fail`. |
+| Unknown when | Any reason above applies, or one of reasons 11 to 14. |
+
+**Which policies reach a project.** Discovery asks GitLab for the project's policies with `includeUnscoped: false`, so GitLab has already applied each policy's `policy_scope`. A policy whose `scope.excluding_projects` still lists the project is skipped as well. A disabled policy never counts. A partial observation (another type or target not read) is still judged: only the rule's own type must have been read in full.
+
+### `gitlab.security_policy.scan_execution`
+
+The summary of each policy holds its `scans` (from `actions[].scan`), `runs_on_default_branch` and `skip_ci_allowed`.
+
+- **Runs on the default branch:** a rule of type `pipeline` or `schedule` with `branch_type` `default`, `protected` or `all`, or with `"*"` in `branches`. `protected` assumes the default branch is protected, which the `gitlab.branch.default_protected` rule checks. Rules that run only for merge requests (`branch_type: target_default`) do not count.
+- **`[skip ci]`:** a policy without `skip_ci` can be skipped, as in GitLab. With `allow_skip_ci: false`, only policies with `skip_ci.allowed: false` count.
+- **Passes when** every scan in `scans` runs on the default branch in at least one counted policy. Scans may come from different policies.
+- **Fails when** no enabled policy reaches the project, or a scan is missing. The reason names the missing scans and the policies that did not count.
+
+### `gitlab.security_policy.approval`
+
+The summary of each policy holds `approvals_required` (the largest `require_approval` action, 0 when none), `every_merge_request`, `prevent_approval_by_author` and `prevent_approval_by_commit_author` (from `approval_settings`).
+
+- **Every merge request:** a rule of type `any_merge_request` that covers protected branches: `branch_type` `protected`, `default` or `all`, or an empty `branches` list. Conditional rules (`scan_finding`, `license_finding`) do not count: they require approval only when a finding matches, so a license approval policy does not satisfy this rule.
+- **Passes when** one policy requires approval on every merge request, with at least `min_approvals` approvals, and prevents approval by the author and by committers when `forbid_author_approval` and `forbid_committer_approval` ask for it.
+- **Fails when** no enabled policy reaches the project, or none qualifies. The reason says what the policies that reach the project lack.
+
+### Evidence
+
+The stored `observed` value is the summary, so the evidence check rebuilds it from the linked observation's payload. An observation with status `ok` or `partial` can back a result; a payload changed after it was written gives `evidence_digest_mismatch`. A finished security policy discovery (`succeeded` or `partial`) queues one `policy.evaluate`, as a project discovery does.
+
 ### Capabilities
 
 The capability status comes from the instance's latest capability snapshot (`capability_statuses`):
@@ -137,6 +175,32 @@ A result is decided from the inventory, then checked against its evidence before
 
 Otherwise the result is stored as `unknown` with reason 12, 13 or 14 above, and changes no finding. A digest failure is also logged as a warning (observation ID and project path only). A row rewritten together with a recomputed digest is not detected here; see the audit limitations in [AUDIT_EVIDENCE.md](AUDIT_EVIDENCE.md).
 
+### Result counts
+
+`GET /api/v1/evaluations/summary?policy=` (`findings:read`) counts results per baseline, version and rule. The counts come from the latest **successful** evaluation run only. A successful run judges every project once per rule in force, so the counts are one consistent snapshot; a run that failed or is still running is not counted, even when it stored some pages.
+
+```text
+EvaluationSummary {
+  evaluation_run: EvaluationRun | null   # the run counted; null when none has succeeded
+  freshness: EvaluationFreshness         # same as /evaluations/freshness
+  baselines: [{
+    name
+    projects: Counts                     # summed over its versions
+    versions: [{
+      policy_id, version, yaml_digest
+      projects: Counts                   # each project once, by its worst result
+      rules: [{ rule_id, rule_type, severity, results: Counts }]   # one result per project
+    }]
+  }]
+}
+Counts { pass, fail, unknown, unsupported, excepted }
+```
+
+- **Worst result:** a project counts as `fail` if any rule failed, then `unknown`, `unsupported`, `excepted`; it counts as `pass` only when every rule passed. `unknown` and `unsupported` are never counted as passing.
+- **Versions add up:** one run judges a project under at most one version of each baseline, so a baseline's `projects` is the sum over its versions.
+- **Order:** baselines by name, versions newest first, rules by ID.
+- Read the counts with `freshness`: counts from an old run are not current compliance.
+
 ## Running an evaluation
 
 `evaluation.project` evaluates the policies in force for one project. It only reads:
@@ -148,11 +212,23 @@ resolution = resolve_project(db, instance, project)
 results = evaluate_project(db, project, resolution, collections, capabilities)
 ```
 
-`capabilities` defaults to the instance's snapshot when omitted. Each project's default-branch protection observation is read with the project.
+`capabilities` defaults to the instance's snapshot when omitted. Each project's default-branch protection and security policy observations are read with the project.
 
 - **Which policies:** only the resolution's `effective` policies are evaluated. Overridden and out-of-scope versions are not.
-- **Which rules:** a rule is evaluated only if its type has an evaluator. Today that is `gitlab.project.visibility` and `gitlab.branch.default_protected`. Rules of other types produce no result until their evaluator exists; they never produce a guessed one.
+- **Which rules:** a rule is evaluated only if its type has an evaluator. Today that is `gitlab.project.visibility`, `gitlab.branch.default_protected`, `gitlab.security_policy.scan_execution` and `gitlab.security_policy.approval`. Rules of other types produce no result until their evaluator exists; they never produce a guessed one.
 - **Order:** by policy name, then by the rule's position in the policy.
+
+### Archived projects
+
+Archived projects are not evaluated (decided in UAT, 2026-11-01). GitLab makes an archived project read-only, so nobody can act on a baseline result for it, and its findings would only be noise.
+
+- **No results:** the run writes no evaluation rows for an active, archived project, and does not count it in the run's `projects`. The result counts and `GET /gitlab/projects/{id}/evaluations` therefore leave it out.
+- **Findings resolve:** its `open` and `excepted` findings resolve with `resolution = project_archived` (an exception's link is cleared, as for `no_longer_applies`). The run counts them under `findings.project_archived`.
+- **Unarchived:** the next run judges the project again, and a `fail` reopens the same finding.
+- **Missing or inaccessible:** these keep their existing handling. A project that left the inventory with an open finding is still judged `unknown` with `target_missing` or `target_inaccessible`, whatever its last-seen archived flag, so a finding is never closed on stale information.
+- **Reads say why:** `GET /gitlab/projects/{gitlab_id}` and `GET /gitlab/projects/{gitlab_id}/effective-policies` return `not_evaluated: "archived"` for such a project (`null` otherwise). The policies still resolve, so the page can show what would apply.
+
+`runner.not_evaluated(project)` is the one place that decides this.
 
 ## Adding a rule type
 
@@ -161,7 +237,8 @@ A rule type is one `RuleEvaluator`, registered in `EVALUATORS` (`evaluation/proj
 - the collection its value comes from, and its `source`
 - the capability probe it needs, if any
 - how to state the expectation, read the value and judge it
-- why a missing value is missing
+- why a missing value is missing, and which unknown reason that is (`value_unknown` unless it says otherwise)
+- when its value was observed (the project's `last_seen_at` unless it says otherwise)
 
 The engine applies the unknown and unsupported handling above, so each rule type decides only `pass` or `fail`.
 
@@ -189,7 +266,7 @@ Baluarte never reports unknown, unsupported or stale state as compliant. The end
 | An exception that expired or was revoked waives nothing: the API reads it as ended at once, and the next run reopens or settles its finding. | `test_expiry_ends_the_waiver_on_the_next_run`, `test_an_exception_past_expiry_reads_as_expired_before_the_next_run`, `test_revoking_reopens_the_finding_at_once`, `test_an_unknown_result_after_the_exception_ended_reopens_the_finding` |
 | Nobody approves or rejects their own exception. | `test_the_requester_cannot_approve_their_own_request`, `test_the_requester_cannot_decide_their_own_request` |
 
-Where a scenario leaves results undecided, the tests also check that no `pass` appears in the latest results, in the project evaluations API (with `observed` empty), or among findings resolved by a pass, and, where every project is affected, in the run's outcome counts. The unit tests in `test_evaluation_visibility.py`, `test_evaluation_default_branch.py`, `test_evaluation_project.py` and `test_evaluation_store.py` cover each reason and transition on its own.
+Where a scenario leaves results undecided, the tests also check that no `pass` appears in the latest results, in the project evaluations API (with `observed` empty), or among findings resolved by a pass, and, where every project is affected, in the run's outcome counts. The unit tests in `test_evaluation_visibility.py`, `test_evaluation_default_branch.py`, `test_evaluation_security_policy.py`, `test_evaluation_project.py` and `test_evaluation_store.py` cover each reason and transition on its own.
 
 ## Deferred
 

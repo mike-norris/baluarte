@@ -7,7 +7,7 @@ number: a worker whose lease expired cannot overwrite the outcome of a later att
 
 import logging
 import random
-from collections.abc import Callable, Collection
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
@@ -28,6 +28,8 @@ MAX_KEY_LENGTH = 200
 BACKOFF_BASE = timedelta(seconds=30)
 BACKOFF_CAP = timedelta(hours=1)
 BACKOFF_JITTER = 0.2
+# Payload key holding a job's own retry delays, in seconds; see ``retry_delay``.
+RETRY_DELAYS = "retry_delays_seconds"
 
 
 class JobError(Exception):
@@ -56,6 +58,25 @@ def backoff(attempt: int, rng: Callable[[], float] = random.random) -> timedelta
     return delay * (1 + BACKOFF_JITTER * (2 * rng() - 1))
 
 
+def retry_delay(
+    attempt: int, payload: Mapping[str, Any] | None, rng: Callable[[], float] = random.random
+) -> timedelta:
+    """Delay before retrying after ``attempt`` failed.
+
+    A job enqueued with ``retry_delays`` waits the delay listed for that attempt (the last one
+    for any later attempt), with the same jitter; any other job uses ``backoff``.
+    """
+    delays = (payload or {}).get(RETRY_DELAYS)
+    if (
+        isinstance(delays, list)
+        and delays
+        and all(isinstance(d, int | float) and not isinstance(d, bool) and d > 0 for d in delays)
+    ):
+        delay = timedelta(seconds=delays[min(max(attempt, 1), len(delays)) - 1])
+        return delay * (1 + BACKOFF_JITTER * (2 * rng() - 1))
+    return backoff(attempt, rng)
+
+
 def enqueue(
     db: Session,
     kind: str,
@@ -64,16 +85,22 @@ def enqueue(
     *,
     max_attempts: int = 5,
     delay: timedelta = timedelta(0),
+    retry_delays: Sequence[float] | None = None,
 ) -> int:
     """Add a job unless one with the same idempotency key exists; return the job's ID either way.
 
     The key identifies the work, not the attempt: enqueueing the same key twice is a no-op even
-    after the first job finished. The caller commits.
+    after the first job finished. ``retry_delays`` (seconds) replaces the default backoff for this
+    job and is kept in its payload under ``RETRY_DELAYS``. The caller commits.
     """
     if not kind or not idempotency_key or len(idempotency_key) > MAX_KEY_LENGTH:
         raise ValueError("kind and an idempotency key of at most 200 characters are required")
     if max_attempts < 1:
         raise ValueError("max_attempts must be at least 1")
+    if retry_delays is not None:
+        if not retry_delays or any(d <= 0 for d in retry_delays):
+            raise ValueError("retry_delays must be positive numbers of seconds")
+        payload = {**(payload or {}), RETRY_DELAYS: list(retry_delays)}
     inserted = db.execute(
         pg_insert(CollectionJob)
         .values(
@@ -113,7 +140,7 @@ def expire_leases(db: Session, rng: Callable[[], float] = random.random) -> int:
             job.finished_at = func.now()
         else:
             job.state = QUEUED
-            job.run_after = func.now() + backoff(job.attempt, rng)
+            job.run_after = func.now() + retry_delay(job.attempt, job.payload, rng)
     return count
 
 
@@ -210,7 +237,7 @@ def fail(
             lease_owner=None,
             lease_until=None,
             error=message,
-            run_after=func.now() + backoff(job.attempt, rng),
+            run_after=func.now() + retry_delay(job.attempt, job.payload, rng),
         )
     return _fenced_update(
         db,

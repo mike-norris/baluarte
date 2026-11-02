@@ -30,6 +30,8 @@ class Permission(StrEnum):
     SETTINGS_MANAGE = "settings:manage"
     AUDIT_LOG_READ = "audit_log:read"
     JOBS_READ = "jobs:read"
+    # The operating profile, Baluarte's posture against it, its exceptions and attestations.
+    COMPLIANCE_READ = "compliance:read"
 
 
 _READ = frozenset({Permission.INVENTORY_READ, Permission.FINDINGS_READ, Permission.EVIDENCE_READ})
@@ -38,7 +40,8 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = {
     Role.ADMIN: frozenset(Permission),
     Role.ANALYST: _READ
     | {Permission.POLICY_WRITE, Permission.EXCEPTION_REQUEST, Permission.REMEDIATION_PLAN},
-    Role.AUDITOR: _READ | {Permission.EVIDENCE_EXPORT, Permission.AUDIT_LOG_READ},
+    Role.AUDITOR: _READ
+    | {Permission.EVIDENCE_EXPORT, Permission.AUDIT_LOG_READ, Permission.COMPLIANCE_READ},
 }
 
 

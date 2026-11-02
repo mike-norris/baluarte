@@ -14,6 +14,10 @@ from you" in a listing:
 Any other failure leaves the state unchanged and records ``last_error``. A resource seen again
 becomes ``active`` and its error is cleared.
 
+The result counts both halves: ``listed`` splits what the listing returned into ``new`` rows,
+``known`` active rows and ``restored`` rows that were missing or inaccessible before, and
+``reconciled`` counts what happened to the active rows the listing did not return.
+
 Each outcome is also recorded as an observation (``baluarte.evidence.observations``) in the
 same transaction as the inventory change: the allowlisted fields of a listed or confirmed
 resource, or the status and safe error of one that could not be read.
@@ -80,6 +84,10 @@ class ResourceKind:
 class Discovery:
     instance_id: int
     seen: int = 0
+    # What the listing returned: rows not stored before, active rows, and rows that were
+    # missing or inaccessible and are active again.
+    listed: dict[str, int] = field(default_factory=lambda: {"new": 0, "known": 0, "restored": 0})
+    # Active rows the listing did not return, by the outcome of looking each one up.
     reconciled: dict[str, int] = field(
         default_factory=lambda: {"active": 0, "inaccessible": 0, "missing": 0, "unchanged": 0}
     )
@@ -130,6 +138,30 @@ def _upsert(
     )
 
 
+def _count_listed(
+    db: Session,
+    kind: ResourceKind,
+    instance_id: int,
+    rows: list[dict[str, Any]],
+    listed: dict[str, int],
+) -> None:
+    """Add a page's rows to ``listed`` by their state before the upsert."""
+    if not rows:
+        return
+    model = kind.model
+    gitlab_ids = {row["gitlab_id"] for row in rows}
+    states = dict(
+        db.execute(
+            select(model.gitlab_id, model.state).where(
+                model.instance_id == instance_id, model.gitlab_id.in_(gitlab_ids)
+            )
+        ).all()
+    )
+    for gitlab_id in gitlab_ids:
+        state = states.get(gitlab_id)
+        listed["new" if state is None else "known" if state == "active" else "restored"] += 1
+
+
 def _update(
     engine: Engine,
     kind: ResourceKind,
@@ -174,6 +206,7 @@ def discover(
     for page in client.paginate(kind.list_path, kind.list_params):
         rows = [kind.to_row(instance_id, item) for item in page]
         with Session(engine) as db:
+            _count_listed(db, kind, instance_id, rows, result.listed)
             _upsert(db, kind, rows, kind.list_source, provenance)
             db.commit()
         result.seen += len(rows)

@@ -36,19 +36,19 @@ spec:
           securityContext:
             {{- toYaml .Values.containerSecurityContext | nindent 12 }}
           env:
-            {{- include "baluarte.databaseEnv" . | nindent 12 }}
+            {{- include "baluarte.migrateDatabaseEnv" . | nindent 12 }}
             {{- include "baluarte.loggingEnv" . | nindent 12 }}
           resources:
             {{- toYaml .Values.migrations.resources | nindent 12 }}
           volumeMounts:
             - name: tmp
               mountPath: /tmp
-            {{- include "baluarte.databaseVolumeMount" . | nindent 12 }}
+            {{- include "baluarte.migrateDatabaseVolumeMount" . | nindent 12 }}
       volumes:
         - name: tmp
           emptyDir:
             sizeLimit: 64Mi
-        {{- include "baluarte.databaseVolume" . | nindent 8 }}
+        {{- include "baluarte.migrateDatabaseVolume" . | nindent 8 }}
       {{- with .Values.api.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

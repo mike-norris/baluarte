@@ -1,4 +1,9 @@
-"""Read access to the audit trail, with each event's digest for independent verification."""
+"""Read access to the audit trail, with each event's digest for independent verification.
+
+``digest_valid`` recomputes ``details_digest`` from the stored details, as observations do: it
+detects details changed without their digest, not a rewrite that recomputed it (see
+docs/AUDIT_EVIDENCE.md, Audit limitations).
+"""
 
 from datetime import datetime
 from typing import Annotated, Any
@@ -8,6 +13,7 @@ from pydantic import AwareDatetime, BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from baluarte.audit import details_digest
 from baluarte.auth.dependencies import Principal, database, require
 from baluarte.auth.roles import Permission
 from baluarte.db.models import AuditEvent
@@ -24,6 +30,8 @@ class AuditEventOut(BaseModel):
     resource_id: str | None
     details: dict[str, Any]
     details_digest: str
+    # The SHA-256 of ``details`` recomputed now equals ``details_digest``.
+    digest_valid: bool
 
 
 class AuditEventPage(BaseModel):
@@ -54,5 +62,30 @@ def list_audit_events(
     if before_id is not None:
         statement = statement.where(AuditEvent.id < before_id)
     rows = db.scalars(statement).all()
-    items = [AuditEventOut.model_validate(row, from_attributes=True) for row in rows[:limit]]
+    items = [
+        AuditEventOut(
+            id=row.id,
+            occurred_at=row.occurred_at,
+            actor=row.actor,
+            action=row.action,
+            resource_type=row.resource_type,
+            resource_id=row.resource_id,
+            details=row.details,
+            details_digest=row.details_digest,
+            digest_valid=details_digest(row.details) == row.details_digest,
+        )
+        for row in rows[:limit]
+    ]
     return AuditEventPage(items=items, next_before_id=items[-1].id if len(rows) > limit else None)
+
+
+@router.get(
+    "/actions",
+    response_model=list[str],
+    summary="Every action recorded in the audit trail, for filtering",
+)
+def list_actions(
+    _: Annotated[Principal, Depends(require(Permission.AUDIT_LOG_READ))],
+    db: Annotated[Session, Depends(database)],
+) -> list[str]:
+    return list(db.scalars(select(AuditEvent.action).distinct().order_by(AuditEvent.action)))

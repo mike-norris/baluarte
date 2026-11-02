@@ -8,15 +8,17 @@ Every install and upgrade runs a `baluarte-migrate` Job; the API reports ready o
 
 Images are not published yet; build them and push to a registry your cluster can pull from.
 
-Use an external PostgreSQL in production. Create a Secret holding its password, then:
+Use an external PostgreSQL in production. Create Secrets holding the owner's password and a new password for the app role (`baluarte_app`, which the migration Job creates), then:
 
 ```sh
 kubectl -n baluarte create secret generic baluarte-database --from-file=password=./db-password
+kubectl -n baluarte create secret generic baluarte-app-database --from-file=password=./app-db-password
 helm install baluarte deploy/helm/baluarte \
   --namespace baluarte --create-namespace \
   --set global.imageRegistry=registry.example.internal/baluarte \
   --set database.host=postgresql.example.internal \
   --set database.existingSecret=baluarte-database \
+  --set database.app.existingSecret=baluarte-app-database \
   --set ingress.enabled=true --set ingress.host=baluarte.example.internal
 helm test baluarte -n baluarte
 ```
@@ -57,6 +59,7 @@ For evaluation only, `--set devDatabase.enabled=true` runs a single PostgreSQL p
 | `database.host`, `database.port`, `database.name`, `database.user` | `""`, `5432`, `baluarte`, `baluarte` | External PostgreSQL; `host` is required unless `devDatabase.enabled` |
 | `database.existingSecret`, `database.passwordKey` | `""`, `password` | Secret holding the database password |
 | `database.sslMode` | `require` | libpq `sslmode`; use `verify-full` with a trusted CA where possible |
+| `database.app.user`, `database.app.existingSecret`, `database.app.passwordKey` | `baluarte_app`, `""`, `password` | Role the API and worker connect as. The migration Job creates or updates it with data access only (no schema changes, no altering audit events), so the migration user needs `CREATEROLE`. `existingSecret` holds its password and is required with an external database; the dev database generates one. `user: ""` connects as the owner (not recommended) |
 | `logging.level`, `logging.format` | `INFO`, `json` | Log level and format for the API, worker and migration Job; secrets are redacted |
 | `migrations.waitTimeoutSeconds` | `120` | How long the migration Job waits for PostgreSQL |
 | `devDatabase.enabled` | `false` | Single-pod PostgreSQL for evaluation and CI |
@@ -66,7 +69,7 @@ For evaluation only, `--set devDatabase.enabled=true` runs a single PostgreSQL p
 | `auth.oidc.existingSecret`, `auth.oidc.clientSecretKey` | `""`, `client-secret` | Secret holding the client secret; empty for a PKCE-only public client |
 | `auth.oidc.adminGroups`, `analystGroups`, `auditorGroups` | `[]` | Provider groups granted each role; at least one is required |
 | `auth.oidc.rolesClaim`, `auth.oidc.scopes` | `groups`, `openid profile email` | Groups claim and requested scopes |
-| `auth.session.idleMinutes`, `auth.session.lifetimeMinutes` | `60`, `480` | Session idle and absolute expiry |
+| `auth.session.idleMinutes`, `auth.session.lifetimeMinutes` | empty | Session idle and absolute expiry in minutes. Empty leaves them to the operating profile chosen in the web UI (defaults 60 and 480); a value here overrides the profile and is reported on the Compliance page if it misses the profile's limit |
 | `gitlab.url` | `""` | https URL of the GitLab instance; empty lets an administrator connect GitLab in the web UI |
 | `gitlab.existingSecret`, `gitlab.tokenKey` | `""`, `token` | Secret and key holding a `read_api` token; required with `gitlab.url`. Mounted into the API and worker |
 | `gitlab.timeoutSeconds` | `15` | Per-request timeout |

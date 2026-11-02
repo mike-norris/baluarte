@@ -168,6 +168,143 @@
       "title": "Scope",
       "type": "object"
     },
+    "SecurityPolicyApprovalRule": {
+      "additionalProperties": false,
+      "description": "Passes when an enabled GitLab approval policy that reaches the project requires at least\n``min_approvals`` approvals on every merge request to its protected branches.",
+      "properties": {
+        "id": {
+          "description": "Unique within the baseline; named in findings.",
+          "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
+          "title": "Id",
+          "type": "string"
+        },
+        "severity": {
+          "default": "medium",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "type": {
+          "const": "gitlab.security_policy.approval",
+          "title": "Type",
+          "type": "string"
+        },
+        "min_approvals": {
+          "maximum": 20,
+          "minimum": 1,
+          "title": "Min Approvals",
+          "type": "integer"
+        },
+        "forbid_author_approval": {
+          "default": false,
+          "description": "Require approval_settings.prevent_approval_by_author: true.",
+          "title": "Forbid Author Approval",
+          "type": "boolean"
+        },
+        "forbid_committer_approval": {
+          "default": false,
+          "description": "Require approval_settings.prevent_approval_by_commit_author: true.",
+          "title": "Forbid Committer Approval",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "min_approvals"
+      ],
+      "title": "SecurityPolicyApprovalRule",
+      "type": "object"
+    },
+    "SecurityPolicyScanExecutionRule": {
+      "additionalProperties": false,
+      "description": "Passes when the enabled GitLab scan execution policies that reach the project, taken\ntogether, run every scan in ``scans`` on its default branch.",
+      "properties": {
+        "id": {
+          "description": "Unique within the baseline; named in findings.",
+          "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
+          "title": "Id",
+          "type": "string"
+        },
+        "severity": {
+          "default": "medium",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "type": {
+          "const": "gitlab.security_policy.scan_execution",
+          "title": "Type",
+          "type": "string"
+        },
+        "scans": {
+          "items": {
+            "enum": [
+              "secret_detection",
+              "sast",
+              "sast_iac",
+              "dependency_scanning",
+              "container_scanning",
+              "dast"
+            ],
+            "type": "string"
+          },
+          "maxItems": 6,
+          "minItems": 1,
+          "title": "Scans",
+          "type": "array"
+        },
+        "allow_skip_ci": {
+          "default": true,
+          "description": "When false, a policy that lets pipelines skip it with [skip ci] (skip_ci.allowed: true, GitLab's default) does not count.",
+          "title": "Allow Skip Ci",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "scans"
+      ],
+      "title": "SecurityPolicyScanExecutionRule",
+      "type": "object"
+    },
     "Spec": {
       "additionalProperties": false,
       "properties": {
@@ -179,7 +316,9 @@
             "discriminator": {
               "mapping": {
                 "gitlab.branch.default_protected": "#/$defs/DefaultBranchProtectedRule",
-                "gitlab.project.visibility": "#/$defs/ProjectVisibilityRule"
+                "gitlab.project.visibility": "#/$defs/ProjectVisibilityRule",
+                "gitlab.security_policy.approval": "#/$defs/SecurityPolicyApprovalRule",
+                "gitlab.security_policy.scan_execution": "#/$defs/SecurityPolicyScanExecutionRule"
               },
               "propertyName": "type"
             },
@@ -189,6 +328,12 @@
               },
               {
                 "$ref": "#/$defs/DefaultBranchProtectedRule"
+              },
+              {
+                "$ref": "#/$defs/SecurityPolicyScanExecutionRule"
+              },
+              {
+                "$ref": "#/$defs/SecurityPolicyApprovalRule"
               }
             ]
           },

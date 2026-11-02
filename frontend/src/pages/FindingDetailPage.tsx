@@ -10,6 +10,7 @@ import {
   type EvaluationPage,
   type FindingDetail,
 } from "../api/evaluations";
+import { projectHref } from "../api/gitlab";
 import { usePaged } from "../api/usePaged";
 import { useLoad } from "../api/useLoad";
 import { ErrorMessage } from "../components/ErrorMessage";
@@ -60,10 +61,6 @@ function Field({ term, children }: { term: string; children: ReactNode }) {
   );
 }
 
-function inventoryHref(path: string): string {
-  return `/inventory?${new URLSearchParams({ search: path }).toString()}`;
-}
-
 function Summary({ finding }: { finding: FindingDetail }) {
   const evaluation = finding.latest_evaluation;
   return (
@@ -97,7 +94,7 @@ function Summary({ finding }: { finding: FindingDetail }) {
           {finding.rule_id} <span className="text-slate-600">({evaluation.rule_type})</span>
         </Field>
         <Field term="Project">
-          <Link to={inventoryHref(finding.project.path)} className={linkClass}>
+          <Link to={projectHref(finding.project.gitlab_id)} className={linkClass}>
             {finding.project.path}
           </Link>{" "}
           <span className="text-slate-600">

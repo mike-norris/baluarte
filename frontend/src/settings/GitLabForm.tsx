@@ -26,6 +26,22 @@ const checkClasses: Record<CheckStatus, string> = {
   fail: "bg-red-100 text-red-900",
 };
 
+// Scopes that let a token change GitLab; admin_mode alone only unlocks admin reads with read_api.
+const WRITE_SCOPES = new Set([
+  "api",
+  "write_repository",
+  "write_registry",
+  "sudo",
+  "create_runner",
+  "manage_runner",
+  "k8s_proxy",
+  "ai_features",
+]);
+
+function readOnly(scopes: string[] | null): boolean {
+  return scopes !== null && scopes.includes("read_api") && !scopes.some((s) => WRITE_SCOPES.has(s));
+}
+
 export function GitLabTestResultView({ result }: { result: GitLabTestResult }) {
   return (
     <div
@@ -54,11 +70,11 @@ export function GitLabTestResultView({ result }: { result: GitLabTestResult }) {
           </li>
         )}
       </ul>
-      {result.user?.is_admin && (
+      {result.user?.is_admin && !readOnly(result.token_scopes) && (
         <p className={noteClass}>
-          This token belongs to a GitLab administrator. Baluarte needs only <code>read_api</code>;
-          use a dedicated non-admin auditor account so the token cannot see or reach more than it
-          should.
+          This token belongs to a GitLab administrator and can change GitLab, or its scopes could
+          not be read. Issue it with <code>read_api</code> only (add <code>admin_mode</code> to
+          cover the whole instance).
         </p>
       )}
       {result.checks.length > 0 && (

@@ -15,7 +15,10 @@ from baluarte.db.models import CollectionJob, CollectionRun
 from baluarte.integrations.gitlab.instances import instance_for
 from baluarte.jobs.queue import ClaimedJob
 
-RunKind = Literal["capabilities", "groups", "projects"]
+RunKind = Literal["capabilities", "groups", "projects", "security_policies"]
+# The kinds inventory and the visibility and branch rules depend on. Overall freshness is
+# decided by these; security policy discovery reports its own freshness.
+INVENTORY_KINDS: tuple[RunKind, ...] = ("capabilities", "groups", "projects")
 RunOutcome = Literal["succeeded", "partial", "failed"]
 
 INTERRUPTED = "interrupted: the worker stopped before the run finished"

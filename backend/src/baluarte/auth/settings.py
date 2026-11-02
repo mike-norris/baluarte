@@ -17,6 +17,12 @@ from baluarte.settings import ConfigurationError, env, read_secret
 LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
 CALLBACK_PATH = "/api/v1/auth/callback"
 
+SESSION_IDLE_ENV = "BALUARTE_SESSION_IDLE_MINUTES"
+SESSION_LIFETIME_ENV = "BALUARTE_SESSION_LIFETIME_MINUTES"
+# Used when neither the environment nor the operating profile (baluarte.compliance) sets them.
+DEFAULT_SESSION_IDLE_MINUTES = 60
+DEFAULT_SESSION_LIFETIME_MINUTES = 8 * 60
+
 _REQUIRED = ("BALUARTE_PUBLIC_URL", "BALUARTE_OIDC_ISSUER", "BALUARTE_OIDC_CLIENT_ID")
 _GROUP_VARIABLES = {
     Role.ADMIN: "BALUARTE_OIDC_ADMIN_GROUPS",
@@ -111,13 +117,24 @@ def deployment_auth_present() -> bool:
 
 
 def session_lifetimes() -> tuple[timedelta, timedelta]:
-    idle = _minutes("BALUARTE_SESSION_IDLE_MINUTES", 60)
-    lifetime = _minutes("BALUARTE_SESSION_LIFETIME_MINUTES", 8 * 60)
+    """The environment's session limits, or the defaults. The operating profile replaces the
+    defaults (``baluarte.configuration.effective``); the environment always wins."""
+    idle = _minutes(SESSION_IDLE_ENV, DEFAULT_SESSION_IDLE_MINUTES)
+    lifetime = _minutes(SESSION_LIFETIME_ENV, DEFAULT_SESSION_LIFETIME_MINUTES)
     if idle > lifetime:
-        raise ConfigurationError(
-            "BALUARTE_SESSION_IDLE_MINUTES cannot exceed BALUARTE_SESSION_LIFETIME_MINUTES"
-        )
+        raise ConfigurationError(f"{SESSION_IDLE_ENV} cannot exceed {SESSION_LIFETIME_ENV}")
     return idle, lifetime
+
+
+def deployment_session_minutes() -> tuple[int | None, int | None]:
+    """The idle and absolute session limits the environment fixes, in minutes; None for each it
+    does not set."""
+    idle = _minutes(SESSION_IDLE_ENV, 1) if env(SESSION_IDLE_ENV) else None
+    lifetime = _minutes(SESSION_LIFETIME_ENV, 1) if env(SESSION_LIFETIME_ENV) else None
+    return (
+        int(idle.total_seconds() // 60) if idle is not None else None,
+        int(lifetime.total_seconds() // 60) if lifetime is not None else None,
+    )
 
 
 def stored_auth_settings(

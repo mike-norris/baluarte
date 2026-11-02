@@ -15,8 +15,9 @@ from sqlalchemy.orm import Session
 from baluarte.db.models import GitLabInstance, GitLabProject, Policy
 from baluarte.evidence.observations import latest
 from baluarte.integrations.gitlab.branches import PROTECTION_SOURCE
-from baluarte.integrations.gitlab.freshness import report
+from baluarte.integrations.gitlab.freshness import kind_freshness, report
 from baluarte.integrations.gitlab.runs import RunKind
+from baluarte.integrations.gitlab.security_policies import PROJECT_SOURCE as SECURITY_POLICY_SOURCE
 from baluarte.integrations.gitlab.settings import GitLabSettings
 from baluarte.policy.assignments import Resolution
 from baluarte.policy.evaluation.default_branch import DEFAULT_BRANCH_PROTECTED
@@ -25,6 +26,7 @@ from baluarte.policy.evaluation.engine import (
     EvaluationContext,
     ProjectFacts,
     RuleEvaluator,
+    SecurityPolicies,
     evaluate_rule,
 )
 from baluarte.policy.evaluation.model import (
@@ -34,13 +36,15 @@ from baluarte.policy.evaluation.model import (
     RuleResult,
     TargetRef,
 )
+from baluarte.policy.evaluation.security_policy import APPROVAL_POLICY, SCAN_EXECUTION_POLICY
 from baluarte.policy.evaluation.visibility import VISIBILITY
 from baluarte.policy.loader import parse_policy
 
 # Rule types that can be evaluated; adding a rule type adds its evaluator here. Rules of other
 # types are not evaluated (and produce no result) until their evaluator exists.
 EVALUATORS: Mapping[str, RuleEvaluator] = {
-    evaluator.rule_type: evaluator for evaluator in (VISIBILITY, DEFAULT_BRANCH_PROTECTED)
+    evaluator.rule_type: evaluator
+    for evaluator in (VISIBILITY, DEFAULT_BRANCH_PROTECTED, SCAN_EXECUTION_POLICY, APPROVAL_POLICY)
 }
 
 # Only a probe that answered is "supported". Capability detection cannot prove a feature is
@@ -57,6 +61,9 @@ def collection_contexts(
     contexts: dict[str, CollectionContext] = {}
     for kind in get_args(RunKind):
         found = freshness.collections.get(kind)
+        if found is None and settings is not None:
+            # Kinds outside the inventory report, such as security policy discovery.
+            found = kind_freshness(db, instance_id, kind, settings)
         if found is None:
             contexts[kind] = CollectionContext(
                 kind=kind, status="not_configured", last_success_at=None
@@ -103,8 +110,26 @@ def branch_protection(db: Session, project: GitLabProject) -> BranchProtection |
     )
 
 
+def security_policies(db: Session, project: GitLabProject) -> SecurityPolicies | None:
+    """The project's latest GitLab security policy observation, if it was ever read."""
+    observation = latest(
+        db, project.instance_id, "project_id", project.id, sources=(SECURITY_POLICY_SOURCE,)
+    )
+    if observation is None:
+        return None
+    return SecurityPolicies(
+        observation_id=observation.id,
+        status=observation.collection_status,
+        collected_at=observation.collected_at,
+        payload=observation.payload,
+        error=observation.error,
+    )
+
+
 def project_facts(
-    project: GitLabProject, protection: BranchProtection | None = None
+    project: GitLabProject,
+    protection: BranchProtection | None = None,
+    policies: SecurityPolicies | None = None,
 ) -> ProjectFacts:
     return ProjectFacts(
         gitlab_id=project.gitlab_id,
@@ -116,6 +141,7 @@ def project_facts(
         archived=project.archived,
         default_branch=project.default_branch,
         protection=protection,
+        security_policies=policies,
     )
 
 
@@ -143,7 +169,9 @@ def evaluate_project(
         target=TargetRef(
             target_type="project", gitlab_id=project.gitlab_id, path=project.path_with_namespace
         ),
-        project=project_facts(project, branch_protection(db, project)),
+        project=project_facts(
+            project, branch_protection(db, project), security_policies(db, project)
+        ),
         collections=collections,
         ancestry=resolution.ancestry,
         evaluated_at=evaluated_at,

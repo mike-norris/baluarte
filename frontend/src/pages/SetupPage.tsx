@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "rea
 import { Link, Navigate } from "react-router";
 
 import { ApiError } from "../api/client";
+import { getProfile, SETUP_PROFILE, type Profile } from "../api/compliance";
 import {
   getGitLabConfig,
   getOidcConfig,
@@ -16,6 +17,8 @@ import { useAuth } from "../auth/context";
 import { signInHref } from "../auth/session";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
+import { ComplianceForm } from "../compliance/ComplianceForm";
+import { frameworkList, settingInfo, settingOrder } from "../compliance/format";
 import { describeInterval } from "../settings/format";
 import { GitLabForm } from "../settings/GitLabForm";
 import { OidcForm } from "../settings/OidcForm";
@@ -31,13 +34,21 @@ import {
   Values,
 } from "../settings/parts";
 
-type Step = "oidc" | "gitlab" | "review";
+type Step = "oidc" | "gitlab" | "compliance" | "review";
 
-const steps: { step: Step; label: string }[] = [
+const allSteps: { step: Step; label: string }[] = [
   { step: "oidc", label: "Identity provider" },
   { step: "gitlab", label: "GitLab" },
+  { step: "compliance", label: "Compliance" },
   { step: "review", label: "Review and finish" },
 ];
+
+/** Servers that predate the operating profile report no compliance section and have no compliance step. */
+function stepsFor(status: SetupStatus): { step: Step; label: string }[] {
+  return status.compliance === undefined
+    ? allSteps.filter((item) => item.step !== "compliance")
+    : allSteps;
+}
 
 // The setup session's CSRF token lives for this tab only, so a reload keeps the wizard open.
 const CSRF_KEY = "baluarte.setup.csrf";
@@ -183,7 +194,11 @@ function useSetupResource<T>(
   onError: (error: ApiError) => void,
 ): { data: T | undefined; error: ApiError | undefined; retry: () => void } {
   const [attempt, setAttempt] = useState(0);
-  const [state, setState] = useState<{ attempt: number; data?: T; error?: ApiError } | null>(null);
+  const [state, setState] = useState<{
+    attempt: number;
+    data?: T;
+    error?: ApiError;
+  } | null>(null);
   const loadRef = useRef(load);
   const errorRef = useRef(onError);
 
@@ -347,7 +362,7 @@ function GitLabStep({ status, csrf, onError, onChanged, go }: StepProps) {
     go("oidc");
   };
   const next = () => {
-    go("review");
+    go(status.compliance === undefined ? "review" : "compliance");
   };
 
   if (config.error) return <ErrorMessage error={config.error} retry={config.retry} />;
@@ -390,11 +405,78 @@ function GitLabStep({ status, csrf, onError, onChanged, go }: StepProps) {
   );
 }
 
+function complianceRows(profile: Profile): [string, ReactNode][] {
+  return [
+    ["Frameworks", frameworkList(profile.frameworks)],
+    ...settingOrder.map((name): [string, ReactNode] => {
+      const value = profile.settings[name];
+      const text =
+        typeof value === "boolean"
+          ? value
+            ? "On"
+            : "Off"
+          : `${String(value)} ${settingInfo[name].unit ?? ""}`;
+      return [settingInfo[name].label, text];
+    }),
+  ];
+}
+
+function ComplianceStep({ csrf, onError, onChanged, go }: StepProps) {
+  const profile = useSetupResource((signal) => getProfile(SETUP_PROFILE, signal), onError);
+
+  if (profile.error) return <ErrorMessage error={profile.error} retry={profile.retry} />;
+  if (profile.data === undefined) return <Loading what="the compliance profile" />;
+  const configured = profile.data.configured;
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-slate-700">
+        Should Baluarte itself meet SOC 2, ISO 27001 or NIST audit requirements? Your choice sets
+        how long Baluarte keeps its audit log and evidence, how long sessions last and whether
+        baseline changes need a second person. An administrator can change it later in Settings, and
+        the Compliance page shows how Baluarte measures up.
+      </p>
+      <ComplianceForm
+        path={SETUP_PROFILE}
+        csrf={csrf}
+        profile={profile.data}
+        enforceMinimums
+        submitLabel="Save and continue"
+        onSaved={() => {
+          onChanged();
+          go("review");
+        }}
+        onError={onError}
+      />
+      <StepNav
+        back={() => {
+          go("gitlab");
+        }}
+        {...(configured
+          ? {
+              next: () => {
+                go("review");
+              },
+            }
+          : {})}
+        nextLabel="Continue without changes"
+      />
+    </div>
+  );
+}
+
+/** The compliance profile for review, or null on servers without one. */
+function loadComplianceForReview(status: SetupStatus) {
+  return (signal: AbortSignal): Promise<Profile | null> =>
+    status.compliance === undefined ? Promise.resolve(null) : getProfile(SETUP_PROFILE, signal);
+}
+
 function ReviewStep({ status, onError, go }: StepProps) {
   const oidc = useSetupResource((signal) => getOidcConfig(SETUP, signal), onError);
   const gitlab = useSetupResource((signal) => getGitLabConfig(SETUP, signal), onError);
+  const compliance = useSetupResource(loadComplianceForReview(status), onError);
 
-  const error = oidc.error ?? gitlab.error;
+  const error = oidc.error ?? gitlab.error ?? compliance.error;
   if (error) {
     return (
       <ErrorMessage
@@ -402,11 +484,15 @@ function ReviewStep({ status, onError, go }: StepProps) {
         retry={() => {
           oidc.retry();
           gitlab.retry();
+          compliance.retry();
         }}
       />
     );
   }
-  if (oidc.data === undefined || gitlab.data === undefined) return <Loading what="the settings" />;
+  if (oidc.data === undefined || gitlab.data === undefined || compliance.data === undefined) {
+    return <Loading what="the settings" />;
+  }
+  const complianceMissing = compliance.data !== null && !compliance.data.configured;
 
   return (
     <div className="space-y-6">
@@ -452,7 +538,31 @@ function ReviewStep({ status, onError, go }: StepProps) {
           Change GitLab connection
         </button>
       </section>
-      {oidc.data && status.oidc?.configured !== false && (
+      {compliance.data && (
+        <section aria-labelledby="review-compliance" className={cardClass}>
+          <h3 id="review-compliance" className="font-semibold">
+            Compliance profile
+          </h3>
+          {complianceMissing ? (
+            <p role="alert" className="text-sm text-red-800">
+              Not chosen. Choose the frameworks Baluarte must meet, or None of these, before
+              finishing.
+            </p>
+          ) : (
+            <Values rows={complianceRows(compliance.data)} />
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              go("compliance");
+            }}
+            className={secondaryClass}
+          >
+            Change compliance profile
+          </button>
+        </section>
+      )}
+      {oidc.data && status.oidc?.configured !== false && !complianceMissing && (
         <section aria-labelledby="review-finish" className={cardClass}>
           <h3 id="review-finish" className="font-semibold">
             Finish
@@ -483,6 +593,7 @@ function Wizard({ status, csrf, onError, onChanged }: Omit<StepProps, "go">) {
     moved.current = true;
     setStep(next);
   };
+  const steps = stepsFor(status);
   const current = steps.findIndex((item) => item.step === step);
   const props = { status, csrf, onError, onChanged, go };
 
@@ -514,6 +625,7 @@ function Wizard({ status, csrf, onError, onChanged }: Omit<StepProps, "go">) {
         </h2>
         {step === "oidc" && <OidcStep {...props} />}
         {step === "gitlab" && <GitLabStep {...props} />}
+        {step === "compliance" && <ComplianceStep {...props} />}
         {step === "review" && <ReviewStep {...props} />}
       </section>
     </div>
@@ -651,8 +763,9 @@ export function SetupPage() {
           Set up Baluarte
         </h1>
         <p className="mt-2 text-slate-600">
-          Connect your identity provider for sign-in and, optionally, the GitLab instance to govern.
-          Secrets are stored encrypted and are never shown again.
+          Connect your identity provider for sign-in and, optionally, the GitLab instance to govern,
+          then choose the compliance frameworks Baluarte itself must meet. Secrets are stored
+          encrypted and are never shown again.
         </p>
       </div>
       {body}
