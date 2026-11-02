@@ -1,0 +1,111 @@
+{{- if .Values.backup.enabled }}
+{{- $name := printf "%s-backup" (include "baluarte.fullname" .) | trunc 63 | trimSuffix "-" }}
+{{- $recipient := required "backup.recipient must be an age public key (age1...) when backup.enabled" .Values.backup.recipient }}
+{{- if not (hasPrefix "age1" $recipient) }}
+{{- fail "backup.recipient must be an age public key (age1...)" }}
+{{- end }}
+{{- if not .Values.backup.persistence.existingClaim }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "baluarte.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+  annotations:
+    # Backups outlive the release; delete the claim yourself once they are copied elsewhere.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  {{- with .Values.backup.persistence.storageClassName }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.backup.persistence.size }}
+---
+{{- end }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "baluarte.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            {{- include "baluarte.labels" . | nindent 12 }}
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ include "baluarte.serviceAccountName" . }}
+          automountServiceAccountToken: false
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+            runAsUser: {{ .Values.backup.runAsUser }}
+            runAsGroup: {{ .Values.backup.runAsUser }}
+            fsGroup: {{ .Values.backup.runAsUser }}
+          containers:
+            - name: backup
+              image: {{ include "baluarte.image" (dict "ctx" . "image" .Values.backup.image) | quote }}
+              imagePullPolicy: {{ .Values.backup.image.pullPolicy }}
+              args: ["once"]
+              securityContext:
+                {{- toYaml .Values.containerSecurityContext | nindent 16 }}
+              env:
+                - name: PGHOST
+                  value: {{ include "baluarte.databaseHost" . | quote }}
+                - name: PGPORT
+                  value: {{ .Values.database.port | quote }}
+                - name: PGDATABASE
+                  value: {{ .Values.database.name | quote }}
+                - name: PGSSLMODE
+                  value: {{ ternary "disable" .Values.database.sslMode .Values.devDatabase.enabled | quote }}
+                - name: BALUARTE_BACKUP_DATABASE_USER
+                  value: {{ .Values.backup.user | quote }}
+                - name: BALUARTE_BACKUP_DATABASE_PASSWORD_FILE
+                  value: /var/run/secrets/baluarte/backup-database/password
+                - name: BALUARTE_BACKUP_RECIPIENT
+                  value: {{ $recipient | quote }}
+                - name: BALUARTE_BACKUP_KEEP
+                  value: {{ .Values.backup.keep | quote }}
+              resources:
+                {{- toYaml .Values.backup.resources | nindent 16 }}
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: backups
+                  mountPath: /backups
+                - name: backup-database-password
+                  mountPath: /var/run/secrets/baluarte/backup-database
+                  readOnly: true
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 64Mi
+            - name: backups
+              persistentVolumeClaim:
+                claimName: {{ default $name .Values.backup.persistence.existingClaim }}
+            {{- include "baluarte.backupVolume" . | nindent 12 }}
+          {{- with .Values.backup.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.backup.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

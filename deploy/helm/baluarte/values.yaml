@@ -208,6 +208,44 @@ devDatabase:
     limits:
       memory: 512Mi
 
+# Encrypted database backups (docs/OPERATIONS.md#scheduled-backups): a CronJob runs pg_dump as a
+# read-only role, encrypts the stream with age for backup.recipient and keeps the newest
+# backup.keep files on a PersistentVolumeClaim. Each run is recorded and checked by the
+# Compliance page. Copy the volume's contents off the cluster; managed databases may also offer
+# their own backups.
+backup:
+  enabled: false
+  image:
+    repository: baluarte-backup
+    # Defaults to the chart appVersion.
+    tag: ""
+    pullPolicy: IfNotPresent
+  # age public key (age1...). Required when enabled; the private key stays offline.
+  recipient: ""
+  # Cron schedule in the controller's time zone. Daily keeps the backups control met.
+  schedule: "17 2 * * *"
+  keep: 14
+  # The role the migration Job creates for backups (read-only, plus recording its runs).
+  user: baluarte_backup
+  # Secret holding its password. Not needed with devDatabase.enabled.
+  existingSecret: ""
+  passwordKey: password
+  persistence:
+    size: 5Gi
+    storageClassName: ""
+    # Use an existing claim instead of creating one.
+    existingClaim: ""
+  # The postgres user in the image.
+  runAsUser: 70
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+  nodeSelector: {}
+  tolerations: []
+
 # Exposes the web Service; the web pod proxies /api to the API Service.
 ingress:
   enabled: false

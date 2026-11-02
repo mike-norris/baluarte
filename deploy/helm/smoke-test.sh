@@ -22,16 +22,17 @@ echo "ok  helm lint"
 
 docker build -q -t "baluarte-app:$tag" backend >/dev/null
 docker build -q -t "baluarte-web:$tag" frontend >/dev/null
+docker build -q -t "baluarte-backup:$tag" deploy/backup >/dev/null
 echo "ok  images built"
 
 kind create cluster --name "$cluster" --wait 120s
-kind load docker-image --name "$cluster" "baluarte-app:$tag" "baluarte-web:$tag"
+kind load docker-image --name "$cluster" "baluarte-app:$tag" "baluarte-web:$tag" "baluarte-backup:$tag"
 
 helm install "$release" "$chart" \
   --kube-context "kind-$cluster" \
   --namespace "$namespace" --create-namespace \
-  -f "$chart/ci/dev-database-values.yaml" \
-  --set api.image.tag="$tag" --set web.image.tag="$tag" \
+  -f "$chart/ci/dev-database-values.yaml" -f "$chart/ci/backup-values.yaml" \
+  --set api.image.tag="$tag" --set web.image.tag="$tag" --set backup.image.tag="$tag" \
   --set api.podDisruptionBudget.enabled=true --set web.podDisruptionBudget.enabled=true \
   --set worker.podDisruptionBudget.enabled=true \
   --wait --timeout 300s
@@ -75,6 +76,16 @@ for component in api worker; do
   grep -q '"logger": "baluarte' <<<"$logs" || fail "$component logs are not structured JSON: $logs"
 done
 echo "ok  api and worker log JSON lines"
+
+# One backup now, from the CronJob's template, recorded by the backup role.
+"${kubectl[@]}" create job --from="cronjob/$release-backup" backup-smoke >/dev/null
+"${kubectl[@]}" wait --for=condition=complete --timeout=180s job/backup-smoke >/dev/null \
+  || fail "backup job did not complete: $("${kubectl[@]}" logs job/backup-smoke 2>&1 | tail -5)"
+recorded=$("${kubectl[@]}" exec "$release-postgresql-0" -- \
+  psql -U baluarte -d baluarte -tAc "SELECT status FROM backup_run ORDER BY id DESC LIMIT 1")
+[[ $recorded == succeeded ]] || fail "backup_run recorded: $recorded"
+"${kubectl[@]}" delete job backup-smoke --wait >/dev/null
+echo "ok  backup CronJob writes and records an encrypted backup"
 
 helm upgrade "$release" "$chart" \
   --kube-context "kind-$cluster" --namespace "$namespace" \

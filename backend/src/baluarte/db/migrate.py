@@ -5,7 +5,9 @@ revisions that are already applied.
 
 With ``BALUARTE_APP_DATABASE_USER`` set, it also creates or updates that login role for the API
 and worker and grants it only what they need: it owns nothing, cannot change the schema, and
-cannot update or delete audit events. Migrations keep running as the schema owner.
+cannot update or delete audit events. ``BALUARTE_BACKUP_DATABASE_USER`` does the same for the
+backup service, which may only read and record its runs. Migrations keep running as the schema
+owner.
 """
 
 import argparse
@@ -22,7 +24,7 @@ from importlib.resources import files
 from alembic import command
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import Engine, create_engine, text
+from sqlalchemy import Connection, Engine, create_engine, text
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from baluarte.config import ConfigurationError, database_url
@@ -41,6 +43,8 @@ INSERT_ONLY_TABLES = ("audit_event",)
 READ_ONLY_TABLES = ("alembic_version",)
 # The only functions the app role may call beyond the PUBLIC defaults.
 APP_FUNCTIONS = ("baluarte_expire_audit(timestamptz)",)
+# The backup service reads everything and may only add rows here.
+BACKUP_RUN_TABLE = "backup_run"
 
 
 def alembic_config() -> Config:
@@ -93,64 +97,87 @@ def scram_verifier(password: str, salt: bytes | None = None) -> str:
     return f"SCRAM-SHA-256${SCRAM_ITERATIONS}:{b64(salt)}${b64(stored_key)}:{b64(server_key)}"
 
 
-def app_role_settings() -> tuple[str, str] | None:
-    """The app role's name and password, or None when the deployment does not set one."""
-    name = env("BALUARTE_APP_DATABASE_USER")
+def role_settings(prefix: str) -> tuple[str, str] | None:
+    """``<prefix>_USER`` and the password in ``<prefix>_PASSWORD_FILE``, or None when unset."""
+    name = env(f"{prefix}_USER")
     if not name:
         return None
     if not ROLE_NAME.fullmatch(name):
         raise ConfigurationError(
-            "BALUARTE_APP_DATABASE_USER must be a lower-case PostgreSQL name "
-            "(letters, digits and underscores)"
+            f"{prefix}_USER must be a lower-case PostgreSQL name (letters, digits and underscores)"
         )
-    password = read_secret("BALUARTE_APP_DATABASE_PASSWORD", required=True)
+    password = read_secret(f"{prefix}_PASSWORD", required=True)
     if password is None:  # unreachable: required=True raises instead
-        raise ConfigurationError("BALUARTE_APP_DATABASE_PASSWORD_FILE is not set")
+        raise ConfigurationError(f"{prefix}_PASSWORD_FILE is not set")
     return name, password
+
+
+def app_role_settings() -> tuple[str, str] | None:
+    """The app role's name and password, or None when the deployment does not set one."""
+    return role_settings("BALUARTE_APP_DATABASE")
+
+
+def backup_role_settings() -> tuple[str, str] | None:
+    """The backup role's name and password, or None when the deployment does not set one."""
+    return role_settings("BALUARTE_BACKUP_DATABASE")
+
+
+def _login_role(connection: Connection, name: str, password: str, purpose: str) -> str:
+    """Create the login role, or update its password; return its quoted name.
+
+    The role is refused if it is the schema owner or a superuser, since grants would not limit it.
+    """
+    if name == connection.execute(text("SELECT current_user")).scalar_one():
+        raise ConfigurationError(
+            f"The {purpose} database role must differ from the user that runs migrations"
+        )
+    role = connection.execute(
+        text("SELECT rolsuper FROM pg_roles WHERE rolname = :name"), {"name": name}
+    ).first()
+    verifier = scram_verifier(password)
+    # Identifiers cannot be bound parameters: the name is checked against ROLE_NAME and
+    # quoted, and the verifier holds only base64 and fixed characters. The driver gets the
+    # statement as is, since the verifier's colons would read as bind parameters.
+    quoted: str = connection.execute(text("SELECT quote_ident(:name)"), {"name": name}).scalar_one()
+    if role is None:
+        connection.exec_driver_sql(f"CREATE ROLE {quoted} LOGIN PASSWORD '{verifier}'")
+        logger.info("created database role %s for the %s", name, purpose)
+    elif role.rolsuper:
+        raise ConfigurationError(f"Database role {name} is a superuser; use a plain role")
+    else:
+        connection.exec_driver_sql(f"ALTER ROLE {quoted} LOGIN PASSWORD '{verifier}'")
+    database = connection.execute(text("SELECT quote_ident(current_database())")).scalar_one()
+    for statement in (
+        f"GRANT CONNECT ON DATABASE {database} TO {quoted}",
+        f"GRANT USAGE ON SCHEMA public TO {quoted}",
+        f"REVOKE CREATE ON SCHEMA public FROM {quoted}",
+    ):
+        connection.execute(text(statement))
+    return quoted
+
+
+def _owned_tables(connection: Connection) -> list[str]:
+    return list(
+        connection.execute(
+            text(
+                "SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
+                "AND tableowner = current_user ORDER BY tablename"
+            )
+        ).scalars()
+    )
 
 
 def ensure_app_role(engine: Engine, name: str, password: str) -> None:
     """Create or update the app's login role and grant it data access only. Safe to re-run.
 
     Grants are applied to every table on each run, so tables added by later migrations are
-    covered. The role is refused if it is the schema owner or a superuser, since grants would
-    not limit it.
+    covered.
     """
     with engine.begin() as connection:
         connection.execute(text("SELECT pg_advisory_xact_lock(:id)"), {"id": ADVISORY_LOCK_ID})
-        if name == connection.execute(text("SELECT current_user")).scalar_one():
-            raise ConfigurationError(
-                "BALUARTE_APP_DATABASE_USER must differ from the user that runs migrations"
-            )
-        role = connection.execute(
-            text("SELECT rolsuper FROM pg_roles WHERE rolname = :name"), {"name": name}
-        ).first()
-        verifier = scram_verifier(password)
-        # Identifiers cannot be bound parameters: the name is checked against ROLE_NAME and
-        # quoted, and the verifier holds only base64 and fixed characters. The driver gets the
-        # statement as is, since the verifier's colons would read as bind parameters.
-        quoted = connection.execute(text("SELECT quote_ident(:name)"), {"name": name}).scalar_one()
-        if role is None:
-            connection.exec_driver_sql(f"CREATE ROLE {quoted} LOGIN PASSWORD '{verifier}'")
-            logger.info("created database role %s for the API and worker", name)
-        elif role.rolsuper:
-            raise ConfigurationError(f"Database role {name} is a superuser; use a plain role")
-        else:
-            connection.exec_driver_sql(f"ALTER ROLE {quoted} LOGIN PASSWORD '{verifier}'")
-        database = connection.execute(text("SELECT quote_ident(current_database())")).scalar_one()
-        tables = connection.execute(
-            text(
-                "SELECT tablename FROM pg_tables WHERE schemaname = 'public' "
-                "AND tableowner = current_user ORDER BY tablename"
-            )
-        ).scalars()
-        statements = [
-            f"GRANT CONNECT ON DATABASE {database} TO {quoted}",
-            f"GRANT USAGE ON SCHEMA public TO {quoted}",
-            f"REVOKE CREATE ON SCHEMA public FROM {quoted}",
-            f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {quoted}",
-        ]
-        for table in tables:
+        quoted = _login_role(connection, name, password, "API and worker")
+        statements = [f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {quoted}"]
+        for table in _owned_tables(connection):
             target = f"public.{table}"
             statements.append(f"REVOKE ALL ON {target} FROM {quoted}")
             if table in READ_ONLY_TABLES:
@@ -167,6 +194,36 @@ def ensure_app_role(engine: Engine, name: str, password: str) -> None:
     logger.info("database role %s may read and write data only", name)
 
 
+def ensure_backup_role(engine: Engine, name: str, password: str) -> None:
+    """Create or update the backup service's login role. Safe to re-run.
+
+    It may read every table and sequence (what pg_dump needs) and add rows to ``backup_run``,
+    and nothing else.
+    """
+    with engine.begin() as connection:
+        connection.execute(text("SELECT pg_advisory_xact_lock(:id)"), {"id": ADVISORY_LOCK_ID})
+        quoted = _login_role(connection, name, password, "backup service")
+        statements = [
+            f"REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM {quoted}",
+            f"GRANT SELECT ON ALL SEQUENCES IN SCHEMA public TO {quoted}",
+        ]
+        tables = _owned_tables(connection)
+        for table in tables:
+            statements.append(f"REVOKE ALL ON public.{table} FROM {quoted}")
+            statements.append(f"GRANT SELECT ON public.{table} TO {quoted}")
+        if BACKUP_RUN_TABLE in tables:
+            statements.append(f"GRANT INSERT ON public.{BACKUP_RUN_TABLE} TO {quoted}")
+            sequence = connection.execute(
+                text("SELECT pg_get_serial_sequence(:table, 'id')"),
+                {"table": f"public.{BACKUP_RUN_TABLE}"},
+            ).scalar()
+            if sequence:
+                statements.append(f"GRANT USAGE ON SEQUENCE {sequence} TO {quoted}")
+        for statement in statements:
+            connection.execute(text(statement))
+    logger.info("database role %s may read data and record backups only", name)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Apply Baluarte database migrations.")
     parser.add_argument(
@@ -181,6 +238,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         engine = create_engine(database_url(), connect_args={"connect_timeout": 5})
         app_role = app_role_settings()
+        backup_role = backup_role_settings()
     except ConfigurationError as exc:
         logger.error("%s", exc)
         return 2
@@ -189,6 +247,8 @@ def main(argv: list[str] | None = None) -> int:
         upgrade(engine)
         if app_role is not None:
             ensure_app_role(engine, *app_role)
+        if backup_role is not None:
+            ensure_backup_role(engine, *backup_role)
     except ConfigurationError as exc:
         logger.error("%s", exc)
         return 2

@@ -20,6 +20,11 @@ data:
   {{- else }}
   app-password: {{ randAlphaNum 32 | b64enc }}
   {{- end }}
+  {{- if and $existing (index $existing.data "backup-password") }}
+  backup-password: {{ index $existing.data "backup-password" }}
+  {{- else }}
+  backup-password: {{ randAlphaNum 32 | b64enc }}
+  {{- end }}
 ---
 apiVersion: v1
 kind: Service

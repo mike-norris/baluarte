@@ -21,7 +21,7 @@ Pre-release (v0.1 in development): read-only GitLab inventory, policy evaluation
 Requires Docker with Compose v2. The stack is for development only; it binds to 127.0.0.1 and is not a production configuration.
 
 ```sh
-mkdir -p secrets && (umask 022 && for name in postgres_password app_database_password secret_key; do
+mkdir -p secrets && (umask 022 && for name in postgres_password app_database_password backup_database_password secret_key; do
   [ -f secrets/$name ] || openssl rand -base64 32 > secrets/$name; done)
 docker compose up -d --build --wait
 docker compose logs api | grep 'setup code'
