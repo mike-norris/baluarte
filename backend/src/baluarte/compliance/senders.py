@@ -143,11 +143,31 @@ class SyslogSender:
                 connection.settimeout(self.timeout)
                 for record in records:
                     connection.sendall(syslog_frame(record.body, hostname))
+                _close_after_delivery(connection)
         except (OSError, ssl.SSLError) as exc:
             raise DeliveryError(
                 f"syslog {destination.host}:{destination.port}: {short(exc)}"
             ) from exc
         return Outcome(len(records))
+
+
+def _close_after_delivery(connection: ssl.SSLSocket) -> None:
+    """End the session with close_notify and read until the server ends it too.
+
+    RFC 5425 has no acknowledgement, so this is the only sign the server read every frame: it
+    sees close_notify only after the frames before it. Closing without it, with the server's
+    TLS 1.3 session tickets still unread, makes the kernel reset the connection, and the server
+    can lose frames it had not read yet. A timeout means delivery is unknown, so the batch fails
+    and is sent again (delivery is at least once).
+    """
+    try:
+        connection.unwrap()
+    except TimeoutError:
+        raise
+    except (OSError, ssl.SSLError):
+        # The server closed the connection after reading our close_notify instead of answering
+        # it, as many syslog servers do.
+        return
 
 
 # Elasticsearch / OpenSearch --------------------------------------------------------------------

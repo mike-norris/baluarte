@@ -174,7 +174,9 @@ def pki(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
 class SyslogServer:
     """Accepts TLS connections on 127.0.0.1 and keeps the bytes each one sent."""
 
-    def __init__(self, pki: dict[str, Any]) -> None:
+    def __init__(self, pki: dict[str, Any], read_delay: float = 0.0) -> None:
+        # A server slower to read than the client is to send and close.
+        self.read_delay = read_delay
         self.context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         self.context.load_cert_chain(pki["cert"], pki["key"])
         self.listener = socket.create_server(("127.0.0.1", 0))
@@ -192,6 +194,7 @@ class SyslogServer:
                 return
             try:
                 with self.context.wrap_socket(raw, server_side=True) as connection:
+                    threading.Event().wait(self.read_delay)
                     chunks = []
                     while chunk := connection.recv(65536):
                         chunks.append(chunk)
@@ -243,6 +246,28 @@ def test_syslog_delivers_a_batch_over_verified_tls(
 
     wait_for(lambda: syslog_server.received)
     assert [event["id"] for event in frames(syslog_server.received[0])] == [1, 2, 3]
+
+
+def test_syslog_counts_a_batch_only_once_a_slow_server_has_read_it(
+    pki: dict[str, Any],
+) -> None:
+    # Closing without close_notify, with the server's TLS 1.3 session tickets unread, resets the
+    # connection and the server loses frames it had not read yet.
+    server = SyslogServer(pki, read_delay=0.5)
+    try:
+        sender = SyslogSender(
+            SyslogDestination(
+                "127.0.0.1", server.port, server_name="siem.example.test", ca_pem=pki["ca_pem"]
+            )
+        )
+
+        assert sender.send(records(*range(1, 201))) == Outcome(200)
+
+        wait_for(lambda: server.received or server.handshake_failures)
+        assert server.handshake_failures == 0
+        assert [event["id"] for event in frames(server.received[0])] == list(range(1, 201))
+    finally:
+        server.close()
 
 
 def test_syslog_refuses_a_server_it_cannot_verify(
