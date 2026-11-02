@@ -40,7 +40,10 @@ function Badge({ tone, children }: { tone: "good" | "bad" | "neutral"; children:
 }
 
 /** "Running and healthy", "Running, not healthy" or "Not detected". */
-export function serviceState(service: Service): { label: string; tone: "good" | "bad" | "neutral" } {
+export function serviceState(service: Service): {
+  label: string;
+  tone: "good" | "bad" | "neutral";
+} {
   if (service.detected && service.healthy) return { label: "Running and healthy", tone: "good" };
   if (service.detected) return { label: "Running, not healthy", tone: "bad" };
   return { label: "Not detected", tone: service.required ? "bad" : "neutral" };
@@ -60,7 +63,8 @@ function HowTo({ service }: { service: Service }) {
   function onKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
     event.preventDefault();
-    const next = (index + (event.key === "ArrowRight" ? 1 : -1) + platforms.length) % platforms.length;
+    const next =
+      (index + (event.key === "ArrowRight" ? 1 : -1) + platforms.length) % platforms.length;
     const platform = platforms[next];
     if (!platform) return;
     setActive(platform.id);
@@ -149,7 +153,10 @@ function ServiceItem({ service }: { service: Service }) {
           </Link>
         </p>
       )}
-      <details className="text-sm" open={service.required && !(service.detected && service.healthy)}>
+      <details
+        className="text-sm"
+        open={service.required && !(service.detected && service.healthy)}
+      >
         <summary className="cursor-pointer font-medium text-sky-800">
           How to set it up
           <span className="sr-only">: {service.name}</span>
@@ -171,8 +178,8 @@ export function ServicesSection({ services }: { services: Service[] }) {
       </h2>
       <p className="text-sm text-slate-600">
         Some controls need a service running beside Baluarte. Baluarte cannot start containers
-        itself, since that would need control of the host; it checks whether each service is
-        working and shows how to start it.
+        itself, since that would need control of the host; it checks whether each service is working
+        and shows how to start it.
       </p>
       {services.length === 0 ? (
         <p className="text-sm text-slate-700">No services are needed.</p>
@@ -251,7 +258,9 @@ export function BackupsPanel({ backups }: { backups: Backups }) {
           ? `Last successful backup: ${formatTime(last.finished_at)}${last.size_bytes === null ? "" : `, ${formatBytes(last.size_bytes)}`}${last.encrypted ? ", encrypted" : ""}.`
           : "No successful backup has been reported."}
       </p>
-      {last?.recipient && <CopyValue label="Encrypted for (age recipient)" value={last.recipient} />}
+      {last?.recipient && (
+        <CopyValue label="Encrypted for (age recipient)" value={last.recipient} />
+      )}
       {backups.runs.length === 0 ? (
         <p className="text-sm text-slate-700">The backup service has not reported any runs.</p>
       ) : (

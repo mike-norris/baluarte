@@ -12,6 +12,7 @@ import {
 } from "../api/setup";
 import { getGovernanceSettings, putGovernanceSettings } from "../api/policies";
 import { useLoad } from "../api/useLoad";
+import { AuditShippingCard } from "../compliance/AuditShippingCard";
 import { ComplianceCard } from "../compliance/ComplianceCard";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
@@ -330,8 +331,9 @@ export function SettingsPage() {
           Settings
         </h1>
         <p className="mt-2 text-slate-600">
-          The identity provider, the GitLab connection, the compliance profile and system
-          information. Every change is audited; secrets can be replaced but are never shown.
+          The identity provider, the GitLab connection, the compliance profile, audit log shipping
+          and system information. Every change is audited; secrets can be replaced but are never
+          shown.
         </p>
       </div>
       {allowed ? (
@@ -422,6 +424,7 @@ function SettingsContent({ csrf }: { csrf: string }) {
       <OidcCard csrf={csrf} secretKey={secretKey} />
       <ReviewCard csrf={csrf} />
       <ComplianceCard csrf={csrf} />
+      <AuditShippingCard csrf={csrf} />
       {info.error ? (
         <ErrorMessage error={info.error} retry={info.retry} />
       ) : info.data ? (

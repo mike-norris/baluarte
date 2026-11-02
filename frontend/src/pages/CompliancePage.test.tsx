@@ -249,30 +249,38 @@ describe("compliance services and backups", () => {
       return "blob:config";
     });
     URL.revokeObjectURL = vi.fn();
-    const click = vi
-      .spyOn(HTMLAnchorElement.prototype, "click")
-      .mockImplementation(function (this: HTMLAnchorElement) {
-        saved = this.download;
-      });
-    api(admin, () => posture(), () => [], {
-      "GET /api/v1/compliance/services": () =>
-        json([
-          service({
-            id: "backup",
-            detail: "No backup has been reported.",
-            config: {
-              compose: { file_name: "backup.env", content: "BALUARTE_BACKUP_INTERVAL_HOURS=24\n" },
-              helm: { file_name: "backup-values.yaml", content: "backup:\n  enabled: true\n" },
-            },
-          }),
-          service({
-            id: "audit-shipping",
-            required: false,
-            detected: true,
-            healthy: true,
-          }),
-        ]),
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      saved = this.download;
     });
+    api(
+      admin,
+      () => posture(),
+      () => [],
+      {
+        "GET /api/v1/compliance/services": () =>
+          json([
+            service({
+              id: "backup",
+              detail: "No backup has been reported.",
+              config: {
+                compose: {
+                  file_name: "backup.env",
+                  content: "BALUARTE_BACKUP_INTERVAL_HOURS=24\n",
+                },
+                helm: { file_name: "backup-values.yaml", content: "backup:\n  enabled: true\n" },
+              },
+            }),
+            service({
+              id: "audit-shipping",
+              required: false,
+              detected: true,
+              healthy: true,
+            }),
+          ]),
+      },
+    );
     const user = userEvent.setup();
     renderAt("/compliance");
 
@@ -282,10 +290,9 @@ describe("compliance services and backups", () => {
     expect(backup).toHaveTextContent("Required by the profile");
     expect(backup).toHaveTextContent("No backup has been reported.");
     expect(shipping).toHaveTextContent("Running and healthy");
-    expect(within(shipping).getByRole("link", { name: /Configure audit log shipping/ })).toHaveAttribute(
-      "href",
-      "/settings#audit-shipping",
-    );
+    expect(
+      within(shipping).getByRole("link", { name: /Configure audit log shipping/ }),
+    ).toHaveAttribute("href", "/settings#audit-shipping");
 
     // A required service that is not running opens its instructions.
     const tabs = within(backup).getByRole("tablist", { name: "How to run Database backups" });
@@ -313,26 +320,31 @@ describe("compliance services and backups", () => {
   });
 
   it("lists recent backups with the last success", async () => {
-    api(admin, () => posture(), () => [], {
-      "GET /api/v1/compliance/backups": () =>
-        json(
-          backups({
-            last_success: backupRun(),
-            runs: [
-              backupRun(),
-              backupRun({
-                id: 2,
-                status: "failed",
-                file_name: null,
-                size_bytes: null,
-                sha256: null,
-                encrypted: false,
-                error: "pg_dump: connection refused",
-              }),
-            ],
-          }),
-        ),
-    });
+    api(
+      admin,
+      () => posture(),
+      () => [],
+      {
+        "GET /api/v1/compliance/backups": () =>
+          json(
+            backups({
+              last_success: backupRun(),
+              runs: [
+                backupRun(),
+                backupRun({
+                  id: 2,
+                  status: "failed",
+                  file_name: null,
+                  size_bytes: null,
+                  sha256: null,
+                  encrypted: false,
+                  error: "pg_dump: connection refused",
+                }),
+              ],
+            }),
+          ),
+      },
+    );
     renderAt("/compliance");
 
     const panel = await screen.findByRole("region", { name: "Backups" });
@@ -409,10 +421,15 @@ describe("compliance exceptions", () => {
   });
 
   it("requires a note to reject an exception", async () => {
-    const calls = api(admin, () => posture(), () => [controlException()], {
-      "POST /api/v1/compliance/exceptions/7/reject": () =>
-        json(controlException({ state: "rejected" })),
-    });
+    const calls = api(
+      admin,
+      () => posture(),
+      () => [controlException()],
+      {
+        "POST /api/v1/compliance/exceptions/7/reject": () =>
+          json(controlException({ state: "rejected" })),
+      },
+    );
     const user = userEvent.setup();
     renderAt("/compliance");
 

@@ -136,7 +136,12 @@ export function CodeBlock({ code, label }: { code: string; label: string }) {
         <code>{code}</code>
       </pre>
       <div className="flex items-center gap-2">
-        <button type="button" onClick={copy} aria-label={`Copy ${label}`} className={secondaryClass}>
+        <button
+          type="button"
+          onClick={copy}
+          aria-label={`Copy ${label}`}
+          className={secondaryClass}
+        >
           Copy
         </button>
         <span aria-live="polite" className="text-xs text-slate-600">
