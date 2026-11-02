@@ -28,6 +28,15 @@ echo "ok  images built"
 kind create cluster --name "$cluster" --wait 120s
 kind load docker-image --name "$cluster" "baluarte-app:$tag" "baluarte-web:$tag" "baluarte-backup:$tag"
 
+# The backup files' claim belongs to the operator, not the release.
+"${kubectl[@]}" create namespace "$namespace" >/dev/null
+"${kubectl[@]}" apply -f - >/dev/null <<'YAML'
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: baluarte-backups}
+spec: {accessModes: [ReadWriteOnce], resources: {requests: {storage: 1Gi}}}
+YAML
+
 helm install "$release" "$chart" \
   --kube-context "kind-$cluster" \
   --namespace "$namespace" --create-namespace \

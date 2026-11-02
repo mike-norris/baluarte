@@ -102,10 +102,8 @@ def helm_values(hours: int) -> str:
         "  # Required with an external database: a Secret holding the backup role's password.\n"
         "  # existingSecret: baluarte-backup\n"
         "  # passwordKey: password\n"
-        "  persistence:\n"
-        "    size: 20Gi\n"
-        "    # storageClassName: \n"
-        "    # existingClaim: \n"
+        "  # A PersistentVolumeClaim you create for the backups; the chart never deletes it.\n"
+        "  existingClaim: baluarte-backups\n"
     )
 
 
@@ -171,16 +169,29 @@ The chart's development database generates one.
      --from-literal=password="$(openssl rand -base64 32)"
    ```
 
-3. Enable the backup with the downloaded values file, or with `--set`.
+3. Create the PersistentVolumeClaim the backup files are written to. The chart does not \
+create or delete it, so backups outlive the release.
+
+   ```sh
+   kubectl apply -f - <<'YAML'
+   apiVersion: v1
+   kind: PersistentVolumeClaim
+   metadata: {{name: baluarte-backups}}
+   spec: {{accessModes: [ReadWriteOnce], resources: {{requests: {{storage: 20Gi}}}}}}
+   YAML
+   ```
+
+4. Enable the backup with the downloaded values file, or with `--set`.
 
    ```sh
    helm upgrade baluarte deploy/helm/baluarte --reuse-values \\
      --set backup.enabled=true \\
      --set backup.recipient=age1... \\
+     --set backup.existingClaim=baluarte-backups \\
      --set backup.existingSecret=baluarte-backup --set backup.passwordKey=password
    ```
 
-4. Copy the backup volume off the cluster's storage, and test a restore at least once a year.
+5. Copy the backup volume off the cluster's storage, and test a restore at least once a year.
 
 See {DOCS}.
 """

@@ -45,7 +45,18 @@ BALUARTE_BACKUP_RECIPIENT=age1... docker compose --profile backup up -d
 
 The service backs up once at start, then every `BALUARTE_BACKUP_INTERVAL_HOURS`. Set `BALUARTE_BACKUP_DIR` to storage that is copied off the host, such as a mounted network share, or copy `./backups` elsewhere yourself. That copy is the `backup-offsite` attestation. `secrets/backup_database_password` is created with the other secrets (README).
 
-**Kubernetes:** `--set backup.enabled=true --set backup.recipient=age1...` adds a CronJob, daily at 02:17 by default, writing to a PersistentVolumeClaim that is kept on uninstall. With an external database, also set `backup.existingSecret` to a Secret holding a password for the `baluarte_backup` role, which the migration Job creates. A managed database's own backups can replace this; then attest to them.
+**Kubernetes:** create a PersistentVolumeClaim for the backup files, then `--set backup.enabled=true --set backup.recipient=age1... --set backup.existingClaim=baluarte-backups`. This adds a CronJob, daily at 02:17 by default. The chart does not create or delete the claim, so backups outlive the release.
+
+```sh
+kubectl -n baluarte apply -f - <<'YAML'
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata: {name: baluarte-backups}
+spec: {accessModes: [ReadWriteOnce], resources: {requests: {storage: 20Gi}}}
+YAML
+```
+
+With an external database, also set `backup.existingSecret` to a Secret holding a password for the `baluarte_backup` role, which the migration Job creates. A managed database's own backups can replace this; then attest to them.
 
 **Restore** a scheduled backup by decrypting it with the private key on a trusted machine, then follow the restore steps below:
 

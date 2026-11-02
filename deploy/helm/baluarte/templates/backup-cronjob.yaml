@@ -4,27 +4,7 @@
 {{- if not (hasPrefix "age1" $recipient) }}
 {{- fail "backup.recipient must be an age public key (age1...)" }}
 {{- end }}
-{{- if not .Values.backup.persistence.existingClaim }}
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: {{ $name }}
-  labels:
-    {{- include "baluarte.labels" . | nindent 4 }}
-    app.kubernetes.io/component: backup
-  annotations:
-    # Backups outlive the release; delete the claim yourself once they are copied elsewhere.
-    helm.sh/resource-policy: keep
-spec:
-  accessModes: [ReadWriteOnce]
-  {{- with .Values.backup.persistence.storageClassName }}
-  storageClassName: {{ . | quote }}
-  {{- end }}
-  resources:
-    requests:
-      storage: {{ .Values.backup.persistence.size }}
----
-{{- end }}
+{{- $claim := required "backup.existingClaim must name a PersistentVolumeClaim for the backups (see docs/OPERATIONS.md#scheduled-backups)" .Values.backup.existingClaim }}
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -98,7 +78,7 @@ spec:
                 sizeLimit: 64Mi
             - name: backups
               persistentVolumeClaim:
-                claimName: {{ default $name .Values.backup.persistence.existingClaim }}
+                claimName: {{ $claim | quote }}
             {{- include "baluarte.backupVolume" . | nindent 12 }}
           {{- with .Values.backup.nodeSelector }}
           nodeSelector:
