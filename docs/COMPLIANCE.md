@@ -25,12 +25,14 @@ With no framework selected, the defaults below apply, the posture is shown for i
 | `session_lifetime_minutes` | 480 | 15 to 10080, >= idle | <= 720 | <= 720 | <= 720 | `BALUARTE_SESSION_LIFETIME_MINUTES` |
 | `require_review` | false | | true | true | true | |
 | `legal_hold` | false | | | | | |
+| `backup_interval_hours` | 24 | 1 to 168 | <= 24 | <= 24 | <= 24 | |
 
 When several frameworks are selected the strictest value wins, and the API names the framework that sets it. Why these values:
 
 - **Retention, 365 days.** A SOC 2 Type II report covers an observation period of up to 12 months, and the auditor samples events from all of it; ISO 27001 surveillance audits are annual; NIST AU-11 leaves the period to the organization, and one year is the common floor. Evidence (observations, evaluations, runs) follows the same period so every finding in the period can be traced to what was observed. Jobs are operational records and have no framework minimum.
 - **Idle timeout, 30 or 15 minutes.** SOC 2 CC6.1 and ISO A.8.5 expect sessions to end after inactivity without fixing a value; 30 minutes is common practice. NIST AC-11 and AC-12 at Moderate are usually set to 15 minutes.
 - **Session lifetime, 12 hours.** A working day plus margin, so a stolen session cookie cannot be used indefinitely (AC-12).
+- **Backups, every 24 hours.** SOC 2 A1.2, ISO A.8.13 and NIST CP-9 leave the frequency to the organization's recovery point objective; daily is the common floor, so no more than a day of evidence and audit history can be lost.
 - **Two-person review.** SOC 2 CC8.1, ISO A.8.32 and NIST CM-3 expect changes to be authorized by someone other than their author. Baseline changes decide what Baluarte reports as compliant, so they are changes in scope.
 
 `require_review` is the same setting as "Require a second person to approve baseline changes" (`/api/v1/settings/governance`), which refuses to turn it off while the profile requires it. A session limit set in the environment wins over the profile and cannot be changed in the UI; if it misses the minimum the posture shows the control as not met.
@@ -43,7 +45,7 @@ Exceptions can name any control, so a known gap (for example a database without 
 
 ## Controls
 
-Each control is a **setting** (met when its setting meets the requirement), a **check** (met when Baluarte observes it) or an **attestation** (met while an administrator's statement is current, for what Baluarte cannot see).
+Each control is a **setting** (met when its setting meets the requirement), a **check** (met when Baluarte observes it) or an **attestation** (met while an administrator's statement is current, for what Baluarte cannot see). A check with an attestation period also takes an attestation, as the alternative its row describes.
 
 | Control | Kind | SOC 2 | ISO 27001 | NIST 800-53 | Met when |
 |---|---|---|---|---|---|
@@ -61,8 +63,11 @@ Each control is a **setting** (met when its setting meets the requirement), a **
 | `retention-running` | check | CC7.2 | A.5.33 | SI-12 | The retention job succeeded in the last 48 hours |
 | `collection-health` | check | CC7.1 | A.8.16 | CA-7 | GitLab is configured and there is no collection alert |
 | `inventory-population` | check | CC4.1 | A.8.16 | CA-7, CM-8 | The inventory covers the whole instance |
-| `log-shipping` | attestation (90 days) | CC7.2 | A.8.15 | AU-4, AU-9 | Logs, including the `baluarte.audit` stream, are kept outside Baluarte |
-| `backups` | attestation (90 days) | A1.2 | A.8.13 | CP-9, CP-4 | Backups are encrypted, off the database host, and a restore was tested in the last 12 months |
+| `log-shipping` | check, or attestation (90 days) | CC7.2 | A.8.15 | AU-4, AU-9 | [Audit shipping](#audit-log-shipping) is on and nothing has waited more than 15 minutes (no event waiting, or the oldest waiting is under 15 minutes old and a delivery succeeded in the last 15 minutes). Or shipping is off and a current attestation says the platform's log collector ships the `baluarte.audit` stream |
+| `backup-frequency` | setting | A1.2 | A.8.13 | CP-9 | `backup_interval_hours` meets the maximum |
+| `backups` | check | A1.2 | A.8.13 | CP-9 | The [backup service](#backups) reported an encrypted backup within `backup_interval_hours` plus 2 hours |
+| `backup-offsite` | attestation (90 days) | A1.2 | A.8.13 | CP-9 | The backup files are copied off the database host |
+| `restore-test` | attestation (365 days) | A1.3 | A.8.13 | CP-4 | A backup was restored and checked in the last 12 months |
 | `encryption-at-rest` | attestation (365 days) | CC6.1 | A.8.24 | SC-28 | Database and backup storage is encrypted |
 | `identity-mfa` | attestation (365 days) | CC6.1 | A.8.5 | IA-2(1), IA-2(2) | The identity provider requires MFA for everyone who can sign in |
 | `access-review` | attestation (90 days) | CC6.2, CC6.3 | A.5.18 | AC-2 | Membership of the groups mapped to Baluarte roles was reviewed |
@@ -89,15 +94,34 @@ Reading needs `compliance:read` (admin and auditor); every change needs `setting
 | `GET`, `PUT /api/v1/compliance/profile` | The profile in force, with each setting's source (`deployment`, `database` or `default`) and the minimums. `PUT` answers 409 `below_minimum` or `deployment_setting`. Audited as `settings.compliance_updated` |
 | `GET /api/v1/compliance/posture` | One result per control and a summary by status |
 | `GET`, `POST /api/v1/compliance/exceptions`, `POST .../{id}/approve`, `.../reject`, `.../revoke` | Compliance exceptions. A rejection needs a note; the requester cannot decide their own (409 `not_allowed`). Audited as `compliance.exception_*` |
-| `GET`, `POST /api/v1/compliance/attestations` | Attestations; only attestation controls take one. Audited as `compliance.attested` |
+| `GET`, `POST /api/v1/compliance/attestations` | Attestations; any control with an attestation period takes one. Audited as `compliance.attested` |
+| `GET /api/v1/compliance/audit-shipping` | Shipping progress: destination, latest and last shipped event IDs, `lag_events` (0 while off), oldest waiting event, last success, last error, consecutive failures |
+| `GET /api/v1/compliance/backups` | `interval_hours`, the last successful run and the last 20 runs |
+| `GET /api/v1/compliance/services` | The services the profile needs (`backup`, `audit-shipping`): whether each is required, seen and healthy, Compose and Helm how-tos, and for the backup a generated `.env` fragment and Helm values file |
+| `GET`, `PUT /api/v1/settings/audit-shipping`, `POST .../test` | Audit shipping settings (`settings:manage`). `PUT` is audited as `settings.audit_shipping_updated`; `test` sends one `connection_test` message without saving |
 | `GET`, `PUT /api/v1/setup/compliance` | The same profile during first-run setup, with a setup session |
 
 The evidence manifest states the profile and posture at export time (`operations`, [AUDIT_EVIDENCE.md](AUDIT_EVIDENCE.md#manifest-and-verification)). Retention is described in [OPERATIONS.md](OPERATIONS.md#retention).
 
-## Not yet
+## Audit log shipping
 
-Shipping logs and running backups from Baluarte's own services, with checks that replace the `log-shipping` and `backups` attestations, and an access-review report, are planned for a later release.
+The worker copies every audit event, in ID order, to one destination outside Baluarte:
+
+- **Syslog over TLS**: RFC 5424 messages with RFC 5425 octet counting, by default to port 6514. PRI 109 (facility 13, log audit; severity notice), APP-NAME `baluarte`, MSGID `audit`; the message is the event as JSON.
+- **Elasticsearch or OpenSearch**: the `_bulk` API over https, one `create` per event with document ID `baluarte-<event id>`, so a resent event is refused as a duplicate and counts as delivered. Authentication is an API key or a username and password.
+
+Each event carries the same fields as the `baluarte.audit` log line: `id`, `actor`, `action`, `resource_type`, `resource_id`, `details`, `details_digest` and `occurred_at`. TLS is always verified, against the system's trust store or the CA certificates entered with the destination; nothing is sent in plain text. The API key or password is sealed with the secret key, never returned, and must be entered again when the URL changes, so a stored credential is only ever sent to the URL it was entered for.
+
+Shipping reads from the database, not the log stream. The `audit.ship` job is queued every minute while events are waiting; it sends batches of 500 until it has caught up or 50 seconds have passed. A cursor per destination (`audit_shipment`) records the last event delivered, so nothing is lost while the destination is down: the next run resends from the cursor. Delivery is at least once; use `id` or `details_digest` to drop duplicates on the receiving side. A new destination starts from the oldest retained event. While shipping is on, retention never expires an event the destination has not received.
+
+Application logs (stdout) stay with the platform's log collector. If that collector already ships the `baluarte.audit` stream to your SIEM, leave shipping off and attest to it on `log-shipping`.
+
+## Backups
+
+The `baluarte-backup` service runs `pg_dump` as the read-only `baluarte_backup` role, encrypts the dump to an [age](https://age-encryption.org) public key and records every run, failed or not, in `backup_run`. Baluarte never holds the private key, so neither it nor anyone with its database can read a backup. Compliance > Services gives the exact Compose and Helm steps and a configuration generated from `backup_interval_hours`; [OPERATIONS.md](OPERATIONS.md#scheduled-backups) describes the service. Copying the files off the host and testing a restore stay with you, as the `backup-offsite` and `restore-test` attestations.
+
+An access-review report is planned for a later release.
 
 ## Limits
 
-The profile is enforced by the application, and the application's database role also stores the profile. Someone who controls that role, for example through a compromised API process, could lower a setting, or call `baluarte_expire_audit` directly to remove audit events older than 30 days. The database refuses anything younger. A run by the scheduled job is itself audited; a direct call is not. The control against this is an independent copy of the `baluarte.audit` log stream, kept outside Baluarte and its database, which is what the `log-shipping` control asks you to attest.
+The profile is enforced by the application, and the application's database role also stores the profile. Someone who controls that role, for example through a compromised API process, could lower a setting, or call `baluarte_expire_audit` directly to remove audit events older than 30 days. The database refuses anything younger. A run by the scheduled job is itself audited; a direct call is not. The control against this is an independent copy of the audit trail, kept outside Baluarte and its database, which is what `log-shipping` asks for. Someone who controls the application's role could also turn shipping off. Everything shipped until then stays at the destination, the change is itself an audit event, and the posture shows `log-shipping` as not met, so the destination's copy ending is the signal to look for.
