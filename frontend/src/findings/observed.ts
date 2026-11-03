@@ -123,18 +123,21 @@ function tokens(observed: unknown): string | null {
       ? records(observed.tokens)
       : null;
   if (list === null) return null;
-  const active = list.filter((token) => token.active === true && token.revoked !== true);
+  // The backend lists only active tokens; older or other shapes may carry the flags.
+  const active = list.filter((token) => token.active !== false && token.revoked !== true);
   if (active.length === 0) return "No active project access tokens.";
   const parts = [count(active.length, "active token", "active tokens")];
   const noExpiry = active.filter((token) => typeof token.expires_at !== "string");
   if (noExpiry.length > 0) parts.push(`${String(noExpiry.length)} without an expiry date`);
   const lifetimes = active
-    .map((token) => days(token.created_at, token.expires_at))
+    .map((token) => days(token.created_on ?? token.created_at, token.expires_at))
     .filter((n): n is number => n !== null);
   if (lifetimes.length > 0) {
     parts.push(`longest lifetime ${count(Math.max(...lifetimes), "day", "days")}`);
   }
-  const unused = active.filter((token) => typeof token.last_used_at !== "string");
+  const unused = active.filter(
+    (token) => typeof (token.last_used_on ?? token.last_used_at) !== "string",
+  );
   if (unused.length > 0) parts.push(`${String(unused.length)} never used`);
   return `${parts.join("; ")}.`;
 }
@@ -142,6 +145,11 @@ function tokens(observed: unknown): string | null {
 function twoFactor(observed: Payload): string | null {
   const groups = records(observed.groups);
   const enforcedBy = observed.enforced_by;
+  if (enforcedBy === "instance") {
+    const instance = isRecord(observed.instance) ? observed.instance : {};
+    const grace = whole(instance.two_factor_grace_period);
+    return `Required by the instance setting${grace === null ? "" : `, grace period ${count(grace, "hour", "hours")}`}.`;
+  }
   if (typeof enforcedBy === "string" && enforcedBy) {
     const group = groups.find((item) => item.path === enforcedBy);
     const grace = whole(group?.two_factor_grace_period);

@@ -80,6 +80,25 @@ describe("observed value summaries", () => {
     expect(observedSummary("gitlab.project.access_tokens", "x")).toBeNull();
   });
 
+  it("reads the backend's token payload: active tokens only, with dates", () => {
+    expect(
+      observedSummary("gitlab.project.access_tokens", {
+        as_of: "2026-11-03",
+        tokens: [
+          {
+            id: 7,
+            name: "release",
+            scopes: ["read_api"],
+            access_level: 30,
+            created_on: "2026-08-05",
+            expires_at: "2026-11-03",
+            last_used_on: null,
+          },
+        ],
+      }),
+    ).toBe("1 active token; longest lifetime 90 days; 1 never used.");
+  });
+
   it("summarises two-factor enforcement above the project", () => {
     const groups = [
       { path: "acme", require_two_factor_authentication: true, two_factor_grace_period: 48 },
@@ -101,6 +120,13 @@ describe("observed value summaries", () => {
     ).toBe(
       "No group above the project requires two-factor authentication (1 group checked). Nor does the instance.",
     );
+    expect(
+      observedSummary("gitlab.group.two_factor_required", {
+        groups: groups.slice(1),
+        enforced_by: "instance",
+        instance: { require_two_factor_authentication: true, two_factor_grace_period: 24 },
+      }),
+    ).toBe("Required by the instance setting, grace period 24 hours.");
     expect(observedSummary("gitlab.group.two_factor_required", {})).toBeNull();
   });
 
