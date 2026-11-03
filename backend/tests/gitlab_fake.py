@@ -41,7 +41,18 @@ def healthy_routes() -> dict[str, list[Reply]]:
             )
         ],
         "/api/v4/groups": [
-            httpx.Response(200, json=[{"id": 1, "full_path": "platform", "visibility": "private"}])
+            httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 1,
+                        "full_path": "platform",
+                        "visibility": "private",
+                        "require_two_factor_authentication": False,
+                        "two_factor_grace_period": 48,
+                    }
+                ],
+            )
         ],
         "/api/v4/projects": [
             httpx.Response(
@@ -60,6 +71,9 @@ def healthy_routes() -> dict[str, list[Reply]]:
             httpx.Response(200, json=[{"id": 1, "name": "main"}])
         ],
         "/api/v4/projects/42/approvals": [httpx.Response(200, json={"approvals_before_merge": 0})],
+        "/api/v4/projects/42/approval_rules": [httpx.Response(200, json=[])],
+        "/api/v4/projects/42/members/all": [httpx.Response(200, json=[])],
+        "/api/v4/projects/42/access_tokens": [httpx.Response(200, json=[])],
         "/api/v4/license": [httpx.Response(403, json={"message": "403 Forbidden"})],
         "/api/graphql": [graphql()],
     }

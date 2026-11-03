@@ -43,11 +43,15 @@ def test_full_detection_on_a_healthy_instance() -> None:
         "user.read": "supported",
         "groups.list": "supported",
         "groups.visibility": "supported",
+        "groups.two_factor": "supported",
         "projects.list": "supported",
         "projects.visibility": "supported",
         "projects.default_branch": "supported",
         "protected_branches.read": "supported",
         "merge_request_approvals.read": "supported",
+        "merge_request_approval_rules.read": "supported",
+        "project_members.read": "supported",
+        "project_access_tokens.read": "supported",
         "license.read": "forbidden",
         "security_policies.read": "supported",
         "security_policies.scan_execution": "supported",
@@ -114,6 +118,23 @@ def test_approvals_are_optional() -> None:
 
     assert snapshot.status == "ok"
     assert snapshot.probes["merge_request_approvals.read"].status == "not_found"
+
+
+def test_access_control_probes_are_optional() -> None:
+    fake = FakeGitLab()
+    fake.json("/projects/42/approval_rules", 404, {})
+    fake.json("/projects/42/access_tokens", 403, {})
+    fake.json("/groups", body=[{"id": 1, "full_path": "platform", "visibility": "private"}])
+
+    snapshot = run(fake)
+
+    assert snapshot.status == "ok"
+    assert statuses(snapshot)["merge_request_approval_rules.read"] == "not_found"
+    assert statuses(snapshot)["project_access_tokens.read"] == "forbidden"
+    assert statuses(snapshot)["project_members.read"] == "supported"
+    assert snapshot.probes["project_members.read"].endpoint == "GET /projects/:id/members/all"
+    # A group listing without the two-factor fields cannot back the two-factor rule.
+    assert statuses(snapshot)["groups.two_factor"] == "error"
 
 
 def test_no_visible_projects_skips_project_probes() -> None:
