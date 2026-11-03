@@ -9,7 +9,7 @@ from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
 from baluarte.db.models import CollectionJob, GitLabProject, Observation
-from baluarte.integrations.gitlab import branches
+from baluarte.integrations.gitlab import branches, project_reads
 from baluarte.integrations.gitlab.branches import PROTECTION_SOURCE
 from baluarte.integrations.gitlab.client import GitLabClient, InvalidResponse, ServerError
 from baluarte.integrations.gitlab.discovery import Discovery
@@ -335,7 +335,7 @@ def test_a_rejected_token_stops_further_reads(migrated_engine: Engine) -> None:
 def test_repeated_failures_stop_further_reads(
     migrated_engine: Engine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(branches, "MAX_CONSECUTIVE_FAILURES", 2)
+    monkeypatch.setattr(project_reads, "MAX_CONSECUTIVE_FAILURES", 2)
     fake = protection_fake({10: httpx.Response(500), 11: httpx.Response(500)})
 
     discover(migrated_engine, fake)

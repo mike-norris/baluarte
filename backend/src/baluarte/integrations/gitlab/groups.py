@@ -3,7 +3,8 @@
 ``GET /groups?all_available=true`` lists every group the token can see, nested subgroups
 included, so one paginated listing covers the hierarchy; ``parent_gitlab_id`` records it. A
 subgroup can be visible while its parent is not, so a parent ID may have no row. Reconciliation
-is shared with projects (``baluarte.integrations.gitlab.discovery``).
+is shared with projects (``baluarte.integrations.gitlab.discovery``). Each group's two-factor
+settings are kept for the two-factor rule (``baluarte.integrations.gitlab.project_reads``).
 """
 
 from typing import Any
@@ -23,6 +24,8 @@ def _row(instance_id: int, group: dict[str, Any]) -> dict[str, Any]:
         raise InvalidResponse("GET /groups returned a group without an id or full_path")
     parent = group.get("parent_id")
     visibility = group.get("visibility")
+    two_factor = group.get("require_two_factor_authentication")
+    grace = group.get("two_factor_grace_period")
     return {
         "instance_id": instance_id,
         "gitlab_id": gitlab_id,
@@ -31,6 +34,11 @@ def _row(instance_id: int, group: dict[str, Any]) -> dict[str, Any]:
         "name": str(group.get("name") or full_path.rsplit("/", 1)[-1]),
         # An unrecognised value is stored as unknown rather than guessed.
         "visibility": visibility if visibility in VISIBILITIES else None,
+        # Absent from the response is unknown, never "not required".
+        "require_two_factor_authentication": two_factor if isinstance(two_factor, bool) else None,
+        "two_factor_grace_period": (
+            grace if type(grace) is int and grace >= 0 else None  # bool is not an hour count
+        ),
         "state": "active",
     }
 
@@ -42,9 +50,24 @@ GROUPS = ResourceKind(
     list_params={"all_available": "true", "order_by": "id", "sort": "asc"},
     lookup_params={"with_projects": "false"},
     to_row=_row,
-    refreshed=("parent_gitlab_id", "full_path", "name", "visibility"),
+    refreshed=(
+        "parent_gitlab_id",
+        "full_path",
+        "name",
+        "visibility",
+        "require_two_factor_authentication",
+        "two_factor_grace_period",
+    ),
     target="group_id",
-    evidence_fields=("gitlab_id", "parent_gitlab_id", "full_path", "name", "visibility"),
+    evidence_fields=(
+        "gitlab_id",
+        "parent_gitlab_id",
+        "full_path",
+        "name",
+        "visibility",
+        "require_two_factor_authentication",
+        "two_factor_grace_period",
+    ),
 )
 
 

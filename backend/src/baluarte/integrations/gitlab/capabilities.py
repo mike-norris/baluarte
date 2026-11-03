@@ -205,6 +205,9 @@ def detect(client: GitLabClient, now: datetime | None = None) -> CapabilitySnaps
         client, "GET /groups", "/groups", {"per_page": 1, "all_available": "true"}
     )
     probes["groups.visibility"] = _field_probe("GET /groups", _first(groups), "visibility")
+    probes["groups.two_factor"] = _field_probe(
+        "GET /groups", _first(groups), "require_two_factor_authentication"
+    )
 
     projects, probes["projects.list"] = _get(
         client, "GET /projects", "/projects", {"per_page": 1, "order_by": "id", "sort": "asc"}
@@ -217,6 +220,14 @@ def detect(client: GitLabClient, now: datetime | None = None) -> CapabilitySnaps
     for name, template, suffix in (
         ("protected_branches.read", "GET /projects/:id/protected_branches", "protected_branches"),
         ("merge_request_approvals.read", "GET /projects/:id/approvals", "approvals"),
+        (
+            "merge_request_approval_rules.read",
+            "GET /projects/:id/approval_rules",
+            "approval_rules",
+        ),
+        ("project_members.read", "GET /projects/:id/members/all", "members/all"),
+        # Needs the Maintainer role on the sample project; other projects may still be readable.
+        ("project_access_tokens.read", "GET /projects/:id/access_tokens", "access_tokens"),
     ):
         if isinstance(project_id, int):
             _, probes[name] = _get(client, template, f"/projects/{project_id}/{suffix}")

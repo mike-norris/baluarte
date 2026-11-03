@@ -3,6 +3,74 @@
   "$id": "https://baluarte.io/schemas/gitlab-baseline.v1alpha1.json",
   "title": "GitLabBaseline",
   "$defs": {
+    "AccessTokensRule": {
+      "additionalProperties": false,
+      "description": "Passes when every active project access token expires within ``max_lifetime_days`` of its\ncreation and, when ``max_unused_days`` is set, was used within that many days.",
+      "properties": {
+        "id": {
+          "description": "Unique within the baseline; named in findings.",
+          "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
+          "title": "Id",
+          "type": "string"
+        },
+        "severity": {
+          "default": "medium",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "type": {
+          "const": "gitlab.project.access_tokens",
+          "title": "Type",
+          "type": "string"
+        },
+        "max_lifetime_days": {
+          "maximum": 365,
+          "minimum": 1,
+          "title": "Max Lifetime Days",
+          "type": "integer"
+        },
+        "max_unused_days": {
+          "anyOf": [
+            {
+              "maximum": 365,
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Max Unused Days"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "max_lifetime_days"
+      ],
+      "title": "AccessTokensRule",
+      "type": "object"
+    },
     "DefaultBranchProtectedRule": {
       "additionalProperties": false,
       "description": "With ``required: true``, passes when the project's default branch is protected.",
@@ -55,6 +123,85 @@
       "title": "DefaultBranchProtectedRule",
       "type": "object"
     },
+    "MergeRequestApprovalsRule": {
+      "additionalProperties": false,
+      "description": "Passes when the project's own approval rules require at least ``min_approvals`` approvals\non merge requests to its default branch, and its approval settings meet every flag set.",
+      "properties": {
+        "id": {
+          "description": "Unique within the baseline; named in findings.",
+          "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
+          "title": "Id",
+          "type": "string"
+        },
+        "severity": {
+          "default": "medium",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "type": {
+          "const": "gitlab.project.merge_request_approvals",
+          "title": "Type",
+          "type": "string"
+        },
+        "min_approvals": {
+          "description": "The largest approvals_required among the regular and any-approver rules that cover the default branch must be at least this.",
+          "maximum": 20,
+          "minimum": 0,
+          "title": "Min Approvals",
+          "type": "integer"
+        },
+        "forbid_author_approval": {
+          "default": false,
+          "description": "Require merge_requests_author_approval: false.",
+          "title": "Forbid Author Approval",
+          "type": "boolean"
+        },
+        "forbid_committer_approval": {
+          "default": false,
+          "description": "Require merge_requests_disable_committers_approval: true.",
+          "title": "Forbid Committer Approval",
+          "type": "boolean"
+        },
+        "reset_approvals_on_push": {
+          "default": false,
+          "description": "Require reset_approvals_on_push: true.",
+          "title": "Reset Approvals On Push",
+          "type": "boolean"
+        },
+        "forbid_override": {
+          "default": false,
+          "description": "Require disable_overriding_approvers_per_merge_request: true.",
+          "title": "Forbid Override",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "min_approvals"
+      ],
+      "title": "MergeRequestApprovalsRule",
+      "type": "object"
+    },
     "Metadata": {
       "additionalProperties": false,
       "properties": {
@@ -82,6 +229,66 @@
         "name"
       ],
       "title": "Metadata",
+      "type": "object"
+    },
+    "PrivilegedMembersRule": {
+      "additionalProperties": false,
+      "description": "Passes when at most ``max_privileged`` members, direct or inherited, hold the Maintainer\nor Owner role on the project.",
+      "properties": {
+        "id": {
+          "description": "Unique within the baseline; named in findings.",
+          "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
+          "title": "Id",
+          "type": "string"
+        },
+        "severity": {
+          "default": "medium",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "type": {
+          "const": "gitlab.project.privileged_members",
+          "title": "Type",
+          "type": "string"
+        },
+        "max_privileged": {
+          "maximum": 1000,
+          "minimum": 1,
+          "title": "Max Privileged",
+          "type": "integer"
+        },
+        "forbid_inactive_accounts": {
+          "default": false,
+          "description": "Also fail when a member's account is not active (blocked, deactivated or awaiting approval) but still holds access.",
+          "title": "Forbid Inactive Accounts",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "max_privileged"
+      ],
+      "title": "PrivilegedMembersRule",
       "type": "object"
     },
     "ProjectVisibilityRule": {
@@ -316,6 +523,10 @@
             "discriminator": {
               "mapping": {
                 "gitlab.branch.default_protected": "#/$defs/DefaultBranchProtectedRule",
+                "gitlab.group.two_factor_required": "#/$defs/TwoFactorRequiredRule",
+                "gitlab.project.access_tokens": "#/$defs/AccessTokensRule",
+                "gitlab.project.merge_request_approvals": "#/$defs/MergeRequestApprovalsRule",
+                "gitlab.project.privileged_members": "#/$defs/PrivilegedMembersRule",
                 "gitlab.project.visibility": "#/$defs/ProjectVisibilityRule",
                 "gitlab.security_policy.approval": "#/$defs/SecurityPolicyApprovalRule",
                 "gitlab.security_policy.scan_execution": "#/$defs/SecurityPolicyScanExecutionRule"
@@ -334,6 +545,18 @@
               },
               {
                 "$ref": "#/$defs/SecurityPolicyApprovalRule"
+              },
+              {
+                "$ref": "#/$defs/MergeRequestApprovalsRule"
+              },
+              {
+                "$ref": "#/$defs/PrivilegedMembersRule"
+              },
+              {
+                "$ref": "#/$defs/TwoFactorRequiredRule"
+              },
+              {
+                "$ref": "#/$defs/AccessTokensRule"
               }
             ]
           },
@@ -348,6 +571,68 @@
         "rules"
       ],
       "title": "Spec",
+      "type": "object"
+    },
+    "TwoFactorRequiredRule": {
+      "additionalProperties": false,
+      "description": "Passes when a group above the project, or the instance, requires two-factor\nauthentication of its members.",
+      "properties": {
+        "id": {
+          "description": "Unique within the baseline; named in findings.",
+          "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
+          "title": "Id",
+          "type": "string"
+        },
+        "severity": {
+          "default": "medium",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "type": {
+          "const": "gitlab.group.two_factor_required",
+          "title": "Type",
+          "type": "string"
+        },
+        "max_grace_hours": {
+          "anyOf": [
+            {
+              "maximum": 720,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When set, the shortest grace period among the groups (and instance) that require it must be at most this many hours.",
+          "title": "Max Grace Hours"
+        }
+      },
+      "required": [
+        "id",
+        "type"
+      ],
+      "title": "TwoFactorRequiredRule",
       "type": "object"
     }
   },

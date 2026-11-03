@@ -43,7 +43,7 @@ Every rule type goes through the same engine (`engine.evaluate_rule`):
 
 1. **Collect every unknown reason.** If any reason in the target or collection group (rows 1 to 9 below) applies, the result is `unknown`, whatever the value says. This holds even when the stored value would pass.
 2. **Check the capability.** If the rule needs a capability that the instance does not support, the result is `unsupported`.
-3. **Check what remains.** An undetected capability, or a value GitLab did not report, makes the result `unknown`.
+3. **Check what remains.** An undetected capability, or a value GitLab did not report, makes the result `unknown`. So does a part of the value that only this rule checks, such as an approval setting the rule requires that GitLab left out (the rule type's `undecided` hook, reported as `value_unknown` with its own reason).
 4. **Judge the value.** Only now does the rule type decide `pass` or `fail`.
 
 ### Unknown reasons and precedence
@@ -122,6 +122,55 @@ How protection is read and matched is described in [GITLAB_INTEGRATION.md](GITLA
 - **Matching:** the default branch is matched against every protected-branch rule, including wildcards (`*`, `release/*`).
 - **Recorded:** only the matching rules are kept, with their access-level summary, force push and code owner approval. Whether a branch counts as protected does not depend on those settings.
 - **Not judged:** who may push or merge is not judged by this rule.
+
+## Access-control and merge request approval rules
+
+These four rules judge observations recorded after each project discovery ([GITLAB_INTEGRATION.md](GITLAB_INTEGRATION.md#access-controls)). Each rule's value is its observation's whole payload, so the evidence check compares the payload with `observed` and a result is backed by exactly one observation. They share the projects collection's freshness. As audit evidence they speak to change approval (SOC 2 CC8.1, ISO/IEC 27001 A.8.32: merge request approvals), access provisioning and review (CC6.1 to CC6.3, A.5.15 to A.5.18: privileged members, access tokens) and authentication (CC6.1, A.8.5: two-factor); a baseline's own control mapping is the auditor's to make. A read that was denied (`forbidden`), not found or failed, or never happened, is `unknown` (`value_unknown`) with the reason; so is any part a rule needs that GitLab did not report or that cannot be seen.
+
+### `gitlab.project.merge_request_approvals`
+
+| | |
+| --- | --- |
+| Value | The project's approval settings and approval rules (source `GET /projects/:id/approvals`), with the default branch and whether it is protected. |
+| Required approvals | The largest `approvals_required` among `regular` and `any_approver` rules that cover the default branch. A rule with no protected branches covers every branch; `applies_to_all_protected_branches` covers it when it is protected; otherwise one of its protected branch names must match it (wildcards as GitLab matches them). `code_owner` and `report_approver` rules apply only to some changes and never count. |
+| Passes when | The required approvals are at least `min_approvals`, and each flag set to `true` is met: `forbid_author_approval` by `merge_requests_author_approval: false`, `forbid_committer_approval` by `merge_requests_disable_committers_approval: true`, `reset_approvals_on_push` by `reset_approvals_on_push: true`, `forbid_override` by `disable_overriding_approvers_per_merge_request: true`. |
+| Capability | `merge_request_approvals.read`. Project approval rules need GitLab Premium or Ultimate; elsewhere the probe does not answer and the rule is `unknown` (`capability_unknown`). |
+| Unknown when | The project has no default branch; the approvals were read for a different default branch; which rules cover the branch is not known (an unknown rule type, a missing count, or `applies_to_all_protected_branches` while the branch's protection could not be read) and `min_approvals` is above 0; or a setting a flag requires was not reported. |
+
+Approval policies (`gitlab.security_policy.approval`) are judged separately: a project can meet the policy rule while its own settings do not, and the reverse.
+
+### `gitlab.project.privileged_members`
+
+| | |
+| --- | --- |
+| Value | The project's direct and inherited members (source `GET /projects/:id/members/all`): counts by access level and state, and the usernames of members with Maintainer or Owner access and of members whose account is not active. |
+| Passes when | At most `max_privileged` members hold Maintainer (40) or Owner (50) access, and, with `forbid_inactive_accounts`, no member's account is in a state other than `active` (for example `blocked` or `deactivated`). |
+| Capability | None: every edition lists members. |
+| Unknown when | Within the limit but some members' access level was not reported; or, with `forbid_inactive_accounts`, some members' state was not reported and none is known to be inactive. Too many known privileged members fail regardless. |
+
+Bot users of project and group access tokens are members and count like anyone else.
+
+### `gitlab.group.two_factor_required`
+
+| | |
+| --- | --- |
+| Value | The two-factor settings of each group above the project, top-down, from group discovery (source `GET /groups (two-factor settings of the project's groups)`), whether that chain is complete, and the instance setting when the token has administrator access. |
+| Passes when | A group above the project or the instance requires two-factor authentication and, with `max_grace_hours`, the shortest grace period among those that require it is at most that. |
+| Fails when | Every group above the project and the instance are seen not to require it, or the grace period is too long and nothing unseen could set a shorter one. |
+| Capability | `groups.two_factor` (the group listing carries `require_two_factor_authentication`). |
+| Unknown when | Nothing seen requires it, but something cannot be seen: a group above the project the token cannot see (incomplete chain), a group whose setting was not reported, or the instance setting, which needs an administrator token. Without one, a project in no requiring group is `unknown`, never `fail`. |
+
+A personal project has no groups above it, so only the instance setting decides it.
+
+### `gitlab.project.access_tokens`
+
+| | |
+| --- | --- |
+| Value | The project's active access tokens (source `GET /projects/:id/access_tokens`) with their creation, expiry and last-used dates, and the date they were read (`as_of`). |
+| Passes when | Every active token expires no more than `max_lifetime_days` after it was created and, with `max_unused_days`, was used (or, if never used, created) within that many days of `as_of`. A project without active tokens passes. |
+| Fails when | A token never expires, lives too long, or has gone unused too long. |
+| Capability | None: every edition has project access tokens. Reading them needs the Maintainer role, so with a lower role each project is `unknown` with the 403. |
+| Unknown when | A token's creation date was not reported, or `as_of` is missing while `max_unused_days` is set. |
 
 ## GitLab security policy rules
 
@@ -215,7 +264,7 @@ results = evaluate_project(db, project, resolution, collections, capabilities)
 `capabilities` defaults to the instance's snapshot when omitted. Each project's default-branch protection and security policy observations are read with the project.
 
 - **Which policies:** only the resolution's `effective` policies are evaluated. Overridden and out-of-scope versions are not.
-- **Which rules:** a rule is evaluated only if its type has an evaluator. Today that is `gitlab.project.visibility`, `gitlab.branch.default_protected`, `gitlab.security_policy.scan_execution` and `gitlab.security_policy.approval`. Rules of other types produce no result until their evaluator exists; they never produce a guessed one.
+- **Which rules:** a rule is evaluated only if its type has an evaluator. Today that is every rule type in the schema: `gitlab.project.visibility`, `gitlab.branch.default_protected`, `gitlab.security_policy.scan_execution`, `gitlab.security_policy.approval`, `gitlab.project.merge_request_approvals`, `gitlab.project.privileged_members`, `gitlab.group.two_factor_required` and `gitlab.project.access_tokens`. Rules of other types produce no result until their evaluator exists; they never produce a guessed one.
 - **Order:** by policy name, then by the rule's position in the policy.
 
 ### Archived projects
@@ -239,6 +288,7 @@ A rule type is one `RuleEvaluator`, registered in `EVALUATORS` (`evaluation/proj
 - how to state the expectation, read the value and judge it
 - why a missing value is missing, and which unknown reason that is (`value_unknown` unless it says otherwise)
 - when its value was observed (the project's `last_seen_at` unless it says otherwise)
+- why a known value cannot decide a particular rule (`undecided`), if that can happen
 
 The engine applies the unknown and unsupported handling above, so each rule type decides only `pass` or `fail`.
 
@@ -266,7 +316,7 @@ Baluarte never reports unknown, unsupported or stale state as compliant. The end
 | An exception that expired or was revoked waives nothing: the API reads it as ended at once, and the next run reopens or settles its finding. | `test_expiry_ends_the_waiver_on_the_next_run`, `test_an_exception_past_expiry_reads_as_expired_before_the_next_run`, `test_revoking_reopens_the_finding_at_once`, `test_an_unknown_result_after_the_exception_ended_reopens_the_finding` |
 | Nobody approves or rejects their own exception. | `test_the_requester_cannot_approve_their_own_request`, `test_the_requester_cannot_decide_their_own_request` |
 
-Where a scenario leaves results undecided, the tests also check that no `pass` appears in the latest results, in the project evaluations API (with `observed` empty), or among findings resolved by a pass, and, where every project is affected, in the run's outcome counts. The unit tests in `test_evaluation_visibility.py`, `test_evaluation_default_branch.py`, `test_evaluation_security_policy.py`, `test_evaluation_project.py` and `test_evaluation_store.py` cover each reason and transition on its own.
+Where a scenario leaves results undecided, the tests also check that no `pass` appears in the latest results, in the project evaluations API (with `observed` empty), or among findings resolved by a pass, and, where every project is affected, in the run's outcome counts. The unit tests in `test_evaluation_visibility.py`, `test_evaluation_default_branch.py`, `test_evaluation_security_policy.py`, `test_evaluation_access.py`, `test_evaluation_project.py` and `test_evaluation_store.py` cover each reason and transition on its own; `test_evaluation_access_store.py` checks that the access-control results are stored with their evidence.
 
 ## Deferred
 

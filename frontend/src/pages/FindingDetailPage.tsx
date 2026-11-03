@@ -32,6 +32,7 @@ import {
   resolutionLabels,
   severityLabels,
 } from "../findings/format";
+import { observedSummary } from "../findings/observed";
 import { formatTime } from "../time";
 
 const cell = "px-3 py-2";
@@ -110,6 +111,7 @@ function Summary({ finding }: { finding: FindingDetail }) {
 
 function ExpectedVersusActual({ evaluation }: { evaluation: Evaluation }) {
   const known = observedKnown(evaluation);
+  const summary = known ? observedSummary(evaluation.rule_type, evaluation.observed) : null;
   const { capability, collection } = evaluation;
   const capabilityText = capability.name
     ? `${capability.name}: ${capabilityLabels[capability.status] ?? capability.status}`
@@ -136,7 +138,10 @@ function ExpectedVersusActual({ evaluation }: { evaluation: Evaluation }) {
           <dt className="text-sm font-medium text-slate-700">Observed</dt>
           <dd className="mt-1">
             {known ? (
-              <Value value={evaluation.observed} />
+              <>
+                {summary && <p className="text-sm">{summary}</p>}
+                <Value value={evaluation.observed} />
+              </>
             ) : (
               <span>{`Unknown — ${evaluation.reason}`}</span>
             )}
@@ -333,7 +338,10 @@ function History({ findingId }: { findingId: number }) {
                   <td className={cell}>{outcomeLabels[evaluation.outcome]}</td>
                   <td className={cell}>{`v${String(evaluation.policy.version)}`}</td>
                   <td className={cell}>
-                    {observedKnown(evaluation) ? formatValue(evaluation.observed) : "Unknown"}
+                    {observedKnown(evaluation)
+                      ? (observedSummary(evaluation.rule_type, evaluation.observed) ??
+                        formatValue(evaluation.observed))
+                      : "Unknown"}
                   </td>
                   <td className={cell}>{evaluation.reason}</td>
                 </tr>

@@ -155,6 +155,14 @@ def _make_discovery(
             if unread:
                 # Their protection evaluates as unknown, so the run is not a full success.
                 problems.append(f"default-branch protection of {unread} projects was not read")
+        for reader, statuses in (result.reads or {}).items():
+            counts.setdefault("reads", {})[reader] = statuses
+            # Forbidden and not found are answers (a role, a feature the edition lacks), and
+            # evaluate as unknown; only a read that failed makes the run partial.
+            if statuses.get("failed"):
+                problems.append(
+                    f"{reader.replace('_', ' ')} of {statuses['failed']} projects could not be read"
+                )
         finish_run(
             engine,
             run_id,

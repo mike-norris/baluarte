@@ -93,6 +93,9 @@ class Discovery:
     )
     # Default-branch protection reads (projects only): protected, unprotected, unread.
     protection: dict[str, int] | None = None
+    # Access-control reads (projects only), by reader ("approvals", "members", "access_tokens",
+    # "two_factor"), then by collection status.
+    reads: dict[str, dict[str, int]] | None = None
 
 
 def _upsert(

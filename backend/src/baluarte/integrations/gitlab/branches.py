@@ -1,10 +1,11 @@
 """Read each project's default-branch protection, as evidence for the protected-branch rule.
 
-Runs at the end of project discovery, for every active project with a default branch. It reads
-``GET /projects/:id/protected_branches`` (read-only, every page) and matches the default branch
-against each rule the way GitLab does: an exact name, or a wildcard where ``*`` matches any run
-of characters, ``/`` included. Reading the single-branch endpoint instead could miss a wildcard
-rule such as ``*`` or ``release/*`` that covers the branch (docs/REMEDIATION_RESEARCH.md).
+Runs after project discovery (``baluarte.integrations.gitlab.project_reads``), for every active
+project with a default branch. It reads ``GET /projects/:id/protected_branches`` (read-only,
+every page) and matches the default branch against each rule the way GitLab does: an exact name,
+or a wildcard where ``*`` matches any run of characters, ``/`` included. Reading the
+single-branch endpoint instead could miss a wildcard rule such as ``*`` or ``release/*`` that
+covers the branch (docs/REMEDIATION_RESEARCH.md).
 
 Each project gets one observation with source ``PROTECTION_SOURCE``:
 
@@ -14,22 +15,15 @@ Each project gets one observation with source ``PROTECTION_SOURCE``:
 - ``forbidden`` (401, 403), ``not_found`` (404) or ``failed`` (anything else): no payload and a
   safe error. A project that could not be read is never treated as protected or unprotected.
 
-Projects are read one at a time and results are written in small batches, so no database
-transaction is open while GitLab is called. If GitLab rejects the token, or reads keep failing,
-the remaining projects are recorded as not read without calling GitLab, so a stale protection
-observation never outlives a collection that did not confirm it.
+Any read that does not succeed counts toward stopping: protection is part of every project
+discovery, so a run that could not confirm it is reported as partial.
 """
 
-import logging
 import re
-from dataclasses import dataclass
+from collections.abc import Mapping
 from typing import Any
 
-from sqlalchemy import Engine, select
-from sqlalchemy.orm import Session
-
-from baluarte.db.models import GitLabProject
-from baluarte.evidence.observations import Observed, Provenance, record
+from baluarte.evidence.observations import Observed
 from baluarte.integrations.gitlab.client import (
     Forbidden,
     GitLabClient,
@@ -37,24 +31,12 @@ from baluarte.integrations.gitlab.client import (
     NotFound,
     Unauthorized,
 )
-
-logger = logging.getLogger(__name__)
+from baluarte.integrations.gitlab.project_reads import ProjectTarget, Reader, TokenRejected
 
 PROTECTION_SOURCE = "GET /projects/:id/protected_branches"
-# Stop calling GitLab after this many reads in a row fail; the rest are recorded as not read.
-MAX_CONSECUTIVE_FAILURES = 20
-BATCH = 100
 _ACCESS_LISTS = ("push_access_levels", "merge_access_levels", "unprotect_access_levels")
-
-
-@dataclass
-class ProtectionReads:
-    protected: int = 0
-    unprotected: int = 0
-    unread: int = 0
-
-    def as_counts(self) -> dict[str, int]:
-        return {"protected": self.protected, "unprotected": self.unprotected, "unread": self.unread}
+# Every status but "ok" means the protection was not confirmed.
+_NOT_OK = frozenset({"partial", "forbidden", "not_found", "unsupported", "failed"})
 
 
 def matches(rule_name: str, branch: str) -> bool:
@@ -132,14 +114,6 @@ def _unread(row_id: int, gitlab_id: int, status: str, error: str) -> Observed:
     )
 
 
-class TokenRejected(Exception):
-    """GitLab answered 401: the token no longer works, so reading other projects is pointless."""
-
-    def __init__(self, observed: Observed) -> None:
-        super().__init__(observed.error)
-        self.observed = observed
-
-
 def read_protection(client: GitLabClient, row_id: int, gitlab_id: int, branch: str) -> Observed:
     """One project's default-branch protection, or why it could not be read.
 
@@ -164,66 +138,31 @@ def read_protection(client: GitLabClient, row_id: int, gitlab_id: int, branch: s
     )
 
 
-def _targets(engine: Engine, instance_id: int) -> list[tuple[int, int, str]]:
-    with Session(engine) as db:
-        rows = db.execute(
-            select(GitLabProject.id, GitLabProject.gitlab_id, GitLabProject.default_branch)
-            .where(
-                GitLabProject.instance_id == instance_id,
-                GitLabProject.state == "active",
-                GitLabProject.default_branch.is_not(None),
-            )
-            .order_by(GitLabProject.id)
-        ).all()
-    return [(row_id, gitlab_id, branch) for row_id, gitlab_id, branch in rows if branch]
+def _read(client: GitLabClient, target: ProjectTarget, _done: Mapping[str, Observed]) -> Observed:
+    if target.default_branch is None:  # ``applies`` keeps empty repositories out
+        raise ValueError(f"project {target.path} has no default branch")
+    return read_protection(client, target.row_id, target.gitlab_id, target.default_branch)
 
 
-def collect_protection(
-    client: GitLabClient,
-    engine: Engine,
-    instance_id: int,
-    provenance: Provenance | None = None,
-) -> ProtectionReads:
-    """Read and record the default-branch protection of every active project."""
-    reads = ProtectionReads()
-    pending: list[Observed] = []
-    stop_reason: str | None = None
-    failures = 0
+def _tally(observed: Observed) -> str:
+    if observed.collection_status != "ok":
+        return "unread"
+    return "protected" if observed.payload and observed.payload["protected"] else "unprotected"
 
-    def flush() -> None:
-        with Session(engine) as db:
-            record(db, instance_id, "project_id", pending, provenance)
-            db.commit()
-        pending.clear()
 
-    for row_id, gitlab_id, branch in _targets(engine, instance_id):
-        if stop_reason is not None:
-            observed = _unread(row_id, gitlab_id, "failed", stop_reason)
-        else:
-            try:
-                observed = read_protection(client, row_id, gitlab_id, branch)
-            except TokenRejected as rejected:
-                observed = rejected.observed
-                stop_reason = "not read: GitLab rejected the token earlier in this collection"
-        if observed.collection_status == "ok":
-            failures = 0
-            if observed.payload and observed.payload["protected"]:
-                reads.protected += 1
-            else:
-                reads.unprotected += 1
-        else:
-            reads.unread += 1
-            failures += 1
-            if stop_reason is None and failures >= MAX_CONSECUTIVE_FAILURES:
-                stop_reason = (
-                    f"not read: {MAX_CONSECUTIVE_FAILURES} protected-branch reads in a row "
-                    "failed earlier in this collection"
-                )
-        pending.append(observed)
-        if len(pending) >= BATCH:
-            flush()
-    if pending:
-        flush()
-    if reads.unread:
-        logger.warning("gitlab: default-branch protection not read for %s projects", reads.unread)
-    return reads
+PROTECTION = Reader(
+    key="protection",
+    source=PROTECTION_SOURCE,
+    noun="protected-branch",
+    source_ref=lambda target: _ref(target.gitlab_id),
+    read=_read,
+    # An empty repository has no branch to read.
+    applies=lambda target: target.default_branch is not None,
+    stop_on=_NOT_OK,
+    tally=_tally,
+)
+
+
+def protection_counts(counts: Mapping[str, int]) -> dict[str, int]:
+    """Protected, unprotected and unread, each present even when zero."""
+    return {key: counts.get(key, 0) for key in ("protected", "unprotected", "unread")}

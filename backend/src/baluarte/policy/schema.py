@@ -128,11 +128,84 @@ class SecurityPolicyApprovalRule(_Rule):
     ] = False
 
 
+class MergeRequestApprovalsRule(_Rule):
+    """Passes when the project's own approval rules require at least ``min_approvals`` approvals
+    on merge requests to its default branch, and its approval settings meet every flag set."""
+
+    type: Literal["gitlab.project.merge_request_approvals"]
+    min_approvals: Annotated[
+        int,
+        Field(
+            ge=0,
+            le=20,
+            description="The largest approvals_required among the regular and any-approver "
+            "rules that cover the default branch must be at least this.",
+        ),
+    ]
+    forbid_author_approval: Annotated[
+        bool, Field(description="Require merge_requests_author_approval: false.")
+    ] = False
+    forbid_committer_approval: Annotated[
+        bool, Field(description="Require merge_requests_disable_committers_approval: true.")
+    ] = False
+    reset_approvals_on_push: Annotated[
+        bool, Field(description="Require reset_approvals_on_push: true.")
+    ] = False
+    forbid_override: Annotated[
+        bool,
+        Field(description="Require disable_overriding_approvers_per_merge_request: true."),
+    ] = False
+
+
+class PrivilegedMembersRule(_Rule):
+    """Passes when at most ``max_privileged`` members, direct or inherited, hold the Maintainer
+    or Owner role on the project."""
+
+    type: Literal["gitlab.project.privileged_members"]
+    max_privileged: Annotated[int, Field(ge=1, le=1000)]
+    forbid_inactive_accounts: Annotated[
+        bool,
+        Field(
+            description="Also fail when a member's account is not active (blocked, deactivated "
+            "or awaiting approval) but still holds access."
+        ),
+    ] = False
+
+
+class TwoFactorRequiredRule(_Rule):
+    """Passes when a group above the project, or the instance, requires two-factor
+    authentication of its members."""
+
+    type: Literal["gitlab.group.two_factor_required"]
+    max_grace_hours: Annotated[
+        int | None,
+        Field(
+            ge=0,
+            le=720,
+            description="When set, the shortest grace period among the groups (and instance) "
+            "that require it must be at most this many hours.",
+        ),
+    ] = None
+
+
+class AccessTokensRule(_Rule):
+    """Passes when every active project access token expires within ``max_lifetime_days`` of its
+    creation and, when ``max_unused_days`` is set, was used within that many days."""
+
+    type: Literal["gitlab.project.access_tokens"]
+    max_lifetime_days: Annotated[int, Field(ge=1, le=365)]
+    max_unused_days: Annotated[int | None, Field(ge=1, le=365)] = None
+
+
 Rule = Annotated[
     ProjectVisibilityRule
     | DefaultBranchProtectedRule
     | SecurityPolicyScanExecutionRule
-    | SecurityPolicyApprovalRule,
+    | SecurityPolicyApprovalRule
+    | MergeRequestApprovalsRule
+    | PrivilegedMembersRule
+    | TwoFactorRequiredRule
+    | AccessTokensRule,
     Field(discriminator="type"),
 ]
 RULE_TYPES = (
@@ -140,6 +213,10 @@ RULE_TYPES = (
     "gitlab.branch.default_protected",
     "gitlab.security_policy.scan_execution",
     "gitlab.security_policy.approval",
+    "gitlab.project.merge_request_approvals",
+    "gitlab.project.privileged_members",
+    "gitlab.group.two_factor_required",
+    "gitlab.project.access_tokens",
 )
 
 

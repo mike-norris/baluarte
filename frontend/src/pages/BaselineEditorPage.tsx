@@ -115,6 +115,28 @@ function YamlHelp() {
           <code className="font-mono">required: true</code>.
         </li>
         <li>
+          Rule <code className="font-mono">gitlab.project.merge_request_approvals</code> with{" "}
+          <code className="font-mono">min_approvals</code> (0 to 20) and optional{" "}
+          <code className="font-mono">forbid_author_approval</code>,{" "}
+          <code className="font-mono">forbid_committer_approval</code>,{" "}
+          <code className="font-mono">reset_approvals_on_push</code> and{" "}
+          <code className="font-mono">forbid_override</code> (true or false).
+        </li>
+        <li>
+          Rule <code className="font-mono">gitlab.project.privileged_members</code> with{" "}
+          <code className="font-mono">max_privileged</code> (1 to 1000) and optional{" "}
+          <code className="font-mono">forbid_inactive_accounts</code>.
+        </li>
+        <li>
+          Rule <code className="font-mono">gitlab.group.two_factor_required</code> with optional{" "}
+          <code className="font-mono">max_grace_hours</code> (0 to 720).
+        </li>
+        <li>
+          Rule <code className="font-mono">gitlab.project.access_tokens</code> with{" "}
+          <code className="font-mono">max_lifetime_days</code> and optional{" "}
+          <code className="font-mono">max_unused_days</code> (1 to 365 each).
+        </li>
+        <li>
           Each rule has a unique <code className="font-mono">id</code> and an optional{" "}
           <code className="font-mono">severity</code> (low, medium, high or critical) and{" "}
           <code className="font-mono">description</code>.

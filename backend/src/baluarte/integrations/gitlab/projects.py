@@ -4,8 +4,9 @@
 endpoint on large instances, and keyset pages stay consistent while projects are created.
 Archived projects are listed and flagged, because archiving does not remove them from scope.
 Reconciliation is shared with groups (``baluarte.integrations.gitlab.discovery``). After a
-complete listing, each active project's default-branch protection is read
-(``baluarte.integrations.gitlab.branches``).
+complete listing, each active project's default-branch protection
+(``baluarte.integrations.gitlab.branches``) and access controls
+(``baluarte.integrations.gitlab.access``) are read.
 """
 
 from typing import Any
@@ -14,9 +15,16 @@ from sqlalchemy import Engine
 
 from baluarte.db.models import NAMESPACE_KINDS, VISIBILITIES, GitLabProject
 from baluarte.evidence.observations import Provenance
-from baluarte.integrations.gitlab.branches import collect_protection
+from baluarte.integrations.gitlab.access import (
+    ACCESS_TOKENS,
+    APPROVALS,
+    MEMBERS,
+    two_factor_reader,
+)
+from baluarte.integrations.gitlab.branches import PROTECTION, protection_counts
 from baluarte.integrations.gitlab.client import GitLabClient, InvalidResponse
 from baluarte.integrations.gitlab.discovery import Discovery, ResourceKind, discover
+from baluarte.integrations.gitlab.project_reads import collect_project_reads
 
 
 def _row(instance_id: int, project: dict[str, Any]) -> dict[str, Any]:
@@ -86,10 +94,18 @@ def discover_projects(
     client: GitLabClient, engine: Engine, base_url: str, provenance: Provenance | None = None
 ) -> Discovery:
     result = discover(client, engine, base_url, PROJECTS, provenance)
-    reads = collect_protection(client, engine, result.instance_id, provenance)
-    result.protection = reads.as_counts()
+    readers = (
+        PROTECTION,
+        APPROVALS,
+        MEMBERS,
+        ACCESS_TOKENS,
+        two_factor_reader(client, engine, result.instance_id),
+    )
+    reads = collect_project_reads(client, engine, result.instance_id, readers, provenance)
+    result.protection = protection_counts(reads.as_counts(PROTECTION.key))
+    result.reads = {reader.key: reads.as_counts(reader.key) for reader in readers[1:]}
     return result
 
 
-# A project's own observations, as opposed to its branch protection.
+# A project's own observations, as opposed to its branch protection and access controls.
 PROJECT_SOURCES = PROJECTS.sources

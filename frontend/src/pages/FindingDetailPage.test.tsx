@@ -92,6 +92,35 @@ describe("finding detail", () => {
     );
   });
 
+  it("summarises a list-valued observation above its JSON and in the history", async () => {
+    const tokens = evaluation(22, {
+      rule_type: "gitlab.project.access_tokens",
+      expected: { max_lifetime_days: 90 },
+      observed: [
+        {
+          id: 1,
+          name: "deploy",
+          active: true,
+          revoked: false,
+          created_at: "2026-10-01T00:00:00Z",
+          expires_at: null,
+          last_used_at: "2026-10-30T00:00:00Z",
+        },
+      ],
+    });
+    api(findingDetail(5, tokens));
+    renderAt();
+
+    const { observed } = await comparison();
+    expect(observed).toHaveTextContent("1 active token; 1 without an expiry date.");
+    expect(observed?.querySelector("pre")).toHaveTextContent('"name": "deploy"');
+    const historyTable = await screen.findByRole("table", {
+      name: "Evaluation history, newest first",
+    });
+    expect(historyTable).toHaveTextContent("1 active token; 1 without an expiry date.");
+    expect(historyTable).not.toHaveTextContent('"name"');
+  });
+
   it("says a finding was resolved because its project was archived", async () => {
     api(
       findingDetail(5, evaluation(21), {
