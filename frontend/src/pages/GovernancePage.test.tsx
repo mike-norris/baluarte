@@ -454,6 +454,71 @@ describe("governance: the baseline editor", () => {
       forbid_committer_approval: false`);
   });
 
+  it("adds the access-control and project approval rules only when asked", async () => {
+    const calls = api(analyst, { [SAVE]: () => json(policyVersion(3), 201) });
+    const user = userEvent.setup();
+    renderAt("/governance/baselines/new?start=recommended");
+
+    await screen.findByRole("heading", {
+      name: "Use the recommended baseline",
+    });
+    expect(
+      screen.queryByRole("region", { name: "Privileged members rule" }),
+    ).not.toBeInTheDocument();
+    for (const name of [
+      "Add rule: project approval settings",
+      "Add rule: privileged members",
+      "Add rule: two-factor authentication",
+      "Add rule: access token lifetime",
+    ]) {
+      await user.click(screen.getByRole("button", { name }));
+    }
+
+    const approvals = screen.getByRole("region", { name: "Project approval settings rule" });
+    await user.click(
+      within(approvals).getByRole("checkbox", { name: "Anyone who committed can't approve" }),
+    );
+    const members = screen.getByRole("region", { name: "Privileged members rule" });
+    const max = within(members).getByRole("spinbutton", {
+      name: "Members with Maintainer or Owner access, at most",
+    });
+    await user.clear(max);
+    await user.type(max, "3");
+    const twoFactor = screen.getByRole("region", { name: "Two-factor authentication rule" });
+    await user.clear(
+      within(twoFactor).getByRole("spinbutton", {
+        name: "Grace period in hours, at most (optional)",
+      }),
+    );
+    const tokens = screen.getByRole("region", { name: "Access token lifetime rule" });
+    await user.type(
+      within(tokens).getByRole("spinbutton", {
+        name: "Days a token may go unused, at most (optional)",
+      }),
+      "60",
+    );
+    await user.click(screen.getByRole("button", { name: "Save without applying" }));
+
+    await vi.waitFor(() => {
+      expect(calledWith(calls, SAVE)).toHaveLength(1);
+    });
+    const yaml = (bodyOf(calledWith(calls, SAVE)[0]) as { source_yaml: string }).source_yaml;
+    expect(yaml).toContain(`      type: gitlab.project.merge_request_approvals
+      min_approvals: 1
+      forbid_author_approval: true
+      forbid_committer_approval: true
+      reset_approvals_on_push: true
+      forbid_override: true`);
+    expect(yaml).toContain(`      type: gitlab.project.privileged_members
+      max_privileged: 3
+      forbid_inactive_accounts: true`);
+    expect(yaml).toContain(`      type: gitlab.group.two_factor_required
+      severity: high`);
+    expect(yaml).toContain(`      type: gitlab.project.access_tokens
+      max_lifetime_days: 90
+      max_unused_days: 60`);
+  });
+
   it("removes an added rule", async () => {
     api(analyst);
     const user = userEvent.setup();

@@ -1,6 +1,7 @@
 import { useId } from "react";
 
 import { fieldClass, secondaryClass } from "../components/styles";
+import { AccessRules } from "./AccessRules";
 import {
   MAX_APPROVALS,
   MIN_APPROVALS,
@@ -403,6 +404,8 @@ export function RuleForm({
             </p>
           </div>
         )}
+
+        <AccessRules form={form} onChange={onChange} />
       </fieldset>
 
       <fieldset className="space-y-2">

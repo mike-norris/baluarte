@@ -1,11 +1,14 @@
 /**
  * The baseline form and its YAML.
  *
- * The form covers the rule types the API knows, one rule of each. The two GitLab security policy
- * rules are off unless added, since they need GitLab Ultimate. A saved version with
- * anything else (two rules of one type, or a type this UI predates) opens as YAML instead, so
- * the form never drops part of a baseline. The API validates every save; these checks only
- * catch mistakes before the round trip.
+ * The form covers the rule types the API knows, one rule of each. Visibility and default-branch
+ * protection are switches; the others are off unless added: the two GitLab security policy rules
+ * (they need GitLab Ultimate), and the access-control and merge request approval rules (project
+ * approval settings need GitLab Premium, access tokens a Maintainer token, and two-factor
+ * enforcement may need an administrator token). A saved version with anything else (two rules of
+ * one type, or a type this UI predates) opens as YAML instead, so the form never drops part of a
+ * baseline. The API validates every save; these checks only catch mistakes before the round
+ * trip.
  */
 
 import { NAME_PATTERN } from "../api/policies";
@@ -88,6 +91,62 @@ export interface ApprovalRule {
 export const MIN_APPROVALS = 1;
 export const MAX_APPROVALS = 20;
 
+/** The project's own merge request approval settings and rules, for the default branch. */
+export interface ProjectApprovalsRule {
+  enabled: boolean;
+  id: string;
+  minApprovals: number;
+  forbidAuthorApproval: boolean;
+  forbidCommitterApproval: boolean;
+  resetApprovalsOnPush: boolean;
+  forbidOverride: boolean;
+  severity: Severity;
+  description: string;
+}
+
+export const MIN_PROJECT_APPROVALS = 0;
+export const MAX_PROJECT_APPROVALS = 20;
+
+/** At most this many members with Maintainer or Owner access, direct or inherited. */
+export interface MembersRule {
+  enabled: boolean;
+  id: string;
+  maxPrivileged: number;
+  forbidInactiveAccounts: boolean;
+  severity: Severity;
+  description: string;
+}
+
+export const MIN_PRIVILEGED = 1;
+export const MAX_PRIVILEGED = 1000;
+
+/** A group above the project requires two-factor authentication. */
+export interface TwoFactorRule {
+  enabled: boolean;
+  id: string;
+  /** Null when any grace period is accepted. */
+  maxGraceHours: number | null;
+  severity: Severity;
+  description: string;
+}
+
+export const MIN_GRACE_HOURS = 0;
+export const MAX_GRACE_HOURS = 720;
+
+/** Project access tokens expire, and optionally are in use. */
+export interface TokensRule {
+  enabled: boolean;
+  id: string;
+  maxLifetimeDays: number;
+  /** Null when tokens may go unused for any time. */
+  maxUnusedDays: number | null;
+  severity: Severity;
+  description: string;
+}
+
+export const MIN_TOKEN_DAYS = 1;
+export const MAX_TOKEN_DAYS = 365;
+
 export interface BaselineForm {
   name: string;
   description: string;
@@ -99,12 +158,21 @@ export interface BaselineForm {
   /** Off unless added: these depend on GitLab security policies, which need GitLab Ultimate. */
   scan: ScanRule;
   approval: ApprovalRule;
+  /** Off unless added: access control and the project's own approval settings. */
+  projectApprovals: ProjectApprovalsRule;
+  members: MembersRule;
+  twoFactor: TwoFactorRule;
+  tokens: TokensRule;
 }
 
 export const VISIBILITY_TYPE = "gitlab.project.visibility";
 export const BRANCH_TYPE = "gitlab.branch.default_protected";
 export const SCAN_TYPE = "gitlab.security_policy.scan_execution";
 export const APPROVAL_TYPE = "gitlab.security_policy.approval";
+export const PROJECT_APPROVALS_TYPE = "gitlab.project.merge_request_approvals";
+export const MEMBERS_TYPE = "gitlab.project.privileged_members";
+export const TWO_FACTOR_TYPE = "gitlab.group.two_factor_required";
+export const TOKENS_TYPE = "gitlab.project.access_tokens";
 
 /** The scan rule as "Add rule" first shows it. */
 export function offScanRule(): ScanRule {
@@ -126,6 +194,56 @@ export function offApprovalRule(): ApprovalRule {
     minApprovals: 1,
     forbidAuthorApproval: false,
     forbidCommitterApproval: false,
+    severity: "medium",
+    description: "",
+  };
+}
+
+/** The project approval settings rule as "Add rule" first shows it. */
+export function offProjectApprovalsRule(): ProjectApprovalsRule {
+  return {
+    enabled: false,
+    id: "merge-request-approvals",
+    minApprovals: 1,
+    forbidAuthorApproval: true,
+    forbidCommitterApproval: false,
+    resetApprovalsOnPush: true,
+    forbidOverride: true,
+    severity: "high",
+    description: "",
+  };
+}
+
+/** The privileged members rule as "Add rule" first shows it. */
+export function offMembersRule(): MembersRule {
+  return {
+    enabled: false,
+    id: "privileged-members",
+    maxPrivileged: 5,
+    forbidInactiveAccounts: true,
+    severity: "medium",
+    description: "",
+  };
+}
+
+/** The two-factor rule as "Add rule" first shows it; 48 hours is GitLab's default grace period. */
+export function offTwoFactorRule(): TwoFactorRule {
+  return {
+    enabled: false,
+    id: "two-factor-required",
+    maxGraceHours: 48,
+    severity: "high",
+    description: "",
+  };
+}
+
+/** The access token rule as "Add rule" first shows it. */
+export function offTokensRule(): TokensRule {
+  return {
+    enabled: false,
+    id: "access-token-lifetime",
+    maxLifetimeDays: 90,
+    maxUnusedDays: null,
     severity: "medium",
     description: "",
   };
@@ -153,6 +271,10 @@ export function recommendedBaseline(): BaselineForm {
     },
     scan: offScanRule(),
     approval: offApprovalRule(),
+    projectApprovals: offProjectApprovalsRule(),
+    members: offMembersRule(),
+    twoFactor: offTwoFactorRule(),
+    tokens: offTokensRule(),
   };
 }
 
@@ -231,6 +353,14 @@ export function toYaml(form: BaselineForm): string {
     if (rule.description.trim())
       lines.push(`      description: ${quoted(rule.description.trim())}`);
   }
+  for (const rule of accessRuleDocuments(form)) {
+    const { id, type, description, ...fields } = rule;
+    lines.push(`    - id: ${String(id)}`, `      type: ${String(type)}`);
+    for (const [key, value] of Object.entries(fields)) {
+      if (value !== null) lines.push(`      ${key}: ${String(value)}`);
+    }
+    if (typeof description === "string") lines.push(`      description: ${quoted(description)}`);
+  }
   return `${lines.join("\n")}\n`;
 }
 
@@ -276,6 +406,14 @@ export function toDocument(form: BaselineForm): Record<string, unknown> {
       description: form.approval.description || null,
     });
   }
+  for (const rule of accessRuleDocuments(form)) {
+    // The API leaves an optional limit out of the parsed document when it is not set.
+    rules.push(
+      Object.fromEntries(
+        Object.entries(rule).filter(([key, value]) => value !== null || key === "description"),
+      ),
+    );
+  }
   return {
     apiVersion: "baluarte.io/v1alpha1",
     kind: "GitLabBaseline",
@@ -285,6 +423,59 @@ export function toDocument(form: BaselineForm): Record<string, unknown> {
       rules,
     },
   };
+}
+
+/**
+ * The access-control and project approval rules that are on, as document fields in the order
+ * the YAML writes them: id, type, the rule's own fields, severity, then description (null when
+ * empty). An optional limit that is not set is null.
+ */
+function accessRuleDocuments(form: BaselineForm): Record<string, unknown>[] {
+  const rules: Record<string, unknown>[] = [];
+  const { projectApprovals, members, twoFactor, tokens } = form;
+  if (projectApprovals.enabled) {
+    rules.push({
+      id: projectApprovals.id,
+      type: PROJECT_APPROVALS_TYPE,
+      min_approvals: projectApprovals.minApprovals,
+      forbid_author_approval: projectApprovals.forbidAuthorApproval,
+      forbid_committer_approval: projectApprovals.forbidCommitterApproval,
+      reset_approvals_on_push: projectApprovals.resetApprovalsOnPush,
+      forbid_override: projectApprovals.forbidOverride,
+      severity: projectApprovals.severity,
+      description: projectApprovals.description.trim() || null,
+    });
+  }
+  if (members.enabled) {
+    rules.push({
+      id: members.id,
+      type: MEMBERS_TYPE,
+      max_privileged: members.maxPrivileged,
+      forbid_inactive_accounts: members.forbidInactiveAccounts,
+      severity: members.severity,
+      description: members.description.trim() || null,
+    });
+  }
+  if (twoFactor.enabled) {
+    rules.push({
+      id: twoFactor.id,
+      type: TWO_FACTOR_TYPE,
+      max_grace_hours: twoFactor.maxGraceHours,
+      severity: twoFactor.severity,
+      description: twoFactor.description.trim() || null,
+    });
+  }
+  if (tokens.enabled) {
+    rules.push({
+      id: tokens.id,
+      type: TOKENS_TYPE,
+      max_lifetime_days: tokens.maxLifetimeDays,
+      max_unused_days: tokens.maxUnusedDays,
+      severity: tokens.severity,
+      description: tokens.description.trim() || null,
+    });
+  }
+  return rules;
 }
 
 function orderedScans(chosen: readonly unknown[]): Scan[] {
@@ -313,7 +504,16 @@ export function formProblems(form: BaselineForm): string[] {
   if (form.scope === "groups" && cleanGroups(form.groups).length === 0) {
     problems.push("Groups: enter at least one group path, or choose every group.");
   }
-  const rules = [form.visibility, form.branch, form.scan, form.approval];
+  const rules = [
+    form.visibility,
+    form.branch,
+    form.scan,
+    form.approval,
+    form.projectApprovals,
+    form.members,
+    form.twoFactor,
+    form.tokens,
+  ];
   if (!rules.some((rule) => rule.enabled)) {
     problems.push("Rules: turn on at least one rule.");
   }
@@ -331,6 +531,44 @@ export function formProblems(form: BaselineForm): string[] {
     problems.push(
       `Required approvals: enter a whole number from ${String(MIN_APPROVALS)} to ${String(MAX_APPROVALS)}.`,
     );
+  }
+  const range = (
+    label: string,
+    value: number | null,
+    min: number,
+    max: number,
+    optional = false,
+  ) => {
+    if (optional && value === null) return;
+    if (value === null || !Number.isInteger(value) || value < min || value > max) {
+      problems.push(
+        `${label}: enter a whole number from ${String(min)} to ${String(max)}${optional ? ", or leave it empty" : ""}.`,
+      );
+    }
+  };
+  if (form.projectApprovals.enabled) {
+    range(
+      "Project approvals",
+      form.projectApprovals.minApprovals,
+      MIN_PROJECT_APPROVALS,
+      MAX_PROJECT_APPROVALS,
+    );
+  }
+  if (form.members.enabled) {
+    range("Privileged members", form.members.maxPrivileged, MIN_PRIVILEGED, MAX_PRIVILEGED);
+  }
+  if (form.twoFactor.enabled) {
+    range(
+      "Two-factor grace period",
+      form.twoFactor.maxGraceHours,
+      MIN_GRACE_HOURS,
+      MAX_GRACE_HOURS,
+      true,
+    );
+  }
+  if (form.tokens.enabled) {
+    range("Access token lifetime", form.tokens.maxLifetimeDays, MIN_TOKEN_DAYS, MAX_TOKEN_DAYS);
+    range("Unused access tokens", form.tokens.maxUnusedDays, MIN_TOKEN_DAYS, MAX_TOKEN_DAYS, true);
   }
   return problems;
 }
@@ -355,6 +593,16 @@ function isScan(value: unknown): value is Scan {
 function flag(value: unknown, fallback: boolean): boolean | null {
   if (value === undefined || value === null) return fallback;
   return typeof value === "boolean" ? value : null;
+}
+
+function isWhole(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value);
+}
+
+/** An optional whole number: its value, null when absent, or undefined when not a whole number. */
+function optionalWhole(value: unknown): number | null | undefined {
+  if (value === undefined || value === null) return null;
+  return isWhole(value) ? value : undefined;
 }
 
 /**
@@ -417,6 +665,61 @@ export function fromDocument(document: unknown): BaselineForm | null {
         minApprovals: rule.min_approvals,
         forbidAuthorApproval: author,
         forbidCommitterApproval: committer,
+        severity,
+        description: text(rule.description),
+      };
+    } else if (
+      rule.type === PROJECT_APPROVALS_TYPE &&
+      !form.projectApprovals.enabled &&
+      isWhole(rule.min_approvals)
+    ) {
+      const author = flag(rule.forbid_author_approval, false);
+      const committer = flag(rule.forbid_committer_approval, false);
+      const reset = flag(rule.reset_approvals_on_push, false);
+      const override = flag(rule.forbid_override, false);
+      if (author === null || committer === null || reset === null || override === null) {
+        return null;
+      }
+      form.projectApprovals = {
+        enabled: true,
+        id: rule.id,
+        minApprovals: rule.min_approvals,
+        forbidAuthorApproval: author,
+        forbidCommitterApproval: committer,
+        resetApprovalsOnPush: reset,
+        forbidOverride: override,
+        severity,
+        description: text(rule.description),
+      };
+    } else if (rule.type === MEMBERS_TYPE && !form.members.enabled && isWhole(rule.max_privileged)) {
+      const inactive = flag(rule.forbid_inactive_accounts, false);
+      if (inactive === null) return null;
+      form.members = {
+        enabled: true,
+        id: rule.id,
+        maxPrivileged: rule.max_privileged,
+        forbidInactiveAccounts: inactive,
+        severity,
+        description: text(rule.description),
+      };
+    } else if (rule.type === TWO_FACTOR_TYPE && !form.twoFactor.enabled) {
+      const grace = optionalWhole(rule.max_grace_hours);
+      if (grace === undefined) return null;
+      form.twoFactor = {
+        enabled: true,
+        id: rule.id,
+        maxGraceHours: grace,
+        severity,
+        description: text(rule.description),
+      };
+    } else if (rule.type === TOKENS_TYPE && !form.tokens.enabled && isWhole(rule.max_lifetime_days)) {
+      const unused = optionalWhole(rule.max_unused_days);
+      if (unused === undefined) return null;
+      form.tokens = {
+        enabled: true,
+        id: rule.id,
+        maxLifetimeDays: rule.max_lifetime_days,
+        maxUnusedDays: unused,
         severity,
         description: text(rule.description),
       };
@@ -511,6 +814,63 @@ export function readableRules(document: unknown): ReadableRule[] {
         id,
         sentence: `Every merge request to a protected branch needs at least ${String(count)} ${count === 1 ? "approval" : "approvals"} from a GitLab approval policy`,
         detail: [notBy, description].filter(Boolean).join(" ") || null,
+        severity,
+      };
+    }
+    const plural = (count: number, one: string, many: string) =>
+      `${String(count)} ${count === 1 ? one : many}`;
+    const detail = (...parts: (string | null)[]) => parts.filter(Boolean).join(" ") || null;
+    if (rule.type === PROJECT_APPROVALS_TYPE && isWhole(rule.min_approvals)) {
+      const settings = [
+        rule.forbid_author_approval === true ? "authors can't approve their own merge requests" : null,
+        rule.forbid_committer_approval === true ? "committers can't approve" : null,
+        rule.reset_approvals_on_push === true ? "a new push removes approvals" : null,
+        rule.forbid_override === true ? "a merge request can't change its approval rules" : null,
+      ].filter((setting): setting is string => setting !== null);
+      return {
+        id,
+        sentence: `Merge requests to the default branch need at least ${plural(rule.min_approvals, "approval", "approvals")} under the project's approval rules`,
+        detail: detail(
+          settings.length > 0 ? `Also: ${joinWords(settings, "and")}.` : null,
+          description,
+        ),
+        severity,
+      };
+    }
+    if (rule.type === MEMBERS_TYPE && isWhole(rule.max_privileged)) {
+      return {
+        id,
+        sentence: `At most ${plural(rule.max_privileged, "member has", "members have")} Maintainer or Owner access to a project`,
+        detail: detail(
+          rule.forbid_inactive_accounts === true
+            ? "No blocked or deactivated account keeps access."
+            : null,
+          description,
+        ),
+        severity,
+      };
+    }
+    if (rule.type === TWO_FACTOR_TYPE) {
+      const grace = isWhole(rule.max_grace_hours)
+        ? ` with a grace period of at most ${plural(rule.max_grace_hours, "hour", "hours")}`
+        : "";
+      return {
+        id,
+        sentence: `A group above every project requires two-factor authentication${grace}`,
+        detail: description,
+        severity,
+      };
+    }
+    if (rule.type === TOKENS_TYPE && isWhole(rule.max_lifetime_days)) {
+      return {
+        id,
+        sentence: `Project access tokens expire within ${plural(rule.max_lifetime_days, "day", "days")} of being created`,
+        detail: detail(
+          isWhole(rule.max_unused_days)
+            ? `Each active token was used in the last ${plural(rule.max_unused_days, "day", "days")}.`
+            : null,
+          description,
+        ),
         severity,
       };
     }
