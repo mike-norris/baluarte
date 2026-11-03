@@ -15,6 +15,7 @@ import { usePaged } from "../api/usePaged";
 import { useAuth } from "../auth/context";
 import type { CurrentUser } from "../auth/session";
 import { ErrorMessage } from "../components/ErrorMessage";
+import { MappingReview } from "../controls/MappingReview";
 import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
 import { lineDiff } from "../policies/diff";
 import { baselineHref, canWritePolicies, changeText, personText } from "../policies/format";
@@ -328,7 +329,7 @@ export function PolicyChangesPage() {
 
   return (
     <section aria-labelledby="page-title" className="space-y-6">
-      <GovernanceHeader intro="Every new baseline version, and every change to where baselines apply, is recorded here with who proposed it and who approved it. When review is required, a change takes effect only after someone other than its proposer approves it." />
+      <GovernanceHeader intro="Every new baseline version, every change to where baselines apply, and every change to the control mapping is recorded here with who proposed it and who approved it. When review is required, a change takes effect only after someone other than its proposer approves it." />
       {message && (
         <p
           ref={status}
@@ -345,6 +346,7 @@ export function PolicyChangesPage() {
         </h2>
         {waiting}
       </section>
+      <MappingReview reload={reload} onDecided={decided} />
       <section aria-labelledby="history-title" className="space-y-3">
         <h2 id="history-title" className="text-lg font-semibold">
           Decided changes
