@@ -2,7 +2,7 @@
 
 ## Initial scope
 
-Self-managed GitLab REST API, one instance, read-only credential, group/subgroup/project enumeration, default-branch protections, project visibility, and capability detection. GitLab security policies are read through GraphQL, with queries sent as GET (see [Security policies](#security-policies)).
+Self-managed GitLab REST API, one instance, read-only credential, group/subgroup/project enumeration, default-branch protections, project visibility, access controls (approval settings, members, project access tokens, two-factor enforcement), and capability detection. GitLab security policies are read through GraphQL, with queries sent as GET (see [Security policies](#security-policies)).
 
 ## Connection
 
@@ -35,9 +35,13 @@ The `gitlab.detect_capabilities` worker job (queued by `POST /api/v1/gitlab/capa
 | `user.read` | `GET /user` | no | Who the token acts as: `token_user: {username, is_admin}` on the snapshot. GitLab includes `is_admin` only for administrators, so its absence means not one. `token_user` is null when this is refused |
 | `admin.read` | `GET /application/statistics` | no | Run only for an administrator: whether the token can use administrator access (`token_user.admin_access`). With Admin Mode on, an administrator's token without the `admin_mode` scope is refused here and sees only what the account sees as a member. Not run, and not recorded, for anyone else |
 | `groups.list`, `groups.visibility` | `GET /groups?per_page=1` | yes | Groups can be listed and carry `visibility` |
+| `groups.two_factor` | `GET /groups?per_page=1` | no | Groups carry `require_two_factor_authentication`, for the two-factor rule |
 | `projects.list`, `projects.visibility`, `projects.default_branch` | `GET /projects?per_page=1` | yes | Projects can be listed and carry `visibility` and `default_branch` |
 | `protected_branches.read` | `GET /projects/:id/protected_branches` | yes | Branch protections are readable for a visible project |
-| `merge_request_approvals.read` | `GET /projects/:id/approvals` | no | Recorded for the approval-rule investigation |
+| `merge_request_approvals.read` | `GET /projects/:id/approvals` | no | Project approval settings are readable (Premium or Ultimate); the merge request approvals rule needs it |
+| `merge_request_approval_rules.read` | `GET /projects/:id/approval_rules` | no | Project approval rules are readable |
+| `project_members.read` | `GET /projects/:id/members/all` | no | Members, direct and inherited, are readable |
+| `project_access_tokens.read` | `GET /projects/:id/access_tokens` | no | Project access tokens are readable. Needs the Maintainer role on the sample project, so `forbidden` is common and says nothing about other projects |
 | `license.read` | `GET /license` | no | Tier (`plan`). Administrator-only, so `forbidden` is expected for a least-privilege token and the tier is then unknown |
 | `security_policies.read` | `GET /api/graphql`: `group(fullPath) { securityPolicyProject }` on the first visible group | no | Security policy links are readable |
 | `security_policies.scan_execution`, `.approval`, `.pipeline_execution`, `.vulnerability_management` | `GET /api/graphql`: one page of the type's policies on the same group, with the exact selection discovery uses | no | That policy type can be read. Security policies need GitLab Ultimate, but a refusal is recorded as `forbidden`, never as "not Ultimate" |
@@ -111,6 +115,23 @@ After a complete project listing and reconciliation, project discovery reads the
 - **Unverified:**
   - Whether a role below Maintainer may list protected branches. A token that may not is recorded as `forbidden`, so the rule is `unknown`.
   - Whether group-level protected branches (Premium) appear in a project's list. If they do not, a branch protected only at group level reads as unprotected and fails: a false failure, never a false pass.
+
+### Access controls
+
+In the same pass, after protection, each `active` project is read for the access-control rules ([EVALUATION.md](EVALUATION.md#access-control-and-merge-request-approval-rules)). Every request is a GET with the same token; each source gets one observation per project, written only when it changes.
+
+| Source | Requests | Kept | Not kept |
+|---|---|---|---|
+| `GET /projects/:id/approvals` | `GET /projects/:id/approvals` and every page of `GET /projects/:id/approval_rules`, for projects with a default branch | `branch`, `branch_protected` (from this pass's protection read, `null` when it failed), `settings` (`merge_requests_author_approval`, `merge_requests_disable_committers_approval`, `reset_approvals_on_push`, `disable_overriding_approvers_per_merge_request`, `require_reauthentication_to_approve`, or the older `require_password_to_approve`), and `rules`: each rule's `name`, `rule_type`, `approvals_required`, `applies_to_all_protected_branches` and protected branch names | Approvers (users and groups), eligible approvers |
+| `GET /projects/:id/members/all` | Every page | `total`, `privileged_count`, `by_access_level`, `by_state`; `privileged` and `inactive`: `username`, `access_level`, `state`, `expires_at` of members with Maintainer or Owner access, and of members whose account is not `active` | Every other member's name; names, emails, avatars, IDs |
+| `GET /projects/:id/access_tokens` | Every page | Active tokens only: `id`, `name`, `scopes`, `access_level`, `created_on`, `expires_at`, `last_used_on` (dates only), and `as_of`, the date of the read, when there is any token | Token values, user IDs, revoked or expired tokens |
+| `GET /groups (two-factor settings of the project's groups)` | None per project. Group discovery stores each group's `require_two_factor_authentication` and `two_factor_grace_period`; with administrator access (`token_user.admin_access`), `GET /application/settings` is read once per pass | `groups` (top-down: `path`, the two settings, the group's latest observation ID), `ancestry` (`incomplete` when a group above the project is not in the inventory), `instance` (the two instance settings, or `null` when not read), `enforced_by` (the nearest group that requires it, `instance`, or `null`) | Every other application setting |
+
+- **Dates:** token and member dates are cut to the day, so a token used again the same day does not make a new observation. A project with tokens gets a new observation at most once a day (`as_of`).
+- **Failures:** a 403 or 404 is an answer about that project (a role, or a feature the edition lacks) and is recorded as `forbidden` or `not_found`; the rule is then `unknown` for it. Only `failed` reads count toward stopping a reader after 20 in a row and make the run `partial` ("members of N projects could not be read"). A 401 from any reader stops every reader, as for protection.
+- **Counts:** the run records each reader's counts by status under `counts.reads` (`approvals`, `members`, `access_tokens`, `two_factor`).
+- **Cost:** three to four more requests per project per discovery (approvals and approval rules only with a default branch).
+- **Unverified:** whether the approval endpoints answer 403 or 404 on GitLab Free, and whether `members/all` lists blocked or deactivated users on every version. Either way the rule is `unknown`, or a member who is not listed is not judged.
 
 ## Security policies
 
@@ -246,7 +267,7 @@ CoverageRow {
 - **Security policies:** each finished project discovery queues `gitlab.discover_security_policies` (once per run), but only when the latest capability snapshot has `security_policies.read` and at least one policy type `supported`.
 - **Schedule:** the worker queues capability detection, group discovery and project discovery every `BALUARTE_GITLAB_SYNC_INTERVAL_MINUTES` (default 360; `0` collects only on request), or the interval saved in the web UI. It re-reads the setting every minute. The interval is divided into buckets on the database clock, and each job's idempotency key names its bucket, so any number of workers queue each collection once per interval.
 - **Retries:** a scheduled job retries 1, 5 and 15 minutes after each failed attempt (±20% jitter), so an outage of up to about 20 minutes is ridden out. Only the delays that fit in half the interval are used: from a 42-minute interval all three (four attempts), below that 1 and 5 minutes (three attempts). The delays are kept in the job's payload (`retry_delays_seconds`). Jobs queued on request ("Collect now") keep the queue's default backoff (30 s, then doubling), so they report quickly.
-- **Runs:** every job attempt writes a `collection_run` row before calling GitLab and closes it as `succeeded`, `partial` (some resources could not be confirmed, or some capabilities are not supported) or `failed`, with counts and the safe error. Default-branch protection reads that fail do not yet make a project run `partial` (see [Default-branch protection](#default-branch-protection)). The row is closed even when the job will be retried. A run left `running` by a worker that died is closed as failed (`interrupted: ...`) when a later attempt of the same kind starts, provided its own job attempt is no longer running.
+- **Runs:** every job attempt writes a `collection_run` row before calling GitLab and closes it as `succeeded`, `partial` (some resources could not be confirmed, or some capabilities are not supported) or `failed`, with counts and the safe error. Per-project reads that fail make a project run `partial` (see [Default-branch protection](#default-branch-protection) and [Access controls](#access-controls)). The row is closed even when the job will be retried. A run left `running` by a worker that died is closed as failed (`interrupted: ...`) when a later attempt of the same kind starts, provided its own job attempt is no longer running.
 - **Per resource:** a group or project whose reconciliation lookup failed keeps its state and gets `last_error` and `last_error_at`. These are cleared when it is listed again.
 - **Freshness:** `GET /api/v1/gitlab/freshness` reports each kind as:
 

@@ -13,7 +13,8 @@ Every discovery and capability detection records what it read as an `observation
   | Target | Source | Payload fields |
   |---|---|---|
   | Project | `GET /projects` (listing) or `GET /projects/:id` (reconciliation) | `gitlab_id`, `path_with_namespace`, `name`, `namespace_gitlab_id`, `namespace_kind`, `visibility`, `archived`, `default_branch` |
-  | Group | `GET /groups` or `GET /groups/:id` | `gitlab_id`, `parent_gitlab_id`, `full_path`, `name`, `visibility` |
+  | Group | `GET /groups` or `GET /groups/:id` | `gitlab_id`, `parent_gitlab_id`, `full_path`, `name`, `visibility`, `require_two_factor_authentication`, `two_factor_grace_period` |
+  | Project | `GET /projects/:id/protected_branches`, `GET /projects/:id/approvals`, `GET /projects/:id/members/all`, `GET /projects/:id/access_tokens`, `GET /groups (two-factor settings of the project's groups)` | One observation per source, written by project discovery; fields in [GITLAB_INTEGRATION.md](GITLAB_INTEGRATION.md#access-controls) |
   | Instance | `capabilities` | `version`, `edition`, `tier`, `probes` (status, endpoint, HTTP status, detail of each probe), `token_user` (`username`, `is_admin`, `admin_access`) |
 
   Values are stored as Baluarte normalized them: an unrecognised visibility or namespace kind is null, exactly as in the inventory.
