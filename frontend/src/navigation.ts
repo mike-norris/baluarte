@@ -44,6 +44,11 @@ export const navItems: readonly NavItem[] = [
     description: "Baselines Baluarte checks, and GitLab security policies GitLab enforces.",
   },
   {
+    path: "/controls",
+    label: "Controls",
+    description: "SOC 2, ISO 27001 and NIST 800-53 controls the baseline rules support.",
+  },
+  {
     path: "/evidence",
     label: "Evidence",
     description: "Observation history and scoped evidence exports.",
