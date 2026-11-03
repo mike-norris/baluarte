@@ -94,6 +94,36 @@ def test_unknown_visibility_is_stored_as_null(migrated_engine: Engine) -> None:
     assert groups(migrated_engine)[1].visibility is None
 
 
+def test_two_factor_settings_are_stored_and_unreported_ones_are_null(
+    migrated_engine: Engine,
+) -> None:
+    discover(
+        migrated_engine,
+        fake_with(
+            [
+                [
+                    group(
+                        1, "acme", require_two_factor_authentication=True, two_factor_grace_period=8
+                    ),
+                    group(2, "acme/web", 1, require_two_factor_authentication="yes"),
+                    group(3, "acme/odd", 1, two_factor_grace_period=-1),
+                ]
+            ]
+        ),
+    )
+
+    found = groups(migrated_engine)
+    assert (found[1].require_two_factor_authentication, found[1].two_factor_grace_period) == (
+        True,
+        8,
+    )
+    assert (found[2].require_two_factor_authentication, found[2].two_factor_grace_period) == (
+        None,
+        None,
+    )
+    assert found[3].two_factor_grace_period is None
+
+
 @pytest.mark.parametrize(
     ("lookup", "state", "bucket"),
     [

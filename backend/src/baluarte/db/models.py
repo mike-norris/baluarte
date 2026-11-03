@@ -131,6 +131,10 @@ class GitLabGroup(Base):
     # Set when the last attempt to confirm this resource failed; cleared when it is seen again.
     last_error: Mapped[str | None] = mapped_column(Text)
     last_error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Two-factor enforcement for the group's members; null when GitLab did not report it.
+    require_two_factor_authentication: Mapped[bool | None] = mapped_column(Boolean)
+    # Hours members have to set up two-factor authentication once it is required.
+    two_factor_grace_period: Mapped[int | None] = mapped_column(Integer)
 
 
 class GitLabProject(Base):
