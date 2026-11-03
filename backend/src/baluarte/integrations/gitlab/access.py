@@ -240,15 +240,17 @@ def summarise_members(members: list[dict[str, Any]]) -> dict[str, Any]:
         by_level[level_key] = by_level.get(level_key, 0) + 1
         state_key = entry["state"] or "unknown"
         by_state[state_key] = by_state.get(state_key, 0) + 1
+    privileged = [
+        entry
+        for entry in entries
+        if entry["access_level"] is not None and entry["access_level"] >= PRIVILEGED_ACCESS
+    ]
     return {
         "total": len(entries),
+        "privileged_count": len(privileged),
         "by_access_level": dict(sorted(by_level.items())),
         "by_state": dict(sorted(by_state.items())),
-        "privileged": [
-            entry
-            for entry in entries
-            if entry["access_level"] is not None and entry["access_level"] >= PRIVILEGED_ACCESS
-        ],
+        "privileged": privileged,
         "inactive": [entry for entry in entries if entry["state"] != "active"],
     }
 
@@ -407,10 +409,17 @@ def two_factor_payload(
     elif target.namespace_kind != "user":
         # A personal project has no groups above it; an unknown namespace may have some.
         complete = False
+    # The nearest group that requires two-factor authentication, else the instance; for display.
+    enforced_by = next(
+        (g["path"] for g in chain if g["require_two_factor_authentication"] is True), None
+    )
+    if enforced_by is None and instance and instance["require_two_factor_authentication"] is True:
+        enforced_by = "instance"
     return {
         "groups": list(reversed(chain)),
         "ancestry": "complete" if complete else "incomplete",
         "instance": instance,
+        "enforced_by": enforced_by,
     }
 
 

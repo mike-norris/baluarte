@@ -41,6 +41,7 @@ from baluarte.integrations.gitlab.branches import PROTECTION_SOURCE
 from baluarte.integrations.gitlab.projects import PROJECT_SOURCES
 from baluarte.integrations.gitlab.security_policies import PROJECT_SOURCE as SECURITY_POLICY_SOURCE
 from baluarte.policy.assignments import Resolution
+from baluarte.policy.evaluation.access import ACCESS_SOURCES
 from baluarte.policy.evaluation.model import RuleResult, UnknownReason
 from baluarte.policy.evaluation.security_policy import summarize
 from baluarte.policy.exceptions import active_for_project
@@ -88,6 +89,8 @@ EVIDENCE: Mapping[str, Evidence] = {
     SECURITY_POLICY_SOURCE: Evidence(
         (SECURITY_POLICY_SOURCE,), _security_policies, ("ok", "partial")
     ),
+    # The access-control rules each judge one observation's payload itself.
+    **{source: Evidence((source,), _whole) for source in ACCESS_SOURCES},
 }
 
 

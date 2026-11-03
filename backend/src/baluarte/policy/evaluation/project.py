@@ -14,17 +14,25 @@ from sqlalchemy.orm import Session
 
 from baluarte.db.models import GitLabInstance, GitLabProject, Policy
 from baluarte.evidence.observations import latest
+from baluarte.integrations.gitlab.access import (
+    ACCESS_TOKENS_SOURCE,
+    APPROVALS_SOURCE,
+    MEMBERS_SOURCE,
+    TWO_FACTOR_SOURCE,
+)
 from baluarte.integrations.gitlab.branches import PROTECTION_SOURCE
 from baluarte.integrations.gitlab.freshness import kind_freshness, report
 from baluarte.integrations.gitlab.runs import RunKind
 from baluarte.integrations.gitlab.security_policies import PROJECT_SOURCE as SECURITY_POLICY_SOURCE
 from baluarte.integrations.gitlab.settings import GitLabSettings
 from baluarte.policy.assignments import Resolution
+from baluarte.policy.evaluation.access import ACCESS_EVALUATORS, ACCESS_SOURCES
 from baluarte.policy.evaluation.default_branch import DEFAULT_BRANCH_PROTECTED
 from baluarte.policy.evaluation.engine import (
     BranchProtection,
     EvaluationContext,
     ProjectFacts,
+    ProjectObservation,
     RuleEvaluator,
     SecurityPolicies,
     evaluate_rule,
@@ -44,7 +52,13 @@ from baluarte.policy.loader import parse_policy
 # types are not evaluated (and produce no result) until their evaluator exists.
 EVALUATORS: Mapping[str, RuleEvaluator] = {
     evaluator.rule_type: evaluator
-    for evaluator in (VISIBILITY, DEFAULT_BRANCH_PROTECTED, SCAN_EXECUTION_POLICY, APPROVAL_POLICY)
+    for evaluator in (
+        VISIBILITY,
+        DEFAULT_BRANCH_PROTECTED,
+        SCAN_EXECUTION_POLICY,
+        APPROVAL_POLICY,
+        *ACCESS_EVALUATORS,
+    )
 }
 
 # Only a probe that answered is "supported". Capability detection cannot prove a feature is
@@ -126,11 +140,30 @@ def security_policies(db: Session, project: GitLabProject) -> SecurityPolicies |
     )
 
 
+def project_observation(
+    db: Session, project: GitLabProject, source: str
+) -> ProjectObservation | None:
+    """The project's latest observation of ``source``, if it was ever read."""
+    observation = latest(db, project.instance_id, "project_id", project.id, sources=(source,))
+    if observation is None:
+        return None
+    return ProjectObservation(
+        observation_id=observation.id,
+        status=observation.collection_status,
+        collected_at=observation.collected_at,
+        payload=observation.payload,
+        error=observation.error,
+    )
+
+
 def project_facts(
     project: GitLabProject,
     protection: BranchProtection | None = None,
     policies: SecurityPolicies | None = None,
+    access: Mapping[str, ProjectObservation | None] | None = None,
 ) -> ProjectFacts:
+    """``access`` holds the access-control observations by source (``ACCESS_SOURCES``)."""
+    access = access or {}
     return ProjectFacts(
         gitlab_id=project.gitlab_id,
         path=project.path_with_namespace,
@@ -142,6 +175,10 @@ def project_facts(
         default_branch=project.default_branch,
         protection=protection,
         security_policies=policies,
+        approvals=access.get(APPROVALS_SOURCE),
+        members=access.get(MEMBERS_SOURCE),
+        access_tokens=access.get(ACCESS_TOKENS_SOURCE),
+        two_factor=access.get(TWO_FACTOR_SOURCE),
     )
 
 
@@ -170,7 +207,10 @@ def evaluate_project(
             target_type="project", gitlab_id=project.gitlab_id, path=project.path_with_namespace
         ),
         project=project_facts(
-            project, branch_protection(db, project), security_policies(db, project)
+            project,
+            branch_protection(db, project),
+            security_policies(db, project),
+            {source: project_observation(db, project, source) for source in ACCESS_SOURCES},
         ),
         collections=collections,
         ancestry=resolution.ancestry,

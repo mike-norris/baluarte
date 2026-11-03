@@ -220,6 +220,7 @@ def test_members_are_counted_and_only_privileged_and_inactive_named(
     found = latest(migrated_engine, MEMBERS_SOURCE)
     assert found[10].payload == {
         "total": 5,
+        "privileged_count": 2,
         "by_access_level": {"10": 1, "20": 1, "30": 1, "40": 1, "50": 1},
         "by_state": {"active": 4, "blocked": 1},
         "privileged": [
@@ -379,10 +380,19 @@ def test_two_factor_settings_of_the_groups_above_each_project(migrated_engine: E
     assert [g["require_two_factor_authentication"] for g in api["groups"]] == [False, True]
     assert [g["two_factor_grace_period"] for g in api["groups"]] == [48, 8]
     assert all(isinstance(g["observation_id"], int) for g in api["groups"])
-    assert (api["ancestry"], api["instance"]) == ("complete", None)
+    assert (api["ancestry"], api["instance"], api["enforced_by"]) == (
+        "complete",
+        None,
+        "acme/platform",
+    )
     assert found[10].source_ref == "/groups/2"
     # A personal project has no groups above it.
-    assert found[12].payload == {"groups": [], "ancestry": "complete", "instance": None}
+    assert found[12].payload == {
+        "groups": [],
+        "ancestry": "complete",
+        "instance": None,
+        "enforced_by": None,
+    }
     assert found[12].source_ref is None
     # Group settings come from group discovery; no GitLab call per project.
     assert not any("two_factor" in path or "/application" in path for path in fake.paths())
@@ -454,6 +464,7 @@ def test_the_instance_setting_is_read_only_with_admin_access(
             "two_factor_grace_period": 0,
         }
         assert fake.paths().count("/application/settings") == 1
+        assert payload["enforced_by"] == "instance"
     else:
         assert payload["instance"] is None
         assert "/application/settings" not in fake.paths()

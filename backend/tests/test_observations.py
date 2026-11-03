@@ -32,6 +32,7 @@ from baluarte.integrations.gitlab.projects import PROJECT_SOURCES, discover_proj
 from baluarte.jobs import queue
 from baluarte.jobs.worker import Worker
 from baluarte.main import create_app
+from baluarte.policy.evaluation.access import ACCESS_SOURCES
 
 PROJECT_FIELDS = {
     "gitlab_id",
@@ -75,14 +76,14 @@ def discover(engine: Engine, fake: FakeGitLab) -> Discovery:
 
 
 def observations(engine: Engine, protection: bool = False) -> list[Observation]:
-    """Observations in order; default-branch protection only when ``protection`` is set."""
+    """Observations in order: default-branch protection only when ``protection`` is set,
+    otherwise inventory observations only (no access-control reads)."""
     wanted = Observation.source == PROTECTION_SOURCE
+    reads = Observation.source.in_((PROTECTION_SOURCE, *ACCESS_SOURCES))
     with Session(engine) as db:
         return list(
             db.scalars(
-                select(Observation)
-                .where(wanted if protection else ~wanted)
-                .order_by(Observation.id)
+                select(Observation).where(wanted if protection else ~reads).order_by(Observation.id)
             )
         )
 
@@ -274,6 +275,8 @@ def test_groups_are_observed_with_their_own_allowlist(migrated_engine: Engine) -
         "full_path": "platform",
         "name": "platform",
         "visibility": "private",
+        "require_two_factor_authentication": None,
+        "two_factor_grace_period": None,
     }
 
 
@@ -394,11 +397,15 @@ def test_api_lists_project_evidence_newest_first(
         pages.extend(page["items"])
         before = page["next_before_id"]
     # The default-branch protection read by the first discovery, then that discovery's fields.
-    assert [(item["source"], item["collection_status"]) for item in pages] == [
+    assert [
+        (item["source"], item["collection_status"])
+        for item in pages
+        if item["source"] not in ACCESS_SOURCES
+    ] == [
         (PROTECTION_SOURCE, "not_found"),
         ("GET /projects", "ok"),
     ]
-    assert pages[1]["payload"]["visibility"] == "internal"
+    assert pages[-1]["payload"]["visibility"] == "internal"
 
 
 @pytest.mark.db
@@ -423,7 +430,7 @@ def test_api_reports_a_tampered_digest(migrated_engine: Engine, gitlab_env: None
     assert [
         (item["source_ref"], item["digest_valid"])
         for item in items
-        if item["source"] != PROTECTION_SOURCE
+        if item["source"] not in (PROTECTION_SOURCE, *ACCESS_SOURCES)
     ] == [("/projects/10", False)]
 
 

@@ -7,7 +7,8 @@ before any evaluator judges a value:
 1. Reasons that apply to the whole target or its collection (see ``UNKNOWN_PRECEDENCE``) make
    the result ``unknown``, whatever the value says.
 2. Otherwise a capability the instance does not support makes it ``unsupported``.
-3. Otherwise an undetected capability, or a value GitLab did not report, makes it ``unknown``.
+3. Otherwise an undetected capability, or a value GitLab did not report (including a part of
+   it that only some rules check), makes it ``unknown``.
 4. Only then does the evaluator decide ``pass`` or ``fail``.
 
 Evaluation is pure: it reads only the context it is given.
@@ -80,6 +81,19 @@ class SecurityPolicies:
 
 
 @dataclass(frozen=True)
+class ProjectObservation:
+    """The latest observation of one per-project source, such as the project's members."""
+
+    observation_id: int
+    # The observation's collection status: "ok", or why it could not be read.
+    status: str
+    collected_at: datetime
+    # The payload when ``status`` is "ok".
+    payload: dict[str, Any] | None
+    error: str | None
+
+
+@dataclass(frozen=True)
 class ProjectFacts:
     """A project as recorded in the inventory."""
 
@@ -95,6 +109,11 @@ class ProjectFacts:
     protection: BranchProtection | None = None
     # None when the project's GitLab security policies have never been read.
     security_policies: SecurityPolicies | None = None
+    # Access controls read after project discovery; each None when never read.
+    approvals: ProjectObservation | None = None
+    members: ProjectObservation | None = None
+    access_tokens: ProjectObservation | None = None
+    two_factor: ProjectObservation | None = None
 
 
 @dataclass(frozen=True)
@@ -129,6 +148,10 @@ class RuleEvaluator:
     unknown_reason: Callable[[ProjectFacts], UnknownReason] = lambda _: "value_unknown"
     # When the value was read; the inventory's last sighting unless the rule type says otherwise.
     observed_at: Callable[[ProjectFacts], datetime | None] = lambda project: project.last_seen_at
+    # Why this rule cannot be decided from a value that is otherwise known, such as a setting
+    # the rule checks that GitLab did not report; None when it can. The result is then
+    # ``unknown`` (``value_unknown``) with that reason, never a guessed pass or fail.
+    undecided: Callable[[Rule, Any], str | None] = lambda _rule, _observed: None
 
 
 def _collection(context: EvaluationContext, kind: str) -> CollectionContext:
@@ -235,10 +258,17 @@ def evaluate_rule(
         raise AssertionError("a target outside the inventory is always unknown")
     else:
         project = context.project
-        observed = evaluator.observe(project)
-        observed_at = evaluator.observed_at(project)
-        passed, reason = evaluator.judge(rule, observed)
-        outcome = "pass" if passed else "fail"
+        value = evaluator.observe(project)
+        why = evaluator.undecided(rule, value)
+        if why is not None:
+            outcome = "unknown"
+            reasons = ("value_unknown",)
+            reason = why
+        else:
+            observed = value
+            observed_at = evaluator.observed_at(project)
+            passed, reason = evaluator.judge(rule, observed)
+            outcome = "pass" if passed else "fail"
     return RuleResult(
         policy=policy,
         rule_id=rule.id,
