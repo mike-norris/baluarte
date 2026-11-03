@@ -15,8 +15,12 @@ from baluarte.policy.schema import (
     GROUP_PATTERN,
     MAX_RULES,
     RULE_TYPES,
+    AccessTokensRule,
     DefaultBranchProtectedRule,
+    MergeRequestApprovalsRule,
+    PrivilegedMembersRule,
     ProjectVisibilityRule,
+    TwoFactorRequiredRule,
     published_schema,
 )
 
@@ -64,6 +68,78 @@ def test_documented_example_is_valid() -> None:
     assert visibility.severity == "medium"
     assert isinstance(protected, DefaultBranchProtectedRule)
     assert protected.required is True
+
+
+ACCESS_RULES = """\
+    - id: approvals
+      type: gitlab.project.merge_request_approvals
+      min_approvals: 2
+      forbid_author_approval: true
+      reset_approvals_on_push: true
+    - id: privileged
+      type: gitlab.project.privileged_members
+      max_privileged: 5
+    - id: two-factor
+      type: gitlab.group.two_factor_required
+      max_grace_hours: 48
+    - id: tokens
+      type: gitlab.project.access_tokens
+      max_lifetime_days: 90
+      max_unused_days: 30
+"""
+
+
+def test_access_control_and_approval_rules_are_valid() -> None:
+    rules = parse_policy(BASELINE + ACCESS_RULES).document.spec.rules
+
+    approvals, privileged, two_factor, tokens = rules[2:]
+    assert isinstance(approvals, MergeRequestApprovalsRule)
+    assert (approvals.min_approvals, approvals.forbid_author_approval) == (2, True)
+    assert (approvals.forbid_committer_approval, approvals.forbid_override) == (False, False)
+    assert approvals.reset_approvals_on_push is True
+    assert isinstance(privileged, PrivilegedMembersRule)
+    assert (privileged.max_privileged, privileged.forbid_inactive_accounts) == (5, False)
+    assert isinstance(two_factor, TwoFactorRequiredRule) and two_factor.max_grace_hours == 48
+    assert isinstance(tokens, AccessTokensRule)
+    assert (tokens.max_lifetime_days, tokens.max_unused_days) == (90, 30)
+
+
+def test_optional_access_fields_default_to_asserting_nothing() -> None:
+    source = BASELINE + (
+        "    - id: two-factor\n      type: gitlab.group.two_factor_required\n"
+        "    - id: tokens\n      type: gitlab.project.access_tokens\n      max_lifetime_days: 1\n"
+    )
+    two_factor, tokens = parse_policy(source).document.spec.rules[2:]
+    assert isinstance(two_factor, TwoFactorRequiredRule) and two_factor.max_grace_hours is None
+    assert isinstance(tokens, AccessTokensRule) and tokens.max_unused_days is None
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "path", "message"),
+    [
+        ("min_approvals: 2", "min_approvals: 21", "spec.rules[2].min_approvals", "less than or"),
+        ("min_approvals: 2", "min_approvals: -1", "spec.rules[2].min_approvals", "greater than"),
+        ("max_privileged: 5", "max_privileged: 0", "spec.rules[3].max_privileged", "greater than"),
+        ("max_grace_hours: 48", "max_grace_hours: 721", "spec.rules[4].max_grace_hours", "less"),
+        (
+            "max_lifetime_days: 90",
+            'max_lifetime_days: "90"',
+            "spec.rules[5].max_lifetime_days",
+            "valid integer",
+        ),
+        ("max_unused_days: 30", "max_unused_days: 366", "spec.rules[5].max_unused_days", "less"),
+        (
+            "      max_privileged: 5\n",
+            "",
+            "spec.rules[3].max_privileged",
+            "required field is missing",
+        ),
+    ],
+)
+def test_invalid_access_rules_report_a_path(old: str, new: str, path: str, message: str) -> None:
+    found = only_error(BASELINE + ACCESS_RULES.replace(old, new))
+    assert found.path == path
+    assert message in found.message
 
 
 def test_digest_is_of_the_exact_source() -> None:
