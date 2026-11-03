@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router";
 
 import { ApiError } from "../api/client";
+import { frameworkIds } from "../api/controls";
 import { outcomes, type FindingState, type Outcome } from "../api/evaluations";
 import { downloadExport, saveDownload } from "../api/exports";
 import { useAuth } from "../auth/context";
@@ -14,6 +15,7 @@ import {
   type ExportForm,
   type ExportFormat,
 } from "../evidence/scope";
+import { frameworkLabels } from "../controls/format";
 import { findingStateLabels, outcomeLabels } from "../findings/format";
 import { CollectionNote } from "../freshness/CollectionNote";
 
@@ -51,6 +53,8 @@ function formValues(form: FormData): ExportForm {
     findingState: findingStates.find((item) => item === text(form, "finding_state")) ?? "",
     since: text(form, "since"),
     until: text(form, "until"),
+    framework: frameworkIds.find((item) => item === text(form, "framework")) ?? "",
+    control: text(form, "control"),
     format: text(form, "format") === "csv" ? "csv" : "json",
   };
 }
@@ -139,6 +143,33 @@ function ScopeFields({ initial, disabled }: { initial: ExportForm; disabled: boo
           className={fieldClass}
         />
       </label>
+      <label className="text-sm font-medium">
+        Framework
+        <select name="framework" defaultValue={initial.framework} className={fieldClass}>
+          <option value="">Any</option>
+          {frameworkIds.map((framework) => (
+            <option key={framework} value={framework}>
+              {frameworkLabels[framework]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div>
+        <label className="text-sm font-medium">
+          Control ID
+          <input
+            name="control"
+            defaultValue={initial.control}
+            maxLength={20}
+            placeholder="CC8.1"
+            aria-describedby="control-help"
+            className={fieldClass}
+          />
+        </label>
+        <p id="control-help" className="mt-1 text-xs text-slate-600">
+          With a framework: findings of the rules mapped to that control.
+        </p>
+      </div>
     </fieldset>
   );
 }

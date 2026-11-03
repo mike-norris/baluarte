@@ -92,6 +92,45 @@ describe("finding detail", () => {
     );
   });
 
+  it("links the controls its rule type counts toward", async () => {
+    api(
+      findingDetail(5, evaluation(20), {
+        controls: [
+          { framework: "soc2", id: "CC6.1" },
+          { framework: "nist_800_53_moderate", id: "AC-6(5)" },
+        ],
+      }),
+    );
+    renderAt();
+
+    const controls = await screen.findByRole("list", { name: "Controls" });
+    expect(within(controls).getByRole("link", { name: "SOC 2 CC6.1" })).toHaveAttribute(
+      "href",
+      "/controls/soc2/CC6.1",
+    );
+    expect(within(controls).getByRole("link", { name: "NIST 800-53 AC-6(5)" })).toHaveAttribute(
+      "href",
+      "/controls/nist_800_53_moderate/AC-6(5)",
+    );
+  });
+
+  it("says when a finding counts toward no control", async () => {
+    api(findingDetail(5, evaluation(20), { controls: [] }));
+    renderAt();
+
+    expect(await screen.findByRole("region", { name: "Summary" })).toHaveTextContent(
+      "Not mapped to any control.",
+    );
+  });
+
+  it("leaves controls out when the API does not report them", async () => {
+    api(findingDetail(5));
+    renderAt();
+
+    const summary = await screen.findByRole("region", { name: "Summary" });
+    expect(within(summary).queryByText("Controls")).not.toBeInTheDocument();
+  });
+
   it("summarises a list-valued observation above its JSON and in the history", async () => {
     const tokens = evaluation(22, {
       rule_type: "gitlab.project.access_tokens",
