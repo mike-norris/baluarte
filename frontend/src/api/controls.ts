@@ -64,6 +64,13 @@ export interface ControlCounts {
   projects: number;
 }
 
+/** A built-in pair the organization removed, with the active change that removed it. */
+export interface UnmappedRule {
+  rule_type: string;
+  change_id: number;
+  justification: string;
+}
+
 export interface Control {
   framework: FrameworkId;
   id: string;
@@ -71,6 +78,8 @@ export interface Control {
   area: string;
   status: ControlStatus;
   mapped: MappedRule[];
+  /** Absent from older responses. */
+  unmapped?: UnmappedRule[];
   change: ControlChangeRef | null;
   counts: ControlCounts;
 }
@@ -193,6 +202,9 @@ export const refusalReasons: Record<string, string> = {
   review_by_too_far: "the review date must be at most 365 days ahead",
   supersedes_required: "choose the change to withdraw",
   supersedes_not_active: "the change to withdraw is no longer in force",
+  supersedes_other_control: "the change to withdraw belongs to another control",
+  supersede_pending: "another change to withdraw or renew it is already waiting for review",
+  evidence_ref_required: "say where the evidence is kept",
   not_proposed: "the change was already decided",
   own_change: "you proposed this change, so someone else must decide it",
 };

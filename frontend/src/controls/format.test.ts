@@ -78,13 +78,15 @@ describe("mapping change checks", () => {
 
   it("requires a review date within 365 days for not applicable and manual", () => {
     for (const kind of ["not_applicable", "manual"] as const) {
-      expect(validateChange("soc2", "CC6.8", form({ kind }), today)).toEqual({
+      const dated = (extra: Partial<ChangeForm>) =>
+        form({ evidenceRef: "Access review records", ...extra });
+      expect(validateChange("soc2", "CC6.8", dated({ kind }), today)).toEqual({
         errors: ["Review by: choose the date this decision must be reviewed again."],
       });
-      expect(validateChange("soc2", "CC6.8", form({ kind, reviewBy: "2026-11-03" }), today)).toEqual(
+      expect(validateChange("soc2", "CC6.8", dated({ kind, reviewBy: "2026-11-03" }), today)).toEqual(
         { errors: ["Review by: choose a date after today."] },
       );
-      expect(validateChange("soc2", "CC6.8", form({ kind, reviewBy: "2027-11-04" }), today)).toEqual(
+      expect(validateChange("soc2", "CC6.8", dated({ kind, reviewBy: "2027-11-04" }), today)).toEqual(
         { errors: ["Review by: at most 365 days ahead."] },
       );
     }
@@ -104,6 +106,14 @@ describe("mapping change checks", () => {
         evidence_ref: "Access review records",
         review_by: "2027-11-03",
       },
+    });
+  });
+
+  it("requires where the evidence is for a control met outside GitLab", () => {
+    expect(
+      validateChange("soc2", "CC6.8", form({ kind: "manual", reviewBy: "2027-11-03" }), today),
+    ).toEqual({
+      errors: ["Where the evidence is: say where the evidence that the control is met is kept."],
     });
   });
 

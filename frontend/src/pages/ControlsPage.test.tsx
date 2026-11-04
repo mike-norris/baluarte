@@ -411,6 +411,53 @@ describe("control detail", () => {
     expect(bodyOf(calls, PROPOSE)).toMatchObject({ kind: "withdraw", supersedes_id: 12 });
   });
 
+  it("restores a built-in pair the organization removed", async () => {
+    const user = userEvent.setup();
+    const removed = controlDetail({
+      ...control("CC6.6", {
+        status: "not_covered",
+        mapped: [],
+        unmapped: [
+          {
+            rule_type: "gitlab.project.visibility",
+            change_id: 21,
+            justification: "Visibility is governed by the network boundary review instead.",
+          },
+        ],
+      }),
+      rules: [],
+      changes: [],
+    });
+    const calls = api({
+      "GET /api/v1/controls/soc2/CC6.6": () => json(removed),
+      [PROPOSE]: () =>
+        json(
+          mappingChange(22, {
+            kind: "withdraw",
+            control_id: "CC6.6",
+            supersedes_id: 21,
+            rule_type: null,
+          }),
+          201,
+        ),
+    });
+    renderAt("/controls/soc2/CC6.6");
+
+    const list = await screen.findByRole("list", { name: "Removed rule types" });
+    expect(list).toHaveTextContent("Visibility is governed by the network boundary review instead.");
+    await user.click(within(list).getByRole("button", { name: /^Restore / }));
+    const form = screen.getByRole("form", { name: "Withdraw a change: SOC 2 CC6.6" });
+    expect(form).toHaveTextContent(/Withdraws change 21: removed .* from the control\./);
+    await user.type(
+      within(form).getByLabelText("Justification"),
+      "The boundary review no longer covers repository visibility.",
+    );
+    await user.click(within(form).getByRole("button", { name: "Propose change" }));
+
+    expect(await screen.findByText(/Withdraw change 21/)).toBeInTheDocument();
+    expect(bodyOf(calls, PROPOSE)).toMatchObject({ kind: "withdraw", supersedes_id: 21 });
+  });
+
   it("explains an unknown control", async () => {
     api({ [DETAIL]: () => json({ detail: "Control not found" }, 404) });
     renderAt("/controls/soc2/CC8.1");

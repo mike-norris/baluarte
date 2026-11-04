@@ -220,6 +220,8 @@ export function validateChange(
     errors.push(`Where the evidence is: at most ${String(MAX_EVIDENCE_REF)} characters.`);
   } else if (evidence) {
     request.evidence_ref = evidence;
+  } else if (form.kind === "manual") {
+    errors.push("Where the evidence is: say where the evidence that the control is met is kept.");
   }
   if (needsReviewBy(form.kind)) {
     const reviewBy = form.reviewBy.trim();

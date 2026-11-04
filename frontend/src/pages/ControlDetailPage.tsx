@@ -135,6 +135,41 @@ function MappedRules({
           ))}
         </ul>
       )}
+      {(control.unmapped ?? []).length > 0 && (
+        <>
+          <h3 className="text-base font-semibold">Removed from the built-in mapping</h3>
+          <ul className="space-y-2" aria-label="Removed rule types">
+            {(control.unmapped ?? []).map((rule) => (
+              <li key={rule.rule_type} className="rounded border border-slate-200 bg-white p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="text-sm">
+                    <span className="font-medium">{ruleTypeLabel(rule.rule_type)}</span>{" "}
+                    <code className="text-xs text-slate-600">{rule.rule_type}</code>
+                    <p className="mt-1 text-slate-700">{rule.justification}</p>
+                  </div>
+                  {canWrite && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        open({
+                          kind: "withdraw",
+                          supersedes: {
+                            id: rule.change_id,
+                            text: `removed ${ruleTypeLabel(rule.rule_type)} from the control`,
+                          },
+                        });
+                      }}
+                      className={secondaryClass}
+                    >
+                      {`Restore ${ruleTypeLabel(rule.rule_type)}`}
+                    </button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </section>
   );
 }
