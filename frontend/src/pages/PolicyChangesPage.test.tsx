@@ -9,6 +9,7 @@ import { routes } from "../routes";
 import { analyst, json, mockApi, type Call } from "../test/api";
 import { PENDING_MAPPING, mappingChange } from "../test/controls";
 import { EVALUATION_FRESHNESS, evaluationFreshness, freshness } from "../test/freshness";
+import { SCOPE_PROPOSED, exclusion, exclusions } from "../test/scope";
 
 const PENDING = "GET /api/v1/policy-changes?state=proposed&limit=50";
 const HISTORY = "GET /api/v1/policy-changes?limit=50";
@@ -78,6 +79,7 @@ function api(user: CurrentUser, extra: Record<string, (init?: RequestInit) => Re
     [HISTORY]: () => json(page([assignChange, versionChange, decided])),
     "GET /api/v1/policy-changes/5": () => json(detail),
     [PENDING_MAPPING]: () => json({ items: [] }),
+    [SCOPE_PROPOSED]: () => json(exclusions([])),
     ...extra,
   });
 }
@@ -301,6 +303,111 @@ describe("control mapping changes in the review queue", () => {
       "Not possible now: the change was already decided.",
     );
     const [post] = sent(calls, "POST");
+    expect(post?.init?.body).toBe(JSON.stringify({}));
+  });
+});
+
+describe("exclusions from monitoring in the review queue", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const batchId = "6f1c2a3e-0000-4000-8000-00000000000b";
+  const waiting = { state: "proposed", batch_id: batchId, review_required: true } as const;
+  const proposedBatch = [
+    exclusion(21, { ...waiting, self_approved: false }),
+    exclusion(22, {
+      ...waiting,
+      self_approved: false,
+      target_type: "group",
+      target_id: 300,
+      target_path: "acme/sandbox",
+    }),
+  ];
+
+  async function batchItem(): Promise<HTMLElement> {
+    const list = await screen.findByRole("list", {
+      name: "Exclusions from monitoring waiting for review",
+    });
+    // The first list item is the batch; its targets are nested items.
+    return within(list).getAllByRole("listitem")[0] as HTMLElement;
+  }
+
+  it("lists a proposed batch with its targets and justification", async () => {
+    api(reviewer, { [SCOPE_PROPOSED]: () => json(exclusions(proposedBatch, true)) });
+    renderAt("/governance/changes");
+
+    const item = await batchItem();
+    expect(item).toHaveTextContent("Exclude from monitoring: 2 targets");
+    expect(within(item).getByRole("list", { name: "Targets" })).toHaveTextContent(
+      "Project acme/research/prototype",
+    );
+    expect(item).toHaveTextContent("Group acme/sandbox");
+    expect(item).toHaveTextContent("Research prototypes are out of scope for the acme audit.");
+    expect(item).toHaveTextContent("Proposed by Ada Lovelace");
+  });
+
+  it("does not let the proposer decide their own batch", async () => {
+    api(analyst, { [SCOPE_PROPOSED]: () => json(exclusions(proposedBatch, true)) });
+    renderAt("/governance/changes");
+
+    const item = await batchItem();
+    expect(within(item).getByRole("button", { name: "Approve" })).toBeDisabled();
+    expect(within(item).getByRole("button", { name: "Reject" })).toBeDisabled();
+    expect(item).toHaveTextContent(
+      "You proposed these exclusions, so someone else must approve or reject them.",
+    );
+  });
+
+  it("requires a note to reject a batch, then rejects it", async () => {
+    let rejected = false;
+    const calls = api(reviewer, {
+      [SCOPE_PROPOSED]: () => json(exclusions(rejected ? [] : proposedBatch, true)),
+      [`POST /api/v1/scope/exclusions/batches/${batchId}/reject`]: () => {
+        rejected = true;
+        return json({ batch_id: batchId, items: [] });
+      },
+    });
+    const user = userEvent.setup();
+    renderAt("/governance/changes");
+
+    const item = await batchItem();
+    await user.click(within(item).getByRole("button", { name: "Reject" }));
+    expect(within(item).getByRole("alert")).toHaveTextContent(
+      "Explain why in the note before rejecting.",
+    );
+    expect(sent(calls, "POST")).toEqual([]);
+
+    await user.type(within(item).getByLabelText("Note (required to reject)"), "Keep the sandbox.");
+    await user.click(within(item).getByRole("button", { name: "Reject" }));
+
+    expect(
+      await screen.findByText(
+        "Rejected: Exclude from monitoring: 2 targets. Monitoring did not change.",
+      ),
+    ).toBeInTheDocument();
+    const [post] = sent(calls, "POST");
+    expect(post?.init?.body).toBe(JSON.stringify({ note: "Keep the sandbox." }));
+    expect(await screen.findByText("No exclusion from monitoring is waiting.")).toBeInTheDocument();
+  });
+
+  it("approves a batch and explains a refusal", async () => {
+    const calls = api(reviewer, {
+      [SCOPE_PROPOSED]: () => json(exclusions(proposedBatch, true)),
+      [`POST /api/v1/scope/exclusions/batches/${batchId}/approve`]: () =>
+        json({ detail: { code: "not_proposed", message: "Already decided", reasons: [] } }, 409),
+    });
+    const user = userEvent.setup();
+    renderAt("/governance/changes");
+
+    const item = await batchItem();
+    await user.click(within(item).getByRole("button", { name: "Approve" }));
+
+    expect(await within(item).findByRole("alert")).toHaveTextContent(
+      "Not possible now: the exclusion was already decided.",
+    );
+    const [post] = sent(calls, "POST");
+    expect(post?.url).toBe(`/api/v1/scope/exclusions/batches/${batchId}/approve`);
     expect(post?.init?.body).toBe(JSON.stringify({}));
   });
 });
