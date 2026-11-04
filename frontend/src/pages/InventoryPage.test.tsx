@@ -5,8 +5,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Group, Page, Project } from "../api/gitlab";
 import { routes } from "../routes";
-import { analyst, json, mockApi } from "../test/api";
+import type { CurrentUser } from "../auth/session";
+import { analyst, json, mockApi, type Call } from "../test/api";
 import { EVALUATION_FRESHNESS, evaluationFreshness, freshness, kind } from "../test/freshness";
+import {
+  SCOPE_ACTIVE,
+  SCOPE_PROPOSED,
+  excludedVia,
+  exclusion,
+  exclusions,
+  included,
+} from "../test/scope";
 
 const ME = "GET /api/v1/auth/me";
 const FRESHNESS = "GET /api/v1/gitlab/freshness";
@@ -65,6 +74,8 @@ function api(routes: Record<string, () => Response>) {
     [ME]: () => json(analyst),
     [FRESHNESS]: () => json(freshness()),
     [EVALUATION_FRESHNESS]: () => json(evaluationFreshness()),
+    [SCOPE_ACTIVE]: () => json(exclusions([])),
+    [SCOPE_PROPOSED]: () => json(exclusions([])),
     ...routes,
   });
 }
@@ -277,5 +288,353 @@ describe("inventory", () => {
     expect(
       await screen.findByRole("heading", { name: "Sign in to Baluarte" }),
     ).toBeInTheDocument();
+  });
+});
+
+describe("inventory: monitoring scope", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const SHOWN = "GET /api/v1/gitlab/projects?monitoring=all&limit=100";
+  const GROUPS = "GET /api/v1/gitlab/groups?limit=100";
+  const auditor: CurrentUser = {
+    ...analyst,
+    user_id: 3,
+    display_name: "Auditor",
+    roles: ["auditor"],
+    permissions: ["evidence:read", "findings:read", "inventory:read"],
+  };
+  const direct = project(4, "acme/research/prototype", {
+    monitoring: excludedVia("project", 31, "acme/research/prototype"),
+  });
+  const byGroup = project(5, "acme/sandbox/demo", {
+    monitoring: excludedVia("group", 32, "acme/sandbox"),
+  });
+  const personal = project(6, "someone/notes", {
+    namespace_kind: "user",
+    monitoring: excludedVia("personal_namespaces", 33, null),
+  });
+  const monitored = [
+    project(1, "acme/api", { monitoring: included }),
+    project(2, "acme/web", { monitoring: included }),
+    project(3, "acme/docs", { monitoring: included }),
+  ];
+  const why = "Research prototypes are out of scope for the acme audit.";
+
+  function posts(calls: Call[]): Call[] {
+    return calls.filter((call) => call.init?.method === "POST");
+  }
+
+  it("hides excluded projects by default and shows them with how they are excluded", async () => {
+    const user = userEvent.setup();
+    const calls = api({
+      [PROJECTS]: () => json({ ...page(monitored), excluded_hidden: 3 }),
+      [SHOWN]: () => json(page([...monitored, direct, byGroup, personal])),
+    });
+    const router = renderAt("/inventory");
+
+    expect(await screen.findByText("3 excluded projects hidden. Select Show excluded to see them."))
+      .toBeInTheDocument();
+    expect(screen.queryByRole("rowheader", { name: /prototype/ })).not.toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: "Show excluded" });
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(toggle);
+
+    expect(
+      await screen.findByRole("rowheader", { name: /prototype\s*Excluded directly$/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("rowheader", { name: /demo\s*Excluded with group acme\/sandbox$/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("rowheader", { name: /notes\s*Personal\s*Excluded: personal namespace$/ }),
+    ).toBeInTheDocument();
+    expect(router.state.location.search).toBe("?excluded=show");
+    expect(calls.map((call) => call.url)).toContain(
+      "/api/v1/gitlab/projects?monitoring=all&limit=100",
+    );
+    expect(screen.queryByText(/excluded projects hidden/)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Hide excluded" }));
+    expect(await screen.findByText(/3 excluded projects hidden/)).toBeInTheDocument();
+    expect(router.state.location.search).toBe("");
+  });
+
+  it("keeps showing excluded projects when filters change", async () => {
+    const user = userEvent.setup();
+    api({
+      [SHOWN]: () => json(page([direct])),
+      "GET /api/v1/gitlab/projects?search=acme&monitoring=all&limit=100": () =>
+        json(page([direct])),
+    });
+    const router = renderAt("/inventory?excluded=show");
+
+    expect(await screen.findByRole("button", { name: "Hide excluded" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await user.type(screen.getByRole("searchbox", { name: "Search path" }), "acme");
+    await user.click(screen.getByRole("button", { name: "Apply filters" }));
+
+    expect(router.state.location.search).toBe("?search=acme&excluded=show");
+    expect(await screen.findByRole("rowheader", { name: /acme\/research\/prototype/ }))
+      .toBeInTheDocument();
+  });
+
+  it("selects projects, announces the count and excludes them with a justification", async () => {
+    const user = userEvent.setup();
+    let excluded = false;
+    const calls = api({
+      [PROJECTS]: () => json(page(excluded ? [monitored[2] as Project] : monitored)),
+      "POST /api/v1/scope/exclusions": () => {
+        excluded = true;
+        return json(
+          {
+            batch_id: "6f1c2a3e-0000-4000-8000-000000000002",
+            items: [exclusion(40), exclusion(41)],
+          },
+          201,
+        );
+      },
+    });
+    renderAt("/inventory");
+
+    await user.click(await screen.findByRole("checkbox", { name: "Select acme/api" }));
+    expect(screen.getByText("1 project selected.")).toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: "Select all projects on this page" }));
+    expect(screen.getByText("3 projects selected.")).toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: "Select acme/docs" }));
+    expect(screen.getByText("2 projects selected.")).toHaveAttribute("aria-live", "polite");
+    expect(screen.getByRole("button", { name: "Include again" })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Exclude from monitoring" }));
+    const form = screen.getByRole("form", { name: "Exclude from monitoring" });
+    expect(within(form).getByRole("list", { name: "Selected" })).toHaveTextContent(
+      "acme/apiacme/web",
+    );
+    await user.type(within(form).getByLabelText("Justification"), "Too short.");
+    await user.click(within(form).getByRole("button", { name: "Exclude" }));
+    expect(within(form).getByRole("alert")).toHaveTextContent(
+      "Justification: Explain the reason in at least 20 characters.",
+    );
+    expect(posts(calls)).toEqual([]);
+
+    await user.clear(within(form).getByLabelText("Justification"));
+    await user.type(within(form).getByLabelText("Justification"), why);
+    await user.click(within(form).getByRole("button", { name: "Exclude" }));
+
+    expect(await screen.findByText("Excluded from monitoring: 2 exclusions, in force now."))
+      .toBeInTheDocument();
+    const [post] = posts(calls);
+    expect(post?.url).toBe("/api/v1/scope/exclusions");
+    expect(post?.init?.body).toBe(
+      JSON.stringify({
+        targets: [
+          { type: "project", gitlab_id: 101 },
+          { type: "project", gitlab_id: 102 },
+        ],
+        personal_namespaces: false,
+        justification: why,
+      }),
+    );
+    expect(await screen.findByText("Showing 1 projects.")).toBeInTheDocument();
+    expect(screen.queryByRole("form", { name: "Exclude from monitoring" })).not.toBeInTheDocument();
+  });
+
+  it("says when an exclusion waits for review, and explains a refusal", async () => {
+    const user = userEvent.setup();
+    let attempt = 0;
+    api({
+      [PROJECTS]: () => json(page(monitored)),
+      "POST /api/v1/scope/exclusions": () => {
+        attempt += 1;
+        return attempt === 1
+          ? json(
+              {
+                detail: {
+                  code: "already_excluded",
+                  message: "Already excluded",
+                  reasons: ["already_excluded"],
+                },
+              },
+              409,
+            )
+          : json(
+              {
+                batch_id: "6f1c2a3e-0000-4000-8000-000000000003",
+                items: [exclusion(42, { state: "proposed", review_required: true })],
+              },
+              201,
+            );
+      },
+    });
+    renderAt("/inventory");
+
+    await user.click(await screen.findByRole("checkbox", { name: "Select acme/api" }));
+    await user.click(screen.getByRole("button", { name: "Exclude from monitoring" }));
+    const form = screen.getByRole("form", { name: "Exclude from monitoring" });
+    await user.type(within(form).getByLabelText("Justification"), why);
+    await user.click(within(form).getByRole("button", { name: "Exclude" }));
+
+    expect(await within(form).findByRole("alert")).toHaveTextContent(
+      "Not possible now: a selected project or group is already excluded or waiting for review.",
+    );
+
+    await user.click(within(form).getByRole("button", { name: "Exclude" }));
+    expect(
+      await screen.findByText(
+        "Proposed for review: 1 exclusion. Monitoring changes once someone else approves.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("includes again only projects excluded directly", async () => {
+    const user = userEvent.setup();
+    const calls = api({
+      [SHOWN]: () => json(page([direct, byGroup])),
+      "POST /api/v1/scope/exclusions/end": () => json({ items: [] }),
+    });
+    renderAt("/inventory?excluded=show");
+
+    await user.click(
+      await screen.findByRole("checkbox", { name: "Select all projects on this page" }),
+    );
+    expect(screen.getByText("2 projects selected.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "1 selected project is excluded by a group or the personal-namespace setting; include them again under Monitoring scope.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Exclude from monitoring" })).toBeDisabled();
+
+    await user.click(screen.getByRole("button", { name: "Include again" }));
+    const form = screen.getByRole("form", { name: "Include in monitoring again" });
+    expect(within(form).getByRole("list", { name: "Selected" })).toHaveTextContent(
+      "acme/research/prototype",
+    );
+    expect(within(form).getByRole("list", { name: "Selected" })).not.toHaveTextContent("demo");
+    await user.type(within(form).getByLabelText("Justification"), "The prototype became a product.");
+    await user.click(within(form).getByRole("button", { name: "Include again" }));
+
+    expect(
+      await screen.findByText(
+        "Included in monitoring again: 1 exclusion ended. The next evaluation checks them.",
+      ),
+    ).toBeInTheDocument();
+    const [post] = posts(calls);
+    expect(post?.url).toBe("/api/v1/scope/exclusions/end");
+    expect(post?.init?.body).toBe(
+      JSON.stringify({ ids: [31], justification: "The prototype became a product." }),
+    );
+  });
+
+  it("excludes a whole group from the groups list", async () => {
+    const user = userEvent.setup();
+    const calls = api({
+      [GROUPS]: () => json(page([group(7, "acme/sandbox", { monitoring: included })])),
+      "POST /api/v1/scope/exclusions": () =>
+        json({ batch_id: "6f1c2a3e-0000-4000-8000-000000000004", items: [exclusion(43)] }, 201),
+    });
+    renderAt("/inventory?view=groups");
+
+    await user.click(await screen.findByRole("checkbox", { name: "Select acme/sandbox" }));
+    expect(screen.getByText("1 group selected.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Exclude from monitoring" }));
+    const form = screen.getByRole("form", { name: "Exclude from monitoring" });
+    await user.type(within(form).getByLabelText("Justification"), why);
+    await user.click(within(form).getByRole("button", { name: "Exclude" }));
+
+    expect(await screen.findByText(/Excluded from monitoring: 1 exclusion/)).toBeInTheDocument();
+    const [post] = posts(calls);
+    expect(JSON.parse(String(post?.init?.body))).toMatchObject({
+      targets: [{ type: "group", gitlab_id: 107 }],
+    });
+  });
+
+  it("lists exclusions in the Monitoring scope section and excludes personal namespaces", async () => {
+    const user = userEvent.setup();
+    let personalExcluded = false;
+    const calls = api({
+      [PROJECTS]: () => json(page(monitored)),
+      [SCOPE_ACTIVE]: () =>
+        json(
+          exclusions([
+            exclusion(31),
+            ...(personalExcluded
+              ? [exclusion(33, { target_type: "personal_namespaces", target_id: null, target_path: null })]
+              : []),
+          ]),
+        ),
+      "POST /api/v1/scope/exclusions": () => {
+        personalExcluded = true;
+        return json(
+          {
+            batch_id: "6f1c2a3e-0000-4000-8000-000000000005",
+            items: [exclusion(33, { target_type: "personal_namespaces", target_id: null })],
+          },
+          201,
+        );
+      },
+    });
+    renderAt("/inventory");
+
+    const scope = await screen.findByRole("region", { name: "Monitoring scope" });
+    const list = await within(scope).findByRole("list", { name: "Exclusions" });
+    expect(list).toHaveTextContent("Project acme/research/prototype");
+    expect(list).toHaveTextContent(why);
+    expect(list).toHaveTextContent("Excluded by Ada Lovelace");
+    expect(list).toHaveTextContent("not reviewed, review was off.");
+    expect(
+      within(list).getByRole("button", { name: "Include again: Project acme/research/prototype" }),
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(scope).getByRole("button", { name: "Exclude all personal-namespace projects" }),
+    );
+    const form = within(scope).getByRole("form", { name: "Exclude from monitoring" });
+    expect(form).toHaveTextContent("including ones discovered later");
+    await user.type(within(form).getByLabelText("Justification"), "Personal projects are not company work.");
+    await user.click(within(form).getByRole("button", { name: "Exclude" }));
+
+    expect(await screen.findByText("Excluded from monitoring: 1 exclusion, in force now."))
+      .toBeInTheDocument();
+    const [post] = posts(calls);
+    expect(post?.init?.body).toBe(
+      JSON.stringify({
+        targets: [],
+        personal_namespaces: true,
+        justification: "Personal projects are not company work.",
+      }),
+    );
+    expect(await within(scope).findByText("All personal-namespace projects")).toBeInTheDocument();
+    expect(
+      within(scope).queryByRole("button", { name: "Exclude all personal-namespace projects" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows read-only users the badges but no way to change the scope", async () => {
+    mockApi({
+      [ME]: () => json(auditor),
+      [FRESHNESS]: () => json(freshness()),
+      [EVALUATION_FRESHNESS]: () => json(evaluationFreshness()),
+      [SCOPE_ACTIVE]: () => json(exclusions([exclusion(31)])),
+      [SCOPE_PROPOSED]: () => json(exclusions([])),
+      [SHOWN]: () => json(page([monitored[0] as Project, direct])),
+    });
+    renderAt("/inventory?excluded=show");
+
+    expect(
+      await screen.findByRole("rowheader", { name: /prototype\s*Excluded directly$/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /^Select/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Exclude from monitoring" })).not.toBeInTheDocument();
+    const scope = screen.getByRole("region", { name: "Monitoring scope" });
+    expect(await within(scope).findByText(why)).toBeInTheDocument();
+    expect(within(scope).queryByRole("button", { name: /Include again/ })).not.toBeInTheDocument();
+    expect(
+      within(scope).queryByRole("button", { name: "Exclude all personal-namespace projects" }),
+    ).not.toBeInTheDocument();
   });
 });
