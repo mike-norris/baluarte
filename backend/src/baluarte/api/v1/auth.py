@@ -40,6 +40,7 @@ from baluarte.auth.sessions import (
 from baluarte.auth.settings import AuthSettings
 from baluarte.configuration.setup import complete_setup
 from baluarte.db.models import UserSession
+from baluarte.settings import development_mode
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +67,8 @@ class CurrentUser(BaseModel):
     permissions: list[Permission]
     session_expires_at: datetime
     csrf_token: str
+    # The deployment runs in development mode: review may be off whatever the profile.
+    development_mode: bool = False
 
 
 def safe_return_to(value: str | None) -> str:
@@ -248,6 +251,7 @@ def me(principal: SignedIn) -> CurrentUser:
         permissions=sorted(principal.permissions),
         session_expires_at=principal.session_expires_at,
         csrf_token=principal.csrf_token,
+        development_mode=development_mode(),
     )
 
 

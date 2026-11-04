@@ -10,6 +10,8 @@ export interface CurrentUser {
   permissions: string[];
   session_expires_at: string;
   csrf_token: string;
+  /** The deployment runs in development mode; absent from older servers. */
+  development_mode?: boolean;
 }
 
 export type Session =

@@ -43,6 +43,17 @@ A value that misses the minimum is refused (409 `below_minimum`, naming each con
 
 Exceptions can name any control, so a known gap (for example a database without TLS on a single host) can be recorded as accepted risk; the posture then shows it `excepted` instead of `not_met`. Exceptions are never deleted.
 
+### Development mode
+
+With one person developing or testing, two-person review blocks every change, and the exception that would allow turning it off needs a second person too. `BALUARTE_DEVELOPMENT_MODE=true`, set only in the deployment's environment (Compose passes it to the API and worker; the Helm chart does not), lifts the profile's minimum for `require_review` alone:
+
+- An administrator can turn review off in Settings, or save the profile with it off, without an exception. Every other minimum still applies.
+- With review off, changes apply at once and are recorded `self_approved`, as they always are without review. Turning review off is audited with `development_mode: true`.
+- Nothing else changes. The database still refuses a proposer deciding their own change while review is on. The posture still shows `change-review` as not met, and the evidence manifest records `development_mode: true`.
+- Every page shows a development mode banner, and the API logs a warning at start.
+
+Never set it on an instance whose evidence is meant for an audit.
+
 ## Controls
 
 Each control is a **setting** (met when its setting meets the requirement), a **check** (met when Baluarte observes it) or an **attestation** (met while an administrator's statement is current, for what Baluarte cannot see). A check with an attestation period also takes an attestation, as the alternative its row describes.
