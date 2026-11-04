@@ -22,6 +22,7 @@ TABLES = {
     "collection_run",
     "compliance_attestation",
     "compliance_exception",
+    "control_mapping_change",
     "evaluation_run",
     "evaluation",
     "export_job",
