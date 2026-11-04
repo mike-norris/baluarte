@@ -7,6 +7,7 @@ import type { PolicyChange, PolicyChangeDetail, PolicyChangePage } from "../api/
 import type { CurrentUser } from "../auth/session";
 import { routes } from "../routes";
 import { analyst, json, mockApi, type Call } from "../test/api";
+import { PENDING_MAPPING, mappingChange } from "../test/controls";
 import { EVALUATION_FRESHNESS, evaluationFreshness, freshness } from "../test/freshness";
 
 const PENDING = "GET /api/v1/policy-changes?state=proposed&limit=50";
@@ -76,6 +77,7 @@ function api(user: CurrentUser, extra: Record<string, (init?: RequestInit) => Re
     [PENDING]: () => json(page([versionChange, assignChange])),
     [HISTORY]: () => json(page([assignChange, versionChange, decided])),
     "GET /api/v1/policy-changes/5": () => json(detail),
+    [PENDING_MAPPING]: () => json({ items: [] }),
     ...extra,
   });
 }
@@ -183,5 +185,122 @@ describe("baseline changes", () => {
       await screen.findByText("Baseline changes take effect without review."),
     ).toBeInTheDocument();
     expect(await screen.findByText("Nothing is waiting for review.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("No control mapping change is waiting."),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("control mapping changes in the review queue", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const manual = mappingChange(7, {
+    kind: "manual",
+    control_id: "CC6.1",
+    rule_type: null,
+    evidence_ref: "Access review records",
+    review_by: "2027-06-30",
+    justification: "Quarterly access reviews in the identity provider.",
+  });
+
+  it("lists proposed mapping changes with their justification beside baseline changes", async () => {
+    api(reviewer, { [PENDING_MAPPING]: () => json({ items: [mappingChange(6), manual] }) });
+    renderAt("/governance/changes");
+
+    const list = await screen.findByRole("list", {
+      name: "Control mapping changes waiting for review",
+    });
+    const items = within(list).getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveTextContent("Count Project approval settings toward SOC 2 CC8.1");
+    expect(items[0]).toHaveTextContent(
+      "Project approval settings are how acme enforces peer review.",
+    );
+    expect(items[0]).toHaveTextContent("Proposed by Ada Lovelace");
+    expect(within(items[0] as HTMLElement).getByRole("link", { name: "View CC8.1" })).toHaveAttribute(
+      "href",
+      "/controls/soc2/CC8.1",
+    );
+    expect(items[1]).toHaveTextContent("Record SOC 2 CC6.1 as met outside GitLab");
+    expect(items[1]).toHaveTextContent("Access review records");
+    expect(items[1]).toHaveTextContent("2027-06-30");
+    expect(
+      screen.getByRole("list", { name: "Changes waiting for review" }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not let the proposer decide their own mapping change", async () => {
+    api(analyst, { [PENDING_MAPPING]: () => json({ items: [mappingChange(6)] }) });
+    renderAt("/governance/changes");
+
+    const list = await screen.findByRole("list", {
+      name: "Control mapping changes waiting for review",
+    });
+    const item = within(list).getByRole("listitem");
+    expect(within(item).getByRole("button", { name: "Approve" })).toBeDisabled();
+    expect(within(item).getByRole("button", { name: "Reject" })).toBeDisabled();
+    expect(item).toHaveTextContent(
+      "You proposed this change, so someone else must approve or reject it.",
+    );
+  });
+
+  it("requires a note to reject, then rejects and reloads", async () => {
+    let rejected = false;
+    const calls = api(reviewer, {
+      [PENDING_MAPPING]: () => json({ items: rejected ? [] : [manual] }),
+      "POST /api/v1/control-mapping/changes/7/reject": () => {
+        rejected = true;
+        return json({ ...manual, state: "rejected", decision_note: "Needs evidence." });
+      },
+    });
+    const user = userEvent.setup();
+    renderAt("/governance/changes");
+
+    const list = await screen.findByRole("list", {
+      name: "Control mapping changes waiting for review",
+    });
+    const item = within(list).getByRole("listitem");
+    await user.click(within(item).getByRole("button", { name: "Reject" }));
+    expect(within(item).getByRole("alert")).toHaveTextContent(
+      "Explain why in the note before rejecting.",
+    );
+    expect(sent(calls, "POST")).toEqual([]);
+
+    await user.type(within(item).getByLabelText("Note (required to reject)"), "Needs evidence.");
+    await user.click(within(item).getByRole("button", { name: "Reject" }));
+
+    expect(
+      await screen.findByText(
+        "Rejected: Record SOC 2 CC6.1 as met outside GitLab. The mapping did not change.",
+      ),
+    ).toBeInTheDocument();
+    const [post] = sent(calls, "POST");
+    expect(post?.url).toBe("/api/v1/control-mapping/changes/7/reject");
+    expect(post?.init?.body).toBe(JSON.stringify({ note: "Needs evidence." }));
+    expect(await screen.findByText("No control mapping change is waiting.")).toBeInTheDocument();
+  });
+
+  it("approves and shows the API's refusal when it changed meanwhile", async () => {
+    const calls = api(reviewer, {
+      [PENDING_MAPPING]: () => json({ items: [mappingChange(6)] }),
+      "POST /api/v1/control-mapping/changes/6/approve": () =>
+        json({ detail: { code: "not_proposed" } }, 409),
+    });
+    const user = userEvent.setup();
+    renderAt("/governance/changes");
+
+    const list = await screen.findByRole("list", {
+      name: "Control mapping changes waiting for review",
+    });
+    const item = within(list).getByRole("listitem");
+    await user.click(within(item).getByRole("button", { name: "Approve" }));
+
+    expect(await within(item).findByRole("alert")).toHaveTextContent(
+      "Not possible now: the change was already decided.",
+    );
+    const [post] = sent(calls, "POST");
+    expect(post?.init?.body).toBe(JSON.stringify({}));
   });
 });

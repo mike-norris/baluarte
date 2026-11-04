@@ -86,6 +86,10 @@ When execution is built (BAL-032), it must use a separate write credential: its 
 
 Plans separate duties like exceptions: the creator cannot approve or reject their own plan (API and database constraint). Approval names the plan digest the approver reviewed and is refused when the plan is stale.
 
+## Control mapping
+
+Changing which controls a rule supports changes what an auditor sees, so it is held to the same standard as a baseline change: it needs `policy:write`, carries a justification, follows the second-person review setting (the proposer cannot decide their own change), and is append-only in the database with every step audited. Exports record the mapping in force with a digest of each justification ([CONTROL_MAPPING.md](CONTROL_MAPPING.md)).
+
 ## Audit trail
 
 `audit_event` rows are append-only (database triggers) and carry a SHA-256 digest of their canonical details. Details are redacted before hashing. Each committed event is also written to the `baluarte.audit` logger as a JSON line with an `audit` field (id, actor, action, resource, details, digest), so a log collector can keep an independent copy; rolled-back actions are not logged. [Audit log shipping](COMPLIANCE.md#audit-log-shipping) sends every event from the database to syslog over TLS or Elasticsearch/OpenSearch over https, always verifying the server's certificate (against the system trust store or a CA entered with the destination), and retention keeps any event not yet delivered. Admins and auditors read the trail through `GET /api/v1/audit-events`, which recomputes each digest (`digest_valid`), and on the web UI's Audit log page.

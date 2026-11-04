@@ -117,6 +117,14 @@ export interface Finding {
   resolved_at: string | null;
   /** While ``state`` is ``excepted``, the exception waiving the failure. */
   exception: FindingException | null;
+  /** The controls its rule type counts toward, from the effective mapping. */
+  controls?: FindingControl[];
+}
+
+/** A framework control a finding's rule type is mapped to. */
+export interface FindingControl {
+  framework: string;
+  id: string;
 }
 
 export interface FindingDetail extends Finding {

@@ -41,6 +41,7 @@ Read them with `GET /api/v1/gitlab/projects/{gitlab_id}/observations`, `GET /api
 | `policy`, `rule` | Evaluations and findings of that policy name and rule ID. |
 | `outcome` | Evaluations with that outcome, and findings whose latest outcome it is. |
 | `finding_state` | Findings in that state, and the evaluations of their project, policy and rule. |
+| `framework`, `control_id` | Together: evaluations, findings and exceptions of the rule types mapped to that control under the mapping in force ([CONTROL_MAPPING.md](CONTROL_MAPPING.md)). The control must be in the catalogue. |
 | `since`, `until` | Evaluations evaluated in `[since, until)`, findings open at some point in it, and runs started in it. Without a window, the latest evaluation of each project, policy and rule, and the latest finished run of each kind. Timestamps need a time zone. |
 
 The inventory section always lists every project in the group or project scope, whatever the other filters.
@@ -78,7 +79,8 @@ Every export carries a manifest (BAL-028): `manifest.json` in a ZIP, written aft
 
 | Field | Holds |
 |---|---|
-| `manifest_format`, `export_format`, `package` | `baluarte.evidence-manifest/v3`, `baluarte.evidence-export/v2`, and `zip` or `json`. Version 2 added the exceptions section, `exception_id` on evaluations and findings, and the manifest's `exceptions` summary. Manifest version 3 added `population`; the export format did not change. |
+| `manifest_format`, `export_format`, `package` | `baluarte.evidence-manifest/v4`, `baluarte.evidence-export/v2`, and `zip` or `json`. Version 2 added the exceptions section, `exception_id` on evaluations and findings, and the manifest's `exceptions` summary. Manifest version 3 added `population` and version 4 `control_mapping`; the export format did not change. |
+| `control_mapping` | The framework control mapping in force: `mapping_version`, every effective rule type and control pair with its source, and every active organization change with the SHA-256 of its justification ([CONTROL_MAPPING.md](CONTROL_MAPPING.md#evidence)). |
 | `export_id`, `generated_at`, `baluarte_version`, `instance`, `scope` | What was exported, when (database clock), by which version, from which GitLab. |
 | `requested_by` | The requester's internal user ID (`user:<id>`), as in the audit log. Names and email addresses are not copied into the package; the audit log and user table resolve the ID. |
 | `files` (ZIP) | Every other file except `SHA256SUMS`: name, rows (CSV records without the header, or JSON lines), bytes and SHA-256 of its bytes. |

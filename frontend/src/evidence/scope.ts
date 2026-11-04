@@ -1,3 +1,4 @@
+import { frameworkIds, type FrameworkId } from "../api/controls";
 import { outcomes, type FindingFilters, type FindingState, type Outcome } from "../api/evaluations";
 
 export type ExportFormat = "json" | "csv";
@@ -13,6 +14,9 @@ export interface ExportScope {
   finding_state?: FindingState;
   since?: string;
   until?: string;
+  /** With ``control_id``: findings of the rule types mapped to that control. */
+  framework?: FrameworkId;
+  control_id?: string;
 }
 
 export interface ExportRequest {
@@ -32,6 +36,8 @@ export interface ExportForm {
   /** ``YYYY-MM-DDTHH:MM`` in UTC, as a ``datetime-local`` input holds it. */
   since: string;
   until: string;
+  framework: FrameworkId | "";
+  control: string;
   format: ExportFormat;
 }
 
@@ -41,6 +47,7 @@ export const findingStates: readonly FindingState[] = ["open", "resolved", "exce
 const MAX_NAME = 63;
 const MAX_GROUP = 255;
 const MAX_PROJECTS = 500;
+const MAX_CONTROL = 20;
 const LOCAL_TIME = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?Z?$/;
 
 function oneOf<T extends string>(value: string | null, allowed: readonly T[]): T | "" {
@@ -67,6 +74,8 @@ export function readExportForm(params: URLSearchParams): ExportForm {
     findingState: oneOf(params.get("finding_state"), findingStates),
     since: toLocal(params.get("since")),
     until: toLocal(params.get("until")),
+    framework: oneOf<FrameworkId>(params.get("framework"), frameworkIds),
+    control: params.get("control")?.trim() ?? "",
     format: params.get("format") === "csv" ? "csv" : "json",
   };
 }
@@ -90,6 +99,8 @@ export function writeExportParams(form: Partial<ExportForm>): URLSearchParams {
   if (form.findingState) params.set("finding_state", form.findingState);
   if (form.since) params.set("since", `${form.since}:00Z`);
   if (form.until) params.set("until", `${form.until}:00Z`);
+  if (form.framework) params.set("framework", form.framework);
+  if (form.control) params.set("control", form.control);
   if (form.format === "csv") params.set("format", "csv");
   return params;
 }
@@ -172,6 +183,18 @@ export function validateExport(form: ExportForm): Validated {
   }
   if (scope.since && scope.until && scope.since >= scope.until) {
     errors.push("The start of the time window must be before its end.");
+  }
+
+  const control = form.control.trim();
+  if (form.framework && control) {
+    if (control.length > MAX_CONTROL) {
+      errors.push(`Control: at most ${String(MAX_CONTROL)} characters.`);
+    } else {
+      scope.framework = form.framework;
+      scope.control_id = control;
+    }
+  } else if (form.framework || control) {
+    errors.push("Control: choose both the framework and the control ID, or neither.");
   }
 
   if (errors.length === 0 && Object.keys(scope).length === 0) {

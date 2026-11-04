@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Link, useParams } from "react-router";
 
 import { ApiError } from "../api/client";
+import { controlPath } from "../api/controls";
 import {
   getFinding,
   getFindingHistory,
@@ -15,6 +16,7 @@ import { usePaged } from "../api/usePaged";
 import { useLoad } from "../api/useLoad";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { linkClass, secondaryClass } from "../components/styles";
+import { frameworkLabel } from "../controls/format";
 import { ExportLink } from "../evidence/ExportLink";
 import { evidenceHref } from "../evidence/scope";
 import { ExceptionPanel } from "../exceptions/ExceptionPanel";
@@ -102,6 +104,23 @@ function Summary({ finding }: { finding: FindingDetail }) {
             {`(GitLab ID ${String(finding.project.gitlab_id)}, ${finding.project.state})`}
           </span>
         </Field>
+        {finding.controls && (
+          <Field term="Controls">
+            {finding.controls.length === 0 ? (
+              "Not mapped to any control."
+            ) : (
+              <ul className="flex flex-wrap gap-x-3 gap-y-1" aria-label="Controls">
+                {finding.controls.map((control) => (
+                  <li key={`${control.framework}:${control.id}`}>
+                    <Link to={controlPath(control.framework, control.id)} className={linkClass}>
+                      {`${frameworkLabel(control.framework)} ${control.id}`}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Field>
+        )}
         <Field term="First seen">{formatTime(finding.first_seen_at)}</Field>
         <Field term="Last seen">{formatTime(finding.last_seen_at)}</Field>
       </dl>

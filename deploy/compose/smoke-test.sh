@@ -86,13 +86,13 @@ grep -q 'auth/callback' <<<"$api_logs" || fail "callback request was not logged"
 ! grep -qE 'SMOKECODE123|SMOKESTATE456' <<<"$api_logs" || fail "OAuth parameters leaked into api logs"
 echo "ok  api logs are JSON and redact OAuth parameters"
 
-curl -fsS http://127.0.0.1:8080/ | grep -q '<div id="root">' || fail "web index not served"
+grep -q '<div id="root">' <<<"$(curl -fsS http://127.0.0.1:8080/)" || fail "web index not served"
 echo "ok  web /"
 
-curl -fsS http://127.0.0.1:8080/inventory | grep -q '<div id="root">' || fail "SPA deep link not served"
+grep -q '<div id="root">' <<<"$(curl -fsS http://127.0.0.1:8080/inventory)" || fail "SPA deep link not served"
 echo "ok  web /inventory (SPA fallback)"
 
-curl -fsS 'http://127.0.0.1:8080/sign-in?error=expired' | grep -q '<div id="root">' || fail "sign-in page not served"
+grep -q '<div id="root">' <<<"$(curl -fsS 'http://127.0.0.1:8080/sign-in?error=expired')" || fail "sign-in page not served"
 echo "ok  web /sign-in (sign-in error landing page)"
 
 headers=$(curl -fsSI http://127.0.0.1:8080/ | tr -d '\r')
@@ -113,7 +113,8 @@ echo "ok  worker healthy (heartbeat)"
 worker_id=$("${compose[@]}" ps -q worker)
 "${compose[@]}" stop -t 30 worker >/dev/null
 [[ $(docker inspect -f '{{.State.ExitCode}}' "$worker_id") == 0 ]] || fail "worker did not exit cleanly on SIGTERM"
-docker logs "$worker_id" 2>&1 | grep -q "received SIGTERM" || fail "worker did not handle SIGTERM"
+# A here-string, not a pipe: grep -q stops reading early, and pipefail would fail on SIGPIPE.
+grep -q "received SIGTERM" <<<"$(docker logs "$worker_id" 2>&1)" || fail "worker did not handle SIGTERM"
 echo "ok  worker stops cleanly on SIGTERM"
 
 "${compose[@]}" exec -T db pg_isready -U baluarte -d baluarte >/dev/null || fail "database not ready"
@@ -136,10 +137,12 @@ recorded=$("${compose[@]}" exec -T db psql -U baluarte -d baluarte -tAc \
   || fail "backup_run does not match the file: $recorded"
 [[ $(in_backup "head -c 21 /backups/$file") == "age-encryption.org/v1" ]] || fail "backup file is not age-encrypted"
 in_backup "! grep -qa audit_event /backups/$file" || fail "backup file contains plaintext"
-docker run --rm -i -v "$backup_dir:/backups:ro" -e IDENTITY="$(grep '^AGE-SECRET-KEY-' <<<"$identity")" \
+# Captured first: grep -q would stop reading early, and pipefail would then fail on SIGPIPE.
+listing=$(docker run --rm -i -v "$backup_dir:/backups:ro" -e IDENTITY="$(grep '^AGE-SECRET-KEY-' <<<"$identity")" \
   --entrypoint sh baluarte-backup:dev -c \
-  "printf '%s\\n' \"\$IDENTITY\" > /tmp/key && age -d -i /tmp/key /backups/$file | pg_restore --list" \
-  | grep -q 'TABLE DATA public audit_event' || fail "backup does not decrypt to a restorable dump"
+  "printf '%s\\n' \"\$IDENTITY\" > /tmp/key && age -d -i /tmp/key /backups/$file | pg_restore --list") \
+  || fail "backup does not decrypt"
+grep -q 'TABLE DATA public audit_event' <<<"$listing" || fail "backup does not decrypt to a restorable dump"
 echo "ok  backup profile writes an encrypted, recorded, restorable backup"
 
 echo "Smoke test passed."

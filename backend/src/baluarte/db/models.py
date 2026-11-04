@@ -61,6 +61,13 @@ MAX_EXCEPTION_DAYS = 365
 POLICY_CHANGE_KINDS = ("version", "assign", "unassign")
 POLICY_CHANGE_STATES = ("proposed", "approved", "rejected")
 COMPLIANCE_EXCEPTION_STATES = ("proposed", "approved", "rejected", "revoked")
+MAPPING_CHANGE_KINDS = ("map", "unmap", "not_applicable", "manual", "withdraw")
+MAPPING_CHANGE_STATES = ("proposed", "active", "rejected", "withdrawn")
+MAPPING_FRAMEWORKS = ("soc2", "iso27001", "nist_800_53_moderate")
+# Length of a control mapping change's justification, and of its evidence reference.
+MIN_JUSTIFICATION = 20
+MAX_JUSTIFICATION = 2000
+MAX_EVIDENCE_REF = 500
 # Longest a compliance exception may last, from its request, and the length of its texts.
 MAX_COMPLIANCE_EXCEPTION_DAYS = 365
 MIN_STATEMENT = 10
@@ -684,6 +691,123 @@ class PolicyChange(Base):
     migrated: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     proposed_by: Mapped[str] = mapped_column(Text)
     proposed_by_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    proposed_at: Mapped[datetime] = utc_now()
+    decided_by: Mapped[str | None] = mapped_column(Text)
+    decided_by_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_note: Mapped[str | None] = mapped_column(Text)
+
+
+class ControlMappingChange(Base):
+    """An organization's change to the control mapping, with its justification.
+
+    ``map`` and ``unmap`` add a rule type to a control or remove a default pair;
+    ``not_applicable`` scopes a control out and ``manual`` records that it is met outside GitLab,
+    both until ``review_by``; ``withdraw`` ends the active change ``supersedes_id``. A
+    ``not_applicable`` or ``manual`` change may also supersede the control's current one, to
+    renew it. Made while review is required (the ``governance`` setting) a change is
+    ``proposed`` until someone other than the proposer approves it (``active``) or rejects it;
+    otherwise it is ``active`` at once with ``self_approved`` set. The change it supersedes
+    becomes ``withdrawn`` when it takes effect.
+
+    A trigger allows only ``proposed`` -> ``active`` | ``rejected`` and ``active`` ->
+    ``withdrawn``, changes nothing but the decision, and rejects ``DELETE``. User IDs are
+    recorded values, like ``audit_event.actor``, and are not foreign keys.
+    """
+
+    __tablename__ = "control_mapping_change"
+    __table_args__ = (
+        Index(
+            "uq_control_mapping_change_open",
+            "framework",
+            "control_id",
+            "kind",
+            text("coalesce(rule_type, '')"),
+            unique=True,
+            postgresql_where=text(
+                "state IN ('proposed', 'active') AND kind <> 'withdraw' AND supersedes_id IS NULL"
+            ),
+        ),
+        Index(
+            "uq_control_mapping_change_withdraw",
+            "supersedes_id",
+            unique=True,
+            postgresql_where=text("state IN ('proposed', 'active') AND supersedes_id IS NOT NULL"),
+        ),
+        Index("ix_control_mapping_change_control", "framework", "control_id", "id"),
+        one_of("kind", MAPPING_CHANGE_KINDS),
+        one_of("state", MAPPING_CHANGE_STATES),
+        one_of("framework", MAPPING_FRAMEWORKS),
+        CheckConstraint(
+            f"length(justification) BETWEEN {MIN_JUSTIFICATION} AND {MAX_JUSTIFICATION}",
+            name="justification_length",
+        ),
+        CheckConstraint(
+            f"evidence_ref IS NULL OR length(evidence_ref) BETWEEN 1 AND {MAX_EVIDENCE_REF}",
+            name="evidence_ref_length",
+        ),
+        CheckConstraint(
+            "(rule_type IS NOT NULL) = (kind IN ('map', 'unmap'))", name="rule_type_for_pairs"
+        ),
+        CheckConstraint(
+            "(review_by IS NOT NULL) = (kind IN ('not_applicable', 'manual'))",
+            name="review_by_for_status",
+        ),
+        CheckConstraint("kind <> 'manual' OR evidence_ref IS NOT NULL", name="manual_has_evidence"),
+        CheckConstraint(
+            "kind <> 'withdraw' OR supersedes_id IS NOT NULL", name="withdraw_names_change"
+        ),
+        CheckConstraint(
+            "supersedes_id IS NULL OR kind IN ('withdraw', 'not_applicable', 'manual')",
+            name="supersedes_allowed",
+        ),
+        CheckConstraint(
+            "(state = 'proposed') = (decided_at IS NULL)", name="decided_unless_proposed"
+        ),
+        CheckConstraint(
+            "(decided_at IS NULL) = (decided_by IS NULL) "
+            "AND (decided_at IS NULL) = (decided_by_user_id IS NULL)",
+            name="decision_complete",
+        ),
+        CheckConstraint(
+            "NOT review_required OR decided_by_user_id IS NULL "
+            "OR decided_by_user_id <> proposed_by_user_id",
+            name="decided_by_another_user",
+        ),
+        CheckConstraint(
+            "review_required OR state IN ('active', 'withdrawn')", name="unreviewed_is_applied"
+        ),
+        CheckConstraint(
+            "self_approved = NOT review_required", name="self_approved_when_unreviewed"
+        ),
+        CheckConstraint(
+            "NOT self_approved OR decided_by_user_id = proposed_by_user_id",
+            name="self_approved_by_proposer",
+        ),
+        CheckConstraint(
+            "state <> 'rejected' OR length(decision_note) > 0", name="rejection_explained"
+        ),
+    )
+
+    id: Mapped[int] = pk()
+    framework: Mapped[str] = mapped_column(Text)
+    control_id: Mapped[str] = mapped_column(Text)
+    kind: Mapped[str] = mapped_column(Text)
+    # map and unmap: the rule type added to or removed from the control.
+    rule_type: Mapped[str | None] = mapped_column(Text)
+    justification: Mapped[str] = mapped_column(Text)
+    # Where the evidence for a manual or not-applicable control is kept.
+    evidence_ref: Mapped[str | None] = mapped_column(Text)
+    # not_applicable and manual: the last day the change counts without being renewed.
+    review_by: Mapped[date | None] = mapped_column(Date)
+    supersedes_id: Mapped[int | None] = mapped_column(ForeignKey("control_mapping_change.id"))
+    state: Mapped[str] = mapped_column(Text)
+    review_required: Mapped[bool] = mapped_column(Boolean)
+    self_approved: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    # The catalogue version (``baluarte.controls.catalogue.MAPPING_VERSION``) proposed against.
+    mapping_version: Mapped[str] = mapped_column(Text)
+    proposed_by: Mapped[str] = mapped_column(Text)
+    proposed_by_user_id: Mapped[int] = mapped_column(BigInteger)
     proposed_at: Mapped[datetime] = utc_now()
     decided_by: Mapped[str | None] = mapped_column(Text)
     decided_by_user_id: Mapped[int | None] = mapped_column(BigInteger)

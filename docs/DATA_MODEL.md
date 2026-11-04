@@ -79,6 +79,10 @@ Delivery is at least once: handlers must be idempotent. Jobs are never deleted b
 
 Migration `0015` adds `policy_change` and the `governance` key of `app_setting` (`{"require_review": bool}`, off when absent). Every version and assignment that existed before it is recorded as an `approved`, `migrated` change made before review existed: `review_required` and `self_approved` false, `decided_by` `system:migration-0015`, and `proposed_by` taken from the matching `policy.version_created` or `policy.assigned` audit event, or `unknown` when there is none. Downgrading drops `policy_change`, including proposals still waiting, and the `governance` setting.
 
+## Control mapping changes
+
+Migration `0019` adds `control_mapping_change`: an organization's changes to the default mapping of rule types to framework controls ([CONTROL_MAPPING.md](CONTROL_MAPPING.md)). Check constraints tie each kind to the fields it needs and the decision columns to the state; partial unique indexes keep one open change of a kind per control and rule type, and one open change superseding any change. A trigger rejects `DELETE`, any change to what was proposed, and every state change except `proposed` to `active` or `rejected` and `active` to `withdrawn`. Downgrading drops the table and its history.
+
 ## Migrations
 
 Alembic revisions live in `backend/src/baluarte/db/migrations/versions`. Deployments run `baluarte-migrate`, which waits for PostgreSQL, takes an advisory lock so concurrent runners serialise, and upgrades to head. The API's `/api/v1/ready` endpoint reports not ready until the schema is at head. Tests check that the models and migrations do not drift, and that upgrade, downgrade and re-upgrade succeed.

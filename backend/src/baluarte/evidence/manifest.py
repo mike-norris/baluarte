@@ -16,7 +16,8 @@ from typing import Any
 
 # v2: adds the exceptions summary (export format v2).
 # v3: adds ``population`` and its limitation (export format unchanged).
-MANIFEST_FORMAT = "baluarte.evidence-manifest/v3"
+# v4: adds ``control_mapping``, the framework control mapping in force (export format unchanged).
+MANIFEST_FORMAT = "baluarte.evidence-manifest/v4"
 # Invalid observation IDs listed by ID; beyond this only the count is given.
 MAX_LISTED = 1000
 
@@ -175,6 +176,7 @@ def build(
     metadata_sha256: str | None = None,
     governance: dict[str, Any] | None = None,
     operations: dict[str, Any] | None = None,
+    control_mapping: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The manifest. ``contents`` lists the ZIP's files, or the JSON document's sections."""
     manifest: dict[str, Any] = {
@@ -224,6 +226,9 @@ def build(
         "governance": governance if governance is not None else {"require_review": None},
         # The operating profile Baluarte itself ran to, and its posture, when this was made.
         "operations": operations,
+        # The control mapping in force (docs/CONTROL_MAPPING.md): default pairs, the
+        # organization's active changes and a digest of each justification.
+        "control_mapping": control_mapping,
         "limitations": [*LIMITATIONS, population(meta)["statement"]],
         "verification": VERIFICATION,
     }

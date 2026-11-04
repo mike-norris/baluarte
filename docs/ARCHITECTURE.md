@@ -21,6 +21,7 @@ Browser -> TLS ingress/proxy -> React UI -> FastAPI -> PostgreSQL
 - Background jobs: durable PostgreSQL records, leased claims, retries, idempotency keys, and visibility into failures. No exactly-once guarantee; design handlers to be idempotent.
 - Inventory: upsert by GitLab numeric resource ID plus instance ID; mark missing/inaccessible only after controlled reconciliation.
 - Evaluation: immutable rule version + target + observation + outcome; explicit unknown and unsupported.
+- Controls: a built-in catalogue maps rule types to SOC 2, ISO 27001 and NIST 800-53 controls; organization changes are append-only and reviewed like baseline changes, and control status is derived from the latest run, never stored ([CONTROL_MAPPING.md](CONTROL_MAPPING.md)).
 - Evidence: source endpoint/reference, collected_at UTC, collection job, normalized payload, SHA-256 digest, and export manifest. Hashing is tamper-evidence, not immutable storage by itself.
 - Authentication: OIDC, server-enforced RBAC; never trust client roles.
 

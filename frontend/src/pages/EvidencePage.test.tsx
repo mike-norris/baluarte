@@ -167,6 +167,24 @@ describe("evidence export page", () => {
     });
   });
 
+  it("prefills a control scope from a control page link and sends it", async () => {
+    const user = userEvent.setup();
+    const calls = api({ [EXPORT]: () => exported() });
+    renderAt("/evidence?framework=nist_800_53_moderate&control=AC-6(5)");
+
+    expect(await screen.findByRole("combobox", { name: "Framework" })).toHaveValue(
+      "nist_800_53_moderate",
+    );
+    expect(screen.getByRole("textbox", { name: "Control ID" })).toHaveValue("AC-6(5)");
+    await user.click(screen.getByRole("button", { name: "Export" }));
+
+    expect(await screen.findByText(/^Downloaded /)).toBeInTheDocument();
+    expect(requestBody(calls)).toEqual({
+      format: "json",
+      scope: { framework: "nist_800_53_moderate", control_id: "AC-6(5)" },
+    });
+  });
+
   it("offers the file only after every byte arrived, under the server's name", async () => {
     const user = userEvent.setup();
     api({ [EXPORT]: () => exported('{"rows":[1,2,3]}') });
@@ -402,6 +420,26 @@ describe("export scope helpers", () => {
         format: "json",
         scope: { projects: [5, 7], outcome: "unknown" },
       },
+    });
+  });
+
+  it("scopes an export to a control only with both its framework and ID", () => {
+    const empty = readExportForm(new URLSearchParams());
+    expect(validateExport({ ...empty, framework: "soc2", control: " CC8.1 " })).toEqual({
+      request: { format: "json", scope: { framework: "soc2", control_id: "CC8.1" } },
+    });
+    expect(validateExport({ ...empty, framework: "soc2" })).toEqual({
+      errors: ["Control: choose both the framework and the control ID, or neither."],
+    });
+    expect(validateExport({ ...empty, control: "CC8.1" })).toEqual({
+      errors: ["Control: choose both the framework and the control ID, or neither."],
+    });
+    expect(validateExport({ ...empty, framework: "iso27001", control: "A".repeat(21) })).toEqual({
+      errors: ["Control: at most 20 characters."],
+    });
+    expect(readExportForm(new URLSearchParams("framework=pci&control=CC8.1"))).toMatchObject({
+      framework: "",
+      control: "CC8.1",
     });
   });
 

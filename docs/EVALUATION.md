@@ -279,9 +279,13 @@ Archived projects are not evaluated (decided in UAT, 2026-11-01). GitLab makes a
 
 `runner.not_evaluated(project)` is the one place that decides this.
 
+## Controls
+
+Findings list the framework controls their rule type supports (`controls`), and each control's status is derived from the latest successful run ([CONTROL_MAPPING.md](CONTROL_MAPPING.md#status)). Changing the mapping changes neither stored results nor findings.
+
 ## Adding a rule type
 
-A rule type is one `RuleEvaluator`, registered in `EVALUATORS` (`evaluation/project.py`). It declares:
+A rule type is one `RuleEvaluator`, registered in `EVALUATORS` (`evaluation/project.py`). A new rule type also needs default pairs in `baluarte.controls.catalogue`; a test fails until every rule type supports a control in each framework. It declares:
 
 - the collection its value comes from, and its `source`
 - the capability probe it needs, if any
