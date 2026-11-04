@@ -7,7 +7,9 @@ before anything is sent.
 
 Sections, in this order (each later section only references rows of earlier ones):
 
-- ``inventory``: projects in scope, as the inventory holds them now.
+- ``inventory``: projects in scope, as the inventory holds them now, including projects out of
+  monitoring scope (``baluarte.scope``), flagged with the exclusion that covers them. Every
+  later section leaves those projects out.
 - ``evaluations``: stored rule results. Without a time window, the latest result of each
   project, policy and rule; with one, every result evaluated inside it.
 - ``findings``: findings in scope, with the observation their latest evaluation judged.
@@ -66,6 +68,7 @@ from baluarte.db.models import (
     Observation,
     Policy,
     PolicyException,
+    ScopeExclusion,
 )
 from baluarte.evidence import manifest
 from baluarte.evidence.observations import verify
@@ -75,9 +78,12 @@ from baluarte.logs import redact_value
 from baluarte.policy import changes as policy_changes
 from baluarte.policy.evaluation import freshness as evaluation_freshness
 from baluarte.policy.exceptions import effective_state
+from baluarte.scope.exclusions import coverage, justification_sha256
 
 # v2 (exceptions): adds the exceptions section and exception_id on evaluations and findings.
-FORMAT = "baluarte.evidence-export/v2"
+# v3 (monitoring scope): adds monitoring_excluded, exclusion_id and excluded_via to inventory;
+# projects out of monitoring scope are left out of every other section.
+FORMAT = "baluarte.evidence-export/v3"
 MAX_ROWS = 100_000
 PAGE = 500
 
@@ -109,6 +115,8 @@ export.json            Export metadata: scope and the collection and evaluation 
                        export time. Read results together with freshness: an old pass is not
                        current compliance.
 inventory.csv          Projects in scope, as the inventory holds them at export time.
+                       monitoring_excluded marks projects taken out of monitoring scope
+                       (exclusion_id, excluded_via say how); the other files leave them out.
 evaluations.csv        Stored rule results. Without a time window, the latest result of each
                        project, policy and rule; with one, every result evaluated inside it.
 findings.csv           Findings in scope and the observation their latest evaluation judged.
@@ -264,6 +272,8 @@ class EvidenceExport:
             self.instance_id: int | None = self.db.scalars(
                 select(GitLabInstance.id).where(GitLabInstance.base_url == settings.url)
             ).first()
+            # Projects out of monitoring scope, as of the snapshot.
+            self.coverage = coverage(self.db, self.instance_id)
         except BaseException:
             self.db.close()
             raise
@@ -294,11 +304,18 @@ class EvidenceExport:
             conditions.append(GitLabProject.gitlab_id.in_(self.scope.projects))
         return conditions
 
+    def _monitored_scope(self) -> list[ColumnElement[bool]]:
+        """Projects in scope that are also in monitoring scope."""
+        return [*self._project_scope(), self.coverage.project_included()]
+
     def _group_scope(self) -> list[ColumnElement[bool]] | None:
         """Groups whose collection errors belong in the export; None when only projects."""
         if self.scope.projects:
             return None
-        conditions: list[ColumnElement[bool]] = [GitLabGroup.instance_id == (self.instance_id or 0)]
+        conditions: list[ColumnElement[bool]] = [
+            GitLabGroup.instance_id == (self.instance_id or 0),
+            ~self.coverage.group_excluded(),
+        ]
         if self.scope.group is not None:
             path = func.lower(GitLabGroup.full_path)
             conditions.append(
@@ -349,7 +366,7 @@ class EvidenceExport:
 
     def _evaluation_conditions(self) -> list[ColumnElement[bool]]:
         scope = self.scope
-        conditions = self._project_scope()
+        conditions = self._monitored_scope()
         if scope.policy is not None:
             conditions.append(Evaluation.policy_name == scope.policy)
         if scope.rule is not None:
@@ -383,7 +400,7 @@ class EvidenceExport:
 
     def _finding_conditions(self) -> list[ColumnElement[bool]]:
         scope = self.scope
-        conditions = self._project_scope()
+        conditions = self._monitored_scope()
         if scope.policy is not None:
             conditions.append(Finding.policy_name == scope.policy)
         if scope.rule is not None:
@@ -413,7 +430,7 @@ class EvidenceExport:
     def _exception_conditions(self) -> list[ColumnElement[bool]]:
         """Exceptions in scope; with a window, those in force or pending at some point in it."""
         scope = self.scope
-        conditions = self._project_scope()
+        conditions = self._monitored_scope()
         if scope.policy is not None:
             conditions.append(PolicyException.policy_name == scope.policy)
         if scope.rule is not None:
@@ -445,7 +462,7 @@ class EvidenceExport:
 
     def _project_error_conditions(self) -> list[ColumnElement[bool]]:
         return [
-            *self._project_scope(),
+            *self._monitored_scope(),
             or_(GitLabProject.state != "active", GitLabProject.last_error.is_not(None)),
         ]
 
@@ -512,6 +529,7 @@ class EvidenceExport:
     def inventory(self) -> Iterator[dict[str, Any]]:
         statement = select(GitLabProject, GitLabProject.id).where(*self._project_scope())
         for project, _ in self._pages(statement, GitLabProject.id):
+            covering = self.coverage.of(project)
             yield _safe(
                 {
                     "gitlab_id": project.gitlab_id,
@@ -527,6 +545,9 @@ class EvidenceExport:
                     "last_seen_at": _ts(project.last_seen_at),
                     "last_error": project.last_error,
                     "last_error_at": _ts(project.last_error_at),
+                    "monitoring_excluded": covering is not None,
+                    "exclusion_id": covering.exclusion_id if covering else None,
+                    "excluded_via": covering.via if covering else None,
                 }
             )
 
@@ -802,6 +823,34 @@ class EvidenceExport:
             self.summary.add(name, row)
             yield row
 
+    def _monitoring_scope(self) -> dict[str, Any]:
+        """Active exclusions and how many inventory projects in the export's scope they cover."""
+        rows = self.db.scalars(
+            select(ScopeExclusion)
+            .where(
+                ScopeExclusion.instance_id == (self.instance_id or 0),
+                ScopeExclusion.state == "active",
+            )
+            .order_by(ScopeExclusion.id)
+        ).all()
+        excluded = self._count(
+            GitLabProject, [*self._project_scope(), self.coverage.project_excluded()]
+        )
+        return {
+            "exclusions": [
+                {
+                    "id": row.id,
+                    "target_type": row.target_type,
+                    "target_id": row.target_id,
+                    "target_path": row.target_path,
+                    "since": _ts(row.decided_at),
+                    "justification_sha256": justification_sha256(row.justification),
+                }
+                for row in rows
+            ],
+            "excluded_projects": excluded,
+        }
+
     def _manifest(
         self,
         meta: dict[str, Any],
@@ -820,6 +869,7 @@ class EvidenceExport:
             governance={"require_review": policy_changes.review_required(self.db)},
             operations=operations_summary(self.db),
             control_mapping=mapping_summary(self.db),
+            monitoring_scope=self._monitoring_scope(),
         )
         self.result.manifest_sha256 = details_digest(built)
         return built
@@ -964,6 +1014,9 @@ COLUMNS: dict[str, tuple[str, ...]] = {
         "last_seen_at",
         "last_error",
         "last_error_at",
+        "monitoring_excluded",
+        "exclusion_id",
+        "excluded_via",
     ),
     "evaluations": (
         "id",

@@ -24,6 +24,7 @@ from baluarte.api.v1 import (
     policy_changes,
     ready,
     remediation,
+    scope,
     security_policies,
     setup,
     system,
@@ -50,6 +51,7 @@ protected.include_router(audit_events.router)
 protected.include_router(system.router)
 protected.include_router(audit_shipping.router)
 protected.include_router(gitlab.router)
+protected.include_router(scope.router)
 protected.include_router(security_policies.router)
 protected.include_router(observations.router)
 protected.include_router(policies.router)

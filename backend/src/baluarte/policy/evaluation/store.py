@@ -340,6 +340,15 @@ def close_archived(db: Session, project: GitLabProject, tally: Tally) -> None:
     _resolve_all(db, project, "project_archived", tally)
 
 
+def close_excluded(db: Session, project: GitLabProject, tally: Tally) -> None:
+    """A project out of monitoring is not evaluated: resolve its open and excepted findings.
+
+    Like :func:`close_archived`: when it is included again, the next evaluation judges it and a
+    ``fail`` reopens the finding. The caller commits.
+    """
+    _resolve_all(db, project, "project_excluded", tally)
+
+
 def store_project(
     db: Session,
     instance_id: int,

@@ -31,6 +31,7 @@ from baluarte.policy.evaluation import freshness
 from baluarte.policy.evaluation.freshness import EvaluationFreshness, EvaluationRunOut
 from baluarte.policy.evaluation.runner import EVALUATE, MAX_ATTEMPTS
 from baluarte.policy.exceptions import in_force
+from baluarte.scope.exclusions import coverage
 from baluarte.settings import ConfigurationError
 
 router = APIRouter(tags=["evaluations"])
@@ -403,7 +404,8 @@ _PROJECT_ORDER = ("fail", "unknown", "unsupported", "excepted", "pass")
     "still running are not counted. Rule counts are results (one per project); `projects` "
     "counts each project once by its worst result. `unknown` and `unsupported` are never "
     "counted as passing. Read with `freshness`: old counts are not current compliance. Filter "
-    "with `policy` (a baseline name).",
+    "with `policy` (a baseline name). Projects out of monitoring scope are not counted, even "
+    "when the run judged them before they were excluded.",
 )
 def evaluation_summary(
     _: Annotated[Principal, Depends(require(Permission.FINDINGS_READ))],
@@ -434,7 +436,11 @@ def evaluation_summary(
             Evaluation.outcome,
         )
         .join(Policy, Policy.id == Evaluation.policy_id)
-        .where(Evaluation.evaluation_run_id == run.id)
+        .join(GitLabProject, GitLabProject.id == Evaluation.project_id)
+        .where(
+            Evaluation.evaluation_run_id == run.id,
+            coverage(db, run.instance_id).project_included(),
+        )
     )
     if policy is not None:
         statement = statement.where(Evaluation.policy_name == policy)
@@ -521,12 +527,15 @@ def list_runs(
     summary="Findings: rules a project failed, followed until they pass",
     description="A finding opens when a rule fails and resolves when it passes "
     "(`resolution = passed`), no longer applies (`no_longer_applies`) or its project is archived "
-    "(`project_archived`: archived projects are not evaluated). An `unknown` or "
+    "(`project_archived`: archived projects are not evaluated) or is taken out of monitoring "
+    "scope (`project_excluded`). An `unknown` or "
     "`unsupported` result never opens or resolves one; `latest_outcome` shows it. A failure "
     "waived by an approved exception is `excepted` until the exception expires or is revoked, "
     "then `open` again. Filter by "
     "`state`, `outcome` (the latest outcome), `severity`, `project` (GitLab ID), `policy` "
-    "(name) and `rule` (rule ID). Ordered by ID; follow `next_after_id`.",
+    "(name) and `rule` (rule ID). `monitoring`: `included` (the default) leaves out findings "
+    "of projects out of monitoring scope, `excluded` lists only those, `all` both. Ordered by "
+    "ID; follow `next_after_id`.",
 )
 def list_findings(
     _: Annotated[Principal, Depends(require(Permission.FINDINGS_READ))],
@@ -537,10 +546,16 @@ def list_findings(
     project: Annotated[int | None, Query(gt=0)] = None,
     policy: Annotated[str | None, Query(max_length=63)] = None,
     rule: Annotated[str | None, Query(max_length=63)] = None,
+    monitoring: Annotated[Literal["included", "excluded", "all"], Query()] = "included",
     after_id: Annotated[int | None, Query(gt=0)] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> FindingPage:
     statement = _scoped(_findings(), db)
+    if monitoring != "all":
+        scope = coverage(db, _instance_id(db, _settings()))
+        statement = statement.where(
+            scope.project_included() if monitoring == "included" else scope.project_excluded()
+        )
     if state is not None:
         statement = statement.where(_state_is(state))
     if outcome is not None:

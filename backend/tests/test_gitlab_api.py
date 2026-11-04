@@ -332,7 +332,7 @@ def test_groups_when_not_configured(
         client_as(migrated_engine, FakeGitLab(), Role.ANALYST).get("/api/v1/gitlab/groups").json()
     )
 
-    assert body == {"items": [], "next_after_id": None}
+    assert body == {"items": [], "next_after_id": None, "excluded_hidden": 0}
 
 
 @pytest.mark.parametrize("params", [{"state": "deleted"}, {"limit": 501}, {"search": ""}])
@@ -440,7 +440,7 @@ def test_projects_when_not_configured(
 
     response = client_as(migrated_engine, FakeGitLab(), Role.ANALYST).get("/api/v1/gitlab/projects")
 
-    assert response.json() == {"items": [], "next_after_id": None}
+    assert response.json() == {"items": [], "next_after_id": None, "excluded_hidden": 0}
 
 
 @pytest.mark.parametrize(

@@ -17,7 +17,8 @@ from typing import Any
 # v2: adds the exceptions summary (export format v2).
 # v3: adds ``population`` and its limitation (export format unchanged).
 # v4: adds ``control_mapping``, the framework control mapping in force (export format unchanged).
-MANIFEST_FORMAT = "baluarte.evidence-manifest/v4"
+# v5: adds ``monitoring_scope``, the exclusions from monitoring in force (export format v3).
+MANIFEST_FORMAT = "baluarte.evidence-manifest/v5"
 # Invalid observation IDs listed by ID; beyond this only the count is given.
 MAX_LISTED = 1000
 
@@ -54,6 +55,8 @@ LIMITATIONS = [
     "Results are only as current as the collection and evaluation freshness recorded here.",
     "An excepted result is a known failure waived by an approved exception, not a pass. "
     "Exceptions are listed with their state at export time; one past its expiry is expired.",
+    "Projects taken out of monitoring scope are listed in the inventory, flagged, but are not "
+    "evaluated and are left out of every other section; monitoring_scope lists the exclusions.",
 ]
 
 VERIFICATION = [
@@ -177,6 +180,7 @@ def build(
     governance: dict[str, Any] | None = None,
     operations: dict[str, Any] | None = None,
     control_mapping: dict[str, Any] | None = None,
+    monitoring_scope: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The manifest. ``contents`` lists the ZIP's files, or the JSON document's sections."""
     manifest: dict[str, Any] = {
@@ -229,6 +233,9 @@ def build(
         # The control mapping in force (docs/CONTROL_MAPPING.md): default pairs, the
         # organization's active changes and a digest of each justification.
         "control_mapping": control_mapping,
+        # Projects taken out of monitoring (docs/MONITORING_SCOPE.md): the active exclusions
+        # with a digest of each justification, and how many inventory projects they cover.
+        "monitoring_scope": monitoring_scope,
         "limitations": [*LIMITATIONS, population(meta)["statement"]],
         "verification": VERIFICATION,
     }
