@@ -40,6 +40,8 @@ Status: the format, its validation and versioned storage (BAL-017), and assignme
 
 ### Rule types
 
+Each rule type supports SOC 2, ISO 27001 and NIST 800-53 controls through the default control mapping, which an organization can change ([CONTROL_MAPPING.md](CONTROL_MAPPING.md)).
+
 | `type` | Fields | Passes when |
 | --- | --- | --- |
 | `gitlab.project.visibility` | `allowed`: 1 to 3 distinct values from `private`, `internal`, `public` | The project's visibility is in `allowed`. |
