@@ -78,6 +78,8 @@ export const scopeRefusalReasons: Record<string, string> = {
   not_active: "the exclusion has already ended",
   not_proposed: "the exclusion was already decided",
   own_change: "you proposed this exclusion, so someone else must decide it",
+  duplicate_target: "the same project or group is listed twice",
+  exclusion_unknown: "that exclusion no longer exists",
 };
 
 export function listExclusions(
