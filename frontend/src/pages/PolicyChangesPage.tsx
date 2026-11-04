@@ -16,6 +16,7 @@ import { useAuth } from "../auth/context";
 import type { CurrentUser } from "../auth/session";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { MappingReview } from "../controls/MappingReview";
+import { ScopeReview } from "../inventory/ScopeReview";
 import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
 import { lineDiff } from "../policies/diff";
 import { baselineHref, canWritePolicies, changeText, personText } from "../policies/format";
@@ -347,6 +348,7 @@ export function PolicyChangesPage() {
         {waiting}
       </section>
       <MappingReview reload={reload} onDecided={decided} />
+      <ScopeReview reload={reload} onDecided={decided} />
       <section aria-labelledby="history-title" className="space-y-3">
         <h2 id="history-title" className="text-lg font-semibold">
           Decided changes

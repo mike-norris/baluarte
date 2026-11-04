@@ -209,15 +209,15 @@ export const refusalReasons: Record<string, string> = {
   own_change: "you proposed this change, so someone else must decide it",
 };
 
-function reasonSentence(code: string): string {
-  return refusalReasons[code] ?? code.replace(/_/g, " ");
-}
-
 /**
  * The API's explanation of a refusal: a plain message, validation issues, or reason codes
- * (``code``, ``reasons`` or ``codes``) turned into sentences.
+ * (``code``, ``reasons`` or ``codes``) turned into sentences from ``reasons``.
  */
-export function refusalText(detail: unknown): string | null {
+export function refusalText(
+  detail: unknown,
+  reasons: Record<string, string> = refusalReasons,
+): string | null {
+  const reasonSentence = (code: string) => reasons[code] ?? code.replace(/_/g, " ");
   if (typeof detail === "string") {
     return /^[a-z]+(_[a-z]+)+$/.test(detail) ? reasonSentence(detail) : detail;
   }
@@ -248,7 +248,13 @@ export function refusalText(detail: unknown): string | null {
   return null;
 }
 
-async function send<T>(path: string, body: unknown, csrfToken: string): Promise<T> {
+/** POST a change with the CSRF token; a refusal's reason codes become sentences from ``reasons``. */
+export async function postChange<T>(
+  path: string,
+  body: unknown,
+  csrfToken: string,
+  reasons: Record<string, string> = refusalReasons,
+): Promise<T> {
   let response: Response;
   try {
     response = await fetch(path, {
@@ -271,7 +277,10 @@ async function send<T>(path: string, body: unknown, csrfToken: string): Promise<
     } catch {
       detail = null;
     }
-    throw new ApiError(response.status, changeFailure(response.status, refusalText(detail)));
+    throw new ApiError(
+      response.status,
+      changeFailure(response.status, refusalText(detail, reasons)),
+    );
   }
   return (await response.json()) as T;
 }
@@ -280,7 +289,7 @@ export function proposeMappingChange(
   request: MappingChangeRequest,
   csrfToken: string,
 ): Promise<MappingChange> {
-  return send("/api/v1/control-mapping/changes", request, csrfToken);
+  return postChange("/api/v1/control-mapping/changes", request, csrfToken);
 }
 
 export function decideMappingChange(
@@ -289,7 +298,7 @@ export function decideMappingChange(
   note: string | null,
   csrfToken: string,
 ): Promise<MappingChange> {
-  return send(
+  return postChange(
     `/api/v1/control-mapping/changes/${String(id)}/${decision}`,
     note === null ? {} : { note },
     csrfToken,

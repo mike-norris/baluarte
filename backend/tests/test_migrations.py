@@ -38,6 +38,7 @@ TABLES = {
     "policy_change",
     "policy_exception",
     "remediation_plan",
+    "scope_exclusion",
     "setup_session",
     "setup_state",
     "user_session",

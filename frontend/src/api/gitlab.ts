@@ -1,6 +1,7 @@
 /** Types and calls for the GitLab inventory endpoints (backend/README.md). */
 
 import { getJson } from "./client";
+import type { Monitoring } from "./scope";
 
 export type InventoryState = "active" | "missing" | "inaccessible";
 export type Visibility = "private" | "internal" | "public";
@@ -17,6 +18,8 @@ interface Tracked {
   last_seen_at: string;
   last_error: string | null;
   last_error_at: string | null;
+  /** Whether it is excluded from monitoring, and how; absent from older servers. */
+  monitoring?: Monitoring;
 }
 
 export interface Group extends Tracked {
@@ -36,6 +39,8 @@ export interface Project extends Tracked {
 export interface Page<T> {
   items: T[];
   next_after_id: number | null;
+  /** How many excluded from monitoring were left out, when they are hidden. */
+  excluded_hidden?: number;
 }
 
 export interface Run {
@@ -102,6 +107,8 @@ export interface InventoryFilters {
   visibility: Visibility | "";
   archived: "true" | "false" | "";
   hasError: boolean;
+  /** Show projects and groups excluded from monitoring; the API hides them by default. */
+  showExcluded: boolean;
 }
 
 function common(filters: InventoryFilters, afterId: number | null) {
@@ -109,6 +116,7 @@ function common(filters: InventoryFilters, afterId: number | null) {
     search: filters.search.trim(),
     state: filters.state,
     has_error: filters.hasError ? true : null,
+    monitoring: filters.showExcluded ? "all" : null,
     after_id: afterId,
     limit: 100,
   };
@@ -159,7 +167,7 @@ export interface ProjectDetail {
   ancestry: Ancestry;
   collection: KindFreshness;
   /** Why baselines are not evaluated for this project, or null when they are. */
-  not_evaluated: "archived" | null;
+  not_evaluated: "archived" | "excluded" | null;
 }
 
 export function getGroup(gitlabId: number, signal?: AbortSignal): Promise<GroupDetail> {

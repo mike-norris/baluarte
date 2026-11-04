@@ -22,6 +22,7 @@ export function readFilters(params: URLSearchParams): {
       visibility: oneOf(params.get("visibility"), visibilities),
       archived: oneOf(params.get("archived"), ["true", "false"] as const),
       hasError: params.get("has_error") === "true",
+      showExcluded: params.get("excluded") === "show",
     },
   };
 }
@@ -34,9 +35,11 @@ export function writeFilters(view: InventoryView, filters: InventoryFilters): UR
   if (view === "projects" && filters.visibility) params.set("visibility", filters.visibility);
   if (view === "projects" && filters.archived) params.set("archived", filters.archived);
   if (filters.hasError) params.set("has_error", "true");
+  if (filters.showExcluded) params.set("excluded", "show");
   return params;
 }
 
+/** Whether a filter narrows the list; showing excluded items widens it, so it does not count. */
 export function isFiltered(filters: InventoryFilters): boolean {
   return Boolean(
     filters.search.trim() ||

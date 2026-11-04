@@ -33,7 +33,10 @@ from typing import Any
 ROW_FILES = (".csv", ".jsonl")
 UNLISTED = ("manifest.json", "SHA256SUMS")
 # Contents an export format must have beyond what its manifest lists: exceptions from v2.
-REQUIRED = {"baluarte.evidence-export/v2": {"zip": "exceptions.csv", "json": "exceptions"}}
+REQUIRED = {
+    "baluarte.evidence-export/v2": {"zip": "exceptions.csv", "json": "exceptions"},
+    "baluarte.evidence-export/v3": {"zip": "exceptions.csv", "json": "exceptions"},
+}
 # The members of a JSON export that are neither sections nor the manifest.
 METADATA = ("format", "export_id", "generated_at", "instance", "scope", "freshness")
 

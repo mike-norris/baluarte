@@ -54,7 +54,7 @@ POLICY_ORIGINS = ("policy_project", "linked_source")
 RUN_STATUSES = ("running", "succeeded", "partial", "failed")
 ANCESTRIES = ("complete", "incomplete")
 CAPABILITY_STATUSES = ("not_required", "supported", "unsupported", "unknown")
-FINDING_RESOLUTIONS = ("passed", "no_longer_applies", "project_archived")
+FINDING_RESOLUTIONS = ("passed", "no_longer_applies", "project_archived", "project_excluded")
 EXCEPTION_STATES = ("requested", "approved", "rejected", "revoked", "expired")
 # Longest an exception may last, from its request.
 MAX_EXCEPTION_DAYS = 365
@@ -67,6 +67,8 @@ MAPPING_FRAMEWORKS = ("soc2", "iso27001", "nist_800_53_moderate")
 # Length of a control mapping change's justification, and of its evidence reference.
 MIN_JUSTIFICATION = 20
 MAX_JUSTIFICATION = 2000
+SCOPE_TARGET_TYPES = ("project", "group", "personal_namespaces")
+SCOPE_EXCLUSION_STATES = ("proposed", "active", "rejected", "ended")
 MAX_EVIDENCE_REF = 500
 # Longest a compliance exception may last, from its request, and the length of its texts.
 MAX_COMPLIANCE_EXCEPTION_DAYS = 365
@@ -813,6 +815,107 @@ class ControlMappingChange(Base):
     decided_by_user_id: Mapped[int | None] = mapped_column(BigInteger)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decision_note: Mapped[str | None] = mapped_column(Text)
+
+
+class ScopeExclusion(Base):
+    """A project, a group or every personal-namespace project taken out of monitoring.
+
+    Excluded projects stay in the inventory but are not evaluated or read in detail
+    (``baluarte.scope``). Rows proposed together share ``batch_id`` and are decided together.
+    Made while review is required (the ``governance`` setting) a row is ``proposed`` until
+    someone other than the proposer approves (``active``) or rejects the batch; otherwise it is
+    ``active`` at once with ``self_approved`` set. Ending an exclusion (``ended``) brings the
+    projects back into monitoring and needs its own justification, but no second person.
+
+    A trigger allows only ``proposed`` -> ``active`` | ``rejected`` and ``active`` -> ``ended``,
+    changes nothing but the decision or the end, and rejects ``DELETE``. ``target_id`` is the
+    GitLab ID (null for ``personal_namespaces``); ``target_path`` is its path when proposed.
+    User IDs are recorded values, like ``audit_event.actor``, and are not foreign keys.
+    """
+
+    __tablename__ = "scope_exclusion"
+    __table_args__ = (
+        Index(
+            "uq_scope_exclusion_open",
+            "instance_id",
+            "target_type",
+            text("coalesce(target_id, 0)"),
+            unique=True,
+            postgresql_where=text("state IN ('proposed', 'active')"),
+        ),
+        Index("ix_scope_exclusion_batch", "batch_id"),
+        Index("ix_scope_exclusion_state", "instance_id", "state"),
+        one_of("target_type", SCOPE_TARGET_TYPES),
+        one_of("state", SCOPE_EXCLUSION_STATES),
+        CheckConstraint(
+            "(target_id IS NULL) = (target_type = 'personal_namespaces')",
+            name="target_id_unless_personal",
+        ),
+        CheckConstraint(
+            f"length(justification) BETWEEN {MIN_JUSTIFICATION} AND {MAX_JUSTIFICATION}",
+            name="justification_length",
+        ),
+        CheckConstraint(
+            f"end_justification IS NULL OR length(end_justification) "
+            f"BETWEEN {MIN_JUSTIFICATION} AND {MAX_JUSTIFICATION}",
+            name="end_justification_length",
+        ),
+        CheckConstraint(
+            "(state = 'proposed') = (decided_at IS NULL)", name="decided_unless_proposed"
+        ),
+        CheckConstraint(
+            "(decided_at IS NULL) = (decided_by IS NULL) "
+            "AND (decided_at IS NULL) = (decided_by_user_id IS NULL)",
+            name="decision_complete",
+        ),
+        CheckConstraint("(state = 'ended') = (ended_at IS NOT NULL)", name="ended_when_ended"),
+        CheckConstraint(
+            "(ended_at IS NULL) = (ended_by IS NULL) "
+            "AND (ended_at IS NULL) = (ended_by_user_id IS NULL) "
+            "AND (ended_at IS NULL) = (end_justification IS NULL)",
+            name="end_complete",
+        ),
+        CheckConstraint(
+            "NOT review_required OR decided_by_user_id IS NULL "
+            "OR decided_by_user_id <> proposed_by_user_id",
+            name="decided_by_another_user",
+        ),
+        CheckConstraint(
+            "review_required OR state IN ('active', 'ended')", name="unreviewed_is_applied"
+        ),
+        CheckConstraint(
+            "self_approved = NOT review_required", name="self_approved_when_unreviewed"
+        ),
+        CheckConstraint(
+            "NOT self_approved OR decided_by_user_id = proposed_by_user_id",
+            name="self_approved_by_proposer",
+        ),
+        CheckConstraint(
+            "state <> 'rejected' OR length(decision_note) > 0", name="rejection_explained"
+        ),
+    )
+
+    id: Mapped[int] = pk()
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    target_type: Mapped[str] = mapped_column(Text)
+    target_id: Mapped[int | None] = mapped_column(BigInteger)
+    target_path: Mapped[str | None] = mapped_column(Text)
+    batch_id: Mapped[str] = mapped_column(Text)
+    justification: Mapped[str] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(Text)
+    review_required: Mapped[bool] = mapped_column(Boolean)
+    self_approved: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    proposed_by: Mapped[str] = mapped_column(Text)
+    proposed_by_user_id: Mapped[int] = mapped_column(BigInteger)
+    proposed_at: Mapped[datetime] = utc_now()
+    decided_by: Mapped[str | None] = mapped_column(Text)
+    decided_by_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_note: Mapped[str | None] = mapped_column(Text)
+    ended_by: Mapped[str | None] = mapped_column(Text)
+    ended_by_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    end_justification: Mapped[str | None] = mapped_column(Text)
 
 
 class ComplianceException(Base):

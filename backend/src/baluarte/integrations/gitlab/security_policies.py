@@ -48,6 +48,7 @@ from baluarte.integrations.gitlab.client import (
     Unauthorized,
     UnsupportedField,
 )
+from baluarte.scope.exclusions import coverage
 
 logger = logging.getLogger(__name__)
 
@@ -380,15 +381,25 @@ class Discovery:
 
 
 def _targets(engine: Engine, instance_id: int) -> list[Target]:
+    """Active groups and projects in monitoring scope (``baluarte.scope``)."""
     with Session(engine) as db:
+        scope = coverage(db, instance_id)
         groups = db.execute(
             select(GitLabGroup.id, GitLabGroup.full_path)
-            .where(GitLabGroup.instance_id == instance_id, GitLabGroup.state == "active")
+            .where(
+                GitLabGroup.instance_id == instance_id,
+                GitLabGroup.state == "active",
+                ~scope.group_excluded(),
+            )
             .order_by(GitLabGroup.id)
         ).all()
         projects = db.execute(
             select(GitLabProject.id, GitLabProject.path_with_namespace)
-            .where(GitLabProject.instance_id == instance_id, GitLabProject.state == "active")
+            .where(
+                GitLabProject.instance_id == instance_id,
+                GitLabProject.state == "active",
+                scope.project_included(),
+            )
             .order_by(GitLabProject.id)
         ).all()
     return [Target("group", row_id, path) for row_id, path in groups] + [

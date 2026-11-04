@@ -16,6 +16,7 @@ A finding becomes a step only when all of these hold. Otherwise it is listed und
 | It is `open`, not `resolved` or `excepted` | `resolved`, `excepted` |
 | Its latest result is `fail`; `unknown` and `unsupported` are never planned | `latest_unknown`, `latest_unsupported`, ... |
 | The project is `active` in the inventory and not archived | `project_missing`, `project_inaccessible`, `project_archived` |
+| The project is in monitoring scope ([MONITORING_SCOPE.md](MONITORING_SCOPE.md)) | `project_excluded` |
 | The failure has evidence that was read successfully | `evidence_missing` |
 | The evidence still matches its SHA-256 digest | `evidence_digest_mismatch` |
 | The evidence is still the latest of its kind for the project | `evidence_not_latest` |

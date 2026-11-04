@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from baluarte.db.models import GitLabProject
 from baluarte.evidence.observations import Observed, Provenance, record
 from baluarte.integrations.gitlab.client import GitLabClient
+from baluarte.scope.exclusions import coverage
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +97,9 @@ def unread(reader: Reader, target: ProjectTarget, status: str, error: str) -> Ob
 
 
 def targets(engine: Engine, instance_id: int) -> list[ProjectTarget]:
+    """Active projects in monitoring scope; excluded projects are not read (``baluarte.scope``)."""
     with Session(engine) as db:
+        scope = coverage(db, instance_id)
         rows = db.execute(
             select(
                 GitLabProject.id,
@@ -106,7 +109,11 @@ def targets(engine: Engine, instance_id: int) -> list[ProjectTarget]:
                 GitLabProject.namespace_gitlab_id,
                 GitLabProject.namespace_kind,
             )
-            .where(GitLabProject.instance_id == instance_id, GitLabProject.state == "active")
+            .where(
+                GitLabProject.instance_id == instance_id,
+                GitLabProject.state == "active",
+                scope.project_included(),
+            )
             .order_by(GitLabProject.id)
         ).all()
     return [ProjectTarget(*row) for row in rows]

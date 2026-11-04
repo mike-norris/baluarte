@@ -3,7 +3,7 @@
  * and why, a project's latest result for each rule, and the GitLab security policies reaching it.
  */
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router";
 
 import { ApiError } from "../api/client";
@@ -21,6 +21,7 @@ import { ErrorMessage } from "../components/ErrorMessage";
 import { linkClass } from "../components/styles";
 import { outcomeLabels, reasonHelp, severityLabels } from "../findings/format";
 import { statusLabel } from "../freshness/status";
+import { ExclusionNotice } from "../inventory/ExclusionNotice";
 import { stateHelp, stateLabels, visibilityLabel } from "../inventory/format";
 import { ResolutionView } from "../policies/EffectivePanel";
 import { baselineHref, gapReasons } from "../policies/format";
@@ -229,6 +230,8 @@ function ResultRow({ item, gitlabId }: { item: Evaluation; gitlabId: number }) {
 
 const archivedNotice =
   "Archived: not checked by baselines. Findings were resolved when it was archived.";
+const excludedNotice =
+  "Excluded from monitoring: not checked by baselines. Findings were resolved when it was excluded and reopen if it is included again and still fails.";
 
 /** The latest result of each rule, grouped by the baseline version it came from. */
 function Results({ gitlabId }: { gitlabId: number }) {
@@ -388,6 +391,23 @@ function isNotFound(error: ApiError | undefined): boolean {
   return error?.status === 404;
 }
 
+/** Monitoring changed from this page: say what happened and reload the page's facts. */
+function useScopeChange(reload: () => void) {
+  const [message, setMessage] = useState<string | null>(null);
+  const notice = message ? (
+    <p role="status" className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm">
+      {message}
+    </p>
+  ) : null;
+  return {
+    notice,
+    changed: (text: string) => {
+      setMessage(text);
+      reload();
+    },
+  };
+}
+
 export function ProjectPage() {
   const gitlabId = useGitlabId();
   const loaded = useLoad(`project:${String(gitlabId)}`, (signal) =>
@@ -395,10 +415,12 @@ export function ProjectPage() {
       ? Promise.reject(new ApiError(404, "Not found"))
       : getProject(gitlabId, signal),
   );
+  const scope = useScopeChange(loaded.retry);
   if (gitlabId === null || isNotFound(loaded.error)) return <NotFound kind="project" />;
   if (loaded.error) return <ErrorMessage error={loaded.error} retry={loaded.retry} />;
   if (!loaded.data) return <Loading what="project" />;
   const { project, ancestry, collection, not_evaluated } = loaded.data;
+  const excluded = project.monitoring?.excluded === true || not_evaluated === "excluded";
   return (
     <section aria-labelledby="page-title" className="space-y-6">
       <Header kind="project" path={project.path_with_namespace} ancestry={ancestry}>
@@ -422,13 +444,20 @@ export function ProjectPage() {
         )}
         <CollectionFact collection={collection} />
       </Header>
+      <ExclusionNotice
+        monitoring={project.monitoring}
+        type="project"
+        path={project.path_with_namespace}
+        onChanged={scope.changed}
+      />
+      {scope.notice}
       <InEffect kind="project" gitlabId={project.gitlab_id} />
-      {not_evaluated === "archived" ? (
+      {not_evaluated === "archived" || excluded ? (
         <section aria-labelledby="results" className={card}>
           <h2 id="results" className="text-lg font-semibold">
             Latest results
           </h2>
-          <p className="text-sm text-slate-600">{archivedNotice}</p>
+          <p className="text-sm text-slate-600">{excluded ? excludedNotice : archivedNotice}</p>
         </section>
       ) : (
         <Results gitlabId={project.gitlab_id} />
@@ -443,6 +472,7 @@ export function GroupPage() {
   const loaded = useLoad(`group:${String(gitlabId)}`, (signal) =>
     gitlabId === null ? Promise.reject(new ApiError(404, "Not found")) : getGroup(gitlabId, signal),
   );
+  const scope = useScopeChange(loaded.retry);
   if (gitlabId === null || isNotFound(loaded.error)) return <NotFound kind="group" />;
   if (loaded.error) return <ErrorMessage error={loaded.error} retry={loaded.retry} />;
   if (!loaded.data) return <Loading what="group" />;
@@ -470,6 +500,13 @@ export function GroupPage() {
         )}
         <CollectionFact collection={collection} />
       </Header>
+      <ExclusionNotice
+        monitoring={group.monitoring}
+        type="group"
+        path={group.full_path}
+        onChanged={scope.changed}
+      />
+      {scope.notice}
       <InEffect kind="group" gitlabId={group.gitlab_id} />
       <SecurityPolicies kind="group" gitlabId={group.gitlab_id} />
     </section>

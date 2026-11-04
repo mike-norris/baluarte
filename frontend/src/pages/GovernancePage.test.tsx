@@ -39,8 +39,8 @@ const ASSIGN = "POST /api/v1/policy-assignments";
 const TREE = "GET /api/v1/policy-assignments/tree";
 const SUMMARY = "GET /api/v1/evaluations/summary";
 const BASELINE_SUMMARY = "GET /api/v1/evaluations/summary?policy=starter-baseline";
-const GROUP_SEARCH = "GET /api/v1/gitlab/groups?search=platform&state=active&limit=100";
-const PROJECT_SEARCH = "GET /api/v1/gitlab/projects?search=api&state=active&limit=100";
+const GROUP_SEARCH = "GET /api/v1/gitlab/groups?search=platform&state=active&monitoring=all&limit=100";
+const PROJECT_SEARCH = "GET /api/v1/gitlab/projects?search=api&state=active&monitoring=all&limit=100";
 
 const auditor: CurrentUser = {
   ...analyst,

@@ -7,7 +7,7 @@ from typing import Annotated, Literal
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.orm import Session
 
 from baluarte import audit
@@ -40,6 +40,7 @@ from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_se
 from baluarte.jobs import queue
 from baluarte.policy.assignments import Gap, group_ancestry
 from baluarte.policy.evaluation.runner import not_evaluated
+from baluarte.scope.exclusions import Coverage, Covering, coverage
 from baluarte.settings import ConfigurationError
 
 logger = logging.getLogger(__name__)
@@ -262,6 +263,45 @@ _STATE_DOC = (
 )
 
 
+MonitoringFilter = Literal["included", "excluded", "all"]
+_MONITORING_DOC = (
+    " `monitoring` says whether the item is out of monitoring scope and which exclusion covers "
+    "it (`via`: the item itself (`project` or `group`), an excluded parent `group`, or "
+    "`personal_namespaces`; `path` is the excluded project or group). Filter with `monitoring`: "
+    "`included` (the default) leaves excluded items out and counts them in `excluded_hidden`; "
+    "`excluded` or `all` list them."
+)
+
+
+class Monitoring(BaseModel):
+    excluded: bool
+    exclusion_id: int | None
+    via: Literal["project", "group", "personal_namespaces"] | None
+    path: str | None
+
+
+def monitoring_of(covering: Covering | None) -> Monitoring:
+    if covering is None:
+        return Monitoring(excluded=False, exclusion_id=None, via=None, path=None)
+    return Monitoring(
+        excluded=True, exclusion_id=covering.exclusion_id, via=covering.via, path=covering.path
+    )
+
+
+def _monitoring_condition(
+    monitoring: MonitoringFilter, excluded: ColumnElement[bool]
+) -> ColumnElement[bool] | None:
+    if monitoring == "included":
+        return ~excluded
+    if monitoring == "excluded":
+        return excluded
+    return None
+
+
+def _scope(db: Session, url: str) -> Coverage:
+    return coverage(db, instance_id_for(db, url))
+
+
 class GroupOut(BaseModel):
     id: int
     gitlab_id: int
@@ -274,11 +314,23 @@ class GroupOut(BaseModel):
     last_seen_at: datetime
     last_error: str | None
     last_error_at: datetime | None
+    monitoring: Monitoring
 
 
 class GroupPage(BaseModel):
     items: list[GroupOut]
     next_after_id: int | None
+    # Excluded groups that match the other filters but were left out (monitoring=included).
+    excluded_hidden: int
+
+
+def _group_out(group: GitLabGroup, scope: Coverage) -> GroupOut:
+    return GroupOut.model_validate(
+        {
+            **{key: getattr(group, key) for key in GroupOut.model_fields if key != "monitoring"},
+            "monitoring": monitoring_of(scope.for_group(group.gitlab_id)),
+        }
+    )
 
 
 def _like(text: str) -> str:
@@ -289,7 +341,7 @@ def _like(text: str) -> str:
     "/groups",
     response_model=GroupPage,
     summary="Discovered groups and subgroups",
-    description="Groups of the configured instance in ID order. " + _STATE_DOC,
+    description="Groups of the configured instance in ID order. " + _STATE_DOC + _MONITORING_DOC,
 )
 def list_groups(
     _: Annotated[Principal, Depends(require(Permission.INVENTORY_READ))],
@@ -298,18 +350,18 @@ def list_groups(
     search: Annotated[str | None, Query(min_length=1, max_length=200)] = None,
     parent_gitlab_id: Annotated[int | None, Query(gt=0)] = None,
     has_error: Annotated[bool | None, Query()] = None,
+    monitoring: Annotated[MonitoringFilter, Query()] = "included",
     after_id: Annotated[int | None, Query(gt=0)] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> GroupPage:
     url = _configured_url()
     if url is None:
-        return GroupPage(items=[], next_after_id=None)
+        return GroupPage(items=[], next_after_id=None, excluded_hidden=0)
+    scope = _scope(db, url)
     statement = (
         select(GitLabGroup)
         .join(GitLabInstance, GitLabInstance.id == GitLabGroup.instance_id)
         .where(GitLabInstance.base_url == url)
-        .order_by(GitLabGroup.id)
-        .limit(limit + 1)
     )
     if state is not None:
         statement = statement.where(GitLabGroup.state == state)
@@ -321,11 +373,23 @@ def list_groups(
         statement = statement.where(
             GitLabGroup.last_error.is_not(None) if has_error else GitLabGroup.last_error.is_(None)
         )
+    hidden = 0
+    if monitoring == "included":
+        hidden = db.execute(
+            select(func.count()).select_from(statement.where(scope.group_excluded()).subquery())
+        ).scalar_one()
+    condition = _monitoring_condition(monitoring, scope.group_excluded())
+    if condition is not None:
+        statement = statement.where(condition)
     if after_id is not None:
         statement = statement.where(GitLabGroup.id > after_id)
-    rows = db.scalars(statement).all()
-    items = [GroupOut.model_validate(row, from_attributes=True) for row in rows[:limit]]
-    return GroupPage(items=items, next_after_id=items[-1].id if len(rows) > limit else None)
+    rows = db.scalars(statement.order_by(GitLabGroup.id).limit(limit + 1)).all()
+    items = [_group_out(row, scope) for row in rows[:limit]]
+    return GroupPage(
+        items=items,
+        next_after_id=items[-1].id if len(rows) > limit else None,
+        excluded_hidden=hidden,
+    )
 
 
 class ProjectOut(BaseModel):
@@ -343,11 +407,25 @@ class ProjectOut(BaseModel):
     last_seen_at: datetime
     last_error: str | None
     last_error_at: datetime | None
+    monitoring: Monitoring
 
 
 class ProjectPage(BaseModel):
     items: list[ProjectOut]
     next_after_id: int | None
+    # Excluded projects that match the other filters but were left out (monitoring=included).
+    excluded_hidden: int
+
+
+def _project_out(project: GitLabProject, scope: Coverage) -> ProjectOut:
+    return ProjectOut.model_validate(
+        {
+            **{
+                key: getattr(project, key) for key in ProjectOut.model_fields if key != "monitoring"
+            },
+            "monitoring": monitoring_of(scope.of(project)),
+        }
+    )
 
 
 @router.get(
@@ -357,7 +435,7 @@ class ProjectPage(BaseModel):
     description="Projects of the configured instance in ID order, archived ones included. "
     "`visibility` and `default_branch` are null when unknown or (for the branch) when the "
     "repository is empty. `namespace_kind` is `group`, `user` (a personal project) or null "
-    "when not yet known. " + _STATE_DOC,
+    "when not yet known. " + _STATE_DOC + _MONITORING_DOC,
 )
 def list_projects(
     _: Annotated[Principal, Depends(require(Permission.INVENTORY_READ))],
@@ -369,18 +447,18 @@ def list_projects(
     visibility: Annotated[Literal["private", "internal", "public"] | None, Query()] = None,
     archived: Annotated[bool | None, Query()] = None,
     has_error: Annotated[bool | None, Query()] = None,
+    monitoring: Annotated[MonitoringFilter, Query()] = "included",
     after_id: Annotated[int | None, Query(gt=0)] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> ProjectPage:
     url = _configured_url()
     if url is None:
-        return ProjectPage(items=[], next_after_id=None)
+        return ProjectPage(items=[], next_after_id=None, excluded_hidden=0)
+    scope = _scope(db, url)
     statement = (
         select(GitLabProject)
         .join(GitLabInstance, GitLabInstance.id == GitLabProject.instance_id)
         .where(GitLabInstance.base_url == url)
-        .order_by(GitLabProject.id)
-        .limit(limit + 1)
     )
     if state is not None:
         statement = statement.where(GitLabProject.state == state)
@@ -402,11 +480,23 @@ def list_projects(
             if has_error
             else GitLabProject.last_error.is_(None)
         )
+    hidden = 0
+    if monitoring == "included":
+        hidden = db.execute(
+            select(func.count()).select_from(statement.where(scope.project_excluded()).subquery())
+        ).scalar_one()
+    condition = _monitoring_condition(monitoring, scope.project_excluded())
+    if condition is not None:
+        statement = statement.where(condition)
     if after_id is not None:
         statement = statement.where(GitLabProject.id > after_id)
-    rows = db.scalars(statement).all()
-    items = [ProjectOut.model_validate(row, from_attributes=True) for row in rows[:limit]]
-    return ProjectPage(items=items, next_after_id=items[-1].id if len(rows) > limit else None)
+    rows = db.scalars(statement.order_by(GitLabProject.id).limit(limit + 1)).all()
+    items = [_project_out(row, scope) for row in rows[:limit]]
+    return ProjectPage(
+        items=items,
+        next_after_id=items[-1].id if len(rows) > limit else None,
+        excluded_hidden=hidden,
+    )
 
 
 class Ancestor(BaseModel):
@@ -436,8 +526,9 @@ class ProjectDetail(BaseModel):
     # The namespace group and its parents; empty for a personal project.
     ancestry: AncestryOut
     collection: KindFreshness
-    # Why baselines are not evaluated for this project: "archived", or null when they are.
-    not_evaluated: Literal["archived"] | None
+    # Why baselines are not evaluated for this project: "archived", "excluded" (out of
+    # monitoring scope), or null when they are.
+    not_evaluated: Literal["archived", "excluded"] | None
 
 
 def _ancestry_out(db: Session, instance_id: int, start: int | None, seen: set[int]) -> AncestryOut:
@@ -475,7 +566,8 @@ _DETAIL_DOC = (
     summary="One discovered group, its parents and collection freshness",
     description=_DETAIL_DOC
     + "`subgroups` and `projects` count its direct children in the inventory. "
-    + _STATE_DOC,
+    + _STATE_DOC
+    + " `monitoring` says whether it is out of monitoring scope.",
     responses={404: {"description": "The group is not in the inventory"}},
 )
 def read_group(
@@ -509,7 +601,7 @@ def read_group(
         )
     ).scalar_one()
     return GroupDetail(
-        group=GroupOut.model_validate(group, from_attributes=True),
+        group=_group_out(group, coverage(db, instance.id)),
         ancestry=_ancestry_out(db, instance.id, group.parent_gitlab_id, {gitlab_id}),
         subgroups=subgroups,
         projects=projects,
@@ -521,7 +613,10 @@ def read_group(
     "/projects/{gitlab_id}",
     response_model=ProjectDetail,
     summary="One discovered project, its groups and collection freshness",
-    description=_DETAIL_DOC + _STATE_DOC,
+    description=_DETAIL_DOC
+    + _STATE_DOC
+    + " `monitoring` says whether it is out of monitoring scope; such a project is not "
+    "evaluated (`not_evaluated: excluded`).",
     responses={404: {"description": "The project is not in the inventory"}},
 )
 def read_project(
@@ -544,11 +639,12 @@ def read_project(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such project in the inventory")
     settings, instance = configured
     start = None if project.namespace_kind == "user" else project.namespace_gitlab_id
+    out = _project_out(project, coverage(db, instance.id))
     return ProjectDetail(
-        project=ProjectOut.model_validate(project, from_attributes=True),
+        project=out,
         ancestry=_ancestry_out(db, instance.id, start, set()),
         collection=kind_freshness(db, instance.id, "projects", settings),
-        not_evaluated=not_evaluated(project),
+        not_evaluated=not_evaluated(project) or ("excluded" if out.monitoring.excluded else None),
     )
 
 

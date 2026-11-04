@@ -1,4 +1,5 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -9,6 +10,7 @@ import type { Coverage, CoverageRow } from "../api/securityPolicies";
 import { routes } from "../routes";
 import { analyst, json, mockApi } from "../test/api";
 import { EVALUATION_FRESHNESS, evaluationFreshness, freshness, kind } from "../test/freshness";
+import { SCOPE_ACTIVE, excludedVia, exclusion, exclusions, included } from "../test/scope";
 
 const ME = "GET /api/v1/auth/me";
 const FRESHNESS = "GET /api/v1/gitlab/freshness";
@@ -308,6 +310,91 @@ describe("a project's page", () => {
       "Yes",
     );
     expect(calls.map((call) => call.url)).not.toContain("/api/v1/gitlab/projects/105/evaluations");
+  });
+
+  it("shows a direct exclusion with its justification and includes the project again", async () => {
+    let excluded = true;
+    const calls = api({
+      ...projectRoutes,
+      [PROJECT]: () =>
+        json({
+          ...projectDetail,
+          project: {
+            ...projectDetail.project,
+            monitoring: excluded ? excludedVia("project", 31, "platform/api") : included,
+          },
+          not_evaluated: excluded ? "excluded" : null,
+        }),
+      [SCOPE_ACTIVE]: () =>
+        json(exclusions([exclusion(31, { target_id: 105, target_path: "platform/api" })])),
+      "POST /api/v1/scope/exclusions/end": () => {
+        excluded = false;
+        return json({ items: [] });
+      },
+    });
+    const user = userEvent.setup();
+    renderAt("/inventory/projects/105");
+
+    const notice = await screen.findByRole("region", { name: "Excluded from monitoring" });
+    expect(notice).toHaveTextContent("Excluded directly.");
+    expect(
+      await within(notice).findByText("Research prototypes are out of scope for the acme audit."),
+    ).toBeInTheDocument();
+    expect(notice).toHaveTextContent("Excluded by Ada Lovelace");
+    expect(screen.getByRole("region", { name: "Latest results" })).toHaveTextContent(
+      "Excluded from monitoring: not checked by baselines.",
+    );
+    expect(calls.map((call) => call.url)).not.toContain("/api/v1/gitlab/projects/105/evaluations");
+
+    await user.click(within(notice).getByRole("button", { name: "Include again" }));
+    const form = screen.getByRole("form", { name: "Include in monitoring again" });
+    await user.type(
+      within(form).getByLabelText("Justification"),
+      "The prototype became a product.",
+    );
+    await user.click(within(form).getByRole("button", { name: "Include again" }));
+
+    expect(
+      await screen.findByText(
+        "Included in monitoring again: 1 exclusion ended. The next evaluation checks them.",
+      ),
+    ).toHaveAttribute("role", "status");
+    const post = calls.find((call) => call.init?.method === "POST");
+    expect(post?.init?.body).toBe(
+      JSON.stringify({ ids: [31], justification: "The prototype became a product." }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("region", { name: "Excluded from monitoring" }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("points to the covering group instead of offering to include a project again", async () => {
+    api({
+      ...projectRoutes,
+      [PROJECT]: () =>
+        json({
+          ...projectDetail,
+          project: {
+            ...projectDetail.project,
+            monitoring: excludedVia("group", 32, "platform"),
+          },
+          not_evaluated: "excluded",
+        }),
+      [SCOPE_ACTIVE]: () =>
+        json(
+          exclusions([
+            exclusion(32, { target_type: "group", target_id: 42, target_path: "platform" }),
+          ]),
+        ),
+    });
+    renderAt("/inventory/projects/105");
+
+    const notice = await screen.findByRole("region", { name: "Excluded from monitoring" });
+    expect(notice).toHaveTextContent("Excluded with group platform.");
+    expect(notice).toHaveTextContent("Include it again from the Monitoring scope section");
+    expect(within(notice).queryByRole("button", { name: "Include again" })).not.toBeInTheDocument();
   });
 
   it("says coverage is unknown when GitLab security policies can't be read", async () => {

@@ -52,6 +52,7 @@ from baluarte.evidence.observations import latest, verify
 from baluarte.integrations.gitlab.projects import PROJECT_SOURCES
 from baluarte.policy.loader import parse_policy
 from baluarte.policy.schema import DefaultBranchProtectedRule, ProjectVisibilityRule, Rule
+from baluarte.scope.exclusions import exclusion_for
 
 PlanState = Literal["draft", "submitted", "approved", "rejected", "expired"]
 FORMAT = "baluarte.remediation-plan/v1"
@@ -326,6 +327,9 @@ def _plan_one(db: Session, instance_id: int, finding: Finding, built: _Built) ->
             "The project is archived; whether GitLab accepts setting changes on archived "
             "projects is unverified, so it is left for a manual change.",
         )
+        return
+    if exclusion_for(db, project) is not None:
+        skip("project_excluded", "The project is out of monitoring scope.")
         return
     evaluation = db.get_one(Evaluation, finding.latest_evaluation_id)
     observation = (

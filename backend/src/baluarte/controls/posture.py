@@ -30,7 +30,14 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from baluarte.controls.catalogue import CONTROLS, DEFAULT_MAPPING, MAPPING_VERSION, Control
-from baluarte.db.models import ControlMappingChange, Evaluation, EvaluationRun, Policy
+from baluarte.db.models import (
+    ControlMappingChange,
+    Evaluation,
+    EvaluationRun,
+    GitLabProject,
+    Policy,
+)
+from baluarte.scope.exclusions import coverage
 
 ControlStatus = Literal[
     "met",
@@ -189,7 +196,12 @@ def _rule_counts(db: Session, run: EvaluationRun | None) -> dict[str, list[RuleC
             Evaluation.project_id,
         )
         .join(Policy, Policy.id == Evaluation.policy_id)
-        .where(Evaluation.evaluation_run_id == run.id)
+        .join(GitLabProject, GitLabProject.id == Evaluation.project_id)
+        .where(
+            Evaluation.evaluation_run_id == run.id,
+            # Projects out of monitoring scope are not counted, even if the run judged them.
+            coverage(db, run.instance_id).project_included(),
+        )
     )
     for policy, version, rule_id, rule_type, outcome, project_id in rows:
         found[(rule_type, policy, version, rule_id)].add(outcome, project_id)

@@ -35,8 +35,9 @@ from baluarte.policy.evaluation.project import (
     collection_contexts,
     evaluate_project,
 )
-from baluarte.policy.evaluation.store import Tally, close_archived, store_project
+from baluarte.policy.evaluation.store import Tally, close_archived, close_excluded, store_project
 from baluarte.policy.exceptions import expire_due
+from baluarte.scope.exclusions import coverage
 from baluarte.settings import ConfigurationError
 
 logger = logging.getLogger(__name__)
@@ -158,8 +159,9 @@ def evaluate_all(
 ) -> tuple[int, Tally]:
     """Evaluate every project; returns the run ID and its counts.
 
-    The run's ``projects`` counts projects evaluated: archived projects are skipped, and the
-    findings they resolve are counted under ``findings.project_archived``.
+    The run's ``projects`` counts projects evaluated: archived projects and projects out of
+    monitoring (``baluarte.scope``) are skipped, and the findings they resolve are counted under
+    ``findings.project_archived`` and ``findings.project_excluded``.
     """
     with Session(engine) as db:
         instance_id = instance_for(db, settings.url).id
@@ -189,9 +191,14 @@ def evaluate_all(
                 page = _page(db, instance_id, after_id)
                 if not page:
                     break
+                # Read with each page, so an exclusion made or ended mid-run applies from here.
+                scope = coverage(db, instance_id)
                 for project in page:
                     if not_evaluated(project) == "archived":
                         close_archived(db, project, tally)
+                        continue
+                    if scope.of(project) is not None:
+                        close_excluded(db, project, tally)
                         continue
                     projects += 1
                     resolution = resolve_project(db, instance, project)
