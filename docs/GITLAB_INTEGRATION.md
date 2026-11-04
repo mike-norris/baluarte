@@ -98,6 +98,10 @@ Ancestry      { groups: [{ gitlab_id, full_path, state }],   # nearest first
 - **Counts:** `subgroups` and `projects` count the group's direct children in the inventory, personal projects excluded.
 - **`collection`:** the freshness of the discovery that records the item, in the shape of `/gitlab/freshness` `collections`. A `state` from a failed or stale collection is not current.
 
+### Monitoring scope
+
+Discovery records every project and group the token can see, including those taken out of monitoring ([MONITORING_SCOPE.md](MONITORING_SCOPE.md)). Every item carries `monitoring: {excluded, exclusion_id, via, path}`. The project and group lists take `monitoring=included|excluded|all`: the default, `included`, leaves excluded items out and returns how many matched the other filters in `excluded_hidden`. Detail reads always return the item. The per-project reads below and security policy discovery skip excluded projects (and, for security policies, excluded groups) and record nothing for them.
+
 ### Default-branch protection
 
 After a complete project listing and reconciliation, project discovery reads the protected branches of every `active` project that has a default branch, for the `gitlab.branch.default_protected` rule ([EVALUATION.md](EVALUATION.md#gitlabbranchdefault_protected)):
@@ -150,7 +154,7 @@ GitLab security policies live in a security policy project linked to a group or 
 
 ### Discovery
 
-`gitlab.discover_security_policies` (queued after each project discovery when readable, or by `POST /api/v1/gitlab/security-policies/discover` with `settings:manage`) reads every active group and project:
+`gitlab.discover_security_policies` (queued after each project discovery when readable, or by `POST /api/v1/gitlab/security-policies/discover` with `settings:manage`) reads every active group and project in [monitoring scope](MONITORING_SCOPE.md):
 
 - `securityPolicyProject`: the policy project linked directly to the target, if any.
 - For each type the capability probe marked `supported`: `relationship: INHERITED`, so the policies of the target and its ancestors. **Projects also pass `includeUnscoped: false`**, so GitLab returns only the policies whose `policy_scope` (projects, groups, compliance frameworks, archived and personal exclusions) includes the project. Baluarte does not re-implement scope matching.

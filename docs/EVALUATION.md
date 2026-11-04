@@ -279,6 +279,10 @@ Archived projects are not evaluated (decided in UAT, 2026-11-01). GitLab makes a
 
 `runner.not_evaluated(project)` is the one place that decides this.
 
+### Projects out of monitoring scope
+
+Projects an organization takes out of monitoring ([MONITORING_SCOPE.md](MONITORING_SCOPE.md)) are not evaluated either. The run writes no results for them and does not count them in `projects`; their `open` and `excepted` findings resolve with `resolution = project_excluded`, counted under `findings.project_excluded`. Result counts and control posture leave them out even before the next run. When an exclusion ends, the next run judges the projects again and a `fail` reopens the same finding. An archived project that is also excluded resolves as `project_archived`.
+
 ## Controls
 
 Findings list the framework controls their rule type supports (`controls`), and each control's status is derived from the latest successful run ([CONTROL_MAPPING.md](CONTROL_MAPPING.md#status)). Changing the mapping changes neither stored results nor findings.
