@@ -37,7 +37,7 @@ from baluarte.db.models import (
     UserSession,
 )
 from baluarte.main import create_app
-from baluarte.settings import ConfigurationError
+from baluarte.settings import ConfigurationError, development_mode
 
 CSRF = {"X-CSRF-Token": "csrf"}
 
@@ -114,7 +114,11 @@ def client(engine: Engine, user_id: int, *roles: Role) -> TestClient:
 
 @pytest.fixture
 def engine(migrated_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> Iterator[Engine]:
-    for name in ("BALUARTE_SESSION_IDLE_MINUTES", "BALUARTE_SESSION_LIFETIME_MINUTES"):
+    for name in (
+        "BALUARTE_SESSION_IDLE_MINUTES",
+        "BALUARTE_SESSION_LIFETIME_MINUTES",
+        "BALUARTE_DEVELOPMENT_MODE",
+    ):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(effective, "engine_provider", lambda: migrated_engine)
     posture.reset_audit_cache()
@@ -235,6 +239,71 @@ def test_a_value_below_the_minimum_is_refused(engine: Engine) -> None:
         },
     ]
     assert "settings.compliance_updated" not in actions(engine)
+
+
+@pytest.mark.db
+def test_development_mode_lets_one_person_turn_review_off(
+    engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    admin = client(engine, 1, Role.ADMIN)
+    assert admin.put("/api/v1/compliance/profile", json=body(["soc2"])).status_code == 200
+    assert admin.get("/api/v1/auth/me").json()["development_mode"] is False
+    assert (
+        admin.put("/api/v1/settings/governance", json={"require_review": False}).status_code == 409
+    )
+
+    monkeypatch.setenv("BALUARTE_DEVELOPMENT_MODE", "true")
+
+    assert admin.get("/api/v1/auth/me").json()["development_mode"] is True
+    turned_off = admin.put("/api/v1/settings/governance", json={"require_review": False})
+    assert turned_off.status_code == 200, turned_off.text
+    with Session(engine) as db:
+        event = db.scalars(
+            select(AuditEvent)
+            .where(AuditEvent.action == "settings.governance_updated")
+            .order_by(AuditEvent.id.desc())
+        ).first()
+    assert event is not None
+    assert event.details == {"require_review": False, "previous": True, "development_mode": True}
+    # Saving the profile with review off is allowed too; other minimums still hold.
+    assert (
+        admin.put(
+            "/api/v1/compliance/profile", json=body(["soc2"], require_review=False)
+        ).status_code
+        == 200
+    )
+    refused = admin.put(
+        "/api/v1/compliance/profile",
+        json=body(["nist_800_53_moderate"], session_idle_minutes=30, require_review=False),
+    )
+    assert refused.status_code == 409
+    assert [v["setting"] for v in refused.json()["detail"]["violations"]] == [
+        "session_idle_minutes"
+    ]
+    # The posture is not softened: review is still a control that is not met.
+    review = next(
+        item
+        for item in admin.get("/api/v1/compliance/posture").json()["controls"]
+        if item["id"] == "change-review"
+    )
+    assert review["status"] == "not_met"
+    assert "Development mode" in review["detail"]
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"), [("", False), ("false", False), ("TRUE", True), ("true", True)]
+)
+def test_development_mode_reads_true_or_false(
+    monkeypatch: pytest.MonkeyPatch, value: str, expected: bool
+) -> None:
+    monkeypatch.setenv("BALUARTE_DEVELOPMENT_MODE", value)
+    assert development_mode() is expected
+
+
+def test_development_mode_refuses_other_values(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("BALUARTE_DEVELOPMENT_MODE", "yes")
+    with pytest.raises(ConfigurationError, match="true or false"):
+        development_mode()
 
 
 @pytest.mark.parametrize(

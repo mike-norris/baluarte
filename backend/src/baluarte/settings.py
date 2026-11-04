@@ -14,6 +14,7 @@ from pathlib import Path
 from baluarte.logs import LogFormat, configure_logging, register_secret
 
 LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
+DEVELOPMENT_MODE = "BALUARTE_DEVELOPMENT_MODE"
 
 
 class ConfigurationError(RuntimeError):
@@ -22,6 +23,22 @@ class ConfigurationError(RuntimeError):
 
 def env(name: str) -> str:
     return os.environ.get(name, "").strip()
+
+
+def development_mode() -> bool:
+    """Whether the deployment runs Baluarte for development (``BALUARTE_DEVELOPMENT_MODE``).
+
+    Only the deployment's environment can set it, never the web UI. It lets an administrator turn
+    two-person review off although the compliance profile requires it, so one person can work
+    through changes; every change is then recorded as self-approved, and the posture still shows
+    the review control as not met. Never set it where the evidence is meant for an audit.
+    """
+    raw = env(DEVELOPMENT_MODE).lower()
+    if raw in ("", "false"):
+        return False
+    if raw == "true":
+        return True
+    raise ConfigurationError(f"{DEVELOPMENT_MODE} must be true or false")
 
 
 def read_secret(name: str, *, required: bool = False) -> str | None:

@@ -28,7 +28,7 @@ from baluarte.compliance.catalogue import CONTROLS, Control, FrameworkId
 from baluarte.compliance.exceptions import controls_in_force
 from baluarte.config import database_url
 from baluarte.db.models import AuditEvent, CollectionJob, ComplianceAttestation
-from baluarte.settings import ConfigurationError
+from baluarte.settings import ConfigurationError, development_mode
 
 logger = logging.getLogger(__name__)
 
@@ -144,6 +144,8 @@ def _setting(control: Control, profile: operations.Profile) -> Result:
     if required.met_by(value):
         return Result("met", f"{setting} is {value} (required {rule}).", evidence)
     where = " The deployment's environment sets it." if source == "deployment" else ""
+    if setting == operations.REVIEW and development_mode():
+        where += " Development mode allows this without an exception."
     return Result("not_met", f"{setting} is {value}; the profile requires {rule}.{where}", evidence)
 
 
@@ -517,6 +519,7 @@ def operations_summary(db: Session, context: Context | None = None) -> dict[str,
     profile = operations.load(db)
     return {
         "configured": profile.configured,
+        "development_mode": development_mode(),
         "frameworks": list(profile.frameworks),
         "settings": profile.settings,
         "posture": {

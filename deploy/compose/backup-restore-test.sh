@@ -31,11 +31,13 @@ docker run -d --name "$id-db" --network "$id" --network-alias db "${secret[@]}" 
   -e POSTGRES_PASSWORD_FILE=/run/secrets/postgres_password \
   postgres:17-alpine >/dev/null
 docker build -q -t "$image" backend >/dev/null
+# Over TCP: during first start the image runs a temporary server on the socket only, which
+# answers the socket and then restarts.
 for _ in $(seq 60); do
-  docker exec "$id-db" pg_isready -q -U baluarte -d baluarte && break
+  docker exec "$id-db" pg_isready -q -h 127.0.0.1 -U baluarte -d baluarte && break
   sleep 1
 done
-docker exec "$id-db" pg_isready -q -U baluarte -d baluarte || fail "database did not start"
+docker exec "$id-db" pg_isready -q -h 127.0.0.1 -U baluarte -d baluarte || fail "database did not start"
 
 psql() { docker exec -i "$id-db" psql -v ON_ERROR_STOP=1 -qtAX -U baluarte "$@"; }
 # Runs the app image against database $1 with the remaining arguments.

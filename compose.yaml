@@ -19,6 +19,8 @@ x-app-env: &app-env
   <<: *log-env
   BALUARTE_DATABASE_URL: postgresql://baluarte_app@db:5432/baluarte
   BALUARTE_DATABASE_PASSWORD_FILE: /run/secrets/app_database_password
+  # true lets one person turn two-person review off for development (docs/COMPLIANCE.md).
+  BALUARTE_DEVELOPMENT_MODE: ${BALUARTE_DEVELOPMENT_MODE:-false}
 
 x-database: &database
   environment: *app-env

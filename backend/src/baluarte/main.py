@@ -11,7 +11,7 @@ from baluarte.api import v1
 from baluarte.auth.settings import deployment_auth_present
 from baluarte.configuration import effective
 from baluarte.configuration.setup import issue_startup_code_when_ready
-from baluarte.settings import configure_logging_from_env
+from baluarte.settings import configure_logging_from_env, development_mode
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # Runs after uvicorn has configured its own loggers, so they are re-routed through ours.
     configure_logging_from_env()
     logger.info("baluarte %s API starting", __version__)
+    if development_mode():
+        logger.warning(
+            "development mode: two-person review may be turned off whatever the compliance "
+            "profile; evidence from this instance is not audit evidence"
+        )
     if not deployment_auth_present():
         # Until setup completes, each start issues a new setup code and logs it once.
         issue_startup_code_when_ready(lambda: effective.engine_provider())

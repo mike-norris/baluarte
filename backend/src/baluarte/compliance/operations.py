@@ -28,6 +28,7 @@ from baluarte.compliance.catalogue import (
 )
 from baluarte.configuration.store import OPERATIONS, read_setting, write_setting
 from baluarte.db.models import StoredSetting
+from baluarte.settings import development_mode
 
 GOVERNANCE = "governance"
 REVIEW = "require_review"
@@ -169,11 +170,17 @@ def violations(
     *,
     ignore: frozenset[str] = frozenset(),
 ) -> list[Violation]:
-    """Settings below the frameworks' minimum whose control has no exception in force."""
+    """Settings below the frameworks' minimum whose control has no exception in force.
+
+    In development mode (``baluarte.settings.development_mode``) review may be off whatever the
+    frameworks require; the posture still shows its control as not met.
+    """
     # Imported here: exceptions reads the profile to decide whether review is required.
     from baluarte.compliance.exceptions import controls_in_force
 
     excepted = controls_in_force(db)
+    if development_mode():
+        ignore = ignore | {REVIEW}
     found = []
     for name, required in minimums(frameworks).items():
         control = CONTROL_FOR_SETTING[name]
@@ -235,7 +242,11 @@ def write_review(db: Session, required: bool, actor: str) -> None:
         action="settings.governance_updated",
         resource_type="settings",
         resource_id=GOVERNANCE,
-        details={REVIEW: required, "previous": bool(previous)},
+        details={
+            REVIEW: required,
+            "previous": bool(previous),
+            **({"development_mode": True} if development_mode() else {}),
+        },
     )
 
 

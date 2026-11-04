@@ -3,6 +3,7 @@ import { NavLink, Outlet } from "react-router";
 import { useAuth } from "../auth/context";
 import { ComplianceAlertBanner } from "../compliance/ComplianceAlertBanner";
 import { CollectionAlertBanner } from "../freshness/CollectionAlertBanner";
+import { DevelopmentModeBanner } from "./DevelopmentModeBanner";
 import { FreshnessIndicator } from "../freshness/FreshnessIndicator";
 import { FreshnessProvider } from "../freshness/FreshnessProvider";
 import { visibleNavItems } from "../navigation";
@@ -52,6 +53,9 @@ export function Layout() {
             </div>
           </div>
         </header>
+        {session.status === "signed_in" && session.user.development_mode === true && (
+          <DevelopmentModeBanner />
+        )}
         {signedIn && <CollectionAlertBanner />}
         {session.status === "signed_in" && session.user.permissions.includes("compliance:read") && (
           <ComplianceAlertBanner />

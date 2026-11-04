@@ -18,7 +18,7 @@ The API and worker connect as that role. The password is sent to PostgreSQL as a
 
 ## Docker Compose
 
-Web, API, worker, and PostgreSQL for development, plus an optional `backup` profile (`baluarte-backup` image). Document required secrets, TLS reverse proxy, volume backup, and safe upgrades. Do not ship production default credentials. Backup and restore: [OPERATIONS.md](OPERATIONS.md).
+Web, API, worker, and PostgreSQL for development, plus an optional `backup` profile (`baluarte-backup` image). `BALUARTE_DEVELOPMENT_MODE=true` lets one person turn two-person review off while developing ([COMPLIANCE.md](COMPLIANCE.md#development-mode)); leave it unset anywhere the evidence matters. Document required secrets, TLS reverse proxy, volume backup, and safe upgrades. Do not ship production default credentials. Backup and restore: [OPERATIONS.md](OPERATIONS.md).
 
 ## Kubernetes
 
