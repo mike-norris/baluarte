@@ -46,11 +46,15 @@ from typing import Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, PositiveInt, model_validator
 from sqlalchemy import ColumnElement, Engine, and_, case, exists, func, or_, select, text
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from baluarte import __version__
 from baluarte.audit import details_digest
+from baluarte.compliance.catalogue import FrameworkId
 from baluarte.compliance.posture import operations_summary
+from baluarte.controls import catalogue as control_catalogue
+from baluarte.controls.posture import effective as effective_mapping
+from baluarte.controls.posture import mapping_summary
 from baluarte.db.models import (
     CollectionRun,
     Evaluation,
@@ -160,6 +164,12 @@ class ExportScope(BaseModel):
         None,
         description="Only findings in this state, and evaluations of their project and rule.",
     )
+    framework: FrameworkId | None = Field(
+        None, description="With control_id: only rules of the types mapped to that control."
+    )
+    control_id: str | None = Field(
+        None, min_length=1, max_length=20, description="A control of framework, e.g. CC8.1."
+    )
     since: AwareDatetime | None = Field(None, description="Evaluated at or after (inclusive).")
     until: AwareDatetime | None = Field(None, description="Evaluated before (exclusive).")
 
@@ -170,6 +180,8 @@ class ExportScope(BaseModel):
             raise ValueError("all cannot be combined with other scope fields")
         if not self.all and not narrowed:
             raise ValueError("choose a scope, or set all to true to export everything")
+        if (self.framework is None) != (self.control_id is None):
+            raise ValueError("framework and control_id go together")
         if self.since and self.until and self.since >= self.until:
             raise ValueError("since must be before until")
         if self.group is not None and self.group.strip("/") != self.group:
@@ -258,6 +270,7 @@ class EvidenceExport:
         self._observation_ids: set[int] = set()
         self._policy_ids: set[int] = set()
         self._exception_ids: set[int] = set()
+        self._mapped_types: list[str] | None = None
         self.result = ExportResult()
         self.summary = manifest.Summary()
 
@@ -296,7 +309,20 @@ class EvidenceExport:
             )
         return conditions
 
+    def _control_types(self) -> list[str] | None:
+        """The rule types mapped to the scope's control, or None when it names no control."""
+        if self.scope.framework is None or self.scope.control_id is None:
+            return None
+        if self._mapped_types is None:
+            mapping = effective_mapping(self.db)
+            self._mapped_types = mapping.rule_types(self.scope.framework, self.scope.control_id)
+        return self._mapped_types
+
     def _check_targets(self) -> None:
+        scope = self.scope
+        if scope.framework is not None and scope.control_id is not None:
+            if control_catalogue.control(scope.framework, scope.control_id) is None:
+                raise ScopeError(f"No control {scope.control_id!r} in {scope.framework}")
         if self.scope.group is not None:
             known = self.db.scalars(
                 select(GitLabGroup.id).where(
@@ -330,6 +356,9 @@ class EvidenceExport:
             conditions.append(Evaluation.rule_id == scope.rule)
         if scope.outcome is not None:
             conditions.append(Evaluation.outcome == scope.outcome)
+        types = self._control_types()
+        if types is not None:
+            conditions.append(Evaluation.rule_type.in_(types))
         if scope.since is not None:
             conditions.append(Evaluation.evaluated_at >= scope.since)
         if scope.until is not None:
@@ -363,6 +392,16 @@ class EvidenceExport:
             conditions.append(Finding.latest_outcome == scope.outcome)
         if scope.finding_state is not None:
             conditions.append(Finding.state == scope.finding_state)
+        types = self._control_types()
+        if types is not None:
+            # Aliased: the findings query already joins the latest evaluation.
+            typed = aliased(Evaluation)
+            conditions.append(
+                exists().where(
+                    typed.id == Finding.latest_evaluation_id,
+                    typed.rule_type.in_(types),
+                )
+            )
         # With a window: findings that were open at some point inside it.
         if scope.until is not None:
             conditions.append(Finding.first_seen_at < scope.until)
@@ -379,6 +418,17 @@ class EvidenceExport:
             conditions.append(PolicyException.policy_name == scope.policy)
         if scope.rule is not None:
             conditions.append(PolicyException.rule_id == scope.rule)
+        types = self._control_types()
+        if types is not None:
+            # A rule's type is recorded with its results, not with the exception.
+            typed = aliased(Evaluation)
+            conditions.append(
+                exists().where(
+                    typed.policy_name == PolicyException.policy_name,
+                    typed.rule_id == PolicyException.rule_id,
+                    typed.rule_type.in_(types),
+                )
+            )
         if scope.until is not None:
             conditions.append(PolicyException.requested_at < scope.until)
         if scope.since is not None:
@@ -769,6 +819,7 @@ class EvidenceExport:
             metadata_sha256=metadata_sha256,
             governance={"require_review": policy_changes.review_required(self.db)},
             operations=operations_summary(self.db),
+            control_mapping=mapping_summary(self.db),
         )
         self.result.manifest_sha256 = details_digest(built)
         return built
