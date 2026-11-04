@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from baluarte import audit
 from baluarte.auth.dependencies import Principal, database, require
 from baluarte.auth.roles import Permission
+from baluarte.controls.posture import Effective, effective
 from baluarte.db.models import (
     Evaluation,
     EvaluationRun,
@@ -104,6 +105,11 @@ class FindingException(BaseModel):
     in_force: bool
 
 
+class ControlRef(BaseModel):
+    framework: str
+    id: str
+
+
 class FindingOut(BaseModel):
     id: int
     project: ProjectRef
@@ -120,6 +126,9 @@ class FindingOut(BaseModel):
     # exception expired or was revoked reads as ``open`` even before the next evaluation.
     exception: FindingException | None
     latest_evaluation: EvaluationOut
+    # The framework controls the rule's type supports in the effective control mapping
+    # (docs/CONTROL_MAPPING.md).
+    controls: list[ControlRef] = []
 
 
 class FindingPage(BaseModel):
@@ -202,7 +211,7 @@ def _evaluation_out(row: Any) -> EvaluationOut:
     )
 
 
-def _finding_out(row: Any) -> FindingOut:
+def _finding_out(row: Any, mapping: Effective) -> FindingOut:
     finding: Finding = row[5]
     exception: PolicyException | None = row[6]
     waived: bool = bool(row[7])
@@ -232,6 +241,10 @@ def _finding_out(row: Any) -> FindingOut:
             else None
         ),
         latest_evaluation=evaluation,
+        controls=[
+            ControlRef(framework=framework, id=control_id)
+            for framework, control_id in mapping.controls_for(evaluation.rule_type)
+        ],
     )
 
 
@@ -543,7 +556,8 @@ def list_findings(
     if after_id is not None:
         statement = statement.where(Finding.id > after_id)
     rows = db.execute(statement.order_by(Finding.id).limit(limit + 1)).all()
-    items = [_finding_out(row) for row in rows[:limit]]
+    mapping = effective(db)
+    items = [_finding_out(row, mapping) for row in rows[:limit]]
     return FindingPage(items=items, next_after_id=items[-1].id if len(rows) > limit else None)
 
 
@@ -565,7 +579,7 @@ def read_finding(
     _: Annotated[Principal, Depends(require(Permission.FINDINGS_READ))],
     db: Annotated[Session, Depends(database)],
 ) -> FindingOut:
-    return _finding_out(_finding(db, finding_id))
+    return _finding_out(_finding(db, finding_id), effective(db))
 
 
 @router.get(
