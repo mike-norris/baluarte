@@ -103,6 +103,41 @@ export function gitlabProblems(fields: GitLabFields, tokenStored: boolean): stri
   return problems;
 }
 
+export interface ChangeEvidenceFields {
+  lookback_days: string;
+  redeploy_days: string;
+  production_environments: string;
+}
+
+export const MAX_ENVIRONMENTS = 20;
+const MAX_ENVIRONMENT = 255;
+
+function wholeIn(value: string, low: number, high: number): boolean {
+  const number = Number(value.trim());
+  return value.trim() !== "" && Number.isInteger(number) && number >= low && number <= high;
+}
+
+/** Problems with the change evidence form, in field order; empty when it may be sent. */
+export function changeEvidenceProblems(fields: ChangeEvidenceFields): string[] {
+  const problems: string[] = [];
+  if (!wholeIn(fields.lookback_days, 1, 730)) {
+    problems.push("Choose a lookback of 1 to 730 days.");
+  }
+  if (!wholeIn(fields.redeploy_days, 1, 30)) {
+    problems.push("Choose a re-read period of 1 to 30 days.");
+  }
+  const environments = parseGroups(fields.production_environments);
+  if (environments.length === 0) {
+    problems.push("Name at least one production environment.");
+  } else if (environments.length > MAX_ENVIRONMENTS) {
+    problems.push(`Name at most ${String(MAX_ENVIRONMENTS)} production environments.`);
+  }
+  if (environments.some((name) => name.length > MAX_ENVIRONMENT)) {
+    problems.push("An environment name is at most 255 characters.");
+  }
+  return problems;
+}
+
 export function describeInterval(minutes: number): string {
   if (minutes === 0) return "Off (collect only on request)";
   if (minutes % 1440 === 0) return `Every ${String(minutes / 1440)} day(s)`;

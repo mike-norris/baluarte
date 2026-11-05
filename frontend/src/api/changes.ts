@@ -5,6 +5,7 @@
  */
 
 import { getJson } from "./client";
+import { sendJson } from "./send";
 import type { ProjectRef } from "./evaluations";
 import type { AsOfAnswer } from "../asof/format";
 
@@ -156,4 +157,28 @@ export function getChange(
   signal?: AbortSignal,
 ): Promise<ChangeDetail> {
   return getJson(`/api/v1/changes/${String(id)}`, { as_of: asOf }, signal);
+}
+
+/** How changes are read (``settings:manage``); every change is audited. */
+export interface ChangeEvidenceSettings {
+  /** How far back the first read of a project goes. */
+  lookback_days: number;
+  /** How long after merging a change is read again, for deployments that come later. */
+  redeploy_days: number;
+  /** The environments whose successful deployments are recorded. */
+  production_environments: string[];
+}
+
+const CHANGE_SETTINGS = "/api/v1/settings/change-evidence";
+
+export function getChangeEvidenceSettings(signal?: AbortSignal): Promise<ChangeEvidenceSettings> {
+  return getJson(CHANGE_SETTINGS, undefined, signal);
+}
+
+export async function putChangeEvidenceSettings(
+  settings: ChangeEvidenceSettings,
+  csrfToken: string,
+): Promise<ChangeEvidenceSettings> {
+  const saved = await sendJson<ChangeEvidenceSettings>("PUT", CHANGE_SETTINGS, settings, csrfToken);
+  return saved ?? settings;
 }

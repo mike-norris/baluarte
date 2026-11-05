@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { ChangeEvidenceSettings } from "../api/changes";
 import type { GitLabConfig, OidcConfig, SettingsInfo } from "../api/setup";
 import type { CurrentUser } from "../auth/session";
 import { routes } from "../routes";
@@ -77,6 +78,12 @@ const socProfile = profile({
   updated_at: "2026-11-02T09:00:00Z",
 });
 
+const changeSettings: ChangeEvidenceSettings = {
+  lookback_days: 90,
+  redeploy_days: 7,
+  production_environments: ["production"],
+};
+
 function api(user: CurrentUser, routes: Routes = {}): Call[] {
   return mockApi({
     "GET /api/v1/auth/me": () => json(user),
@@ -86,6 +93,7 @@ function api(user: CurrentUser, routes: Routes = {}): Call[] {
     "GET /api/v1/settings/gitlab": () => json(gitlabConfig),
     "GET /api/v1/settings/oidc": () => json(oidcConfig),
     "GET /api/v1/settings/governance": () => json({ require_review: false }),
+    "GET /api/v1/settings/change-evidence": () => json(changeSettings),
     "GET /api/v1/compliance/profile": () => json(socProfile),
     "GET /api/v1/settings/audit-shipping": () => json(shippingConfig()),
     "GET /api/v1/compliance/audit-shipping": () => json(shippingStatus()),
@@ -273,6 +281,88 @@ describe("settings page", () => {
     const put = calls.find((call) => call.init?.method === "PUT");
     expect(put?.url).toBe("/api/v1/settings/governance");
     expect((put?.init?.headers as Record<string, string>)["X-CSRF-Token"]).toBe(admin.csrf_token);
+  });
+});
+
+describe("change evidence settings", () => {
+  it("saves the lookback, re-read period and production environments", async () => {
+    let stored = changeSettings;
+    const calls = api(admin, {
+      "GET /api/v1/settings/change-evidence": () => json(stored),
+      "PUT /api/v1/settings/change-evidence": (init) => {
+        stored = JSON.parse(String(init?.body)) as ChangeEvidenceSettings;
+        return json(stored);
+      },
+    });
+    const user = userEvent.setup();
+    renderSettings();
+
+    const section = await card("Change evidence");
+    const form = await within(section).findByRole("form", { name: "Change evidence settings" });
+    const lookback = within(form).getByLabelText("Lookback (days)");
+    expect(lookback).toHaveValue(90);
+    await user.clear(lookback);
+    await user.type(lookback, "180");
+    const environments = within(form).getByLabelText("Production environments");
+    await user.clear(environments);
+    await user.type(environments, "production, production-eu\nproduction");
+    await user.click(within(form).getByRole("button", { name: "Save change evidence settings" }));
+
+    expect(
+      await within(section).findByText(
+        "Change evidence settings saved. They apply from the next collection.",
+      ),
+    ).toBeInTheDocument();
+    expect(bodyOf(calls, "PUT", "/api/v1/settings/change-evidence")).toEqual({
+      lookback_days: 180,
+      redeploy_days: 7,
+      production_environments: ["production", "production-eu"],
+    });
+  });
+
+  it("explains out-of-range values before sending", async () => {
+    const calls = api(admin);
+    const user = userEvent.setup();
+    renderSettings();
+
+    const section = await card("Change evidence");
+    const form = await within(section).findByRole("form", { name: "Change evidence settings" });
+    const redeploy = within(form).getByLabelText("Read again for (days)");
+    await user.clear(redeploy);
+    await user.type(redeploy, "31");
+    await user.clear(within(form).getByLabelText("Production environments"));
+    await user.click(within(form).getByRole("button", { name: "Save change evidence settings" }));
+
+    const alert = await within(form).findByRole("alert");
+    expect(alert).toHaveTextContent("Choose a re-read period of 1 to 30 days.");
+    expect(alert).toHaveTextContent("Name at least one production environment.");
+    expect(calls.some((call) => call.init?.method === "PUT")).toBe(false);
+  });
+
+  it("shows the API's refusal with its reasons", async () => {
+    api(admin, {
+      "PUT /api/v1/settings/change-evidence": () =>
+        json(
+          {
+            detail: {
+              code: "invalid_settings",
+              message: "the settings were refused",
+              reasons: [{ code: "environment_name", message: "an environment name is not valid" }],
+            },
+          },
+          409,
+        ),
+    });
+    const user = userEvent.setup();
+    renderSettings();
+
+    const section = await card("Change evidence");
+    const form = await within(section).findByRole("form", { name: "Change evidence settings" });
+    await user.click(within(form).getByRole("button", { name: "Save change evidence settings" }));
+
+    const alert = await within(form).findByRole("alert");
+    expect(alert).toHaveTextContent("Not possible now: the settings were refused.");
+    expect(alert).toHaveTextContent("an environment name is not valid");
   });
 });
 
