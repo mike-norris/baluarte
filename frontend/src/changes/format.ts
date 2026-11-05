@@ -15,6 +15,7 @@ import {
   type Deployments,
 } from "../api/changes";
 import { fromLocal } from "../asof/format";
+import { DEPLOYED_TYPE, PIPELINE_TYPE, REVIEWED_TYPE } from "../policies/yaml";
 import { formatTime } from "../time";
 
 export const kindLabels: Record<ChangeKind, string> = {
@@ -163,9 +164,6 @@ export function formFilters(form: ChangeForm): ChangeFilters {
   return readChangeFilters(query);
 }
 
-export const REVIEWED_TYPE = "gitlab.change.reviewed";
-export const PIPELINE_TYPE = "gitlab.change.pipeline_passed";
-export const DEPLOYED_TYPE = "gitlab.change.deployed_after_review";
 export const changeRuleTypes: readonly string[] = [REVIEWED_TYPE, PIPELINE_TYPE, DEPLOYED_TYPE];
 
 export function isChangeRule(ruleType: string): boolean {

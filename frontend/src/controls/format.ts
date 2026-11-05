@@ -13,13 +13,15 @@ import {
   type MappingChangeState,
 } from "../api/controls";
 import type { Person } from "../api/policies";
-import { DEPLOYED_TYPE, PIPELINE_TYPE, REVIEWED_TYPE } from "../changes/format";
 import { personText } from "../policies/format";
 import {
   APPROVAL_TYPE,
   BRANCH_TYPE,
+  DEPLOYED_TYPE,
   MEMBERS_TYPE,
+  PIPELINE_TYPE,
   PROJECT_APPROVALS_TYPE,
+  REVIEWED_TYPE,
   SCAN_TYPE,
   TOKENS_TYPE,
   TWO_FACTOR_TYPE,

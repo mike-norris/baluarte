@@ -5,7 +5,8 @@
  * protection are switches; the others are off unless added: the two GitLab security policy rules
  * (they need GitLab Ultimate), and the access-control and merge request approval rules (project
  * approval settings need GitLab Premium, access tokens a Maintainer token, and two-factor
- * enforcement may need an administrator token). A saved version with anything else (two rules of
+ * enforcement may need an administrator token), and the change rules, which judge the changes
+ * merged or pushed to each default branch over a window of days. A saved version with anything else (two rules of
  * one type, or a type this UI predates) opens as YAML instead, so the form never drops part of a
  * baseline. The API validates every save; these checks only catch mistakes before the round
  * trip.
@@ -147,6 +148,41 @@ export interface TokensRule {
 export const MIN_TOKEN_DAYS = 1;
 export const MAX_TOKEN_DAYS = 365;
 
+/** Every change in the window was approved by someone other than its author. */
+export interface ReviewedRule {
+  enabled: boolean;
+  id: string;
+  windowDays: number;
+  minApprovals: number;
+  forbidSelfApproval: boolean;
+  allowDirectPush: boolean;
+  severity: Severity;
+  description: string;
+}
+
+/** Every merged change in the window passed its pipeline, and optionally its tests. */
+export interface PipelineRule {
+  enabled: boolean;
+  id: string;
+  windowDays: number;
+  requireTests: boolean;
+  severity: Severity;
+  description: string;
+}
+
+/** Every production deployment in the window deployed a reviewed change. */
+export interface DeployedRule {
+  enabled: boolean;
+  id: string;
+  windowDays: number;
+  severity: Severity;
+  description: string;
+}
+
+export const MIN_WINDOW_DAYS = 1;
+export const MAX_WINDOW_DAYS = 365;
+export const DEFAULT_WINDOW_DAYS = 90;
+
 export interface BaselineForm {
   name: string;
   description: string;
@@ -163,6 +199,10 @@ export interface BaselineForm {
   members: MembersRule;
   twoFactor: TwoFactorRule;
   tokens: TokensRule;
+  /** Off unless added: change evidence rules. */
+  reviewed: ReviewedRule;
+  pipeline: PipelineRule;
+  deployed: DeployedRule;
 }
 
 export const VISIBILITY_TYPE = "gitlab.project.visibility";
@@ -173,6 +213,9 @@ export const PROJECT_APPROVALS_TYPE = "gitlab.project.merge_request_approvals";
 export const MEMBERS_TYPE = "gitlab.project.privileged_members";
 export const TWO_FACTOR_TYPE = "gitlab.group.two_factor_required";
 export const TOKENS_TYPE = "gitlab.project.access_tokens";
+export const REVIEWED_TYPE = "gitlab.change.reviewed";
+export const PIPELINE_TYPE = "gitlab.change.pipeline_passed";
+export const DEPLOYED_TYPE = "gitlab.change.deployed_after_review";
 
 /** The scan rule as "Add rule" first shows it. */
 export function offScanRule(): ScanRule {
@@ -249,6 +292,43 @@ export function offTokensRule(): TokensRule {
   };
 }
 
+/** The change review rule as "Add rule" first shows it. */
+export function offReviewedRule(): ReviewedRule {
+  return {
+    enabled: false,
+    id: "changes-reviewed",
+    windowDays: DEFAULT_WINDOW_DAYS,
+    minApprovals: 1,
+    forbidSelfApproval: true,
+    allowDirectPush: false,
+    severity: "high",
+    description: "",
+  };
+}
+
+/** The change pipeline rule as "Add rule" first shows it. */
+export function offPipelineRule(): PipelineRule {
+  return {
+    enabled: false,
+    id: "changes-pipeline-passed",
+    windowDays: DEFAULT_WINDOW_DAYS,
+    requireTests: false,
+    severity: "medium",
+    description: "",
+  };
+}
+
+/** The reviewed deployments rule as "Add rule" first shows it. */
+export function offDeployedRule(): DeployedRule {
+  return {
+    enabled: false,
+    id: "deployments-reviewed",
+    windowDays: DEFAULT_WINDOW_DAYS,
+    severity: "high",
+    description: "",
+  };
+}
+
 /** The recommended baseline: no public projects, and every default branch protected. */
 export function recommendedBaseline(): BaselineForm {
   return {
@@ -275,6 +355,9 @@ export function recommendedBaseline(): BaselineForm {
     members: offMembersRule(),
     twoFactor: offTwoFactorRule(),
     tokens: offTokensRule(),
+    reviewed: offReviewedRule(),
+    pipeline: offPipelineRule(),
+    deployed: offDeployedRule(),
   };
 }
 
@@ -426,7 +509,7 @@ export function toDocument(form: BaselineForm): Record<string, unknown> {
 }
 
 /**
- * The access-control and project approval rules that are on, as document fields in the order
+ * The access-control, project approval and change rules that are on, as document fields in the order
  * the YAML writes them: id, type, the rule's own fields, severity, then description (null when
  * empty). An optional limit that is not set is null.
  */
@@ -475,6 +558,38 @@ function accessRuleDocuments(form: BaselineForm): Record<string, unknown>[] {
       description: tokens.description.trim() || null,
     });
   }
+  const { reviewed, pipeline, deployed } = form;
+  if (reviewed.enabled) {
+    rules.push({
+      id: reviewed.id,
+      type: REVIEWED_TYPE,
+      window_days: reviewed.windowDays,
+      min_approvals: reviewed.minApprovals,
+      forbid_self_approval: reviewed.forbidSelfApproval,
+      allow_direct_push: reviewed.allowDirectPush,
+      severity: reviewed.severity,
+      description: reviewed.description.trim() || null,
+    });
+  }
+  if (pipeline.enabled) {
+    rules.push({
+      id: pipeline.id,
+      type: PIPELINE_TYPE,
+      window_days: pipeline.windowDays,
+      require_tests: pipeline.requireTests,
+      severity: pipeline.severity,
+      description: pipeline.description.trim() || null,
+    });
+  }
+  if (deployed.enabled) {
+    rules.push({
+      id: deployed.id,
+      type: DEPLOYED_TYPE,
+      window_days: deployed.windowDays,
+      severity: deployed.severity,
+      description: deployed.description.trim() || null,
+    });
+  }
   return rules;
 }
 
@@ -513,6 +628,9 @@ export function formProblems(form: BaselineForm): string[] {
     form.members,
     form.twoFactor,
     form.tokens,
+    form.reviewed,
+    form.pipeline,
+    form.deployed,
   ];
   if (!rules.some((rule) => rule.enabled)) {
     problems.push("Rules: turn on at least one rule.");
@@ -570,6 +688,21 @@ export function formProblems(form: BaselineForm): string[] {
     range("Access token lifetime", form.tokens.maxLifetimeDays, MIN_TOKEN_DAYS, MAX_TOKEN_DAYS);
     range("Unused access tokens", form.tokens.maxUnusedDays, MIN_TOKEN_DAYS, MAX_TOKEN_DAYS, true);
   }
+  if (form.reviewed.enabled) {
+    range("Reviewed changes window", form.reviewed.windowDays, MIN_WINDOW_DAYS, MAX_WINDOW_DAYS);
+    range("Reviewed changes approvals", form.reviewed.minApprovals, MIN_APPROVALS, MAX_APPROVALS);
+  }
+  if (form.pipeline.enabled) {
+    range("Change pipelines window", form.pipeline.windowDays, MIN_WINDOW_DAYS, MAX_WINDOW_DAYS);
+  }
+  if (form.deployed.enabled) {
+    range(
+      "Reviewed deployments window",
+      form.deployed.windowDays,
+      MIN_WINDOW_DAYS,
+      MAX_WINDOW_DAYS,
+    );
+  }
   return problems;
 }
 
@@ -597,6 +730,12 @@ function flag(value: unknown, fallback: boolean): boolean | null {
 
 function isWhole(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value);
+}
+
+/** A window in days: its value, the default when absent, or undefined when not a whole number. */
+function windowDays(value: unknown): number | undefined {
+  if (value === undefined || value === null) return DEFAULT_WINDOW_DAYS;
+  return isWhole(value) ? value : undefined;
 }
 
 /** An optional whole number: its value, null when absent, or undefined when not a whole number. */
@@ -720,6 +859,46 @@ export function fromDocument(document: unknown): BaselineForm | null {
         id: rule.id,
         maxLifetimeDays: rule.max_lifetime_days,
         maxUnusedDays: unused,
+        severity,
+        description: text(rule.description),
+      };
+    } else if (rule.type === REVIEWED_TYPE && !form.reviewed.enabled) {
+      const window = windowDays(rule.window_days);
+      const approvals = rule.min_approvals === undefined ? 1 : rule.min_approvals;
+      const self = flag(rule.forbid_self_approval, true);
+      const direct = flag(rule.allow_direct_push, false);
+      if (window === undefined || !isWhole(approvals) || self === null || direct === null) {
+        return null;
+      }
+      form.reviewed = {
+        enabled: true,
+        id: rule.id,
+        windowDays: window,
+        minApprovals: approvals,
+        forbidSelfApproval: self,
+        allowDirectPush: direct,
+        severity,
+        description: text(rule.description),
+      };
+    } else if (rule.type === PIPELINE_TYPE && !form.pipeline.enabled) {
+      const window = windowDays(rule.window_days);
+      const tests = flag(rule.require_tests, false);
+      if (window === undefined || tests === null) return null;
+      form.pipeline = {
+        enabled: true,
+        id: rule.id,
+        windowDays: window,
+        requireTests: tests,
+        severity,
+        description: text(rule.description),
+      };
+    } else if (rule.type === DEPLOYED_TYPE && !form.deployed.enabled) {
+      const window = windowDays(rule.window_days);
+      if (window === undefined) return null;
+      form.deployed = {
+        enabled: true,
+        id: rule.id,
+        windowDays: window,
         severity,
         description: text(rule.description),
       };
@@ -871,6 +1050,44 @@ export function readableRules(document: unknown): ReadableRule[] {
             : null,
           description,
         ),
+        severity,
+      };
+    }
+    const window = isWhole(rule.window_days) ? rule.window_days : DEFAULT_WINDOW_DAYS;
+    const over = `over the last ${plural(window, "day", "days")}`;
+    if (rule.type === REVIEWED_TYPE) {
+      const approvals = isWhole(rule.min_approvals) ? rule.min_approvals : 1;
+      return {
+        id,
+        sentence: `Every change to a default branch ${over} was approved by at least ${plural(approvals, "person", "people")} other than its author`,
+        detail: detail(
+          rule.forbid_self_approval === false ? null : "The author's own approval doesn't count.",
+          rule.allow_direct_push === true
+            ? "Direct pushes are allowed."
+            : "A direct push to the default branch fails.",
+          description,
+        ),
+        severity,
+      };
+    }
+    if (rule.type === PIPELINE_TYPE) {
+      return {
+        id,
+        sentence: `Every change merged to a default branch ${over} passed its pipeline`,
+        detail: detail(
+          rule.require_tests === true
+            ? "Its pipeline must have a test report with no failures."
+            : null,
+          description,
+        ),
+        severity,
+      };
+    }
+    if (rule.type === DEPLOYED_TYPE) {
+      return {
+        id,
+        sentence: `Every production deployment ${over} deployed a reviewed change`,
+        detail: description,
         severity,
       };
     }
