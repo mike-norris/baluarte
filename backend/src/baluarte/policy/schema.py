@@ -197,6 +197,51 @@ class AccessTokensRule(_Rule):
     max_unused_days: Annotated[int | None, Field(ge=1, le=365)] = None
 
 
+WindowDays = Annotated[
+    int,
+    Field(
+        ge=1,
+        le=365,
+        description="Judge the changes of the last this many days, up to the evaluation.",
+    ),
+]
+
+
+class ChangeReviewedRule(_Rule):
+    """Passes when every change to the project's default branch in the window was approved by at
+    least ``min_approvals`` people other than its author, and none was pushed directly unless
+    ``allow_direct_push``."""
+
+    type: Literal["gitlab.change.reviewed"]
+    window_days: WindowDays = 90
+    min_approvals: Annotated[int, Field(ge=1, le=20)] = 1
+    forbid_self_approval: Annotated[
+        bool, Field(description="Fail a merge request its author approved.")
+    ] = True
+    allow_direct_push: Annotated[
+        bool, Field(description="Accept commits pushed to the default branch without review.")
+    ] = False
+
+
+class ChangePipelinePassedRule(_Rule):
+    """Passes when the pipeline for the last commit of every change in the window succeeded."""
+
+    type: Literal["gitlab.change.pipeline_passed"]
+    window_days: WindowDays = 90
+    require_tests: Annotated[
+        bool,
+        Field(description="Also require a test report with no failed or erroring tests."),
+    ] = False
+
+
+class ChangeDeployedAfterReviewRule(_Rule):
+    """Passes when every successful production deployment in the window deployed a commit from a
+    merge request that was reviewed by someone other than its author."""
+
+    type: Literal["gitlab.change.deployed_after_review"]
+    window_days: WindowDays = 90
+
+
 Rule = Annotated[
     ProjectVisibilityRule
     | DefaultBranchProtectedRule
@@ -205,7 +250,10 @@ Rule = Annotated[
     | MergeRequestApprovalsRule
     | PrivilegedMembersRule
     | TwoFactorRequiredRule
-    | AccessTokensRule,
+    | AccessTokensRule
+    | ChangeReviewedRule
+    | ChangePipelinePassedRule
+    | ChangeDeployedAfterReviewRule,
     Field(discriminator="type"),
 ]
 RULE_TYPES = (
@@ -217,6 +265,9 @@ RULE_TYPES = (
     "gitlab.project.privileged_members",
     "gitlab.group.two_factor_required",
     "gitlab.project.access_tokens",
+    "gitlab.change.reviewed",
+    "gitlab.change.pipeline_passed",
+    "gitlab.change.deployed_after_review",
 )
 
 
