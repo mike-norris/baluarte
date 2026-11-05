@@ -18,6 +18,8 @@ from baluarte.api.v1.setup import http_errors, oidc_transport
 from baluarte.auth.dependencies import Principal, auth_settings, database, require
 from baluarte.auth.roles import Permission, Role
 from baluarte.auth.settings import AuthSettings
+from baluarte.changes import settings as change_settings
+from baluarte.changes.settings import ChangeEvidenceSettings
 from baluarte.config import database_url
 from baluarte.configuration import service
 from baluarte.configuration.schemas import (
@@ -257,3 +259,30 @@ def write_governance(
         changes.set_review_required(db, body.require_review, principal.actor)
     db.commit()
     return GovernanceSettings(require_review=changes.review_required(db))
+
+
+@router.get(
+    "/change-evidence",
+    response_model=ChangeEvidenceSettings,
+    summary="How change evidence is collected",
+)
+def read_change_evidence(_: Admin, db: Database) -> ChangeEvidenceSettings:
+    return change_settings.load(db)
+
+
+@router.put(
+    "/change-evidence",
+    response_model=ChangeEvidenceSettings,
+    summary="Set the change look-back, re-read window and production environments",
+    description="`lookback_days` (1-730) bounds a project's first change collection; "
+    "`redeploy_days` (1-30) is how long merged merge requests are read again so that later "
+    "deployments are recorded; `production_environments` names the deployment environments "
+    "recorded. A shorter look-back keeps the history already collected. Audited as "
+    "`settings.change_evidence_updated`.",
+)
+def write_change_evidence(
+    body: ChangeEvidenceSettings, principal: Admin, db: Database
+) -> ChangeEvidenceSettings:
+    change_settings.save(db, body, principal.actor)
+    db.commit()
+    return change_settings.load(db)
