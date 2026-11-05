@@ -21,7 +21,7 @@ Baluarte may write labels, and nothing else, under ADR-0007's constraints:
 
 - A leaked write token can change labels in the groups it can reach. Its scope should be limited to those groups and it should expire.
 - Read-only deployments keep working and still see drift.
-- The applier is the first write path, so it sets the pattern for later remediation (BAL-032).
+- The applier is the first write path, so it sets the pattern for later remediation.
 
 ## Revisit when
 
