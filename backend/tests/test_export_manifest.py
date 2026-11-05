@@ -108,8 +108,8 @@ def test_a_zip_ends_with_a_manifest_and_sha256sums(world: World) -> None:
 
     assert archive.namelist() == [*ZIP_FILES, "manifest.json", "SHA256SUMS"]
     manifest = json.loads(archive.read("manifest.json"))
-    assert manifest["manifest_format"] == "baluarte.evidence-manifest/v5"
-    assert manifest["export_format"] == "baluarte.evidence-export/v3"
+    assert manifest["manifest_format"] == "baluarte.evidence-manifest/v6"
+    assert manifest["export_format"] == "baluarte.evidence-export/v4"
     assert manifest["package"] == "zip"
     assert manifest["export_id"] == response.headers["x-baluarte-export-id"]
     assert manifest["generated_at"] == json.loads(archive.read("export.json"))["generated_at"]
@@ -487,7 +487,7 @@ def test_the_manifest_states_the_population(world: World, tmp_path: Path) -> Non
         "administrator, so projects this account cannot see are not included and are not checked."
     )
 
-    assert manifest["manifest_format"] == "baluarte.evidence-manifest/v5"
+    assert manifest["manifest_format"] == "baluarte.evidence-manifest/v6"
     assert manifest["population"] == {
         "basis": "token_visibility",
         "token_username": "auditor",

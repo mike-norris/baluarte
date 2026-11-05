@@ -9,6 +9,8 @@ Standard library only and no database, so an auditor can run it anywhere (also a
 - with ``--manifest-sha256``, the manifest against the value recorded in the
   ``evidence.export_completed`` audit event, the only check an edit of both the package and its
   manifest cannot pass
+- for an audit-period evidence package, every observation in ``change_evidence.jsonl`` against
+  its digest, and the change sample redrawn from the manifest's seed over ``changes.csv``
 
 Packages of an older export format are still accepted: a v1 export (before exceptions) is checked
 against what its own manifest lists, and only a v2 or later export must contain the exceptions.
@@ -25,6 +27,7 @@ import csv
 import hashlib
 import io
 import json
+import random
 import sys
 import zipfile
 from collections.abc import Iterable
@@ -36,7 +39,13 @@ UNLISTED = ("manifest.json", "SHA256SUMS")
 REQUIRED = {
     "baluarte.evidence-export/v2": {"zip": "exceptions.csv", "json": "exceptions"},
     "baluarte.evidence-export/v3": {"zip": "exceptions.csv", "json": "exceptions"},
+    "baluarte.evidence-export/v4": {"zip": "exceptions.csv", "json": "exceptions"},
+    "baluarte.evidence-package/v1": {"zip": "exceptions.csv"},
 }
+# What an audit-period package must hold besides the exceptions.
+PACKAGE_FILES = ("changes.csv", "change_sample.csv", "change_evidence.jsonl")
+# The change kinds the sample is drawn from (baluarte.evidence.sampling).
+SAMPLED_KINDS = ("merge_request", "direct_push")
 # The members of a JSON export that are neither sections nor the manifest.
 METADATA = ("format", "export_id", "generated_at", "instance", "scope", "freshness")
 
@@ -128,7 +137,67 @@ def verify_zip(archive: zipfile.ZipFile, report: Report) -> tuple[dict[str, Any]
         for line in contents.get("observations.jsonl", b"").splitlines()
         if line.strip()
     ]
+    if isinstance(manifest.get("evidence_package"), dict):
+        verify_package(contents, manifest["evidence_package"], report)
     return manifest, observations
+
+
+def draw(population: Iterable[int], size: int, seed: int) -> list[int]:
+    """The sample, drawn as baluarte.evidence.sampling draws it."""
+    ordered = sorted(set(population))
+    if size >= len(ordered):
+        return ordered
+    return sorted(random.Random(seed).sample(ordered, size))  # noqa: S311
+
+
+def _jsonl(data: bytes) -> list[Any]:
+    return [json.loads(line) for line in data.splitlines() if line.strip()]
+
+
+def _csv_rows(data: bytes) -> list[dict[str, str]]:
+    return list(csv.DictReader(io.StringIO(data.decode("utf-8"), newline="")))
+
+
+def verify_package(contents: dict[str, bytes], package: dict[str, Any], report: Report) -> None:
+    """The change evidence digests, and the sample redrawn from its seed."""
+    for name in PACKAGE_FILES:
+        if not report.check(name in contents, f"{name}: required by an evidence package"):
+            return
+    evidence = _jsonl(contents["change_evidence.jsonl"])
+    for observation in evidence:
+        ident = f"change observation {observation.get('id')}"
+        if observation.get("payload_withheld"):
+            report.warn(f"{ident}: payload withheld from the package, not verifiable")
+            continue
+        payload = observation.get("payload")
+        stored = observation.get("payload_digest")
+        if payload is None:
+            report.check(stored is None, f"{ident}: digest without a payload")
+            continue
+        matches = stored == sha256(canonical(payload))
+        if observation.get("digest_valid") is False:
+            report.warn(f"{ident}: its payload no longer matched its digest when exported")
+            report.check(not matches, f"{ident}: digest_valid false but it matches")
+        else:
+            report.check(matches, f"{ident}: payload does not match payload_digest")
+    population = [
+        int(row["id"]) for row in _csv_rows(contents["changes.csv"]) if row["kind"] in SAMPLED_KINDS
+    ]
+    sample = package.get("sample", {})
+    report.check(
+        sample.get("population") == len(population),
+        "changes.csv: the population differs from the manifest's sample",
+    )
+    redrawn = draw(population, int(sample.get("requested_size", 0)), int(sample.get("seed", 0)))
+    report.check(
+        redrawn == sample.get("change_ids"),
+        "change sample: redrawing with the manifest's seed gives a different sample",
+    )
+    listed = [int(row["change_id"]) for row in _csv_rows(contents["change_sample.csv"])]
+    report.check(listed == sample.get("change_ids"), "change_sample.csv: differs from the manifest")
+    evidenced = {observation.get("change_id") for observation in evidence}
+    for change_id in listed:
+        report.check(change_id in evidenced, f"change {change_id}: sampled but without evidence")
 
 
 def verify_json(document: dict[str, Any], report: Report) -> tuple[dict[str, Any], list[Any]]:
