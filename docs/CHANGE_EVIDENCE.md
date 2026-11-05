@@ -112,7 +112,7 @@ The default control mapping pairs the change rules with SOC 2 CC8.1, ISO/IEC 270
 
 All under `/api/v1`, with `findings:read` (every role).
 
-`GET /changes?project=&kind=&outcome=&from=&to=&before_id=&limit=&as_of=` lists merge requests and direct pushes, newest first by when they landed (`kind=deployment` lists deployments instead). `from` and `to` bound when the change landed; `limit` is 1-200 (default 50); `before_id` is the previous page's `next_before_id`.
+`GET /changes?project=&kind=&outcome=&from=&to=&before_id=&limit=&as_of=` lists merge requests and direct pushes, newest first by when they landed (`kind=deployment` lists deployments instead). `from` and `to` bound when the change landed; `limit` is 1-200 (default 50); `before_id` is the previous page's `next_before_id`. Projects excluded from monitoring now are left out unless named with `project`; their earlier changes stay recorded.
 
 ```json
 {

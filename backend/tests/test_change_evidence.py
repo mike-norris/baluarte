@@ -28,6 +28,7 @@ from baluarte.db.models import (
     GitLabGroup,
     GitLabProject,
     Observation,
+    ScopeExclusion,
 )
 from baluarte.evidence import sampling
 from baluarte.evidence import verify as verify_tool
@@ -255,6 +256,32 @@ def test_changes_are_listed_newest_first_with_their_evidence(world: Changes) -> 
         "committer_approved": None,
     }
     assert push["deployments"] == {"status": "known", "items": []}
+
+
+def test_changes_of_excluded_projects_are_left_out_unless_named(world: Changes) -> None:
+    with Session(world.engine) as db:
+        db.add(
+            ScopeExclusion(
+                instance_id=world.instance_id,
+                target_type="project",
+                target_id=PROJECT,
+                target_path="acme/web",
+                batch_id="b",
+                justification="Research project, not part of the audited product.",
+                state="active",
+                review_required=False,
+                self_approved=True,
+                proposed_by="user:1",
+                proposed_by_user_id=1,
+                decided_by="user:1",
+                decided_by_user_id=1,
+                decided_at=datetime.now(UTC),
+            )
+        )
+        db.commit()
+
+    assert get(world.engine, "/api/v1/changes")["items"] == []
+    assert len(get(world.engine, f"/api/v1/changes?project={PROJECT}")["items"]) == 4
 
 
 def test_changes_filters_and_pages(world: Changes) -> None:

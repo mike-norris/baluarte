@@ -14,7 +14,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from pydantic import AwareDatetime, BaseModel
-from sqlalchemy import Select, select, tuple_
+from sqlalchemy import Select, not_, select, tuple_
 from sqlalchemy.orm import Session
 
 from baluarte.api.v1.evaluations import ProjectRef
@@ -26,6 +26,7 @@ from baluarte.db.models import ChangeRecord, GitLabInstance, GitLabProject, Obse
 from baluarte.evidence.as_of import RunRef, run_at, run_ref
 from baluarte.evidence.observations import verify
 from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_settings
+from baluarte.scope.exclusions import coverage
 from baluarte.settings import ConfigurationError
 
 router = APIRouter(tags=["changes"])
@@ -357,7 +358,8 @@ _CHUNK = 200
     "deployments), each with its approvals, pipeline, deployments and outcome under the default "
     "checks: at least one approval, no self-approval and no direct push; a passing pipeline. A "
     "part GitLab did not answer is `unknown`, never a pass. Filter by `project` (GitLab ID), "
-    "`kind`, `outcome` and the `from`/`to` range of when the change landed.",
+    "`kind`, `outcome` and the `from`/`to` range of when the change landed. Projects excluded "
+    "from monitoring are left out unless named with `project`.",
 )
 def list_changes(
     _: Annotated[Principal, Depends(require(Permission.FINDINGS_READ))],
@@ -379,6 +381,11 @@ def list_changes(
         statement = statement.where(ChangeRecord.kind != "deployment")
     if project is not None:
         statement = statement.where(GitLabProject.gitlab_id == project)
+    else:
+        # Like the other lists, projects excluded from monitoring are left out unless named.
+        found = coverage(db, instance_id)
+        if not found.empty:
+            statement = statement.where(not_(found.project_excluded()))
     if changed_from is not None:
         statement = statement.where(ChangeRecord.changed_at >= changed_from)
     if changed_to is not None:
