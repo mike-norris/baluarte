@@ -1,5 +1,5 @@
 /**
- * First-run setup and administrator settings (BAL-034). Secrets are write-only: the API reports
+ * First-run setup and administrator settings. Secrets are write-only: the API reports
  * them as "configured" or "not_set" and never returns their values.
  */
 
@@ -122,7 +122,7 @@ export interface SettingsInfo {
     session_idle_minutes: number;
     session_lifetime_minutes: number;
   };
-  /** Absent on servers older than BAL-034. */
+  /** Absent on servers that predate stored secrets. */
   secret_key?: SecretState;
 }
 
@@ -133,7 +133,7 @@ export const SETUP: ConfigBase = "/api/v1/setup";
 export const SETTINGS: ConfigBase = "/api/v1/settings";
 export const CALLBACK_PATH = "/api/v1/auth/callback";
 
-/** The setup status; servers older than BAL-034 have no setup, so a 404 means complete. */
+/** The setup status; servers that predate the setup wizard have none, so a 404 means complete. */
 export async function getSetupStatus(signal?: AbortSignal): Promise<SetupStatus> {
   try {
     return await getJson<SetupStatus>("/api/v1/setup/status", undefined, signal);

@@ -1,4 +1,4 @@
-/** Checks for the identity provider and GitLab forms. The API repeats every check (BAL-034). */
+/** Checks for the identity provider and GitLab forms. The API repeats every check. */
 
 import { CALLBACK_PATH } from "../api/setup";
 

@@ -1,4 +1,4 @@
-/** Types and calls for dry-run remediation plans (docs/REMEDIATION.md, BAL-031). */
+/** Types and calls for dry-run remediation plans (docs/REMEDIATION.md). */
 
 import { ApiError, getJson } from "./client";
 import { changeFailure, detailText } from "./send";

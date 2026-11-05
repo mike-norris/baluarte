@@ -1,4 +1,4 @@
-/** Types and calls for stored evaluation results and findings (backend/README.md, BAL-021). */
+/** Types and calls for stored evaluation results and findings (backend/README.md). */
 
 import { getJson } from "./client";
 import type { AsOfAnswer } from "../asof/format";
