@@ -65,6 +65,7 @@ const pages: Partial<Record<string, ReactNode>> = {
   "/": <DashboardPage />,
   "/inventory": page(() => import("./pages/InventoryPage"), "InventoryPage"),
   "/findings": page(() => import("./pages/FindingsPage"), "FindingsPage"),
+  "/changes": page(() => import("./pages/ChangesPage"), "ChangesPage"),
   "/evidence": page(() => import("./pages/EvidencePage"), "EvidencePage"),
   "/controls": page(() => import("./pages/ControlsPage"), "ControlsPage"),
   "/exceptions": page(() => import("./pages/ExceptionsPage"), "ExceptionsPage"),
@@ -106,6 +107,10 @@ export const routes: RouteObject[] = [
           {
             path: "/findings/:findingId",
             element: page(() => import("./pages/FindingDetailPage"), "FindingDetailPage"),
+          },
+          {
+            path: "/changes/:changeId",
+            element: page(() => import("./pages/ChangeDetailPage"), "ChangeDetailPage"),
           },
           {
             path: "/controls/:framework/:controlId",

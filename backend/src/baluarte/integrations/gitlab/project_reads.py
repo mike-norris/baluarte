@@ -44,6 +44,7 @@ class ProjectTarget:
     default_branch: str | None
     namespace_gitlab_id: int
     namespace_kind: str | None
+    archived: bool = False
 
 
 class TokenRejected(Exception):
@@ -108,6 +109,7 @@ def targets(engine: Engine, instance_id: int) -> list[ProjectTarget]:
                 GitLabProject.default_branch,
                 GitLabProject.namespace_gitlab_id,
                 GitLabProject.namespace_kind,
+                GitLabProject.archived,
             )
             .where(
                 GitLabProject.instance_id == instance_id,

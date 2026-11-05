@@ -22,7 +22,7 @@ import {
 
 const ruleCard = "space-y-3 rounded border border-slate-200 p-3";
 
-function SeveritySelect({
+export function SeveritySelect({
   value,
   onChange,
 }: {
@@ -52,7 +52,7 @@ function SeveritySelect({
 }
 
 /** A whole-number field. An optional one is empty for null; a required one keeps NaN as empty. */
-function WholeNumber({
+export function WholeNumber({
   label,
   value,
   min,
@@ -87,7 +87,7 @@ function WholeNumber({
   );
 }
 
-function Check({
+export function Check({
   checked,
   onChange,
   children,
@@ -110,7 +110,7 @@ function Check({
   );
 }
 
-function Card({
+export function Card({
   label,
   title,
   onRemove,
@@ -134,7 +134,7 @@ function Card({
   );
 }
 
-const help = "text-sm text-slate-600";
+export const help = "text-sm text-slate-600";
 
 /**
  * The access-control and project merge request approval rules: off unless added, each with its

@@ -10,6 +10,7 @@ from baluarte.api.v1 import (
     audit_events,
     audit_shipping,
     auth,
+    changes,
     compliance,
     controls,
     evaluations,
@@ -58,6 +59,7 @@ protected.include_router(policies.router)
 protected.include_router(policy_assignments.router)
 protected.include_router(policy_changes.router)
 protected.include_router(evaluations.router)
+protected.include_router(changes.router)
 protected.include_router(exceptions.router)
 protected.include_router(exports.router)
 protected.include_router(remediation.router)

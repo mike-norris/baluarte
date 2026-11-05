@@ -14,6 +14,9 @@ import {
 import { projectHref } from "../api/gitlab";
 import { usePaged } from "../api/usePaged";
 import { useLoad } from "../api/useLoad";
+import { useAsOf } from "../asof/context";
+import { AsOfResult } from "../asof/AsOfResult";
+import { FailingChanges } from "../changes/FailingChanges";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { linkClass, secondaryClass } from "../components/styles";
 import { frameworkLabel } from "../controls/format";
@@ -313,13 +316,14 @@ function Evidence({ evaluation }: { evaluation: Evaluation }) {
 }
 
 function History({ findingId }: { findingId: number }) {
-  const key = `history:${String(findingId)}`;
-  const first = useLoad(key, (signal) => getFindingHistory(findingId, null, signal));
+  const asOf = useAsOf();
+  const key = `history:${String(findingId)}@${asOf ?? "now"}`;
+  const first = useLoad(key, (signal) => getFindingHistory(findingId, null, signal, asOf));
   const paged = usePaged<Evaluation, EvaluationPage>(
     key,
     first,
     (page) => page.next_before_id,
-    (before) => getFindingHistory(findingId, before),
+    (before) => getFindingHistory(findingId, before, undefined, asOf),
   );
 
   let body: ReactNode;
@@ -391,7 +395,9 @@ function History({ findingId }: { findingId: number }) {
         History
       </h2>
       <p className="mt-1 text-sm text-slate-600">
-        Every evaluation of this rule for the project, newest first, across policy versions.
+        {asOf
+          ? "Every evaluation of this rule for the project up to the date viewed, newest first."
+          : "Every evaluation of this rule for the project, newest first, across policy versions."}
       </p>
       {body}
     </section>
@@ -416,10 +422,11 @@ function MissingFinding({ id }: { id: string }) {
 
 export function FindingDetailPage() {
   const { findingId = "" } = useParams();
+  const asOf = useAsOf();
   const id = Number(findingId);
   const valid = Number.isSafeInteger(id) && id > 0 && String(id) === findingId;
-  const loaded = useLoad(`finding:${findingId}`, (signal) =>
-    valid ? getFinding(id, signal) : Promise.reject(new ApiError(404, "No such finding")),
+  const loaded = useLoad(`finding:${findingId}@${asOf ?? "now"}`, (signal) =>
+    valid ? getFinding(id, signal, asOf) : Promise.reject(new ApiError(404, "No such finding")),
   );
 
   if (loaded.error?.status === 404) return <MissingFinding id={findingId} />;
@@ -459,9 +466,10 @@ export function FindingDetailPage() {
         </h1>
         <p className="mt-1 text-slate-600">{`Finding ${String(finding.id)}`}</p>
       </div>
-      <EvaluationNote />
+      {asOf ? <AsOfResult answer={finding} /> : <EvaluationNote />}
       <Summary finding={finding} />
       <ExpectedVersusActual evaluation={finding.latest_evaluation} />
+      <FailingChanges evaluation={finding.latest_evaluation} />
       <Evidence evaluation={finding.latest_evaluation} />
       <ExceptionPanel finding={finding} />
       <History findingId={finding.id} />

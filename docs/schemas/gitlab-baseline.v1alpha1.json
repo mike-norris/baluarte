@@ -71,6 +71,196 @@
       "title": "AccessTokensRule",
       "type": "object"
     },
+    "ChangeDeployedAfterReviewRule": {
+      "additionalProperties": false,
+      "description": "Passes when every successful production deployment in the window deployed a commit from a\nmerge request that was reviewed by someone other than its author.",
+      "properties": {
+        "id": {
+          "description": "Unique within the baseline; named in findings.",
+          "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
+          "title": "Id",
+          "type": "string"
+        },
+        "severity": {
+          "default": "medium",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "type": {
+          "const": "gitlab.change.deployed_after_review",
+          "title": "Type",
+          "type": "string"
+        },
+        "window_days": {
+          "default": 90,
+          "description": "Judge the changes of the last this many days, up to the evaluation.",
+          "maximum": 365,
+          "minimum": 1,
+          "title": "Window Days",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "type"
+      ],
+      "title": "ChangeDeployedAfterReviewRule",
+      "type": "object"
+    },
+    "ChangePipelinePassedRule": {
+      "additionalProperties": false,
+      "description": "Passes when the pipeline for the last commit of every change in the window succeeded.",
+      "properties": {
+        "id": {
+          "description": "Unique within the baseline; named in findings.",
+          "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
+          "title": "Id",
+          "type": "string"
+        },
+        "severity": {
+          "default": "medium",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "type": {
+          "const": "gitlab.change.pipeline_passed",
+          "title": "Type",
+          "type": "string"
+        },
+        "window_days": {
+          "default": 90,
+          "description": "Judge the changes of the last this many days, up to the evaluation.",
+          "maximum": 365,
+          "minimum": 1,
+          "title": "Window Days",
+          "type": "integer"
+        },
+        "require_tests": {
+          "default": false,
+          "description": "Also require a test report with no failed or erroring tests.",
+          "title": "Require Tests",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "type"
+      ],
+      "title": "ChangePipelinePassedRule",
+      "type": "object"
+    },
+    "ChangeReviewedRule": {
+      "additionalProperties": false,
+      "description": "Passes when every change to the project's default branch in the window was approved by at\nleast ``min_approvals`` people other than its author, and none was pushed directly unless\n``allow_direct_push``.",
+      "properties": {
+        "id": {
+          "description": "Unique within the baseline; named in findings.",
+          "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
+          "title": "Id",
+          "type": "string"
+        },
+        "severity": {
+          "default": "medium",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "type": {
+          "const": "gitlab.change.reviewed",
+          "title": "Type",
+          "type": "string"
+        },
+        "window_days": {
+          "default": 90,
+          "description": "Judge the changes of the last this many days, up to the evaluation.",
+          "maximum": 365,
+          "minimum": 1,
+          "title": "Window Days",
+          "type": "integer"
+        },
+        "min_approvals": {
+          "default": 1,
+          "maximum": 20,
+          "minimum": 1,
+          "title": "Min Approvals",
+          "type": "integer"
+        },
+        "forbid_self_approval": {
+          "default": true,
+          "description": "Fail a merge request its author approved.",
+          "title": "Forbid Self Approval",
+          "type": "boolean"
+        },
+        "allow_direct_push": {
+          "default": false,
+          "description": "Accept commits pushed to the default branch without review.",
+          "title": "Allow Direct Push",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "type"
+      ],
+      "title": "ChangeReviewedRule",
+      "type": "object"
+    },
     "DefaultBranchProtectedRule": {
       "additionalProperties": false,
       "description": "With ``required: true``, passes when the project's default branch is protected.",
@@ -523,6 +713,9 @@
             "discriminator": {
               "mapping": {
                 "gitlab.branch.default_protected": "#/$defs/DefaultBranchProtectedRule",
+                "gitlab.change.deployed_after_review": "#/$defs/ChangeDeployedAfterReviewRule",
+                "gitlab.change.pipeline_passed": "#/$defs/ChangePipelinePassedRule",
+                "gitlab.change.reviewed": "#/$defs/ChangeReviewedRule",
                 "gitlab.group.two_factor_required": "#/$defs/TwoFactorRequiredRule",
                 "gitlab.project.access_tokens": "#/$defs/AccessTokensRule",
                 "gitlab.project.merge_request_approvals": "#/$defs/MergeRequestApprovalsRule",
@@ -557,6 +750,15 @@
               },
               {
                 "$ref": "#/$defs/AccessTokensRule"
+              },
+              {
+                "$ref": "#/$defs/ChangeReviewedRule"
+              },
+              {
+                "$ref": "#/$defs/ChangePipelinePassedRule"
+              },
+              {
+                "$ref": "#/$defs/ChangeDeployedAfterReviewRule"
               }
             ]
           },

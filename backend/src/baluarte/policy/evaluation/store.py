@@ -30,18 +30,30 @@ import logging
 from collections import Counter
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from baluarte.db.models import Evaluation, Finding, GitLabProject, Observation, PolicyException
+from baluarte.audit import details_digest
+from baluarte.db.models import (
+    ChangeRecord,
+    Evaluation,
+    Finding,
+    GitLabProject,
+    Observation,
+    PolicyException,
+)
 from baluarte.evidence.observations import verify
 from baluarte.integrations.gitlab.branches import PROTECTION_SOURCE
+from baluarte.integrations.gitlab.changes import CHANGE_READ_SOURCE, parse_time
 from baluarte.integrations.gitlab.projects import PROJECT_SOURCES
 from baluarte.integrations.gitlab.security_policies import PROJECT_SOURCE as SECURITY_POLICY_SOURCE
 from baluarte.policy.assignments import Resolution
+from baluarte.policy.evaluation import changes as change_rules
 from baluarte.policy.evaluation.access import ACCESS_SOURCES
+from baluarte.policy.evaluation.engine import ChangeEntry
 from baluarte.policy.evaluation.model import RuleResult, UnknownReason
 from baluarte.policy.evaluation.security_policy import summarize
 from baluarte.policy.exceptions import active_for_project
@@ -94,7 +106,14 @@ EVIDENCE: Mapping[str, Evidence] = {
 }
 
 
+# The change rules judge many change observations, read with the project's change-read
+# observation; ``backed_by_changes`` checks them.
+CHANGE_EVIDENCE = Evidence((CHANGE_READ_SOURCE,), None, ("ok", "partial"))
+
+
 def evidence_for(result: RuleResult) -> Evidence:
+    if result.rule_type in change_rules.CHANGE_RULE_TYPES:
+        return CHANGE_EVIDENCE
     found = EVIDENCE.get(result.source)
     if found is not None:
         return found
@@ -173,6 +192,9 @@ def backed(result: RuleResult, evidence: Evidence, observation: Observation | No
             f"The stored observation of project {path} fails its integrity check (its SHA-256 "
             "digest does not match its payload), so it cannot back this value.",
         )
+    if evidence is CHANGE_EVIDENCE:
+        # Its value is rebuilt from the change observations (``backed_by_changes``).
+        return result
     if evidence.value is None or evidence.value(observation.payload, result) != result.observed:
         return _unbacked(
             result,
@@ -181,6 +203,89 @@ def backed(result: RuleResult, evidence: Evidence, observation: Observation | No
             "so the value cannot be backed by evidence.",
         )
     return result
+
+
+def combined_digest(observations: Sequence[Observation]) -> str:
+    """SHA-256 of the canonical JSON of ``[[id, payload_digest], ...]`` in ID order: one value that
+    changes if any observation a result rests on is swapped, added, dropped or altered."""
+    return details_digest(
+        {
+            "observations": [
+                [o.id, o.payload_digest] for o in sorted(observations, key=lambda o: o.id)
+            ]
+        }
+    )
+
+
+@dataclass(frozen=True)
+class ManyEvidence:
+    """The change observations a change-rule result rests on, and their combined digest."""
+
+    observation_ids: list[int]
+    digest: str
+
+
+def backed_by_changes(
+    db: Session, project_id: int, result: RuleResult, read: Observation | None
+) -> tuple[RuleResult, ManyEvidence | None]:
+    """A change-rule result, or ``unknown`` when the stored observations do not support it.
+
+    The read observation must back it like any single observation; then every change in the
+    window is read again from the store, each observation's digest is checked, and the observed
+    value is rebuilt from them and compared with the one judged.
+    """
+    result = backed(result, CHANGE_EVIDENCE, read)
+    if result.outcome not in ("pass", "fail") or read is None or read.payload is None:
+        return result, None
+    observed = result.observed
+    start, end = parse_time(observed.get("from")), parse_time(observed.get("to"))
+    if start is None or end is None:
+        return _unbacked(
+            result, "evidence_mismatch", "The judged window of changes was not recorded."
+        ), None
+    rows = db.execute(
+        select(ChangeRecord.id, ChangeRecord.kind, ChangeRecord.changed_at, Observation)
+        .join(Observation, Observation.id == ChangeRecord.observation_id)
+        .where(
+            ChangeRecord.project_id == project_id,
+            ChangeRecord.changed_at >= end - timedelta(days=change_rules.MAX_WINDOW_DAYS),
+            ChangeRecord.changed_at <= end,
+        )
+        .order_by(ChangeRecord.changed_at, ChangeRecord.id)
+    ).all()
+    observations = {row[3].id: row[3] for row in rows}
+    entries = [
+        ChangeEntry(change_id, kind, changed_at, o.id, o.payload_digest, o.payload)
+        for change_id, kind, changed_at, o in rows
+    ]
+    used = change_rules.evidence_entries(result.rule_type, read.payload, entries, (start, end))
+    path = result.target.path
+    altered = [
+        entry.observation_id for entry in used if not verify(observations[entry.observation_id])
+    ]
+    if altered:
+        logger.warning(
+            "change observations %s fail their digest check; result for %s stored as unknown",
+            altered[:10],
+            path,
+        )
+        return _unbacked(
+            result,
+            "evidence_digest_mismatch",
+            f"{len(altered)} stored change observations of project {path} fail their integrity "
+            "check, so they cannot back this value.",
+        ), None
+    rebuilt = change_rules.summarise(
+        result.rule_type, result.expected, read.payload, entries, (start, end)
+    )
+    if rebuilt != observed:
+        return _unbacked(
+            result,
+            "evidence_mismatch",
+            f"The stored change observations of project {path} do not match the judged value.",
+        ), None
+    chosen = [observations[entry.observation_id] for entry in used]
+    return result, ManyEvidence([o.id for o in chosen], combined_digest(chosen))
 
 
 def excepted(result: RuleResult, exception: PolicyException | None) -> RuleResult:
@@ -203,6 +308,7 @@ def _row(
     observation: Observation | None,
     run_id: int | None,
     exception_id: int | None,
+    many: "ManyEvidence | None" = None,
 ) -> Evaluation:
     return Evaluation(
         instance_id=instance_id,
@@ -229,6 +335,8 @@ def _row(
         ancestry=result.ancestry,
         exception_id=exception_id,
         evaluated_at=result.evaluated_at,
+        observation_ids=many.observation_ids if many is not None else None,
+        evidence_digest=many.digest if many is not None else None,
     )
 
 
@@ -370,11 +478,15 @@ def store_project(
                 db, instance_id, project.id, evidence.sources
             )
         observation = observations[evidence.sources]
-        result = backed(result, evidence, observation)
+        many: ManyEvidence | None = None
+        if evidence is CHANGE_EVIDENCE:
+            result, many = backed_by_changes(db, project.id, result, observation)
+        else:
+            result = backed(result, evidence, observation)
         exception = exceptions.get((result.policy.name, result.rule_id))
         result = excepted(result, exception)
         exception_id = exception.id if result.outcome == "excepted" and exception else None
-        row = _row(instance_id, project, result, observation, run_id, exception_id)
+        row = _row(instance_id, project, result, observation, run_id, exception_id, many)
         db.add(row)
         db.flush()
         _follow(db, project, row, in_force, tally)

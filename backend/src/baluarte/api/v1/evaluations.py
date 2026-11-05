@@ -3,11 +3,12 @@
 Reading needs ``findings:read``. Queueing an evaluation needs ``policy:write`` and is audited.
 """
 
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from sqlalchemy import ColumnElement, Select, and_, func, or_, select
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.orm import Session
@@ -25,6 +26,7 @@ from baluarte.db.models import (
     Policy,
     PolicyException,
 )
+from baluarte.evidence.as_of import FindingAt, RunRef, findings_at, run_at, run_ref
 from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_settings
 from baluarte.jobs import queue
 from baluarte.policy.evaluation import freshness
@@ -35,6 +37,14 @@ from baluarte.scope.exclusions import coverage
 from baluarte.settings import ConfigurationError
 
 router = APIRouter(tags=["evaluations"])
+
+AsOf = Annotated[
+    AwareDatetime | None,
+    Query(
+        description="Read as it stood at this moment (ISO 8601 with a time zone): the latest "
+        "evaluation run that finished by then, and nothing recorded later."
+    ),
+]
 
 Outcome = Literal["pass", "fail", "unknown", "unsupported", "excepted"]
 FindingState = Literal["open", "resolved", "excepted"]
@@ -86,14 +96,25 @@ class EvaluationOut(BaseModel):
     # The exception that waived this failure; set exactly when ``outcome`` is ``excepted``.
     exception_id: int | None
     evaluated_at: datetime
+    # A change rule's result rests on many observations: every one, and their combined digest.
+    observation_ids: list[int] | None = None
+    evidence_digest: str | None = None
 
 
-class EvaluationPage(BaseModel):
+class PointInTime(BaseModel):
+    # The moment asked for with ``as_of``; null for now.
+    as_of: datetime | None = None
+    # The evaluation run the response is read from: the latest successful one (that finished by
+    # ``as_of``). Null when there is none, and then the results are empty.
+    evaluation_run: RunRef | None = None
+
+
+class EvaluationPage(PointInTime):
     items: list[EvaluationOut]
     next_before_id: int | None
 
 
-class ProjectEvaluations(BaseModel):
+class ProjectEvaluations(PointInTime):
     project: ProjectRef
     # The latest evaluation of each rule in the project's latest evaluation; empty when the
     # project has not been evaluated.
@@ -132,9 +153,14 @@ class FindingOut(BaseModel):
     controls: list[ControlRef] = []
 
 
-class FindingPage(BaseModel):
+class FindingPage(PointInTime):
     items: list[FindingOut]
     next_after_id: int | None
+
+
+class FindingRead(FindingOut):
+    as_of: datetime | None = None
+    evaluation_run: RunRef | None = None
 
 
 FindingRows = Select[Evaluation, int, int, str, str, Finding, PolicyException, bool]
@@ -144,7 +170,7 @@ class EvaluationQueued(BaseModel):
     job_id: int
 
 
-class RunPage(BaseModel):
+class RunPage(PointInTime):
     items: list[EvaluationRunOut]
     next_before_id: int | None
 
@@ -209,6 +235,8 @@ def _evaluation_out(row: Any) -> EvaluationOut:
         ancestry=evaluation.ancestry,
         exception_id=evaluation.exception_id,
         evaluated_at=evaluation.evaluated_at,
+        observation_ids=evaluation.observation_ids,
+        evidence_digest=evaluation.evidence_digest,
     )
 
 
@@ -385,8 +413,10 @@ class BaselineResults(BaseModel):
 
 
 class EvaluationSummary(BaseModel):
-    # The run the counts come from: the latest successful one. Null when none has succeeded.
+    # The run the counts come from: the latest successful one (that finished by ``as_of``).
+    # Null when none has succeeded.
     evaluation_run: EvaluationRunOut | None
+    as_of: datetime | None = None
     freshness: EvaluationFreshness
     baselines: list[BaselineResults]
 
@@ -411,18 +441,25 @@ def evaluation_summary(
     _: Annotated[Principal, Depends(require(Permission.FINDINGS_READ))],
     db: Annotated[Session, Depends(database)],
     policy: Annotated[str | None, Query(max_length=63)] = None,
+    as_of: AsOf = None,
 ) -> EvaluationSummary:
     settings = _settings()
     instance_id = _instance_id(db, settings)
     report = freshness.report(db, instance_id, settings)
-    run = db.scalars(
-        select(EvaluationRun)
-        .where(EvaluationRun.instance_id == (instance_id or 0), EvaluationRun.status == "succeeded")
-        .order_by(EvaluationRun.started_at.desc(), EvaluationRun.id.desc())
-        .limit(1)
-    ).first()
+    if as_of is None:
+        run = db.scalars(
+            select(EvaluationRun)
+            .where(
+                EvaluationRun.instance_id == (instance_id or 0),
+                EvaluationRun.status == "succeeded",
+            )
+            .order_by(EvaluationRun.started_at.desc(), EvaluationRun.id.desc())
+            .limit(1)
+        ).first()
+    else:
+        run = run_at(db, instance_id, as_of)
     if run is None:
-        return EvaluationSummary(evaluation_run=None, freshness=report, baselines=[])
+        return EvaluationSummary(evaluation_run=None, freshness=report, baselines=[], as_of=as_of)
     statement = (
         select(
             Evaluation.policy_name,
@@ -439,7 +476,7 @@ def evaluation_summary(
         .join(GitLabProject, GitLabProject.id == Evaluation.project_id)
         .where(
             Evaluation.evaluation_run_id == run.id,
-            coverage(db, run.instance_id).project_included(),
+            coverage(db, run.instance_id, as_of).project_included(),
         )
     )
     if policy is not None:
@@ -498,6 +535,7 @@ def evaluation_summary(
         evaluation_run=EvaluationRunOut.model_validate(run, from_attributes=True),
         freshness=report,
         baselines=list(baselines.values()),
+        as_of=as_of,
     )
 
 
@@ -511,14 +549,23 @@ def list_runs(
     db: Annotated[Session, Depends(database)],
     before_id: Annotated[int | None, Query(gt=0)] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    as_of: AsOf = None,
 ) -> RunPage:
     instance_id = _instance_id(db, _settings())
     statement = select(EvaluationRun).where(EvaluationRun.instance_id == (instance_id or 0))
+    if as_of is not None:
+        # Runs that had finished by then; a run still going then is not shown as it ended.
+        statement = statement.where(EvaluationRun.finished_at <= as_of)
     if before_id is not None:
         statement = statement.where(EvaluationRun.id < before_id)
     rows = list(db.scalars(statement.order_by(EvaluationRun.id.desc()).limit(limit + 1)))
     items = [EvaluationRunOut.model_validate(row, from_attributes=True) for row in rows[:limit]]
-    return RunPage(items=items, next_before_id=items[-1].id if len(rows) > limit else None)
+    return RunPage(
+        items=items,
+        next_before_id=items[-1].id if len(rows) > limit else None,
+        as_of=as_of,
+        evaluation_run=run_ref(run_at(db, instance_id, as_of)),
+    )
 
 
 @router.get(
@@ -549,7 +596,16 @@ def list_findings(
     monitoring: Annotated[Literal["included", "excluded", "all"], Query()] = "included",
     after_id: Annotated[int | None, Query(gt=0)] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    as_of: AsOf = None,
 ) -> FindingPage:
+    if as_of is not None:
+        return _findings_as_of(
+            db,
+            as_of,
+            FindingFilters(state, outcome, severity, project, policy, rule, monitoring),
+            after_id,
+            limit,
+        )
     statement = _scoped(_findings(), db)
     if monitoring != "all":
         scope = coverage(db, _instance_id(db, _settings()))
@@ -573,7 +629,144 @@ def list_findings(
     rows = db.execute(statement.order_by(Finding.id).limit(limit + 1)).all()
     mapping = effective(db)
     items = [_finding_out(row, mapping) for row in rows[:limit]]
-    return FindingPage(items=items, next_after_id=items[-1].id if len(rows) > limit else None)
+    instance_id = _instance_id(db, _settings())
+    return FindingPage(
+        items=items,
+        next_after_id=items[-1].id if len(rows) > limit else None,
+        evaluation_run=run_ref(run_at(db, instance_id, None)),
+    )
+
+
+@dataclass(frozen=True)
+class FindingFilters:
+    state: str | None = None
+    outcome: str | None = None
+    severity: str | None = None
+    project: int | None = None
+    policy: str | None = None
+    rule: str | None = None
+    monitoring: str = "all"
+
+
+def _finding_at_out(
+    finding: Finding, project: GitLabProject, at: FindingAt, version: int, mapping: Effective
+) -> FindingOut:
+    evaluation = _evaluation_out(
+        (at.latest, version, project.gitlab_id, project.path_with_namespace, project.state)
+    )
+    exception = at.exception
+    resolved = finding.resolved_at
+    return FindingOut(
+        id=finding.id,
+        project=evaluation.project,
+        policy=PolicyVersionRef(
+            policy_id=at.latest.policy_id, name=finding.policy_name, version=version
+        ),
+        rule_id=finding.rule_id,
+        severity=finding.severity,
+        state=at.state,  # type: ignore[arg-type]
+        resolution=at.resolution,
+        latest_outcome=at.latest.outcome,  # type: ignore[arg-type]
+        first_seen_at=finding.first_seen_at,
+        last_seen_at=min(finding.last_seen_at, at.latest.evaluated_at),
+        # When it was resolved is known only if that resolution still stands.
+        resolved_at=resolved
+        if at.state == "resolved" and resolved is not None and resolved <= at.latest.evaluated_at
+        else None,
+        exception=(
+            FindingException(id=exception.id, expires_at=exception.expires_at, in_force=at.waived)
+            if exception is not None
+            else None
+        ),
+        latest_evaluation=evaluation,
+        controls=[
+            ControlRef(framework=framework, id=control_id)
+            for framework, control_id in mapping.controls_for(evaluation.rule_type)
+        ],
+    )
+
+
+_AS_OF_CHUNK = 200
+
+
+def _findings_as_of(
+    db: Session,
+    as_of: datetime,
+    filters: FindingFilters,
+    after_id: int | None,
+    limit: int,
+    finding_id: int | None = None,
+) -> FindingPage:
+    """Findings as they stood at ``as_of`` (``baluarte.evidence.as_of``), filtered on that state."""
+    instance_id = _instance_id(db, _settings())
+    run = run_at(db, instance_id, as_of)
+    if run is None:
+        return FindingPage(items=[], next_after_id=None, as_of=as_of, evaluation_run=None)
+    scope = coverage(db, instance_id, as_of)
+    mapping = effective(db, as_of)
+    statement = (
+        select(Finding, GitLabProject)
+        .join(GitLabProject, GitLabProject.id == Finding.project_id)
+        .where(GitLabProject.instance_id == (instance_id or 0), Finding.first_seen_at <= as_of)
+    )
+    if finding_id is not None:
+        statement = statement.where(Finding.id == finding_id)
+    if filters.monitoring != "all":
+        statement = statement.where(
+            scope.project_included()
+            if filters.monitoring == "included"
+            else scope.project_excluded()
+        )
+    if filters.severity is not None:
+        statement = statement.where(Finding.severity == filters.severity)
+    if filters.project is not None:
+        statement = statement.where(GitLabProject.gitlab_id == filters.project)
+    if filters.policy is not None:
+        statement = statement.where(Finding.policy_name == filters.policy)
+    if filters.rule is not None:
+        statement = statement.where(Finding.rule_id == filters.rule)
+    items: list[FindingOut] = []
+    more = False
+    cursor = after_id or 0
+    while not more:
+        chunk = list(
+            db.execute(
+                statement.where(Finding.id > cursor).order_by(Finding.id).limit(_AS_OF_CHUNK)
+            ).all()
+        )
+        if not chunk:
+            break
+        cursor = chunk[-1][0].id
+        states = findings_at(db, chunk, as_of, run, scope)
+        versions = dict(
+            db.execute(
+                select(Policy.id, Policy.version).where(
+                    Policy.id.in_({at.latest.policy_id for at in states.values()})
+                )
+            ).all()
+        )
+        for finding, project in chunk:
+            at = states.get(finding.id)
+            if at is None:
+                continue
+            if filters.state is not None and at.state != filters.state:
+                continue
+            if filters.outcome is not None and at.latest.outcome != filters.outcome:
+                continue
+            if len(items) == limit:
+                more = True
+                break
+            items.append(
+                _finding_at_out(finding, project, at, versions[at.latest.policy_id], mapping)
+            )
+        if len(chunk) < _AS_OF_CHUNK:
+            break
+    return FindingPage(
+        items=items,
+        next_after_id=items[-1].id if more and items else None,
+        as_of=as_of,
+        evaluation_run=run_ref(run),
+    )
 
 
 def _finding(db: Session, finding_id: int) -> Any:
@@ -585,7 +778,7 @@ def _finding(db: Session, finding_id: int) -> Any:
 
 @router.get(
     "/findings/{finding_id}",
-    response_model=FindingOut,
+    response_model=FindingRead,
     summary="One finding with its latest evaluation",
     responses={404: {"description": "No such finding"}},
 )
@@ -593,8 +786,18 @@ def read_finding(
     finding_id: Annotated[int, Path(gt=0)],
     _: Annotated[Principal, Depends(require(Permission.FINDINGS_READ))],
     db: Annotated[Session, Depends(database)],
-) -> FindingOut:
-    return _finding_out(_finding(db, finding_id), effective(db))
+    as_of: AsOf = None,
+) -> FindingRead:
+    if as_of is None:
+        out = _finding_out(_finding(db, finding_id), effective(db))
+        run = run_at(db, _instance_id(db, _settings()), None)
+        return FindingRead(**dict(out), evaluation_run=run_ref(run))
+    page = _findings_as_of(db, as_of, FindingFilters(), None, 1, finding_id=finding_id)
+    if not page.items:
+        if page.evaluation_run is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "No evaluation run had finished by then")
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such finding at that moment")
+    return FindingRead(**dict(page.items[0]), as_of=as_of, evaluation_run=page.evaluation_run)
 
 
 @router.get(
@@ -610,6 +813,7 @@ def finding_history(
     db: Annotated[Session, Depends(database)],
     before_id: Annotated[int | None, Query(gt=0)] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
+    as_of: AsOf = None,
 ) -> EvaluationPage:
     finding: Finding = _finding(db, finding_id)[5]
     statement = _evaluations().where(
@@ -617,11 +821,18 @@ def finding_history(
         Evaluation.policy_name == finding.policy_name,
         Evaluation.rule_id == finding.rule_id,
     )
+    if as_of is not None:
+        statement = statement.where(Evaluation.evaluated_at <= as_of)
     if before_id is not None:
         statement = statement.where(Evaluation.id < before_id)
     rows = db.execute(statement.order_by(Evaluation.id.desc()).limit(limit + 1)).all()
     items = [_evaluation_out(row) for row in rows[:limit]]
-    return EvaluationPage(items=items, next_before_id=items[-1].id if len(rows) > limit else None)
+    return EvaluationPage(
+        items=items,
+        next_before_id=items[-1].id if len(rows) > limit else None,
+        as_of=as_of,
+        evaluation_run=run_ref(run_at(db, _instance_id(db, _settings()), as_of)),
+    )
 
 
 @router.get(
@@ -638,6 +849,7 @@ def project_evaluations(
     gitlab_id: Annotated[int, Path(gt=0)],
     _: Annotated[Principal, Depends(require(Permission.FINDINGS_READ))],
     db: Annotated[Session, Depends(database)],
+    as_of: AsOf = None,
 ) -> ProjectEvaluations:
     instance_id = _instance_id(db, _settings())
     project = db.scalars(
@@ -650,6 +862,23 @@ def project_evaluations(
     ref = ProjectRef(
         gitlab_id=project.gitlab_id, path=project.path_with_namespace, state=project.state
     )
+    if as_of is not None:
+        # The project's results in the run in force then.
+        run = run_at(db, instance_id, as_of)
+        if run is None:
+            return ProjectEvaluations(project=ref, items=[], as_of=as_of, evaluation_run=None)
+        rows = db.execute(
+            _evaluations()
+            .where(Evaluation.project_id == project.id, Evaluation.evaluation_run_id == run.id)
+            .ext(distinct_on(Evaluation.policy_name, Evaluation.rule_id))
+            .order_by(Evaluation.policy_name, Evaluation.rule_id, Evaluation.id.desc())
+        ).all()
+        return ProjectEvaluations(
+            project=ref,
+            items=[_evaluation_out(row) for row in rows],
+            as_of=as_of,
+            evaluation_run=run_ref(run),
+        )
     newest = db.execute(
         select(func.max(Evaluation.evaluated_at)).where(Evaluation.project_id == project.id)
     ).scalar_one()
@@ -661,12 +890,15 @@ def project_evaluations(
             EvaluationRun.status == "succeeded",
         )
     ).scalar_one()
+    current = run_ref(run_at(db, instance_id, None))
     if newest is None or (latest_success is not None and newest < latest_success):
-        return ProjectEvaluations(project=ref, items=[])
+        return ProjectEvaluations(project=ref, items=[], evaluation_run=current)
     rows = db.execute(
         _evaluations()
         .where(Evaluation.project_id == project.id, Evaluation.evaluated_at == newest)
         .ext(distinct_on(Evaluation.policy_name, Evaluation.rule_id))
         .order_by(Evaluation.policy_name, Evaluation.rule_id, Evaluation.id.desc())
     ).all()
-    return ProjectEvaluations(project=ref, items=[_evaluation_out(row) for row in rows])
+    return ProjectEvaluations(
+        project=ref, items=[_evaluation_out(row) for row in rows], evaluation_run=current
+    )

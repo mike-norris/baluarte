@@ -2,6 +2,7 @@
 
 import { getJson } from "./client";
 import type { Monitoring } from "./scope";
+import type { AsOfAnswer } from "../asof/format";
 
 export type InventoryState = "active" | "missing" | "inaccessible";
 export type Visibility = "private" | "internal" | "public";
@@ -162,7 +163,7 @@ export interface GroupDetail {
   collection: KindFreshness;
 }
 
-export interface ProjectDetail {
+export interface ProjectDetail extends AsOfAnswer {
   project: Project;
   ancestry: Ancestry;
   collection: KindFreshness;
@@ -174,8 +175,12 @@ export function getGroup(gitlabId: number, signal?: AbortSignal): Promise<GroupD
   return getJson(`/api/v1/gitlab/groups/${String(gitlabId)}`, undefined, signal);
 }
 
-export function getProject(gitlabId: number, signal?: AbortSignal): Promise<ProjectDetail> {
-  return getJson(`/api/v1/gitlab/projects/${String(gitlabId)}`, undefined, signal);
+export function getProject(
+  gitlabId: number,
+  signal?: AbortSignal,
+  asOf: string | null = null,
+): Promise<ProjectDetail> {
+  return getJson(`/api/v1/gitlab/projects/${String(gitlabId)}`, { as_of: asOf }, signal);
 }
 
 export function groupHref(gitlabId: number): string {

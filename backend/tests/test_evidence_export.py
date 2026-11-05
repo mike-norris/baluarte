@@ -145,7 +145,7 @@ def test_a_json_export_holds_every_section_with_provenance(world: World) -> None
         "counts",
         "manifest",
     ]
-    assert document["format"] == "baluarte.evidence-export/v3"
+    assert document["format"] == "baluarte.evidence-export/v4"
     assert document["export_id"] == response.headers["x-baluarte-export-id"]
     assert document["scope"] == {"all": True}
     assert document["freshness"]["collection"]["status"] in {"fresh", "stale", "never", "failed"}

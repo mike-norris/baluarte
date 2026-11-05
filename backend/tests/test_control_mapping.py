@@ -63,7 +63,7 @@ def test_controls_are_unique_with_short_paraphrased_titles() -> None:
     assert len(keys) == len(set(keys))
     assert {c.framework for c in CONTROLS} == set(FRAMEWORK_IDS)
     assert all(0 < len(c.title) <= 70 and c.area for c in CONTROLS)
-    assert MAPPING_VERSION == "2026.11"
+    assert MAPPING_VERSION == "2026.11.1"
 
 
 def test_a_failure_outranks_manual_but_not_not_applicable() -> None:
@@ -785,7 +785,7 @@ def test_the_manifest_records_the_mapping_in_force(world: World) -> None:
 
     assert response.status_code == 200, response.text
     manifest = response.json()["manifest"]
-    assert manifest["manifest_format"] == "baluarte.evidence-manifest/v5"
+    assert manifest["manifest_format"] == "baluarte.evidence-manifest/v6"
     mapping = manifest["control_mapping"]
     assert mapping["mapping_version"] == MAPPING_VERSION
     assert len(mapping["effective"]) == len(DEFAULT_MAPPING)

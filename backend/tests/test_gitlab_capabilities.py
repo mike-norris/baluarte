@@ -52,6 +52,12 @@ def test_full_detection_on_a_healthy_instance() -> None:
         "merge_request_approval_rules.read": "supported",
         "project_members.read": "supported",
         "project_access_tokens.read": "supported",
+        "merge_requests.read": "supported",
+        "merge_request_approvals_state.read": "supported",
+        "pipelines.read": "supported",
+        "test_reports.read": "supported",
+        "deployments.read": "supported",
+        "commits.read": "supported",
         "license.read": "forbidden",
         "security_policies.read": "supported",
         "security_policies.scan_execution": "supported",
@@ -252,3 +258,18 @@ def test_job_without_configuration_fails_permanently(
     assert job.state == "failed"
     assert job.error is not None
     assert "not configured" in job.error
+
+
+def test_change_probes_skip_what_the_sample_project_cannot_show() -> None:
+    fake = FakeGitLab()
+    fake.json("/projects/42/merge_requests", body=[])
+    fake.json("/projects/42/pipelines", body=[])
+    fake.json("/projects/42/deployments", status=403, body={"message": "403 Forbidden"})
+
+    found = statuses(run(fake))
+
+    assert found["merge_requests.read"] == "supported"
+    assert found["merge_request_approvals_state.read"] == "skipped"
+    assert found["test_reports.read"] == "skipped"
+    assert found["deployments.read"] == "forbidden"
+    assert found["commits.read"] == "supported"

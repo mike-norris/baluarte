@@ -266,6 +266,10 @@ CoverageRow {
 
 `covered`: at least one enabled policy reaches the target. `not_covered`: every type was read in full and none is enabled. `unknown`: never read, not read, or a type unsupported, unknown or cut short with nothing enabled found.
 
+## Change evidence
+
+After every project discovery, `gitlab.collect_changes` reads each monitored project's merged merge requests (with approvals, pipeline and test report summary), the first-parent commits on its default branch that no merged merge request brought, and successful deployments to the production environments, with `GET` only. Capability detection adds the probes `merge_requests.read`, `merge_request_approvals_state.read`, `pipelines.read`, `test_reports.read`, `deployments.read` and `commits.read`. Edition and version limits (approvals required and left are Enterprise Edition only; commits carry no usernames; the merge request `state` filter on a commit's merge requests needs GitLab 18.2) are in [CHANGE_EVIDENCE.md](CHANGE_EVIDENCE.md#gitlab-editions-and-versions).
+
 ## Scheduling and freshness
 
 - **Security policies:** each finished project discovery queues `gitlab.discover_security_policies` (once per run), but only when the latest capability snapshot has `security_policies.read` and at least one policy type `supported`.

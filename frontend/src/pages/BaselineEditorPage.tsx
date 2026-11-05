@@ -137,6 +137,22 @@ function YamlHelp() {
           <code className="font-mono">max_unused_days</code> (1 to 365 each).
         </li>
         <li>
+          Rule <code className="font-mono">gitlab.change.reviewed</code> with optional{" "}
+          <code className="font-mono">window_days</code> (1 to 365, default 90),{" "}
+          <code className="font-mono">min_approvals</code> (1 to 20, default 1),{" "}
+          <code className="font-mono">forbid_self_approval</code> (default true) and{" "}
+          <code className="font-mono">allow_direct_push</code> (default false).
+        </li>
+        <li>
+          Rule <code className="font-mono">gitlab.change.pipeline_passed</code> with optional{" "}
+          <code className="font-mono">window_days</code> and{" "}
+          <code className="font-mono">require_tests</code> (default false).
+        </li>
+        <li>
+          Rule <code className="font-mono">gitlab.change.deployed_after_review</code> with optional{" "}
+          <code className="font-mono">window_days</code>.
+        </li>
+        <li>
           Each rule has a unique <code className="font-mono">id</code> and an optional{" "}
           <code className="font-mono">severity</code> (low, medium, high or critical) and{" "}
           <code className="font-mono">description</code>.

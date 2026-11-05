@@ -6,6 +6,7 @@
 import { useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router";
 
+import { changesHref } from "../api/changes";
 import { ApiError } from "../api/client";
 import {
   findingsHref,
@@ -17,6 +18,8 @@ import { getGroup, getProject, groupHref, type Ancestry, type KindFreshness } fr
 import { effectivePolicies } from "../api/policies";
 import { getCoverage, policyTypes, type CoverageRow } from "../api/securityPolicies";
 import { useLoad } from "../api/useLoad";
+import { useAsOf } from "../asof/context";
+import { AsOfResult } from "../asof/AsOfResult";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { linkClass } from "../components/styles";
 import { outcomeLabels, reasonHelp, severityLabels } from "../findings/format";
@@ -235,13 +238,21 @@ const excludedNotice =
 
 /** The latest result of each rule, grouped by the baseline version it came from. */
 function Results({ gitlabId }: { gitlabId: number }) {
-  const loaded = useLoad(`project-evaluations:${String(gitlabId)}`, (signal) =>
-    getProjectEvaluations(gitlabId, signal),
+  const asOf = useAsOf();
+  const loaded = useLoad(`project-evaluations:${String(gitlabId)}@${asOf ?? "now"}`, (signal) =>
+    getProjectEvaluations(gitlabId, signal, asOf),
   );
   let body: ReactNode;
   if (loaded.error) body = <ErrorMessage error={loaded.error} retry={loaded.retry} />;
   else if (!loaded.data) body = <Loading what="results" />;
-  else body = <ResultTables data={loaded.data} gitlabId={gitlabId} />;
+  else {
+    body = (
+      <>
+        <AsOfResult answer={loaded.data} />
+        <ResultTables data={loaded.data} gitlabId={gitlabId} />
+      </>
+    );
+  }
   return (
     <section aria-labelledby="results" className={card}>
       <h2 id="results" className="text-lg font-semibold">
@@ -410,10 +421,11 @@ function useScopeChange(reload: () => void) {
 
 export function ProjectPage() {
   const gitlabId = useGitlabId();
-  const loaded = useLoad(`project:${String(gitlabId)}`, (signal) =>
+  const asOf = useAsOf();
+  const loaded = useLoad(`project:${String(gitlabId)}@${asOf ?? "now"}`, (signal) =>
     gitlabId === null
       ? Promise.reject(new ApiError(404, "Not found"))
-      : getProject(gitlabId, signal),
+      : getProject(gitlabId, signal, asOf),
   );
   const scope = useScopeChange(loaded.retry);
   if (gitlabId === null || isNotFound(loaded.error)) return <NotFound kind="project" />;
@@ -451,6 +463,17 @@ export function ProjectPage() {
         onChanged={scope.changed}
       />
       {scope.notice}
+      {asOf && (
+        <p className="text-sm text-slate-700">
+          Results and monitoring are shown as of the date viewed; baselines in effect and GitLab
+          security policies are shown as they are now.
+        </p>
+      )}
+      <p className="text-sm">
+        <Link to={changesHref({ project: project.gitlab_id })} className={linkClass}>
+          Changes to the default branch
+        </Link>
+      </p>
       <InEffect kind="project" gitlabId={project.gitlab_id} />
       {not_evaluated === "archived" || excluded ? (
         <section aria-labelledby="results" className={card}>

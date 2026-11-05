@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from baluarte.compliance.catalogue import ISO27001, NIST, SOC2, FrameworkId
 from baluarte.policy.schema import RULE_TYPES
 
-MAPPING_VERSION = "2026.11"
+MAPPING_VERSION = "2026.11.1"
 
 
 ACCESS = "Access control"
@@ -222,6 +222,40 @@ DEFAULT_MAPPING: tuple[DefaultPair, ...] = tuple(
                 (ISO27001, "A.5.18"): "Unused tokens are access rights that should be removed.",
                 (NIST, "IA-5"): "A maximum token lifetime is authenticator management.",
                 (NIST, "AC-2"): "Project tokens act as accounts and need the same lifecycle.",
+            },
+        ),
+        *_pairs(
+            "gitlab.change.reviewed",
+            {
+                (SOC2, "CC8.1"): "Each change shows who approved it before it was merged.",
+                (
+                    ISO27001,
+                    "A.8.32",
+                ): "Reviewed merges and no direct pushes show the change process was followed.",
+                (NIST, "CM-3"): "Every change to the default branch was reviewed and approved.",
+                (NIST, "AC-5"): "Approval by someone other than the author separates duties.",
+            },
+        ),
+        *_pairs(
+            "gitlab.change.pipeline_passed",
+            {
+                (SOC2, "CC8.1"): "Each change shows a passing pipeline before release.",
+                (
+                    ISO27001,
+                    "A.8.29",
+                ): "Passing pipelines and test reports show changes were tested.",
+                (NIST, "SA-11"): "The pipeline is the developer's testing of each change.",
+            },
+        ),
+        *_pairs(
+            "gitlab.change.deployed_after_review",
+            {
+                (SOC2, "CC8.1"): "What reached production can be traced to an approved change.",
+                (
+                    ISO27001,
+                    "A.8.32",
+                ): "Deployments of reviewed changes only show the process held to production.",
+                (NIST, "CM-3"): "Production changes trace to reviewed and approved changes.",
             },
         ),
     ]

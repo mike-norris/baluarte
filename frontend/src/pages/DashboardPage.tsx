@@ -15,6 +15,8 @@ import {
   type Finding,
 } from "../api/evaluations";
 import { useLoad, type Loaded } from "../api/useLoad";
+import { useAsOf } from "../asof/context";
+import { AsOfResult } from "../asof/AsOfResult";
 import { outcomeLabels, outcomeMeaning, severityLabels } from "../findings/format";
 import { useFreshness } from "../freshness/context";
 import { PopulationNote } from "../freshness/PopulationNote";
@@ -334,9 +336,12 @@ function OpenFindings({ items, truncated }: { items: Finding[]; truncated: boole
 }
 
 export function DashboardPage() {
-  const runs = useLoad("dashboard-runs", (signal) => latestSuccessfulRun(signal));
-  const findings = useLoad("dashboard-findings", (signal) =>
-    collectFindings({ state: "open" }, signal),
+  const asOf = useAsOf();
+  const runs = useLoad(`dashboard-runs@${asOf ?? "now"}`, (signal) =>
+    latestSuccessfulRun(signal, undefined, asOf),
+  );
+  const findings = useLoad(`dashboard-findings@${asOf ?? "now"}`, (signal) =>
+    collectFindings({ state: "open" }, signal, undefined, asOf),
   );
   return (
     <section aria-labelledby="page-title">
@@ -345,7 +350,13 @@ export function DashboardPage() {
       </h1>
       <p className="mt-2 text-slate-600">Compliance posture across groups and projects.</p>
       <PopulationNote />
-      <EvaluationStatus />
+      {asOf ? (
+        <div className="mt-6">
+          <AsOfResult answer={runs.data?.answer} />
+        </div>
+      ) : (
+        <EvaluationStatus />
+      )}
       <section aria-labelledby="rule-results" className="mt-8">
         <h2 id="rule-results" className="text-lg font-semibold">
           Rule results

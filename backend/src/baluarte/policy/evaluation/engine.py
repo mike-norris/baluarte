@@ -94,6 +94,31 @@ class ProjectObservation:
 
 
 @dataclass(frozen=True)
+class ChangeEntry:
+    """One recorded change and the observation that describes it now."""
+
+    change_id: int
+    kind: str
+    changed_at: datetime
+    observation_id: int
+    payload_digest: str | None
+    payload: dict[str, Any] | None
+
+
+@dataclass(frozen=True)
+class ChangeHistory:
+    """A project's recorded changes up to the evaluation, read for the change rules."""
+
+    # The project's latest change-read observation; None when its changes were never read.
+    read: ProjectObservation | None
+    # Changes since ``loaded_from``, oldest first.
+    entries: tuple[ChangeEntry, ...]
+    loaded_from: datetime
+    # The evaluation time: windows end here.
+    as_of: datetime
+
+
+@dataclass(frozen=True)
 class ProjectFacts:
     """A project as recorded in the inventory."""
 
@@ -114,6 +139,8 @@ class ProjectFacts:
     members: ProjectObservation | None = None
     access_tokens: ProjectObservation | None = None
     two_factor: ProjectObservation | None = None
+    # Loaded only when a change rule is in force; None otherwise.
+    changes: ChangeHistory | None = None
 
 
 @dataclass(frozen=True)
@@ -152,6 +179,13 @@ class RuleEvaluator:
     # the rule checks that GitLab did not report; None when it can. The result is then
     # ``unknown`` (``value_unknown``) with that reason, never a guessed pass or fail.
     undecided: Callable[[Rule, Any], str | None] = lambda _rule, _observed: None
+    # For a value that depends on the rule (a window of changes): used instead of ``observe``.
+    observe_rule: Callable[[Rule, ProjectFacts], Any] | None = None
+
+    def value(self, rule: Rule, project: ProjectFacts) -> Any:
+        if self.observe_rule is not None:
+            return self.observe_rule(rule, project)
+        return self.observe(project)
 
 
 def _collection(context: EvaluationContext, kind: str) -> CollectionContext:
@@ -203,7 +237,7 @@ def _message(
 
 
 def unknown_reasons(
-    context: EvaluationContext, evaluator: RuleEvaluator
+    context: EvaluationContext, evaluator: RuleEvaluator, rule: Rule
 ) -> tuple[UnknownReason, ...]:
     """Every reason the rule cannot be decided, most fundamental first."""
     found: set[UnknownReason] = set()
@@ -223,7 +257,7 @@ def unknown_reasons(
         found.add("ancestry_incomplete")
     if evaluator.capability is not None and _capability(context, evaluator) == "unknown":
         found.add("capability_unknown")
-    if project is not None and evaluator.observe(project) is None:
+    if project is not None and evaluator.value(rule, project) is None:
         found.add(evaluator.unknown_reason(project))
     return tuple(reason for reason in UNKNOWN_PRECEDENCE if reason in found)
 
@@ -243,7 +277,7 @@ def evaluate_rule(
     capability = CapabilityContext(
         name=evaluator.capability, status=_capability(context, evaluator)
     )
-    reasons = unknown_reasons(context, evaluator)
+    reasons = unknown_reasons(context, evaluator, rule)
     outcome: Outcome
     observed: Any = None
     observed_at: datetime | None = None
@@ -258,7 +292,7 @@ def evaluate_rule(
         raise AssertionError("a target outside the inventory is always unknown")
     else:
         project = context.project
-        value = evaluator.observe(project)
+        value = evaluator.value(rule, project)
         why = evaluator.undecided(rule, value)
         if why is not None:
             outcome = "unknown"

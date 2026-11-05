@@ -6,6 +6,7 @@
 import { ApiError, getJson } from "./client";
 import { changeFailure, detailText } from "./send";
 import type { Person } from "./policies";
+import type { AsOfAnswer } from "../asof/format";
 
 export type FrameworkId = "soc2" | "iso27001" | "nist_800_53_moderate";
 export const frameworkIds: readonly FrameworkId[] = ["soc2", "iso27001", "nist_800_53_moderate"];
@@ -84,7 +85,7 @@ export interface Control {
   counts: ControlCounts;
 }
 
-export interface ControlList {
+export interface ControlList extends AsOfAnswer {
   mapping_version: string;
   frameworks: Framework[];
   controls: Control[];
@@ -123,7 +124,7 @@ export interface ControlRule {
   counts: ControlCounts;
 }
 
-export interface ControlDetail extends Control {
+export interface ControlDetail extends Control, AsOfAnswer {
   rules: ControlRule[];
   changes: MappingChange[];
 }
@@ -159,16 +160,21 @@ export function controlPath(framework: string, controlId: string): string {
   return `/controls/${encodeURIComponent(framework)}/${encodeURIComponent(controlId)}`;
 }
 
-export function listControls(framework: FrameworkId, signal?: AbortSignal): Promise<ControlList> {
-  return getJson("/api/v1/controls", { framework }, signal);
+export function listControls(
+  framework: FrameworkId,
+  signal?: AbortSignal,
+  asOf: string | null = null,
+): Promise<ControlList> {
+  return getJson("/api/v1/controls", { framework, as_of: asOf }, signal);
 }
 
 export function getControl(
   framework: string,
   controlId: string,
   signal?: AbortSignal,
+  asOf: string | null = null,
 ): Promise<ControlDetail> {
-  return getJson(`/api/v1${controlPath(framework, controlId)}`, undefined, signal);
+  return getJson(`/api/v1${controlPath(framework, controlId)}`, { as_of: asOf }, signal);
 }
 
 export async function listMappingChanges(

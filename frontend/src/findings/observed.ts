@@ -169,6 +169,17 @@ function twoFactor(observed: Payload): string | null {
 }
 
 /** A sentence for a rule type's observed value, or null to show the value as it is. */
+/** Change rules count the changes in their window; the failing ones are listed separately. */
+function changes(observed: Payload): string | null {
+  const total = whole(observed.changes);
+  if (total === null) return null;
+  if (total === 0) return "No changes in the window";
+  const parts = (["passed", "failed", "unknown"] as const).map(
+    (key) => `${String(whole(observed[key]) ?? 0)} ${key}`,
+  );
+  return `${count(total, "change", "changes")} in the window: ${parts.join(", ")}`;
+}
+
 export function observedSummary(ruleType: string, observed: unknown): string | null {
   if (ruleType === "gitlab.project.access_tokens") return tokens(observed);
   if (!isRecord(observed)) return null;
@@ -179,6 +190,10 @@ export function observedSummary(ruleType: string, observed: unknown): string | n
       return members(observed);
     case "gitlab.group.two_factor_required":
       return twoFactor(observed);
+    case "gitlab.change.reviewed":
+    case "gitlab.change.pipeline_passed":
+    case "gitlab.change.deployed_after_review":
+      return changes(observed);
     default:
       return null;
   }

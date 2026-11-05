@@ -18,7 +18,9 @@ from typing import Any
 # v3: adds ``population`` and its limitation (export format unchanged).
 # v4: adds ``control_mapping``, the framework control mapping in force (export format unchanged).
 # v5: adds ``monitoring_scope``, the exclusions from monitoring in force (export format v3).
-MANIFEST_FORMAT = "baluarte.evidence-manifest/v5"
+# v6: adds ``evidence_package`` to audit-period packages (period, evaluation run and the change
+# sample), and evaluations' ``observation_ids`` and ``evidence_digest`` (export format v4).
+MANIFEST_FORMAT = "baluarte.evidence-manifest/v6"
 # Invalid observation IDs listed by ID; beyond this only the count is given.
 MAX_LISTED = 1000
 
@@ -181,6 +183,7 @@ def build(
     operations: dict[str, Any] | None = None,
     control_mapping: dict[str, Any] | None = None,
     monitoring_scope: dict[str, Any] | None = None,
+    evidence_package: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The manifest. ``contents`` lists the ZIP's files, or the JSON document's sections."""
     manifest: dict[str, Any] = {
@@ -239,6 +242,11 @@ def build(
         "limitations": [*LIMITATIONS, population(meta)["statement"]],
         "verification": VERIFICATION,
     }
+    if evidence_package is not None:
+        # An audit-period package (docs/AUDIT_EVIDENCE.md): its period, the evaluation run its
+        # results come from and how the sample of changes was drawn.
+        manifest["evidence_package"] = evidence_package
+        manifest["limitations"] = [*manifest["limitations"], *evidence_package["limitations"]]
     if metadata_sha256 is not None:
         manifest["metadata_sha256"] = metadata_sha256
     return manifest

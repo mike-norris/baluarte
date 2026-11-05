@@ -1,4 +1,4 @@
-/** Types and calls for policy exceptions (docs/POLICY_ENGINE.md#exceptions, BAL-033). */
+/** Types and calls for policy exceptions (docs/POLICY_ENGINE.md#exceptions). */
 
 import { getJson } from "./client";
 import { postJson } from "./send";

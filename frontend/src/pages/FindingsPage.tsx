@@ -11,6 +11,8 @@ import {
 } from "../api/evaluations";
 import { usePaged } from "../api/usePaged";
 import { useLoad } from "../api/useLoad";
+import { useAsOf } from "../asof/context";
+import { AsOfResult } from "../asof/AsOfResult";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
 import { ExportLink } from "../evidence/ExportLink";
@@ -30,7 +32,7 @@ import { formatTime } from "../time";
 const cell = "px-3 py-2";
 
 function Filters({ filters }: { filters: FindingFilters }) {
-  const [, setParams] = useSearchParams();
+  const [params, setParams] = useSearchParams();
 
   function apply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -40,7 +42,10 @@ function Filters({ filters }: { filters: FindingFilters }) {
       const value = form.get(field);
       if (typeof value === "string" && value.trim()) query.set(field, value.trim());
     }
-    setParams(writeFindingFilters(readFindingFilters(query)));
+    const next = writeFindingFilters(readFindingFilters(query));
+    const asOf = params.get("as_of");
+    if (asOf) next.set("as_of", asOf);
+    setParams(next);
   }
 
   return (
@@ -179,13 +184,14 @@ const headers = [
 ];
 
 function Listing({ filters }: { filters: FindingFilters }) {
-  const key = writeFindingFilters(filters).toString();
-  const first = useLoad(`findings?${key}`, (signal) => listFindings(filters, null, signal));
+  const asOf = useAsOf();
+  const key = `${writeFindingFilters(filters).toString()}@${asOf ?? "now"}`;
+  const first = useLoad(`findings?${key}`, (signal) => listFindings(filters, null, signal, asOf));
   const paged = usePaged<Finding, FindingPage>(
     key,
     first,
     (page) => page.next_after_id,
-    (after) => listFindings(filters, after),
+    (after) => listFindings(filters, after, undefined, asOf),
   );
 
   if (first.error) return <ErrorMessage error={first.error} retry={first.retry} />;
@@ -199,16 +205,20 @@ function Listing({ filters }: { filters: FindingFilters }) {
   const more = paged.next !== null ? " (more available)" : "";
   if (paged.items.length === 0) {
     return (
-      <p className="rounded border border-dashed border-slate-300 p-4 text-sm text-slate-600">
-        {hasFindingFilters(filters)
-          ? "No findings match these filters."
-          : "No findings yet. A finding opens when a rule fails; " +
-            "it does not mean every rule passed."}
-      </p>
+      <div className="space-y-3">
+        <AsOfResult answer={first.data} />
+        <p className="rounded border border-dashed border-slate-300 p-4 text-sm text-slate-600">
+          {hasFindingFilters(filters)
+            ? "No findings match these filters."
+            : "No findings yet. A finding opens when a rule fails; " +
+              "it does not mean every rule passed."}
+        </p>
+      </div>
     );
   }
   return (
     <div className="space-y-3">
+      <AsOfResult answer={first.data} />
       <div className="overflow-x-auto rounded border border-slate-200 bg-white">
         <table className="w-full text-left text-sm">
           <caption className="sr-only">Findings</caption>

@@ -4,6 +4,8 @@ import { Link } from "react-router";
 import { listExceptions, type PolicyException } from "../api/exceptions";
 import type { FindingDetail } from "../api/evaluations";
 import { useLoad } from "../api/useLoad";
+import { useAsOf } from "../asof/context";
+import { PastReadOnly } from "../asof/PastReadOnly";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { linkClass } from "../components/styles";
@@ -76,6 +78,7 @@ function unavailable(finding: FindingDetail, current: PolicyException | undefine
 /** The finding's exception, if any, and the request action for users who may request one. */
 export function ExceptionPanel({ finding }: { finding: FindingDetail }) {
   const { session } = useAuth();
+  const asOf = useAsOf();
   const [requested, setRequested] = useState<PolicyException | null>(null);
   const status = useRef<HTMLParagraphElement>(null);
   const filters = {
@@ -117,7 +120,9 @@ export function ExceptionPanel({ finding }: { finding: FindingDetail }) {
         )}
         {user && hasPermission(user, CAN_REQUEST) && (
           <div className="mt-3">
-            {reason ? (
+            {asOf ? (
+              <PastReadOnly />
+            ) : reason ? (
               <p className="text-sm text-slate-700">{reason}</p>
             ) : (
               <RequestExceptionForm
@@ -139,6 +144,7 @@ export function ExceptionPanel({ finding }: { finding: FindingDetail }) {
       <h2 id="exception" className="text-lg font-semibold">
         Exception
       </h2>
+      {asOf && <p className="mt-1 text-sm text-slate-600">Exceptions are shown as they are now.</p>}
       {waived && finding.exception && (
         <p className="mt-2 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
           {`Excepted until ${formatTime(finding.exception.expires_at)}: the failure is recorded as excepted, not as passing. `}

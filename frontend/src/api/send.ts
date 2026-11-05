@@ -29,6 +29,60 @@ export async function responseDetail(response: Response): Promise<string | null>
   }
 }
 
+/** The body's ``detail`` as sent, or null when the body is not JSON. */
+export async function readDetail(response: Response): Promise<unknown> {
+  try {
+    return ((await response.json()) as { detail?: unknown }).detail ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** A plain or validation ``detail``, or the ``message`` of a structured one. */
+export function detailMessage(detail: unknown): string | null {
+  if (typeof detail === "object" && detail !== null && !Array.isArray(detail)) {
+    const message = (detail as { message?: unknown }).message;
+    return typeof message === "string" ? message : null;
+  }
+  return detailText(detail);
+}
+
+/**
+ * The ``reasons`` of a structured refusal (``{code, message, reasons}``) as sentences: a code is
+ * read with ``words``, or as words; a ``{code, message}`` item by its message.
+ */
+export function reasonSentences(detail: unknown, words: Record<string, string> = {}): string[] {
+  if (typeof detail !== "object" || detail === null || Array.isArray(detail)) return [];
+  const reasons = (detail as { reasons?: unknown }).reasons;
+  if (!Array.isArray(reasons)) return [];
+  const sentence = (code: string) => words[code] ?? code.replace(/_/g, " ");
+  return reasons
+    .map((item: unknown) => {
+      if (typeof item === "string") return sentence(item);
+      if (typeof item !== "object" || item === null) return null;
+      const record = item as { code?: unknown; message?: unknown };
+      if (typeof record.message === "string") return record.message;
+      return typeof record.code === "string" ? sentence(record.code) : null;
+    })
+    .filter((text): text is string => text !== null);
+}
+
+/** A refused request, with the API's reasons as sentences. */
+export class RefusalError extends ApiError {
+  readonly reasons: string[];
+
+  constructor(status: number, message: string, reasons: string[]) {
+    super(status, message);
+    this.name = "RefusalError";
+    this.reasons = reasons;
+  }
+}
+
+/** The reasons an error carries; empty for any other error. */
+export function errorReasons(error: unknown): string[] {
+  return error instanceof RefusalError ? error.reasons : [];
+}
+
 /** A sentence for a failed change; the API's own reason is kept where it explains the refusal. */
 export function changeFailure(status: number, detail: string | null): string {
   switch (status) {
@@ -91,10 +145,12 @@ export async function sendJsonWithStatus<T>(
     throw new ApiError(0, "The API could not be reached.");
   }
   if (!response.ok) {
-    throw new ApiError(
-      response.status,
-      changeFailure(response.status, await responseDetail(response)),
-    );
+    const detail = await readDetail(response);
+    const message = changeFailure(response.status, detailMessage(detail));
+    const reasons = reasonSentences(detail);
+    throw reasons.length > 0
+      ? new RefusalError(response.status, message, reasons)
+      : new ApiError(response.status, message);
   }
   if (response.status === 204) return { status: 204, data: null };
   return { status: response.status, data: (await response.json()) as T };

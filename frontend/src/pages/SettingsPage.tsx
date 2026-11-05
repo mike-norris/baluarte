@@ -17,6 +17,7 @@ import { ComplianceCard } from "../compliance/ComplianceCard";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { buttonClass, secondaryClass } from "../components/styles";
+import { ChangeEvidenceCard } from "../settings/ChangeEvidenceCard";
 import { describeInterval } from "../settings/format";
 import { GitLabForm } from "../settings/GitLabForm";
 import { OidcForm } from "../settings/OidcForm";
@@ -423,6 +424,7 @@ function SettingsContent({ csrf }: { csrf: string }) {
       <GitLabCard csrf={csrf} secretKey={secretKey} />
       <OidcCard csrf={csrf} secretKey={secretKey} />
       <ReviewCard csrf={csrf} />
+      <ChangeEvidenceCard csrf={csrf} />
       <ComplianceCard csrf={csrf} />
       <AuditShippingCard csrf={csrf} />
       {info.error ? (

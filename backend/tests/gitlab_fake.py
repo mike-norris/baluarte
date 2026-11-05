@@ -74,6 +74,16 @@ def healthy_routes() -> dict[str, list[Reply]]:
         "/api/v4/projects/42/approval_rules": [httpx.Response(200, json=[])],
         "/api/v4/projects/42/members/all": [httpx.Response(200, json=[])],
         "/api/v4/projects/42/access_tokens": [httpx.Response(200, json=[])],
+        "/api/v4/projects/42/merge_requests": [httpx.Response(200, json=[{"iid": 1}])],
+        "/api/v4/projects/42/merge_requests/1/approvals": [
+            httpx.Response(200, json={"approved": True, "approved_by": []})
+        ],
+        "/api/v4/projects/42/pipelines": [httpx.Response(200, json=[{"id": 7}])],
+        "/api/v4/projects/42/pipelines/7/test_report_summary": [
+            httpx.Response(200, json={"total": {"count": 0}, "test_suites": []})
+        ],
+        "/api/v4/projects/42/deployments": [httpx.Response(200, json=[])],
+        "/api/v4/projects/42/repository/commits": [httpx.Response(200, json=[])],
         "/api/v4/license": [httpx.Response(403, json={"message": "403 Forbidden"})],
         "/api/graphql": [graphql()],
     }

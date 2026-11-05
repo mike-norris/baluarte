@@ -41,7 +41,7 @@ SEVERITIES = ("low", "medium", "high", "critical")
 FINDING_STATES = ("open", "resolved", "excepted")
 EXPORT_STATES = ("queued", "running", "succeeded", "failed")
 ROLES = ("admin", "analyst", "auditor")
-RUN_KINDS = ("capabilities", "groups", "projects", "security_policies")
+RUN_KINDS = ("capabilities", "groups", "projects", "security_policies", "changes")
 SECURITY_POLICY_TYPES = (
     "scan_execution",
     "approval",
@@ -79,7 +79,14 @@ PLAN_STATES = ("draft", "submitted", "approved", "rejected", "expired")
 MAX_PLAN_HOURS = 72
 MAX_PLAN_STEPS = 100
 # Sections and secrets that can be stored through the web UI (ADR-0008).
-SETTING_KEYS = ("oidc", "gitlab", "governance", "operations", "audit_shipping")
+SETTING_KEYS = (
+    "oidc",
+    "gitlab",
+    "governance",
+    "operations",
+    "audit_shipping",
+    "change_evidence",
+)
 SECRET_NAMES = (
     "oidc_client_secret",
     "gitlab_token",
@@ -87,6 +94,8 @@ SECRET_NAMES = (
     "audit_shipping_es_password",
 )
 BACKUP_STATUSES = ("succeeded", "failed")
+CHANGE_KINDS = ("merge_request", "direct_push", "deployment")
+CHANGE_OUTCOMES = ("pass", "fail", "unknown")
 
 
 def one_of(column: str, values: Iterable[str]) -> CheckConstraint:
@@ -350,6 +359,13 @@ class Observation(Base):
         Index("ix_observation_project_collected", "project_id", "collected_at"),
         Index("ix_observation_group_collected", "group_id", "collected_at"),
         Index(
+            "ix_observation_project_source_ref",
+            "project_id",
+            "source",
+            "source_ref",
+            "collected_at",
+        ),
+        Index(
             "ix_observation_instance_collected",
             "instance_id",
             "source",
@@ -434,6 +450,12 @@ class Evaluation(Base):
         CheckConstraint(
             "(outcome = 'excepted') = (exception_id IS NOT NULL)", name="excepted_has_exception"
         ),
+        Index("ix_evaluation_observation_ids", "observation_ids", postgresql_using="gin"),
+        sha256_hex("evidence_digest"),
+        CheckConstraint(
+            "(observation_ids IS NULL) = (evidence_digest IS NULL)",
+            name="observation_ids_have_digest",
+        ),
     )
 
     id: Mapped[int] = pk()
@@ -465,6 +487,11 @@ class Evaluation(Base):
     # The approved exception that waived a failure; set exactly when ``outcome = excepted``.
     exception_id: Mapped[int | None] = mapped_column(ForeignKey("policy_exception.id"))
     evaluated_at: Mapped[datetime] = utc_now()
+    # A result judged from many observations (the change rules): every observation it judged,
+    # and the SHA-256 of their IDs and payload digests (``baluarte.policy.evaluation.store``).
+    # ``observation_id`` then names the project's change-read observation.
+    observation_ids: Mapped[list[int] | None] = mapped_column(ARRAY(BigInteger))
+    evidence_digest: Mapped[str | None] = mapped_column(Text)
 
 
 class Finding(Base):
@@ -916,6 +943,90 @@ class ScopeExclusion(Base):
     ended_by_user_id: Mapped[int | None] = mapped_column(BigInteger)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     end_justification: Mapped[str | None] = mapped_column(Text)
+
+
+class ChangeRecord(Base):
+    """One change on a project's default branch: a merged merge request, a direct push, or a
+    successful deployment to a production environment (``baluarte.changes``).
+
+    What was read about it is an observation; ``observation_id`` names the latest one, and the
+    earlier ones stay as its history (same project, source and ``source_ref``). ``outcome`` and
+    ``reasons`` are derived from that observation with the default review and pipeline checks.
+    A trigger lets an update change only those columns, ``complete`` and ``updated_at``.
+    ``sha`` is the commit on the default branch (the merge or squash commit when there is one)
+    or the deployed commit; ``shas`` every commit that identifies the change.
+    """
+
+    __tablename__ = "change_record"
+    __table_args__ = (
+        Index("ix_change_record_project_changed", "project_id", "changed_at"),
+        Index("ix_change_record_instance_changed", "instance_id", "changed_at"),
+        Index("ix_change_record_observation", "observation_id"),
+        Index(
+            "uq_change_record_merge_request",
+            "project_id",
+            "iid",
+            unique=True,
+            postgresql_where=text("kind = 'merge_request'"),
+        ),
+        Index(
+            "uq_change_record_direct_push",
+            "project_id",
+            "sha",
+            unique=True,
+            postgresql_where=text("kind = 'direct_push'"),
+        ),
+        Index(
+            "uq_change_record_deployment",
+            "project_id",
+            "deployment_id",
+            unique=True,
+            postgresql_where=text("kind = 'deployment'"),
+        ),
+        one_of("kind", CHANGE_KINDS),
+        one_of("outcome", CHANGE_OUTCOMES),
+        CheckConstraint(
+            "(kind = 'merge_request') = (iid IS NOT NULL)", name="iid_for_merge_requests"
+        ),
+        CheckConstraint(
+            "(kind = 'deployment') = (deployment_id IS NOT NULL)",
+            name="deployment_id_for_deployments",
+        ),
+    )
+
+    id: Mapped[int] = pk()
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    project_id: Mapped[int] = mapped_column(ForeignKey("gitlab_project.id"))
+    kind: Mapped[str] = mapped_column(Text)
+    iid: Mapped[int | None] = mapped_column(BigInteger)
+    deployment_id: Mapped[int | None] = mapped_column(BigInteger)
+    sha: Mapped[str] = mapped_column(Text)
+    shas: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'::text[]"))
+    # Merged, committed or deployed.
+    changed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    observation_id: Mapped[int] = mapped_column(ForeignKey("observation.id"))
+    outcome: Mapped[str] = mapped_column(Text)
+    reasons: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'::text[]"))
+    # False when part of it could not be read for a passing reason; it is read again.
+    complete: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    created_at: Mapped[datetime] = utc_now()
+    updated_at: Mapped[datetime] = utc_now()
+
+
+class ChangeCursor(Base):
+    """How far a project's changes have been read, so each collection reads only what is new.
+
+    ``history_since`` is where its change history starts: the first collection's look-back.
+    """
+
+    __tablename__ = "change_cursor"
+
+    project_id: Mapped[int] = mapped_column(ForeignKey("gitlab_project.id"), primary_key=True)
+    history_since: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_merged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_commit_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_deployed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = utc_now()
 
 
 class ComplianceException(Base):

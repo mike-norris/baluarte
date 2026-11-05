@@ -664,7 +664,7 @@ function Complete() {
   );
 }
 
-/** The first-run installation wizard (BAL-035). Outside the signed-in shell by design. */
+/** The first-run installation wizard. Outside the signed-in shell by design. */
 export function SetupPage() {
   const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState<{

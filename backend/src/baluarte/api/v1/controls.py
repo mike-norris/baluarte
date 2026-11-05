@@ -10,7 +10,7 @@ from datetime import date, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -35,8 +35,10 @@ from baluarte.db.models import (
     MIN_JUSTIFICATION,
     AppUser,
     ControlMappingChange,
+    EvaluationRun,
     GitLabInstance,
 )
+from baluarte.evidence.as_of import RunRef, run_ref
 from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_settings
 from baluarte.policy.changes import MAX_NOTE, review_required
 from baluarte.settings import ConfigurationError
@@ -44,6 +46,13 @@ from baluarte.settings import ConfigurationError
 router = APIRouter(tags=["controls"])
 
 ControlId = Annotated[str, Path(min_length=1, max_length=20)]
+AsOf = Annotated[
+    AwareDatetime | None,
+    Query(
+        description="Read the controls as they stood at this moment: the latest evaluation run "
+        "that finished by then, and the mapping and monitoring scope in force then."
+    ),
+]
 
 
 class FrameworkOut(BaseModel):
@@ -107,6 +116,8 @@ class ControlsPage(BaseModel):
     mapping_version: str
     # The evaluation run the counts come from: the latest successful one, or null.
     evaluation_run_id: int | None
+    as_of: datetime | None = None
+    evaluation_run: RunRef | None = None
     frameworks: list[FrameworkOut]
     controls: list[ControlOut]
 
@@ -153,8 +164,11 @@ class ChangeOut(BaseModel):
 class ControlDetail(ControlOut):
     # Results per baseline rule of a mapped type, from the same evaluation run.
     rules: list[RuleOut]
-    # Every change made to this control, newest first.
+    # Every change made to this control, newest first. With ``as_of``, those proposed by then,
+    # each as it stood then.
     changes: list[ChangeOut]
+    as_of: datetime | None = None
+    evaluation_run: RunRef | None = None
 
 
 class ChangePage(BaseModel):
@@ -292,8 +306,39 @@ def _person(actor: str, names: dict[int, str | None]) -> Person:
     )
 
 
-def change_out(db: Session, rows: Sequence[ControlMappingChange]) -> list[ChangeOut]:
+def _as_of(change: ChangeOut, superseded_by: datetime | None, as_of: datetime) -> ChangeOut:
+    """A change as it stood at ``as_of``: undecided until its decision, and in force until the
+    change superseding it took effect."""
+    if change.decided_at is None or change.decided_at > as_of:
+        return change.model_copy(
+            update={
+                "state": "proposed",
+                "decided_by": None,
+                "decided_at": None,
+                "decision_note": None,
+            }
+        )
+    if change.state == "withdrawn" and (superseded_by is None or superseded_by > as_of):
+        return change.model_copy(update={"state": "active"})
+    return change
+
+
+def change_out(
+    db: Session, rows: Sequence[ControlMappingChange], as_of: datetime | None = None
+) -> list[ChangeOut]:
     names = _names(db, rows)
+    if as_of is not None:
+        rows = [row for row in rows if row.proposed_at <= as_of]
+        ended = {
+            row.supersedes_id: row.decided_at
+            for row in db.scalars(
+                select(ControlMappingChange).where(
+                    ControlMappingChange.supersedes_id.in_([row.id for row in rows]),
+                    ControlMappingChange.state.in_(("active", "withdrawn")),
+                )
+            )
+        }
+        return [_as_of(change, ended.get(change.id), as_of) for change in change_out(db, rows)]
     return [
         ChangeOut(
             id=row.id,
@@ -349,14 +394,21 @@ def list_controls(
     _: Annotated[Principal, Depends(require(Permission.FINDINGS_READ))],
     db: Annotated[Session, Depends(database)],
     framework: FrameworkId | None = None,
+    as_of: AsOf = None,
 ) -> ControlsPage:
-    found = posture(db, _instance_id(db), framework)
+    found = posture(db, _instance_id(db), framework, as_of=as_of)
     return ControlsPage(
         mapping_version=MAPPING_VERSION,
         evaluation_run_id=found.evaluation_run_id,
         frameworks=[FrameworkOut(id=f.id, name=f.name) for f in FRAMEWORKS],
         controls=[control_out(item) for item in found.controls],
+        as_of=as_of,
+        evaluation_run=_run(db, found.evaluation_run_id),
     )
+
+
+def _run(db: Session, run_id: int | None) -> RunRef | None:
+    return run_ref(db.get(EvaluationRun, run_id)) if run_id is not None else None
 
 
 @router.get(
@@ -370,11 +422,13 @@ def read_control(
     control_id: ControlId,
     _: Annotated[Principal, Depends(require(Permission.FINDINGS_READ))],
     db: Annotated[Session, Depends(database)],
+    as_of: AsOf = None,
 ) -> ControlDetail:
     item = control(framework, control_id)
     if item is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such control")
-    [found] = posture(db, _instance_id(db), controls=[item]).controls
+    current = posture(db, _instance_id(db), controls=[item], as_of=as_of)
+    [found] = current.controls
     history = db.scalars(
         select(ControlMappingChange)
         .where(
@@ -394,7 +448,9 @@ def read_control(
             )
             for rule in found.rules
         ],
-        changes=change_out(db, history),
+        changes=change_out(db, history, as_of),
+        as_of=as_of,
+        evaluation_run=_run(db, current.evaluation_run_id),
     )
 
 

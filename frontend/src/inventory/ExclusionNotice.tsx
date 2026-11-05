@@ -2,6 +2,8 @@ import { useState } from "react";
 
 import { includableHere, listExclusions, monitoringLabel, type Monitoring } from "../api/scope";
 import { useLoad } from "../api/useLoad";
+import { useAsOf } from "../asof/context";
+import { PastReadOnly } from "../asof/PastReadOnly";
 import { useAuth } from "../auth/context";
 import { changePerson } from "../controls/format";
 import { secondaryClass } from "../components/styles";
@@ -25,6 +27,7 @@ export function ExclusionNotice({
   onChanged: (message: string) => void;
 }) {
   const { session } = useAuth();
+  const asOf = useAsOf();
   const canWrite = canWritePolicies(session.status === "signed_in" ? session.user : null);
   const [including, setIncluding] = useState(false);
   const excluded = monitoring?.excluded === true;
@@ -59,9 +62,11 @@ export function ExclusionNotice({
           covering exclusion is listed.
         </p>
       )}
+      {canWrite && here && asOf !== null && <PastReadOnly />}
       {canWrite && here && !including && (
         <button
           type="button"
+          disabled={asOf !== null}
           onClick={() => {
             setIncluding(true);
           }}
@@ -70,7 +75,7 @@ export function ExclusionNotice({
           Include again
         </button>
       )}
-      {including && monitoring.exclusion_id !== null && (
+      {including && asOf === null && monitoring.exclusion_id !== null && (
         <ScopeForm
           intent={{ mode: "include", ids: [monitoring.exclusion_id], labels: [path] }}
           onCancel={() => {

@@ -6,7 +6,7 @@ from typing import Annotated, Literal
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
-from pydantic import BaseModel
+from pydantic import AwareDatetime, BaseModel
 from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.orm import Session
 
@@ -14,6 +14,7 @@ from baluarte import audit
 from baluarte.auth.dependencies import Principal, database, require
 from baluarte.auth.roles import Permission
 from baluarte.db.models import CollectionRun, GitLabGroup, GitLabInstance, GitLabProject
+from baluarte.evidence.as_of import RunRef, run_at, run_ref
 from baluarte.integrations.gitlab.capabilities import CapabilitySnapshot
 from baluarte.integrations.gitlab.client import GitLabClient
 from baluarte.integrations.gitlab.diagnostics import (
@@ -529,6 +530,10 @@ class ProjectDetail(BaseModel):
     # Why baselines are not evaluated for this project: "archived", "excluded" (out of
     # monitoring scope), or null when they are.
     not_evaluated: Literal["archived", "excluded"] | None
+    # With ``as_of``: the moment asked for, the evaluation run in force then, and
+    # ``monitoring`` as it stood then. The inventory fields are today's.
+    as_of: datetime | None = None
+    evaluation_run: RunRef | None = None
 
 
 def _ancestry_out(db: Session, instance_id: int, start: int | None, seen: set[int]) -> AncestryOut:
@@ -623,6 +628,10 @@ def read_project(
     gitlab_id: Annotated[int, Path(gt=0)],
     _: Annotated[Principal, Depends(require(Permission.INVENTORY_READ))],
     db: Annotated[Session, Depends(database)],
+    as_of: Annotated[
+        AwareDatetime | None,
+        Query(description="Report monitoring scope and the evaluation run as of this moment."),
+    ] = None,
 ) -> ProjectDetail:
     configured = _instance_row(db)
     project = (
@@ -639,12 +648,14 @@ def read_project(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such project in the inventory")
     settings, instance = configured
     start = None if project.namespace_kind == "user" else project.namespace_gitlab_id
-    out = _project_out(project, coverage(db, instance.id))
+    out = _project_out(project, coverage(db, instance.id, as_of))
     return ProjectDetail(
         project=out,
         ancestry=_ancestry_out(db, instance.id, start, set()),
         collection=kind_freshness(db, instance.id, "projects", settings),
         not_evaluated=not_evaluated(project) or ("excluded" if out.monitoring.excluded else None),
+        as_of=as_of,
+        evaluation_run=run_ref(run_at(db, instance.id, as_of)),
     )
 
 

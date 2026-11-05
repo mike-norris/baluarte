@@ -151,6 +151,72 @@ def security_policy_probes(client: GitLabClient, group: Any) -> dict[str, Probe]
     return probes
 
 
+def change_probes(client: GitLabClient, project_id: int | None) -> dict[str, Probe]:
+    """Whether change evidence can be read, on the sample project.
+
+    Approvals and test reports need a merged merge request or a pipeline to read; without one
+    in the sample project they are ``skipped``. Change collection reads every part anyway and
+    records what each read returned, so these say what to expect, not what is collected.
+    """
+    endpoints = {
+        "merge_requests.read": "GET /projects/:id/merge_requests",
+        "merge_request_approvals_state.read": "GET /projects/:id/merge_requests/:iid/approvals",
+        "pipelines.read": "GET /projects/:id/pipelines",
+        "test_reports.read": "GET /projects/:id/pipelines/:id/test_report_summary",
+        "deployments.read": "GET /projects/:id/deployments",
+        "commits.read": "GET /projects/:id/repository/commits",
+    }
+    if project_id is None:
+        return {
+            name: Probe(status="skipped", endpoint=endpoint, detail="no visible project")
+            for name, endpoint in endpoints.items()
+        }
+    base = f"/projects/{project_id}"
+    probes: dict[str, Probe] = {}
+    merged, probes["merge_requests.read"] = _get(
+        client,
+        endpoints["merge_requests.read"],
+        f"{base}/merge_requests",
+        {"state": "merged", "per_page": 1},
+    )
+    iid = _first(merged).get("iid") if isinstance(_first(merged), dict) else None
+    if isinstance(iid, int):
+        _, probes["merge_request_approvals_state.read"] = _get(
+            client,
+            endpoints["merge_request_approvals_state.read"],
+            f"{base}/merge_requests/{iid}/approvals",
+        )
+    else:
+        probes["merge_request_approvals_state.read"] = Probe(
+            status="skipped",
+            endpoint=endpoints["merge_request_approvals_state.read"],
+            detail="no merged merge request in the sample project",
+        )
+    pipelines, probes["pipelines.read"] = _get(
+        client, endpoints["pipelines.read"], f"{base}/pipelines", {"per_page": 1}
+    )
+    pipeline_id = _first(pipelines).get("id") if isinstance(_first(pipelines), dict) else None
+    if isinstance(pipeline_id, int):
+        _, probes["test_reports.read"] = _get(
+            client,
+            endpoints["test_reports.read"],
+            f"{base}/pipelines/{pipeline_id}/test_report_summary",
+        )
+    else:
+        probes["test_reports.read"] = Probe(
+            status="skipped",
+            endpoint=endpoints["test_reports.read"],
+            detail="no pipeline in the sample project",
+        )
+    _, probes["deployments.read"] = _get(
+        client, endpoints["deployments.read"], f"{base}/deployments", {"per_page": 1}
+    )
+    _, probes["commits.read"] = _get(
+        client, endpoints["commits.read"], f"{base}/repository/commits", {"per_page": 1}
+    )
+    return probes
+
+
 def _first(body: Any) -> Any:
     return body[0] if isinstance(body, list) and body else None
 
@@ -233,6 +299,8 @@ def detect(client: GitLabClient, now: datetime | None = None) -> CapabilitySnaps
             _, probes[name] = _get(client, template, f"/projects/{project_id}/{suffix}")
         else:
             probes[name] = Probe(status="skipped", endpoint=template, detail="no visible project")
+
+    probes.update(change_probes(client, project_id if isinstance(project_id, int) else None))
 
     license_body, probes["license.read"] = _get(client, "GET /license", "/license")
     plan = license_body.get("plan") if isinstance(license_body, dict) else None

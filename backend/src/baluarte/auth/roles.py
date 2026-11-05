@@ -18,6 +18,8 @@ class Permission(StrEnum):
     FINDINGS_READ = "findings:read"
     EVIDENCE_READ = "evidence:read"
     EVIDENCE_EXPORT = "evidence:export"
+    # Build an audit-period evidence package with a reproducible sample of changes.
+    EVIDENCE_PACKAGE = "evidence:package"
     POLICY_WRITE = "policy:write"
     # Ask for a time-limited waiver of a failing rule.
     EXCEPTION_REQUEST = "exception:request"
@@ -39,9 +41,19 @@ _READ = frozenset({Permission.INVENTORY_READ, Permission.FINDINGS_READ, Permissi
 ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = {
     Role.ADMIN: frozenset(Permission),
     Role.ANALYST: _READ
-    | {Permission.POLICY_WRITE, Permission.EXCEPTION_REQUEST, Permission.REMEDIATION_PLAN},
+    | {
+        Permission.POLICY_WRITE,
+        Permission.EXCEPTION_REQUEST,
+        Permission.REMEDIATION_PLAN,
+        Permission.EVIDENCE_PACKAGE,
+    },
     Role.AUDITOR: _READ
-    | {Permission.EVIDENCE_EXPORT, Permission.AUDIT_LOG_READ, Permission.COMPLIANCE_READ},
+    | {
+        Permission.EVIDENCE_EXPORT,
+        Permission.EVIDENCE_PACKAGE,
+        Permission.AUDIT_LOG_READ,
+        Permission.COMPLIANCE_READ,
+    },
 }
 
 

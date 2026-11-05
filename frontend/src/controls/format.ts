@@ -17,8 +17,11 @@ import { personText } from "../policies/format";
 import {
   APPROVAL_TYPE,
   BRANCH_TYPE,
+  DEPLOYED_TYPE,
   MEMBERS_TYPE,
+  PIPELINE_TYPE,
   PROJECT_APPROVALS_TYPE,
+  REVIEWED_TYPE,
   SCAN_TYPE,
   TOKENS_TYPE,
   TWO_FACTOR_TYPE,
@@ -82,6 +85,9 @@ export const ruleTypes: readonly string[] = [
   MEMBERS_TYPE,
   TWO_FACTOR_TYPE,
   TOKENS_TYPE,
+  REVIEWED_TYPE,
+  PIPELINE_TYPE,
+  DEPLOYED_TYPE,
 ];
 
 export const ruleTypeLabels: Record<string, string> = {
@@ -93,6 +99,9 @@ export const ruleTypeLabels: Record<string, string> = {
   [MEMBERS_TYPE]: "Privileged members",
   [TWO_FACTOR_TYPE]: "Two-factor authentication required",
   [TOKENS_TYPE]: "Project access tokens",
+  [REVIEWED_TYPE]: "Changes reviewed",
+  [PIPELINE_TYPE]: "Changes passed their pipeline",
+  [DEPLOYED_TYPE]: "Deployments of reviewed changes",
 };
 
 export function ruleTypeLabel(ruleType: string): string {

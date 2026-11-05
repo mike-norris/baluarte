@@ -6,13 +6,14 @@ once, so a batch of projects shares one reading. Persisting the results is BAL-0
 """
 
 from collections.abc import Mapping
-from datetime import datetime
+from dataclasses import replace
+from datetime import datetime, timedelta
 from typing import get_args
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from baluarte.db.models import GitLabInstance, GitLabProject, Policy
+from baluarte.db.models import ChangeRecord, GitLabInstance, GitLabProject, Observation, Policy
 from baluarte.evidence.observations import latest
 from baluarte.integrations.gitlab.access import (
     ACCESS_TOKENS_SOURCE,
@@ -21,15 +22,23 @@ from baluarte.integrations.gitlab.access import (
     TWO_FACTOR_SOURCE,
 )
 from baluarte.integrations.gitlab.branches import PROTECTION_SOURCE
+from baluarte.integrations.gitlab.changes import CHANGE_READ_SOURCE
 from baluarte.integrations.gitlab.freshness import kind_freshness, report
 from baluarte.integrations.gitlab.runs import RunKind
 from baluarte.integrations.gitlab.security_policies import PROJECT_SOURCE as SECURITY_POLICY_SOURCE
 from baluarte.integrations.gitlab.settings import GitLabSettings
 from baluarte.policy.assignments import Resolution
 from baluarte.policy.evaluation.access import ACCESS_EVALUATORS, ACCESS_SOURCES
+from baluarte.policy.evaluation.changes import (
+    CHANGE_EVALUATORS,
+    CHANGE_RULE_TYPES,
+    MAX_WINDOW_DAYS,
+)
 from baluarte.policy.evaluation.default_branch import DEFAULT_BRANCH_PROTECTED
 from baluarte.policy.evaluation.engine import (
     BranchProtection,
+    ChangeEntry,
+    ChangeHistory,
     EvaluationContext,
     ProjectFacts,
     ProjectObservation,
@@ -58,6 +67,7 @@ EVALUATORS: Mapping[str, RuleEvaluator] = {
         SCAN_EXECUTION_POLICY,
         APPROVAL_POLICY,
         *ACCESS_EVALUATORS,
+        *CHANGE_EVALUATORS,
     )
 }
 
@@ -156,6 +166,35 @@ def project_observation(
     )
 
 
+def change_history(db: Session, project: GitLabProject, as_of: datetime) -> ChangeHistory:
+    """The project's change-read observation and its changes of the longest window up to
+    ``as_of``, each with the observation that describes it now."""
+    loaded_from = as_of - timedelta(days=MAX_WINDOW_DAYS)
+    rows = db.execute(
+        select(
+            ChangeRecord.id,
+            ChangeRecord.kind,
+            ChangeRecord.changed_at,
+            Observation.id,
+            Observation.payload_digest,
+            Observation.payload,
+        )
+        .join(Observation, Observation.id == ChangeRecord.observation_id)
+        .where(
+            ChangeRecord.project_id == project.id,
+            ChangeRecord.changed_at >= loaded_from,
+            ChangeRecord.changed_at <= as_of,
+        )
+        .order_by(ChangeRecord.changed_at, ChangeRecord.id)
+    ).all()
+    return ChangeHistory(
+        read=project_observation(db, project, CHANGE_READ_SOURCE),
+        entries=tuple(ChangeEntry(*row) for row in rows),
+        loaded_from=loaded_from,
+        as_of=as_of,
+    )
+
+
 def project_facts(
     project: GitLabProject,
     protection: BranchProtection | None = None,
@@ -217,7 +256,7 @@ def evaluate_project(
         evaluated_at=evaluated_at,
         capabilities=capabilities,
     )
-    results: list[RuleResult] = []
+    in_force = []
     for resolved in sorted(resolution.policies, key=lambda entry: entry.name):
         policy = db.get(Policy, resolved.policy_id)
         if policy is None:  # versions are never deleted while assigned
@@ -228,7 +267,18 @@ def evaluate_project(
             version=policy.version,
             yaml_digest=policy.yaml_digest,
         )
-        for rule in parse_policy(policy.source_yaml).document.spec.rules:
+        in_force.append((ref, parse_policy(policy.source_yaml).document.spec.rules))
+    if context.project is not None and any(
+        rule.type in CHANGE_RULE_TYPES for _, rules in in_force for rule in rules
+    ):
+        # Changes are read only for a project a change rule is in force for.
+        context = replace(
+            context,
+            project=replace(context.project, changes=change_history(db, project, evaluated_at)),
+        )
+    results: list[RuleResult] = []
+    for ref, rules in in_force:
+        for rule in rules:
             evaluator = EVALUATORS.get(rule.type)
             if evaluator is not None:
                 results.append(evaluate_rule(evaluator, ref, rule, context))

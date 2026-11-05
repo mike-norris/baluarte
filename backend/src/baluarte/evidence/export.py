@@ -83,7 +83,8 @@ from baluarte.scope.exclusions import coverage, justification_sha256
 # v2 (exceptions): adds the exceptions section and exception_id on evaluations and findings.
 # v3 (monitoring scope): adds monitoring_excluded, exclusion_id and excluded_via to inventory;
 # projects out of monitoring scope are left out of every other section.
-FORMAT = "baluarte.evidence-export/v3"
+# v4 (change evidence): adds observation_ids and evidence_digest to evaluations.
+FORMAT = "baluarte.evidence-export/v4"
 MAX_ROWS = 100_000
 PAGE = 500
 
@@ -249,6 +250,11 @@ def _safe(row: dict[str, Any]) -> dict[str, Any]:
 
 class EvidenceExport:
     """One export, bound to a read-only snapshot. Call :meth:`plan`, then :meth:`stream` once."""
+
+    FORMAT = FORMAT
+    # Sections written as JSON lines in a ZIP; the others are CSV files.
+    JSONL: tuple[str, ...] = ("observations",)
+    PREFIX = "baluarte-evidence"
 
     def __init__(
         self,
@@ -567,6 +573,7 @@ class EvidenceExport:
         for evaluation, version, gitlab_id, path, _ in self._pages(statement, Evaluation.id):
             if evaluation.observation_id is not None:
                 self._observation_ids.add(evaluation.observation_id)
+            self._observation_ids.update(evaluation.observation_ids or ())
             self._policy_ids.add(evaluation.policy_id)
             if evaluation.exception_id is not None:
                 self._exception_ids.add(evaluation.exception_id)
@@ -598,6 +605,8 @@ class EvidenceExport:
                     "collection_last_success_at": _ts(evaluation.collection_last_success_at),
                     "ancestry": evaluation.ancestry,
                     "exception_id": evaluation.exception_id,
+                    "observation_ids": evaluation.observation_ids,
+                    "evidence_digest": evaluation.evidence_digest,
                 }
             )
 
@@ -806,7 +815,7 @@ class EvidenceExport:
         evaluation = evaluation_freshness.report(self.db, self.instance_id, self.settings)
         return _safe(
             {
-                "format": FORMAT,
+                "format": self.FORMAT,
                 "export_id": self.export_id,
                 "generated_at": _ts(self.generated_at),
                 "instance": self.settings.url,
@@ -868,11 +877,32 @@ class EvidenceExport:
             metadata_sha256=metadata_sha256,
             governance={"require_review": policy_changes.review_required(self.db)},
             operations=operations_summary(self.db),
-            control_mapping=mapping_summary(self.db),
+            control_mapping=self._control_mapping(),
             monitoring_scope=self._monitoring_scope(),
+            evidence_package=self._package(),
         )
         self.result.manifest_sha256 = details_digest(built)
         return built
+
+    def _control_mapping(self) -> dict[str, Any]:
+        return mapping_summary(self.db)
+
+    def _package(self) -> dict[str, Any] | None:
+        """The audit-period package's period and sample; None for a scoped export."""
+        return None
+
+    def columns(self, name: str) -> tuple[str, ...]:
+        return COLUMNS[name]
+
+    def readme(self, meta: dict[str, Any]) -> str:
+        return README.format(
+            export_id=self.export_id,
+            generated_at=meta["generated_at"],
+            instance=meta["instance"],
+            format=self.FORMAT,
+            scope=_dumps(meta["scope"]),
+            population=textwrap.fill(manifest.population(meta)["statement"], width=92),
+        )
 
     def sections(self) -> list[tuple[str, Callable[[], Iterator[dict[str, Any]]]]]:
         return [
@@ -891,7 +921,7 @@ class EvidenceExport:
     def filename(self) -> str:
         stamp = self.generated_at.astimezone(UTC).strftime("%Y%m%dT%H%M%SZ")
         extension = "json" if self.format == "json" else "zip"
-        return f"baluarte-evidence-{stamp}-{self.export_id[:8]}.{extension}"
+        return f"{self.PREFIX}-{stamp}-{self.export_id[:8]}.{extension}"
 
     def stream(self, on_complete: Callable[[ExportResult], None]) -> Iterator[bytes]:
         """The export's bytes. ``on_complete`` runs only when every byte has been produced."""
@@ -938,26 +968,21 @@ class EvidenceExport:
         sink = _Sink()
         archive = zipfile.ZipFile(sink, "w", compression=zipfile.ZIP_DEFLATED)
         meta = self.metadata()
-        readme = README.format(
-            export_id=self.export_id,
-            generated_at=meta["generated_at"],
-            instance=meta["instance"],
-            format=FORMAT,
-            scope=_dumps(meta["scope"]),
-            population=textwrap.fill(manifest.population(meta)["statement"], width=92),
-        )
+        readme = self.readme(meta)
         yield from self._zip_file(archive, sink, "README.txt", iter([readme]), rows=False)
         meta_text = json.dumps(meta, ensure_ascii=False, indent=2) + "\n"
         yield from self._zip_file(archive, sink, "export.json", iter([meta_text]), rows=False)
         for name, rows in self.sections():
-            if name == "observations":
+            if name in self.JSONL:
                 lines = (_dumps(row) + "\n" for row in self._rows(name, rows))
-                yield from self._zip_file(archive, sink, "observations.jsonl", lines)
-                self.result.rows[name] = self.result.files["observations.jsonl"].rows
+                yield from self._zip_file(archive, sink, f"{name}.jsonl", lines)
+                self.result.rows[name] = self.result.files[f"{name}.jsonl"].rows
             else:
                 filename = f"{name}.csv"
                 section = self._rows(name, rows)
-                yield from self._zip_file(archive, sink, filename, _csv(COLUMNS[name], section))
+                yield from self._zip_file(
+                    archive, sink, filename, _csv(self.columns(name), section)
+                )
                 self.result.rows[name] = self.result.files[filename].rows
         contents = [
             {"name": name, "rows": record.rows, "bytes": record.bytes, "sha256": record.sha256}
@@ -1045,6 +1070,8 @@ COLUMNS: dict[str, tuple[str, ...]] = {
         "collection_last_success_at",
         "ancestry",
         "exception_id",
+        "observation_ids",
+        "evidence_digest",
     ),
     "findings": (
         "id",

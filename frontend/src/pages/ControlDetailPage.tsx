@@ -11,6 +11,9 @@ import {
 } from "../api/controls";
 import { findingsHref } from "../api/evaluations";
 import { useLoad } from "../api/useLoad";
+import { useAsOf } from "../asof/context";
+import { AsOfResult } from "../asof/AsOfResult";
+import { PastReadOnly } from "../asof/PastReadOnly";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { linkClass, secondaryClass } from "../components/styles";
@@ -373,13 +376,16 @@ export function ControlDetailPage() {
   const { session } = useAuth();
   const user = session.status === "signed_in" ? session.user : null;
   const canWrite = canWritePolicies(user);
+  const asOf = useAsOf();
+  const past = asOf !== null;
   const [reload, setReload] = useState(0);
   const [intent, setIntent] = useState<ChangeIntent | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const status = useRef<HTMLParagraphElement>(null);
   const known = frameworkIds.find((id) => id === framework);
-  const loaded = useLoad(`control:${framework}/${controlId}#${String(reload)}`, (signal) =>
-    getControl(framework, controlId, signal),
+  const loaded = useLoad(
+    `control:${framework}/${controlId}@${asOf ?? "now"}#${String(reload)}`,
+    (signal) => getControl(framework, controlId, signal, asOf),
   );
 
   useEffect(() => {
@@ -468,19 +474,28 @@ export function ControlDetailPage() {
           </Link>
         </p>
       )}
+      <AsOfResult answer={control} />
       <Decision control={control} />
-      <MappedRules control={control} canWrite={canWrite} open={setIntent} />
+      <fieldset disabled={past} className="contents">
+        <MappedRules control={control} canWrite={canWrite} open={setIntent} />
+      </fieldset>
       {canWrite && (
         <section aria-labelledby="actions-title" className="space-y-3">
           <h2 id="actions-title" className="text-lg font-semibold">
             Adjust the mapping
           </h2>
-          <p className="max-w-3xl text-sm text-slate-700">
-            Every change needs a justification and is recorded. While review is required it takes
-            effect only after someone else approves it.
-          </p>
-          {intent === null ? (
-            <Actions control={control} open={setIntent} />
+          {past ? (
+            <PastReadOnly />
+          ) : (
+            <p className="max-w-3xl text-sm text-slate-700">
+              Every change needs a justification and is recorded. While review is required it takes
+              effect only after someone else approves it.
+            </p>
+          )}
+          {intent === null || past ? (
+            <fieldset disabled={past} className="contents">
+              <Actions control={control} open={setIntent} />
+            </fieldset>
           ) : (
             <ChangeForm
               key={`${intent.kind}:${intent.ruleTypes?.join(",") ?? ""}:${String(intent.supersedes?.id ?? "")}`}

@@ -18,6 +18,8 @@ TABLES = {
     "audit_event",
     "audit_shipment",
     "backup_run",
+    "change_cursor",
+    "change_record",
     "collection_job",
     "collection_run",
     "compliance_attestation",

@@ -23,11 +23,11 @@ import hashlib
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Literal
 
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy import ColumnElement, and_, func, select
+from sqlalchemy.orm import Session, aliased
 
 from baluarte.controls.catalogue import CONTROLS, DEFAULT_MAPPING, MAPPING_VERSION, Control
 from baluarte.db.models import (
@@ -84,12 +84,35 @@ class Effective:
         return [rule.rule_type for rule in self.rules.get((framework, control_id), [])]
 
 
-def effective(db: Session) -> Effective:
+def _in_force(as_of: datetime | None) -> ColumnElement[bool]:
+    """SQL: the change was in force at ``as_of`` (now when None).
+
+    A change is in force from its decision until a change superseding it takes effect.
+    """
+    if as_of is None:
+        return ControlMappingChange.state == "active"
+    later = aliased(ControlMappingChange)
+    superseded = (
+        select(later.id)
+        .where(
+            later.supersedes_id == ControlMappingChange.id,
+            later.state.in_(("active", "withdrawn")),
+            later.decided_at <= as_of,
+        )
+        .exists()
+    )
+    return and_(
+        ControlMappingChange.state.in_(("active", "withdrawn")),
+        ControlMappingChange.decided_at <= as_of,
+        ~superseded,
+    )
+
+
+def effective(db: Session, as_of: datetime | None = None) -> Effective:
+    """The mapping in force now, or at ``as_of``."""
     active = list(
         db.scalars(
-            select(ControlMappingChange)
-            .where(ControlMappingChange.state == "active")
-            .order_by(ControlMappingChange.id)
+            select(ControlMappingChange).where(_in_force(as_of)).order_by(ControlMappingChange.id)
         )
     )
     unmapped = {(c.framework, c.control_id, c.rule_type) for c in active if c.kind == "unmap"}
@@ -172,16 +195,23 @@ class Posture:
     controls: list[ControlPosture]
 
 
-def latest_run(db: Session, instance_id: int | None) -> EvaluationRun | None:
+def latest_run(
+    db: Session, instance_id: int | None, as_of: datetime | None = None
+) -> EvaluationRun | None:
+    """The latest successful evaluation run; with ``as_of``, the latest that finished by then."""
+    statement = select(EvaluationRun).where(
+        EvaluationRun.instance_id == (instance_id or 0), EvaluationRun.status == "succeeded"
+    )
+    if as_of is not None:
+        statement = statement.where(EvaluationRun.finished_at <= as_of)
     return db.scalars(
-        select(EvaluationRun)
-        .where(EvaluationRun.instance_id == (instance_id or 0), EvaluationRun.status == "succeeded")
-        .order_by(EvaluationRun.started_at.desc(), EvaluationRun.id.desc())
-        .limit(1)
+        statement.order_by(EvaluationRun.started_at.desc(), EvaluationRun.id.desc()).limit(1)
     ).first()
 
 
-def _rule_counts(db: Session, run: EvaluationRun | None) -> dict[str, list[RuleCounts]]:
+def _rule_counts(
+    db: Session, run: EvaluationRun | None, as_of: datetime | None = None
+) -> dict[str, list[RuleCounts]]:
     """Results of the run per rule type, then per (baseline, rule)."""
     if run is None:
         return {}
@@ -200,7 +230,7 @@ def _rule_counts(db: Session, run: EvaluationRun | None) -> dict[str, list[RuleC
         .where(
             Evaluation.evaluation_run_id == run.id,
             # Projects out of monitoring scope are not counted, even if the run judged them.
-            coverage(db, run.instance_id).project_included(),
+            coverage(db, run.instance_id, as_of).project_included(),
         )
     )
     for policy, version, rule_id, rule_type, outcome, project_id in rows:
@@ -236,11 +266,16 @@ def posture(
     instance_id: int | None,
     framework: str | None = None,
     controls: Iterable[Control] | None = None,
+    as_of: datetime | None = None,
 ) -> Posture:
-    run = latest_run(db, instance_id)
-    by_type = _rule_counts(db, run)
-    mapping = effective(db)
-    today: date = db.execute(select(func.current_date())).scalar_one()
+    """Each control's status now, or as it stood at ``as_of``: from the latest run that finished
+    by then, with the mapping and monitoring scope in force then."""
+    run = latest_run(db, instance_id, as_of)
+    by_type = _rule_counts(db, run, as_of)
+    mapping = effective(db, as_of)
+    today: date = (
+        as_of.date() if as_of is not None else db.execute(select(func.current_date())).scalar_one()
+    )
     out: list[ControlPosture] = []
     for item in controls if controls is not None else CONTROLS:
         if framework is not None and item.framework != framework:
@@ -266,16 +301,16 @@ def posture(
     return Posture(evaluation_run_id=run.id if run else None, controls=out)
 
 
-def mapping_summary(db: Session) -> dict[str, Any]:
+def mapping_summary(db: Session, as_of: datetime | None = None) -> dict[str, Any]:
     """The mapping in force, for an evidence export's manifest.
 
     Every effective rule type and control pair, and every active change with a SHA-256 of its
     justification, so an auditor can tie the package to the changes the audit log records.
     """
-    mapping = effective(db)
+    mapping = effective(db, as_of)
     active = db.scalars(
         select(ControlMappingChange)
-        .where(ControlMappingChange.state == "active", ControlMappingChange.kind != "withdraw")
+        .where(_in_force(as_of), ControlMappingChange.kind != "withdraw")
         .order_by(ControlMappingChange.id)
     )
     return {
