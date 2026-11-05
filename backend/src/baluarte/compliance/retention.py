@@ -3,8 +3,10 @@
 The ``retention.expire`` job runs once a day (``RetentionSchedule``) and, in one transaction:
 
 * evaluations older than the evidence period, except a finding's latest;
-* observations older than it, except the newest of each target and any an evaluation still
-  refers to;
+* changes (``change_record``) that reached their branch before it, unless an evaluation still
+  refers to their observation;
+* observations older than it, except the newest of each target and source and any an
+  evaluation or change still refers to;
 * evaluation and collection runs older than it that nothing still refers to;
 * finished jobs and exports older than the job period that nothing still refers to;
 * sessions, sign-ins and setup sessions that ended more than ``SESSION_DAYS`` ago;
@@ -52,12 +54,25 @@ _DELETE: list[tuple[str, str, str]] = [
         """,
     ),
     (
+        "change_record",
+        "evidence",
+        """
+        DELETE FROM change_record c
+         WHERE c.changed_at < :cutoff
+           AND NOT EXISTS (SELECT 1 FROM evaluation e WHERE e.observation_id = c.observation_id)
+           AND NOT EXISTS (
+               SELECT 1 FROM evaluation e WHERE e.observation_ids @> ARRAY[c.observation_id])
+        """,
+    ),
+    (
         "observation",
         "evidence",
         """
         DELETE FROM observation o
          WHERE o.collected_at < :cutoff
            AND NOT EXISTS (SELECT 1 FROM evaluation e WHERE e.observation_id = o.id)
+           AND NOT EXISTS (SELECT 1 FROM evaluation e WHERE e.observation_ids @> ARRAY[o.id])
+           AND NOT EXISTS (SELECT 1 FROM change_record c WHERE c.observation_id = o.id)
            AND EXISTS (
                SELECT 1 FROM observation n
                 WHERE n.instance_id = o.instance_id

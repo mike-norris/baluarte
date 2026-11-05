@@ -13,9 +13,10 @@ import httpx
 from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session
 
+from baluarte.changes import settings as change_settings
 from baluarte.db.models import GitLabInstance
 from baluarte.evidence.observations import Provenance
-from baluarte.integrations.gitlab import security_policies
+from baluarte.integrations.gitlab import changes, security_policies
 from baluarte.integrations.gitlab.capabilities import detect, observe_snapshot, record_snapshot
 from baluarte.integrations.gitlab.client import GitLabClient, GitLabError
 from baluarte.integrations.gitlab.discovery import Discovery
@@ -36,9 +37,11 @@ DETECT_CAPABILITIES = "gitlab.detect_capabilities"
 DISCOVER_GROUPS = "gitlab.discover_groups"
 DISCOVER_PROJECTS = "gitlab.discover_projects"
 DISCOVER_SECURITY_POLICIES = "gitlab.discover_security_policies"
+COLLECT_CHANGES = "gitlab.collect_changes"
 
-# Scheduled each interval, in this order. Security policy discovery is queued by each finished
-# project discovery instead, so it always reads the inventory that discovery just confirmed.
+# Scheduled each interval, in this order. Security policy discovery and change collection are
+# queued by each finished project discovery instead, so they always read the inventory that
+# discovery just confirmed.
 SCHEDULED_KINDS = (DETECT_CAPABILITIES, DISCOVER_GROUPS, DISCOVER_PROJECTS)
 
 # Retries of a scheduled collection, in seconds after each failed attempt: long enough to ride
@@ -177,6 +180,7 @@ def _make_discovery(
             with Session(engine) as db:
                 queue_after_collection(db, run_id)
                 queue_security_policies(db, settings.url, run_id)
+                queue_changes(db, run_id)
                 db.commit()
         logger.info(
             "gitlab %s: %s listed (%s new, %s known, %s restored); %s not listed: %s still "
@@ -300,6 +304,64 @@ def make_discover_security_policies(
             db.commit()
 
     return discover
+
+
+def queue_changes(db: Session, collection_run_id: int) -> int:
+    """Queue change collection after a project discovery, once per run."""
+    return queue.enqueue(
+        db, COLLECT_CHANGES, f"{COLLECT_CHANGES}:after-run:{collection_run_id}", max_attempts=3
+    )
+
+
+def make_collect_changes(transport: httpx.BaseTransport | None = None) -> GitLabHandler:
+    def collect(job: ClaimedJob, engine: Engine) -> None:
+        settings = _settings()
+        run_id = start_run(engine, settings.url, "changes", job)
+        try:
+            with Session(engine) as db:
+                instance_id = instance_for(db, settings.url).id
+                options = change_settings.load(db)
+                db.commit()
+            with GitLabClient(settings, transport=transport) as client:
+                result = changes.collect(
+                    client, engine, instance_id, options, Provenance(run_id, job.id)
+                )
+        except Exception as exc:
+            _unexpected(engine, run_id, exc)
+            raise
+        problems = []
+        if result.failed_projects:
+            problems.append(f"changes of {result.failed_projects} projects could not be listed")
+        failed_parts = sum(count for key, count in result.parts.items() if key.endswith(":failed"))
+        if failed_parts:
+            problems.append(f"{failed_parts} parts of changes could not be read")
+        if result.rejected or (result.projects and result.failed_projects == result.projects):
+            outcome: RunOutcome = "failed"
+        else:
+            outcome = "partial" if problems else "succeeded"
+        finish_run(
+            engine,
+            run_id,
+            outcome,
+            seen=result.projects,
+            counts=result.as_counts(),
+            error="; ".join(problems) or None,
+        )
+        logger.info(
+            "gitlab changes: %s projects read, %s failed: %s",
+            result.projects,
+            result.failed_projects,
+            dict(result.changes),
+            extra={"job_id": job.id},
+        )
+        if outcome == "failed":
+            raise JobError("change collection read no project")
+        # The change rules judge these observations: re-evaluate, once per run.
+        with Session(engine) as db:
+            queue_after_collection(db, run_id)
+            db.commit()
+
+    return collect
 
 
 class Schedule:
