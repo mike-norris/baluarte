@@ -178,10 +178,10 @@ def test_a_project_shows_only_rules_from_its_latest_evaluation(world: World) -> 
     body = get(world.engine, "/api/v1/gitlab/projects/1/evaluations")
 
     # The policy no longer applies, so its old failure is not presented as current.
-    assert body == {
-        "project": {"gitlab_id": 1, "path": "platform/p1", "state": "active"},
-        "items": [],
-    }
+    assert body["project"] == {"gitlab_id": 1, "path": "platform/p1", "state": "active"}
+    assert body["items"] == []
+    assert body["as_of"] is None
+    assert body["evaluation_run"]["id"] is not None
 
 
 def test_a_project_lists_its_latest_results(world: World) -> None:

@@ -21,6 +21,7 @@ import hashlib
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any, Literal
 
 from sqlalchemy import ColumnElement, and_, false, func, or_, select
@@ -163,16 +164,25 @@ def _covering(row: ScopeExclusion) -> Covering:
     )
 
 
-def coverage(db: Session, instance_id: int | None) -> Coverage:
-    """The active exclusions of ``instance_id``, resolved for lookups and SQL filters."""
+def coverage(db: Session, instance_id: int | None, as_of: datetime | None = None) -> Coverage:
+    """The active exclusions of ``instance_id``, resolved for lookups and SQL filters.
+
+    With ``as_of``, the exclusions in force then: approved (or applied) by then and not yet
+    ended. Groups are resolved against today's group tree, which keeps no history.
+    """
     result = Coverage()
     if instance_id is None:
         return result
-    rows = db.scalars(
-        select(ScopeExclusion)
-        .where(ScopeExclusion.instance_id == instance_id, ScopeExclusion.state == "active")
-        .order_by(ScopeExclusion.id)
-    ).all()
+    statement = select(ScopeExclusion).where(ScopeExclusion.instance_id == instance_id)
+    if as_of is None:
+        statement = statement.where(ScopeExclusion.state == "active")
+    else:
+        statement = statement.where(
+            ScopeExclusion.state.in_(("active", "ended")),
+            ScopeExclusion.decided_at <= as_of,
+            or_(ScopeExclusion.ended_at.is_(None), ScopeExclusion.ended_at > as_of),
+        )
+    rows = db.scalars(statement.order_by(ScopeExclusion.id)).all()
     excluded_groups: dict[int, Covering] = {}
     for row in rows:
         if row.target_type == "project" and row.target_id is not None:
