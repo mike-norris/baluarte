@@ -132,7 +132,8 @@ The operating profile ([COMPLIANCE.md](COMPLIANCE.md)) sets how long data is kep
 |---|---|
 | `audit_event` | Older than the audit period, only through `baluarte_expire_audit` (below). Never younger than 30 days |
 | `evaluation` | Older than the evidence period, unless it is a finding's latest evaluation |
-| `observation` | Older than the evidence period, unless it is the newest of its target (instance, project or group, and source) or an evaluation still refers to it |
+| `change_record` | Landed on its branch before the evidence period, unless an evaluation still refers to its observation |
+| `observation` | Older than the evidence period, unless it is the newest of its target (instance, project or group, and source), or an evaluation (`observation_id` or `observation_ids`) or a change still refers to it |
 | `evaluation_run`, `collection_run` | Older than the evidence period and finished, unless an evaluation, observation or security policy still refers to it. Runs are evidence of collection failures, so they follow the evidence period, not the job period |
 | `collection_job`, `export_job` | Finished more than the job period ago and not referred to by a run or observation. Queued and running jobs are never deleted |
 | `user_session`, `oidc_login`, `setup_session` | Ended (expired or revoked) more than 30 days ago |

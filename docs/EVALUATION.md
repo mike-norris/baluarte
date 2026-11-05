@@ -214,6 +214,14 @@ The capability status comes from the instance's latest capability snapshot (`cap
 - **`unknown`:** every other probe status (`forbidden`, `not_found`, `error`, `skipped`), a missing probe, a missing snapshot, or a failed detection. Detection cannot prove a feature is missing: a 404 may mean a hidden sample project and a 403 a token limit.
 - **`unsupported`:** the engine supports it, but no probe produces it today. Protected branches exist in every edition.
 
+## Change rules
+
+`gitlab.change.reviewed`, `gitlab.change.pipeline_passed` and `gitlab.change.deployed_after_review` judge a window of a project's recorded changes (collection kind `changes`). A failing change fails the rule; a change that cannot be judged, a listing that could not be read, or a window that starts before the project's collected history makes it `unknown`. The stored result lists every change observation it rests on (`observation_ids`) with their combined `evidence_digest`; each digest is checked and the value rebuilt before a `pass` or `fail` is stored. See [CHANGE_EVIDENCE.md](CHANGE_EVIDENCE.md).
+
+## Reading results as of a moment
+
+Every results read accepts `as_of` and then answers from the latest successful run that finished by then, with the monitoring scope and control mapping in force then; findings take the state their last decided evaluation by then gave them. Responses carry `as_of` and `evaluation_run: {id, finished_at}`; with no run by then they are empty. See [CHANGE_EVIDENCE.md](CHANGE_EVIDENCE.md#reading-as-of-a-moment).
+
 ## Stored results
 
 A result is decided from the inventory, then checked against its evidence before it is stored (`evaluation/store.py`). A `pass` or `fail` is stored only when the project's latest observation of the value's source:
@@ -264,7 +272,7 @@ results = evaluate_project(db, project, resolution, collections, capabilities)
 `capabilities` defaults to the instance's snapshot when omitted. Each project's default-branch protection and security policy observations are read with the project.
 
 - **Which policies:** only the resolution's `effective` policies are evaluated. Overridden and out-of-scope versions are not.
-- **Which rules:** a rule is evaluated only if its type has an evaluator. Today that is every rule type in the schema: `gitlab.project.visibility`, `gitlab.branch.default_protected`, `gitlab.security_policy.scan_execution`, `gitlab.security_policy.approval`, `gitlab.project.merge_request_approvals`, `gitlab.project.privileged_members`, `gitlab.group.two_factor_required` and `gitlab.project.access_tokens`. Rules of other types produce no result until their evaluator exists; they never produce a guessed one.
+- **Which rules:** a rule is evaluated only if its type has an evaluator. Today that is every rule type in the schema: `gitlab.project.visibility`, `gitlab.branch.default_protected`, `gitlab.security_policy.scan_execution`, `gitlab.security_policy.approval`, `gitlab.project.merge_request_approvals`, `gitlab.project.privileged_members`, `gitlab.group.two_factor_required` , `gitlab.project.access_tokens` and the three change rules. Rules of other types produce no result until their evaluator exists; they never produce a guessed one.
 - **Order:** by policy name, then by the rule's position in the policy.
 
 ### Archived projects

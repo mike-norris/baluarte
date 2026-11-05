@@ -52,8 +52,13 @@ Each rule type supports SOC 2, ISO 27001 and NIST 800-53 controls through the de
 | `gitlab.project.privileged_members` | `max_privileged`: integer, 1 to 1000. `forbid_inactive_accounts`: boolean, default `false` | At most `max_privileged` members, direct or inherited, hold Maintainer or Owner access; with `forbid_inactive_accounts`, no member's account is blocked, deactivated or otherwise not active. |
 | `gitlab.group.two_factor_required` | `max_grace_hours`: integer, 0 to 720, optional | A group above the project, or the instance, requires two-factor authentication, with a grace period of at most `max_grace_hours` when set. Without an administrator token, a project no visible group covers is `unknown`, never `fail`. |
 | `gitlab.project.access_tokens` | `max_lifetime_days`: integer, 1 to 365. `max_unused_days`: integer, 1 to 365, optional | Every active project access token expires within `max_lifetime_days` of its creation, and, when set, was used within `max_unused_days`. |
+| `gitlab.change.reviewed` | `window_days`: 1 to 365, default 90. `min_approvals`: 1 to 20, default 1. `forbid_self_approval`: default `true`. `allow_direct_push`: default `false` | Every merge request merged into the default branch in the window was approved by at least `min_approvals` people other than its author, and no commit was pushed directly unless allowed. |
+| `gitlab.change.pipeline_passed` | `window_days`. `require_tests`: default `false` | The pipeline for the last commit of every change in the window succeeded, with a test report and no failed tests when `require_tests`. |
+| `gitlab.change.deployed_after_review` | `window_days` | Every successful production deployment in the window deployed a commit of a reviewed merge request. |
 
 The security policy rules read what security policy discovery stored; a project whose policies were not read in full is `unknown`. [EVALUATION.md](EVALUATION.md#gitlab-security-policy-rules) gives the exact semantics. The access-control and approval rules read what project discovery stored for each project ([EVALUATION.md](EVALUATION.md#access-control-and-merge-request-approval-rules)).
+
+The change rules judge the change evidence Baluarte recorded over the window; see [CHANGE_EVIDENCE.md](CHANGE_EVIDENCE.md).
 
 Any other `type` is rejected. New rule types are added to the schema, and old ones are never redefined; incompatible changes get a new `apiVersion`.
 

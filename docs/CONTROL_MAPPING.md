@@ -99,6 +99,16 @@ Each default pair carries a one-sentence rationale. Every rule type supports at 
 | `gitlab.project.access_tokens` | NIST 800-53 IA-5 | A maximum token lifetime is authenticator management. |
 | `gitlab.project.access_tokens` | NIST 800-53 AC-2 | Project tokens act as accounts and need the same lifecycle. |
 
+### Change rules
+
+Mapping version `2026.11.1` adds the change rules:
+
+| Rule type | SOC 2 | ISO/IEC 27001:2022 | NIST SP 800-53 |
+|---|---|---|---|
+| `gitlab.change.reviewed` | CC8.1 | A.8.32 | CM-3, AC-5 |
+| `gitlab.change.pipeline_passed` | CC8.1 | A.8.29 | SA-11 |
+| `gitlab.change.deployed_after_review` | CC8.1 | A.8.32 | CM-3 |
+
 ## Changes
 
 An organization changes the mapping through `control_mapping_change` rows. Each names a control and carries a justification of 20 to 2,000 characters.
@@ -154,6 +164,8 @@ Findings carry `controls: [{framework, id}]`, the controls their rule type suppo
 ## Evidence
 
 An export can be scoped to one control with `framework` and `control_id` ([AUDIT_EVIDENCE.md](AUDIT_EVIDENCE.md#export)): evaluations, findings and exceptions of the rule types mapped to it. Every manifest records the mapping in force as `control_mapping`: `mapping_version`, every effective pair (`framework`, `control_id`, `rule_type`, `source` default or organization, and `change_id`), and every active change with the SHA-256 of its justification, so an auditor can tie the package to the audit events that record each change.
+
+Control status and the mapping can be read as of a past moment with `as_of`: the mapping then is every change decided by then and not superseded by then ([CHANGE_EVIDENCE.md](CHANGE_EVIDENCE.md#reading-as-of-a-moment)).
 
 ## Limits
 
