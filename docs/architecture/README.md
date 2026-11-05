@@ -12,6 +12,8 @@ Record a decision here when it changes or establishes a foundational choice: run
 | [ADR-0006](ADR-0006-server-side-oidc-sessions.md) | API is the OIDC client; sessions in PostgreSQL | Accepted |
 | [ADR-0007](ADR-0007-remediation-constraints.md) | Constraints for GitLab remediation (M6) | Proposed (plans implemented in BAL-031) |
 | [ADR-0008](ADR-0008-settings-in-the-database.md) | Settings and sealed secrets entered in the web UI; one-time setup code | Accepted |
+| [ADR-0009](ADR-0009-label-writes.md) | Write access to GitLab for approved label plans only | Proposed |
+| [ADR-0010](ADR-0010-time-tracking-personal-data.md) | Time tracking, including time per person | Proposed |
 
 ## Template
 
