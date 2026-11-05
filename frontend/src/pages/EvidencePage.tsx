@@ -17,6 +17,8 @@ import {
 } from "../evidence/scope";
 import { frameworkLabels } from "../controls/format";
 import { findingStateLabels, outcomeLabels } from "../findings/format";
+import { PACKAGE_PERMISSION } from "../api/packages";
+import { PackageForm } from "../evidence/PackageForm";
 import { CollectionNote } from "../freshness/CollectionNote";
 
 export const EXPORT_PERMISSION = "evidence:export";
@@ -410,6 +412,7 @@ export function EvidencePage() {
   const { session } = useAuth();
   const user = session.status === "signed_in" ? session.user : null;
   const allowed = user?.permissions.includes(EXPORT_PERMISSION) ?? false;
+  const packages = user?.permissions.includes(PACKAGE_PERMISSION) ?? false;
 
   return (
     <section aria-labelledby="page-title" className="space-y-6">
@@ -432,6 +435,7 @@ export function EvidencePage() {
           so ask an administrator if you need one.
         </p>
       )}
+      {user && packages && <PackageForm csrfToken={user.csrf_token} />}
     </section>
   );
 }

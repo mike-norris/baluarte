@@ -38,17 +38,47 @@ export async function downloadExport(
   signal: AbortSignal,
   onProgress: (bytes: number) => void,
 ): Promise<ExportDownload> {
+  const { response, chunks, bytes } = await streamPost(
+    "/api/v1/evidence/exports",
+    request,
+    request.format === "json" ? "application/json" : "application/zip",
+    csrfToken,
+    signal,
+    onProgress,
+  );
+  return {
+    blob: new Blob(chunks, {
+      type: response.headers.get("Content-Type") ?? "",
+    }),
+    filename: exportFilename(response.headers.get("Content-Disposition"), request.format),
+    bytes,
+    exportId: response.headers.get("X-Baluarte-Export-Id"),
+  };
+}
+
+/**
+ * POST ``body`` and read the whole response, reporting bytes as they arrive. A failure carries
+ * the export failure sentences; an interrupted body saves nothing.
+ */
+export async function streamPost(
+  path: string,
+  body: unknown,
+  accept: string,
+  csrfToken: string,
+  signal: AbortSignal,
+  onProgress: (bytes: number) => void,
+): Promise<{ response: Response; chunks: Uint8Array<ArrayBuffer>[]; bytes: number }> {
   let response: Response;
   try {
-    response = await fetch("/api/v1/evidence/exports", {
+    response = await fetch(path, {
       method: "POST",
       credentials: "same-origin",
       headers: {
-        Accept: request.format === "json" ? "application/json" : "application/zip",
+        Accept: accept,
         "Content-Type": "application/json",
         "X-CSRF-Token": csrfToken,
       },
-      body: JSON.stringify(request),
+      body: JSON.stringify(body),
       signal,
     });
   } catch (error) {
@@ -79,14 +109,7 @@ export async function downloadExport(
     if (signal.aborted) throw error;
     throw new ApiError(0, "The download stopped before it finished. Nothing was saved.");
   }
-  return {
-    blob: new Blob(chunks, {
-      type: response.headers.get("Content-Type") ?? "",
-    }),
-    filename: exportFilename(response.headers.get("Content-Disposition"), request.format),
-    bytes,
-    exportId: response.headers.get("X-Baluarte-Export-Id"),
-  };
+  return { response, chunks, bytes };
 }
 
 /** Hand a finished download to the browser under ``filename``. */
