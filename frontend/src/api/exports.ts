@@ -1,5 +1,5 @@
 import { ApiError } from "./client";
-import { responseDetail } from "./send";
+import { detailMessage, readDetail, reasonSentences, RefusalError } from "./send";
 import { exportFilename, type ExportRequest } from "../evidence/scope";
 
 export interface ExportDownload {
@@ -10,9 +10,17 @@ export interface ExportDownload {
   exportId: string | null;
 }
 
-async function failure(response: Response): Promise<string> {
-  const detail = await responseDetail(response);
-  switch (response.status) {
+async function failure(response: Response): Promise<ApiError> {
+  const body = await readDetail(response);
+  const reasons = reasonSentences(body);
+  const message = sentence(response.status, detailMessage(body));
+  return reasons.length > 0
+    ? new RefusalError(response.status, message, reasons)
+    : new ApiError(response.status, message);
+}
+
+function sentence(status: number, detail: string | null): string {
+  switch (status) {
     case 401:
       return "Your session has ended. Sign in again to continue.";
     case 403:
@@ -24,7 +32,7 @@ async function failure(response: Response): Promise<string> {
     case 422:
       return `The export was refused: ${detail ?? "the scope is not valid"}`;
     default:
-      return `The API returned an error (${String(response.status)}).`;
+      return `The API returned an error (${String(status)}).`;
   }
 }
 
@@ -85,7 +93,7 @@ export async function streamPost(
     if (signal.aborted) throw error;
     throw new ApiError(0, "The API could not be reached.");
   }
-  if (!response.ok) throw new ApiError(response.status, await failure(response));
+  if (!response.ok) throw await failure(response);
 
   const chunks: Uint8Array<ArrayBuffer>[] = [];
   let bytes = 0;

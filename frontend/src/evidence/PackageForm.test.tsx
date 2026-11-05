@@ -225,6 +225,41 @@ describe("audit package form", () => {
     );
   });
 
+  it("lists the reasons of a structured refusal", async () => {
+    const user = userEvent.setup();
+    api({
+      [PACKAGE]: () =>
+        json(
+          {
+            detail: {
+              code: "package_refused",
+              message: "the package cannot be built",
+              reasons: [
+                "group_unknown",
+                { code: "control_unknown", message: "CC9.9 is not in the catalogue" },
+              ],
+            },
+          },
+          409,
+        ),
+    });
+    renderAt();
+
+    const form = await screen.findByRole("form", { name: "Create an audit package" });
+    await user.type(within(form).getByLabelText("From (UTC)"), "2026-07-01T00:00");
+    await user.type(within(form).getByLabelText("Up to (UTC)"), "2026-10-01T00:00");
+    await user.click(within(form).getByRole("button", { name: "Create package" }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Nothing can be exported yet: the package cannot be built.");
+    const reasons = within(alert).getByRole("list", { name: "Reasons" });
+    expect(
+      within(reasons)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["group unknown", "CC9.9 is not in the catalogue"]);
+  });
+
   it("is not offered without the package permission", async () => {
     api({}, { ...auditor, permissions: ["evidence:read"] });
     renderAt();

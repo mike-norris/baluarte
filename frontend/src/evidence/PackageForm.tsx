@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ApiError } from "../api/client";
 import { frameworkIds } from "../api/controls";
 import { saveDownload } from "../api/exports";
+import { errorReasons } from "../api/send";
 import { downloadPackage, getPackage, MAX_SAMPLE, type PackageRecord } from "../api/packages";
 import { useAuth } from "../auth/context";
 import { buttonClass, fieldClass, secondaryClass } from "../components/styles";
@@ -154,10 +155,21 @@ function Outcome({ run, cancel }: { run: Run; cancel: () => void }) {
     );
   }
   if (run.status === "failed") {
+    const reasons = errorReasons(run.error);
     return (
-      <p role="alert" className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-900">
-        {run.error.message}
-      </p>
+      <div
+        role="alert"
+        className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-900"
+      >
+        <p>{run.error.message}</p>
+        {reasons.length > 0 && (
+          <ul className="mt-1 list-disc pl-5" aria-label="Reasons">
+            {reasons.map((reason) => (
+              <li key={reason}>{reason}</li>
+            ))}
+          </ul>
+        )}
+      </div>
     );
   }
   return null;
