@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 
 import { CAN_PLAN } from "../api/remediation";
+import { useAsOf } from "../asof/context";
 import { useAuth } from "../auth/context";
 import { linkClass } from "../components/styles";
 
@@ -15,8 +16,16 @@ export function PlanLink({
   dropped?: string[];
 }) {
   const { session } = useAuth();
+  const asOf = useAsOf();
   if (session.status !== "signed_in" || !session.user.permissions.includes(CAN_PLAN)) {
     return null;
+  }
+  if (asOf !== null) {
+    return (
+      <p className="text-sm text-slate-700">
+        {`${label}: not available while viewing the past. Plans are made from current findings, so go back to now to make one.`}
+      </p>
+    );
   }
   return (
     <p className="text-sm">

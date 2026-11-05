@@ -312,6 +312,38 @@ describe("a project's page", () => {
     expect(calls.map((call) => call.url)).not.toContain("/api/v1/gitlab/projects/105/evaluations");
   });
 
+  it("shows a project as of a past date, with including it again turned off", async () => {
+    const asOf = "2026-10-01T00:00:00Z";
+    const query = `?as_of=${encodeURIComponent(asOf)}`;
+    const run = { id: 4, finished_at: "2026-09-30T06:12:00Z" };
+    const calls = api({
+      ...projectRoutes,
+      [`${PROJECT}${query}`]: () =>
+        json({
+          ...projectDetail,
+          as_of: asOf,
+          evaluation_run: run,
+          project: {
+            ...projectDetail.project,
+            monitoring: excludedVia("project", 31, "platform/api"),
+          },
+          not_evaluated: "excluded",
+        }),
+      [SCOPE_ACTIVE]: () =>
+        json(exclusions([exclusion(31, { target_id: 105, target_path: "platform/api" })])),
+    });
+    renderAt(`/inventory/projects/105?as_of=${asOf}`);
+
+    const notice = await screen.findByRole("region", { name: "Excluded from monitoring" });
+    expect(within(notice).getByRole("button", { name: "Include again" })).toBeDisabled();
+    expect(notice).toHaveTextContent("You are viewing the past, so nothing can be changed here.");
+    expect(screen.getByRole("link", { name: "Changes to the default branch" })).toHaveAttribute(
+      "href",
+      "/changes?project=105",
+    );
+    expect(calls.map((call) => call.url)).toContain(`/api/v1/gitlab/projects/105${query}`);
+  });
+
   it("shows a direct exclusion with its justification and includes the project again", async () => {
     let excluded = true;
     const calls = api({

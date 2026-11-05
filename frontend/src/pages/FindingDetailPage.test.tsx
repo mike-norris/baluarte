@@ -380,4 +380,54 @@ describe("finding detail", () => {
 
     expect(await screen.findByRole("heading", { name: "Sign in to Baluarte" })).toBeInTheDocument();
   });
+  it("lists the changes a change rule failed on, each linked to its evidence", async () => {
+    const latest = evaluation(20, {
+      rule_id: "changes-reviewed",
+      rule_type: "gitlab.change.reviewed",
+      expected: { min_approvals: 1, forbid_self_approval: true, allow_direct_push: false },
+      observed: {
+        window_days: 90,
+        changes: 12,
+        passed: 9,
+        failed: 3,
+        unknown: 0,
+        failing: [
+          { id: 31, kind: "merge_request", iid: 44, sha: "a".repeat(40), title: "Bump deps" },
+          { id: 32, kind: "direct_push", iid: null, sha: "b".repeat(40), title: "Hotfix" },
+        ],
+        failing_total: 3,
+        gaps: [],
+      },
+    });
+    api(findingDetail(5, latest), {
+      [FINDING]: () => json(findingDetail(5, latest)),
+      [HISTORY]: () => history([latest]),
+      "GET /api/v1/exceptions?project=105&policy=corporate-default&rule=changes-reviewed&limit=50":
+        () => json({ items: [], next_after_id: null }),
+    });
+    renderAt();
+
+    const { observed } = await comparison();
+    expect(observed).toHaveTextContent("12 changes in the window: 9 passed, 3 failed, 0 unknown");
+    const failing = screen.getByRole("region", { name: "Failing changes" });
+    expect(failing).toHaveTextContent("The first 2 of 3 failing changes.");
+    expect(within(failing).getByRole("link", { name: "!44 Bump deps" })).toHaveAttribute(
+      "href",
+      "/changes/31",
+    );
+    expect(
+      within(failing).getByRole("link", { name: "Direct push bbbbbbbb Hotfix" }),
+    ).toHaveAttribute("href", "/changes/32");
+    expect(
+      within(failing).getByRole("link", { name: "Failing changes for this project" }),
+    ).toHaveAttribute("href", "/changes?project=105&outcome=fail");
+  });
+
+  it("does not list failing changes for other rule types", async () => {
+    api(findingDetail(5));
+    renderAt();
+
+    await comparison();
+    expect(screen.queryByRole("region", { name: "Failing changes" })).not.toBeInTheDocument();
+  });
 });

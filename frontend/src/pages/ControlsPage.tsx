@@ -11,6 +11,8 @@ import {
   type FrameworkId,
 } from "../api/controls";
 import { useLoad } from "../api/useLoad";
+import { useAsOf } from "../asof/context";
+import { AsOfResult } from "../asof/AsOfResult";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { fieldClass, linkClass } from "../components/styles";
 import { frameworkLabels, ruleTypeLabel, statusLabels } from "../controls/format";
@@ -79,10 +81,14 @@ export function ControlsPage() {
   const [params, setParams] = useSearchParams();
   const framework = readFramework(params.get("framework"));
   const status = readStatus(params.get("status"));
-  const loaded = useLoad(`controls:${framework}`, (signal) => listControls(framework, signal));
+  const asOf = useAsOf();
+  const loaded = useLoad(`controls:${framework}@${asOf ?? "now"}`, (signal) =>
+    listControls(framework, signal, asOf),
+  );
 
   function choose(next: { framework?: FrameworkId; status?: ControlStatus | "" }) {
     const query = new URLSearchParams();
+    if (asOf) query.set("as_of", asOf);
     const nextFramework = next.framework ?? framework;
     const nextStatus = next.status ?? status;
     if (nextFramework !== "soc2") query.set("framework", nextFramework);
@@ -105,6 +111,7 @@ export function ControlsPage() {
     for (const control of all) tally.set(control.status, (tally.get(control.status) ?? 0) + 1);
     body = (
       <div className="space-y-3">
+        <AsOfResult answer={loaded.data} />
         <p className="text-sm text-slate-700">
           {controlStatuses
             .filter((item) => tally.has(item))

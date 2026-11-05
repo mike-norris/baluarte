@@ -1,6 +1,7 @@
 /** Types and calls for stored evaluation results and findings (backend/README.md, BAL-021). */
 
 import { getJson } from "./client";
+import type { AsOfAnswer } from "../asof/format";
 
 export type Outcome = "pass" | "fail" | "unknown" | "unsupported" | "excepted";
 export type FindingState = "open" | "resolved" | "excepted";
@@ -127,16 +128,16 @@ export interface FindingControl {
   id: string;
 }
 
-export interface FindingDetail extends Finding {
+export interface FindingDetail extends Finding, AsOfAnswer {
   latest_evaluation: Evaluation;
 }
 
-export interface FindingPage {
+export interface FindingPage extends AsOfAnswer {
   items: Finding[];
   next_after_id: number | null;
 }
 
-export interface EvaluationPage {
+export interface EvaluationPage extends AsOfAnswer {
   items: Evaluation[];
   next_before_id: number | null;
 }
@@ -161,7 +162,7 @@ interface ObservationPage {
   next_before_id: number | null;
 }
 
-interface RunPage {
+interface RunPage extends AsOfAnswer {
   items: EvaluationRun[];
   next_before_id: number | null;
 }
@@ -184,11 +185,13 @@ export function getEvaluationFreshness(signal: AbortSignal): Promise<EvaluationF
 export async function latestSuccessfulRun(
   signal: AbortSignal,
   limit = 100,
-): Promise<{ run: EvaluationRun | null; newest: EvaluationRun | null }> {
-  const page = await getJson<RunPage>("/api/v1/evaluations/runs", { limit }, signal);
+  asOf: string | null = null,
+): Promise<{ run: EvaluationRun | null; newest: EvaluationRun | null; answer: AsOfAnswer }> {
+  const page = await getJson<RunPage>("/api/v1/evaluations/runs", { limit, as_of: asOf }, signal);
   return {
     run: page.items.find((run) => run.status === "succeeded") ?? null,
     newest: page.items[0] ?? null,
+    answer: page,
   };
 }
 
@@ -203,20 +206,23 @@ export async function collectFindings(
   filters: FindingFilters,
   signal: AbortSignal,
   maxPages = FINDINGS_MAX_PAGES,
-): Promise<{ items: Finding[]; truncated: boolean }> {
+  asOf: string | null = null,
+): Promise<{ items: Finding[]; truncated: boolean; answer: AsOfAnswer }> {
   const items: Finding[] = [];
   let afterId: number | null = null;
+  let answer: AsOfAnswer = {};
   for (let page = 0; page < maxPages; page += 1) {
     const result: FindingPage = await getJson<FindingPage>(
       "/api/v1/findings",
-      { ...filters, after_id: afterId, limit: FINDINGS_PAGE },
+      { ...filters, after_id: afterId, limit: FINDINGS_PAGE, as_of: asOf },
       signal,
     );
+    if (page === 0) answer = result;
     items.push(...result.items);
     afterId = result.next_after_id;
-    if (afterId === null) return { items, truncated: false };
+    if (afterId === null) return { items, truncated: false, answer };
   }
-  return { items, truncated: true };
+  return { items, truncated: true, answer };
 }
 
 /** A link to the Findings page with these filters, in the API's parameter names. */
@@ -235,16 +241,21 @@ export function listFindings(
   filters: FindingFilters,
   afterId: number | null,
   signal?: AbortSignal,
+  asOf: string | null = null,
 ): Promise<FindingPage> {
   return getJson<FindingPage>(
     "/api/v1/findings",
-    { ...filters, after_id: afterId, limit: FINDINGS_LIST_PAGE },
+    { ...filters, after_id: afterId, limit: FINDINGS_LIST_PAGE, as_of: asOf },
     signal,
   );
 }
 
-export function getFinding(id: number, signal: AbortSignal): Promise<FindingDetail> {
-  return getJson<FindingDetail>(`/api/v1/findings/${String(id)}`, {}, signal);
+export function getFinding(
+  id: number,
+  signal: AbortSignal,
+  asOf: string | null = null,
+): Promise<FindingDetail> {
+  return getJson<FindingDetail>(`/api/v1/findings/${String(id)}`, { as_of: asOf }, signal);
 }
 
 /** Every evaluation of the finding's rule for its project, newest first. */
@@ -252,10 +263,11 @@ export function getFindingHistory(
   id: number,
   beforeId: number | null,
   signal?: AbortSignal,
+  asOf: string | null = null,
 ): Promise<EvaluationPage> {
   return getJson<EvaluationPage>(
     `/api/v1/findings/${String(id)}/evaluations`,
-    { before_id: beforeId, limit: FINDINGS_LIST_PAGE },
+    { before_id: beforeId, limit: FINDINGS_LIST_PAGE, as_of: asOf },
     signal,
   );
 }
@@ -324,7 +336,7 @@ export function getEvaluationSummary(
   return getJson<EvaluationSummary>("/api/v1/evaluations/summary", { policy }, signal);
 }
 
-export interface ProjectEvaluations {
+export interface ProjectEvaluations extends AsOfAnswer {
   project: ProjectRef;
   /** The latest result of each rule in force; empty when the project has none current. */
   items: Evaluation[];
@@ -333,10 +345,11 @@ export interface ProjectEvaluations {
 export function getProjectEvaluations(
   gitlabId: number,
   signal?: AbortSignal,
+  asOf: string | null = null,
 ): Promise<ProjectEvaluations> {
   return getJson<ProjectEvaluations>(
     `/api/v1/gitlab/projects/${String(gitlabId)}/evaluations`,
-    {},
+    { as_of: asOf },
     signal,
   );
 }

@@ -29,6 +29,12 @@ export const navItems: readonly NavItem[] = [
     description: "Rule outcomes with expected and observed values.",
   },
   {
+    path: "/changes",
+    label: "Changes",
+    description:
+      "Merged merge requests and direct pushes, with their review and pipeline evidence.",
+  },
+  {
     path: "/exceptions",
     label: "Exceptions",
     description: "Time-limited, approved waivers of known failures.",

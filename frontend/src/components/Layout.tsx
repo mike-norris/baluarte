@@ -1,5 +1,8 @@
 import { NavLink, Outlet } from "react-router";
 
+import { AsOfBanner } from "../asof/AsOfBanner";
+import { AsOfPicker } from "../asof/AsOfPicker";
+import { AsOfProvider } from "../asof/AsOfProvider";
 import { useAuth } from "../auth/context";
 import { ComplianceAlertBanner } from "../compliance/ComplianceAlertBanner";
 import { CollectionAlertBanner } from "../freshness/CollectionAlertBanner";
@@ -18,52 +21,55 @@ export function Layout() {
 
   return (
     <FreshnessProvider enabled={signedIn}>
-      <div className="min-h-screen bg-slate-50 text-slate-900">
-        <a
-          href="#main"
-          className="sr-only rounded bg-white px-3 py-2 focus:not-sr-only focus:absolute focus:top-2 focus:left-2"
-        >
-          Skip to main content
-        </a>
-        <header className="border-b border-slate-200 bg-white">
-          <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3 md:flex-row md:items-center">
-            <p className="text-lg font-semibold">Baluarte</p>
-            {session.status === "signed_in" && (
-              <nav aria-label="Primary">
-                <ul className="flex flex-wrap gap-1">
-                  {visibleNavItems(session.user.permissions).map((item) => (
-                    <li key={item.path}>
-                      <NavLink
-                        to={item.path}
-                        end={item.path === "/"}
-                        className={({ isActive }) =>
-                          `${linkBase} ${isActive ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"}`
-                        }
-                      >
-                        {item.label}
-                      </NavLink>
-                    </li>
-                  ))}
-                </ul>
-              </nav>
-            )}
-            <div className="flex items-center gap-3 md:ml-auto">
-              <FreshnessIndicator />
-              <AccountMenu />
+      <AsOfProvider>
+        <div className="min-h-screen bg-slate-50 text-slate-900">
+          <a
+            href="#main"
+            className="sr-only rounded bg-white px-3 py-2 focus:not-sr-only focus:absolute focus:top-2 focus:left-2"
+          >
+            Skip to main content
+          </a>
+          <header className="border-b border-slate-200 bg-white">
+            <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-3 md:flex-row md:items-center">
+              <p className="text-lg font-semibold">Baluarte</p>
+              {session.status === "signed_in" && (
+                <nav aria-label="Primary">
+                  <ul className="flex flex-wrap gap-1">
+                    {visibleNavItems(session.user.permissions).map((item) => (
+                      <li key={item.path}>
+                        <NavLink
+                          to={item.path}
+                          end={item.path === "/"}
+                          className={({ isActive }) =>
+                            `${linkBase} ${isActive ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"}`
+                          }
+                        >
+                          {item.label}
+                        </NavLink>
+                      </li>
+                    ))}
+                  </ul>
+                </nav>
+              )}
+              <div className="flex items-center gap-3 md:ml-auto">
+                {signedIn && <AsOfPicker />}
+                <FreshnessIndicator />
+                <AccountMenu />
+              </div>
             </div>
-          </div>
-        </header>
-        {session.status === "signed_in" && session.user.development_mode === true && (
-          <DevelopmentModeBanner />
-        )}
-        {signedIn && <CollectionAlertBanner />}
-        {session.status === "signed_in" && session.user.permissions.includes("compliance:read") && (
-          <ComplianceAlertBanner />
-        )}
-        <main id="main" tabIndex={-1} className="mx-auto max-w-6xl px-4 py-8 focus:outline-none">
-          <Outlet />
-        </main>
-      </div>
+          </header>
+          {signedIn && <AsOfBanner />}
+          {session.status === "signed_in" && session.user.development_mode === true && (
+            <DevelopmentModeBanner />
+          )}
+          {signedIn && <CollectionAlertBanner />}
+          {session.status === "signed_in" &&
+            session.user.permissions.includes("compliance:read") && <ComplianceAlertBanner />}
+          <main id="main" tabIndex={-1} className="mx-auto max-w-6xl px-4 py-8 focus:outline-none">
+            <Outlet />
+          </main>
+        </div>
+      </AsOfProvider>
     </FreshnessProvider>
   );
 }
