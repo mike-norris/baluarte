@@ -24,6 +24,8 @@ x-app-env: &app-env
   # true lets approved label plans be applied to GitLab with the write token entered in the
   # web UI (docs/LABELS.md). Off by default.
   BALUARTE_LABEL_WRITES: ${BALUARTE_LABEL_WRITES:-false}
+  # false hides time per person everywhere (docs/TIME_TRACKING.md). On by default.
+  BALUARTE_TIME_PER_PERSON: ${BALUARTE_TIME_PER_PERSON:-true}
 
 x-database: &database
   environment: *app-env
@@ -85,6 +87,7 @@ services:
       BALUARTE_OIDC_ADMIN_GROUPS: ${BALUARTE_OIDC_ADMIN_GROUPS:-}
       BALUARTE_OIDC_ANALYST_GROUPS: ${BALUARTE_OIDC_ANALYST_GROUPS:-}
       BALUARTE_OIDC_AUDITOR_GROUPS: ${BALUARTE_OIDC_AUDITOR_GROUPS:-}
+      BALUARTE_OIDC_MANAGER_GROUPS: ${BALUARTE_OIDC_MANAGER_GROUPS:-}
     secrets: [app_database_password, secret_key]
     depends_on:
       migrate:

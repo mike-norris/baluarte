@@ -67,7 +67,7 @@ For evaluation only, `--set devDatabase.enabled=true` runs a single PostgreSQL p
 | `auth.oidc.issuer`, `auth.oidc.clientId` | `""` | OIDC provider and client. Empty issuer leaves sign-in to the setup wizard; until it is set up, protected endpoints answer 503 |
 | `auth.publicUrl` | `https://<ingress.host>` | Browser-facing https origin; register `<publicUrl>/api/v1/auth/callback` with the provider |
 | `auth.oidc.existingSecret`, `auth.oidc.clientSecretKey` | `""`, `client-secret` | Secret holding the client secret; empty for a PKCE-only public client |
-| `auth.oidc.adminGroups`, `analystGroups`, `auditorGroups` | `[]` | Provider groups granted each role; at least one is required |
+| `auth.oidc.adminGroups`, `analystGroups`, `auditorGroups`, `managerGroups` | `[]` | Provider groups granted each role; at least one is required |
 | `auth.oidc.rolesClaim`, `auth.oidc.scopes` | `groups`, `openid profile email` | Groups claim and requested scopes |
 | `backup.enabled`, `backup.recipient`, `backup.schedule`, `backup.keep` | `false`, `""`, `17 2 * * *`, `14` | Encrypted `pg_dump` CronJob ([OPERATIONS.md](../../../docs/OPERATIONS.md#scheduled-backups)). `recipient` is an age public key and is required when enabled |
 | `backup.user`, `backup.existingSecret`, `backup.passwordKey` | `baluarte_backup`, `""`, `password` | Read-only role the migration Job creates for backups; `existingSecret` holds its password and is required with an external database |
@@ -78,6 +78,7 @@ For evaluation only, `--set devDatabase.enabled=true` runs a single PostgreSQL p
 | `gitlab.timeoutSeconds` | `15` | Per-request timeout |
 | `gitlab.syncIntervalMinutes` | `360` | Scheduled collection interval (15 to 10080), or `0` for on request only; data older than twice this is stale |
 | `gitlab.labelWrites` | `false` | Allow approved label plans to be applied to GitLab; the write token is entered in the web UI (docs/LABELS.md) |
+| `timeTracking.perPerson` | `true` | Show time per person to managers and administrators; `false` shows only totals (docs/TIME_TRACKING.md) |
 | `ingress.enabled`, `ingress.className`, `ingress.host`, `ingress.tls` | disabled | Ingress to the web Service |
 | `imagePullSecrets` | `[]` | Registry credentials |
 
