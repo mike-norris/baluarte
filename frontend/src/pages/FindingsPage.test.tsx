@@ -130,6 +130,7 @@ describe("findings list", () => {
     "/findings?state=open&severity=critical",
     "/findings?state=open&policy=corporate-default&rule=project-visibility",
     "/findings?project=105",
+    "/findings?state=open&rule_type=gitlab.labels.consistent",
   ])("round-trips %s through the URL", (path) => {
     const query = new URLSearchParams(path.split("?")[1]);
     expect(writeFindingFilters(readFindingFilters(query)).toString()).toBe(query.toString());
@@ -143,6 +144,7 @@ describe("findings list", () => {
         severity: "urgent",
         project: "-3",
         rule: "r".repeat(64),
+        rule_type: "Not a type",
       }),
     );
     expect(filters).toEqual({});

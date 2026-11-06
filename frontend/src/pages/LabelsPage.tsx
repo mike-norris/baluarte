@@ -25,6 +25,7 @@ import {
   driftKindLabels,
   driftKindMeaning,
   hasDriftFilters,
+  LABEL_FINDINGS,
   LABEL_PLANS,
   LABELS,
   readDriftFilters,
@@ -390,13 +391,16 @@ export function LabelsPage() {
           differ from it. Labels that could not be read are unknown, never counted as missing or
           matching. Fixes are made through reviewed plans, which never delete a label.
         </p>
-        {canPlan && (
-          <p className="mt-3">
+        <p className="mt-3 flex flex-wrap gap-4">
+          <Link to={LABEL_FINDINGS} className={linkClass}>
+            Label consistency findings
+          </Link>
+          {canPlan && (
             <Link to={LABEL_PLANS} className={linkClass}>
               Label plans
             </Link>
-          </p>
-        )}
+          )}
+        </p>
       </div>
       <TaxonomySection />
       <section aria-labelledby="drift-title" className="space-y-3">

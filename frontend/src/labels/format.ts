@@ -20,6 +20,9 @@ import {
 export const LABELS = "/labels";
 export const TAXONOMY_EDITOR = "/labels/taxonomy/new";
 export const LABEL_PLANS = "/labels/plans";
+export const LABEL_RULE_TYPE = "gitlab.labels.consistent";
+/** Findings of the label rule, which show drift per project in posture and controls. */
+export const LABEL_FINDINGS = `/findings?rule_type=${LABEL_RULE_TYPE}`;
 
 export const driftKindLabels: Record<DriftKind, string> = {
   missing: "Missing",

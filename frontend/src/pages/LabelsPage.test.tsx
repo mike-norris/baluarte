@@ -77,6 +77,10 @@ describe("labels page", () => {
       "href",
       "/labels/plans",
     );
+    expect(screen.getByRole("link", { name: "Label consistency findings" })).toHaveAttribute(
+      "href",
+      "/findings?rule_type=gitlab.labels.consistent",
+    );
     expect(
       await screen.findByText("No drift: every group and project in scope matches the taxonomy."),
     ).toBeInTheDocument();

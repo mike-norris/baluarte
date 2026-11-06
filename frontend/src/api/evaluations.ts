@@ -175,6 +175,8 @@ export interface FindingFilters {
   project?: number;
   policy?: string;
   rule?: string;
+  /** A rule type such as ``gitlab.labels.consistent``. */
+  rule_type?: string;
 }
 
 export function getEvaluationFreshness(signal: AbortSignal): Promise<EvaluationFreshness> {

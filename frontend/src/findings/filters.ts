@@ -14,6 +14,9 @@ function oneOf<T extends string>(value: string | null, allowed: readonly T[]): T
   return allowed.find((item) => item === value);
 }
 
+// Rule types are dotted lowercase names, e.g. gitlab.labels.consistent.
+const RULE_TYPE = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
+
 function name(value: string | null): string | undefined {
   const text = value?.trim();
   return text && text.length <= MAX_NAME ? text : undefined;
@@ -37,6 +40,8 @@ export function readFindingFilters(params: URLSearchParams): FindingFilters {
   if (policy) filters.policy = policy;
   const rule = name(params.get("rule"));
   if (rule) filters.rule = rule;
+  const ruleType = params.get("rule_type")?.trim();
+  if (ruleType && ruleType.length <= 255 && RULE_TYPE.test(ruleType)) filters.rule_type = ruleType;
   return filters;
 }
 
@@ -49,6 +54,7 @@ export function writeFindingFilters(filters: FindingFilters): URLSearchParams {
   if (filters.project !== undefined) params.set("project", String(filters.project));
   if (filters.policy) params.set("policy", filters.policy);
   if (filters.rule) params.set("rule", filters.rule);
+  if (filters.rule_type) params.set("rule_type", filters.rule_type);
   return params;
 }
 
