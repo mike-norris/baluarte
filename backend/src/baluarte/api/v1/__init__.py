@@ -19,6 +19,7 @@ from baluarte.api.v1 import (
     gitlab,
     health,
     jobs,
+    labels,
     observations,
     policies,
     policy_assignments,
@@ -65,6 +66,7 @@ protected.include_router(exports.router)
 protected.include_router(remediation.router)
 protected.include_router(compliance.router)
 protected.include_router(controls.router)
+protected.include_router(labels.router)
 
 router = APIRouter(prefix="/api/v1")
 router.include_router(public)

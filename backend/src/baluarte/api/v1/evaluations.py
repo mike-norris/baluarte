@@ -580,9 +580,9 @@ def list_runs(
     "waived by an approved exception is `excepted` until the exception expires or is revoked, "
     "then `open` again. Filter by "
     "`state`, `outcome` (the latest outcome), `severity`, `project` (GitLab ID), `policy` "
-    "(name) and `rule` (rule ID). `monitoring`: `included` (the default) leaves out findings "
-    "of projects out of monitoring scope, `excluded` lists only those, `all` both. Ordered by "
-    "ID; follow `next_after_id`.",
+    "(name), `rule` (rule ID) and `rule_type`. `monitoring`: `included` (the default) leaves "
+    "out findings of projects out of monitoring scope, `excluded` lists only those, `all` "
+    "both. Ordered by ID; follow `next_after_id`.",
 )
 def list_findings(
     _: Annotated[Principal, Depends(require(Permission.FINDINGS_READ))],
@@ -597,12 +597,13 @@ def list_findings(
     after_id: Annotated[int | None, Query(gt=0)] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     as_of: AsOf = None,
+    rule_type: Annotated[str | None, Query(max_length=63)] = None,
 ) -> FindingPage:
     if as_of is not None:
         return _findings_as_of(
             db,
             as_of,
-            FindingFilters(state, outcome, severity, project, policy, rule, monitoring),
+            FindingFilters(state, outcome, severity, project, policy, rule, monitoring, rule_type),
             after_id,
             limit,
         )
@@ -624,6 +625,8 @@ def list_findings(
         statement = statement.where(Finding.policy_name == policy)
     if rule is not None:
         statement = statement.where(Finding.rule_id == rule)
+    if rule_type is not None:
+        statement = statement.where(Evaluation.rule_type == rule_type)
     if after_id is not None:
         statement = statement.where(Finding.id > after_id)
     rows = db.execute(statement.order_by(Finding.id).limit(limit + 1)).all()
@@ -646,6 +649,7 @@ class FindingFilters:
     policy: str | None = None
     rule: str | None = None
     monitoring: str = "all"
+    rule_type: str | None = None
 
 
 def _finding_at_out(
@@ -752,6 +756,8 @@ def _findings_as_of(
             if filters.state is not None and at.state != filters.state:
                 continue
             if filters.outcome is not None and at.latest.outcome != filters.outcome:
+                continue
+            if filters.rule_type is not None and at.latest.rule_type != filters.rule_type:
                 continue
             if len(items) == limit:
                 more = True
