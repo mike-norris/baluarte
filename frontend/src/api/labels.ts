@@ -283,6 +283,8 @@ export const labelRefusalReasons: Record<string, string> = {
   not_draft: "the plan was already submitted",
   not_submitted: "the plan is not waiting for review",
   no_taxonomy: "no taxonomy is in force",
+  taxonomy_pending: "another taxonomy is already waiting for review; decide it first",
+  gitlab_not_configured: "GitLab is not connected yet",
   nothing_to_plan: "there is no drift to fix or report in that scope",
   scope_too_large: "the scope covers more than 500 groups and projects; choose fewer groups",
   taxonomy_changed: "the taxonomy in force has changed since this plan was made",

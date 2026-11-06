@@ -70,7 +70,7 @@ function TokenForm({
     if (!value) found.push("Enter the write token.");
     else if (value.length > MAX_TOKEN) {
       found.push(`The token is longer than ${String(MAX_TOKEN)} characters.`);
-    }
+    } else if (/\s/.test(value)) found.push("The token cannot contain spaces or line breaks.");
     setProblems(found);
     if (found.length > 0) return;
     setSending("save");
