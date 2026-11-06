@@ -42,6 +42,8 @@ function Filters({ filters }: { filters: FindingFilters }) {
       const value = form.get(field);
       if (typeof value === "string" && value.trim()) query.set(field, value.trim());
     }
+    // The rule type comes from links (such as Labels), not the form; keep it.
+    if (filters.rule_type) query.set("rule_type", filters.rule_type);
     const next = writeFindingFilters(readFindingFilters(query));
     const asOf = params.get("as_of");
     if (asOf) next.set("as_of", asOf);

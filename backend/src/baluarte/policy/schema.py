@@ -242,6 +242,29 @@ class ChangeDeployedAfterReviewRule(_Rule):
     window_days: WindowDays = 90
 
 
+IgnorableDrift = Literal[
+    "missing", "misplaced", "misnamed", "color", "description", "duplicate", "unknown_label"
+]
+
+
+class LabelsConsistentRule(_Rule):
+    """Passes when no label drift from the label taxonomy in force reaches the project: on the
+    project itself or on a group above it (docs/LABELS.md). Drift kinds in ``ignore`` do not
+    count; a group or project whose labels could not be read is never ignored."""
+
+    type: Literal["gitlab.labels.consistent"]
+    ignore: Annotated[
+        list[IgnorableDrift],
+        Field(max_length=7, description="Drift kinds that do not make the rule fail."),
+    ] = []
+
+    @model_validator(mode="after")
+    def _unique(self) -> "LabelsConsistentRule":
+        if len(set(self.ignore)) != len(self.ignore):
+            raise ValueError("ignore must not repeat a drift kind")
+        return self
+
+
 Rule = Annotated[
     ProjectVisibilityRule
     | DefaultBranchProtectedRule
@@ -253,7 +276,8 @@ Rule = Annotated[
     | AccessTokensRule
     | ChangeReviewedRule
     | ChangePipelinePassedRule
-    | ChangeDeployedAfterReviewRule,
+    | ChangeDeployedAfterReviewRule
+    | LabelsConsistentRule,
     Field(discriminator="type"),
 ]
 RULE_TYPES = (
@@ -268,6 +292,7 @@ RULE_TYPES = (
     "gitlab.change.reviewed",
     "gitlab.change.pipeline_passed",
     "gitlab.change.deployed_after_review",
+    "gitlab.labels.consistent",
 )
 
 

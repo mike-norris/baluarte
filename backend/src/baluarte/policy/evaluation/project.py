@@ -46,6 +46,9 @@ from baluarte.policy.evaluation.engine import (
     SecurityPolicies,
     evaluate_rule,
 )
+from baluarte.policy.evaluation.labels import LABELS_CONSISTENT
+from baluarte.policy.evaluation.labels import RULE_TYPE as LABELS_RULE_TYPE
+from baluarte.policy.evaluation.labels import facts as label_facts
 from baluarte.policy.evaluation.model import (
     CapabilityStatus,
     CollectionContext,
@@ -68,6 +71,7 @@ EVALUATORS: Mapping[str, RuleEvaluator] = {
         APPROVAL_POLICY,
         *ACCESS_EVALUATORS,
         *CHANGE_EVALUATORS,
+        LABELS_CONSISTENT,
     )
 }
 
@@ -275,6 +279,14 @@ def evaluate_project(
         context = replace(
             context,
             project=replace(context.project, changes=change_history(db, project, evaluated_at)),
+        )
+    if context.project is not None and any(
+        rule.type == LABELS_RULE_TYPE for _, rules in in_force for rule in rules
+    ):
+        # Label drift is read only for a project a label rule is in force for.
+        context = replace(
+            context,
+            project=replace(context.project, labels=label_facts(db, project, evaluated_at)),
         )
     results: list[RuleResult] = []
     for ref, rules in in_force:

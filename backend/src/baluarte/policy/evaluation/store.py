@@ -48,10 +48,12 @@ from baluarte.db.models import (
 from baluarte.evidence.observations import verify
 from baluarte.integrations.gitlab.branches import PROTECTION_SOURCE
 from baluarte.integrations.gitlab.changes import CHANGE_READ_SOURCE, parse_time
+from baluarte.integrations.gitlab.labels import PROJECT_SOURCE as LABELS_SOURCE
 from baluarte.integrations.gitlab.projects import PROJECT_SOURCES
 from baluarte.integrations.gitlab.security_policies import PROJECT_SOURCE as SECURITY_POLICY_SOURCE
 from baluarte.policy.assignments import Resolution
 from baluarte.policy.evaluation import changes as change_rules
+from baluarte.policy.evaluation import labels as label_rules
 from baluarte.policy.evaluation.access import ACCESS_SOURCES
 from baluarte.policy.evaluation.engine import ChangeEntry
 from baluarte.policy.evaluation.model import RuleResult, UnknownReason
@@ -111,9 +113,16 @@ EVIDENCE: Mapping[str, Evidence] = {
 CHANGE_EVIDENCE = Evidence((CHANGE_READ_SOURCE,), None, ("ok", "partial"))
 
 
+# The label rule judges the label observations of the project and the groups above it, read with
+# the project's own label observation; ``backed_by_labels`` checks them.
+LABEL_EVIDENCE = Evidence((LABELS_SOURCE,), None)
+
+
 def evidence_for(result: RuleResult) -> Evidence:
     if result.rule_type in change_rules.CHANGE_RULE_TYPES:
         return CHANGE_EVIDENCE
+    if result.rule_type == label_rules.RULE_TYPE:
+        return LABEL_EVIDENCE
     found = EVIDENCE.get(result.source)
     if found is not None:
         return found
@@ -192,8 +201,9 @@ def backed(result: RuleResult, evidence: Evidence, observation: Observation | No
             f"The stored observation of project {path} fails its integrity check (its SHA-256 "
             "digest does not match its payload), so it cannot back this value.",
         )
-    if evidence is CHANGE_EVIDENCE:
-        # Its value is rebuilt from the change observations (``backed_by_changes``).
+    if evidence is CHANGE_EVIDENCE or evidence is LABEL_EVIDENCE:
+        # Its value is checked against many observations (``backed_by_changes``,
+        # ``backed_by_labels``).
         return result
     if evidence.value is None or evidence.value(observation.payload, result) != result.observed:
         return _unbacked(
@@ -286,6 +296,55 @@ def backed_by_changes(
         ), None
     chosen = [observations[entry.observation_id] for entry in used]
     return result, ManyEvidence([o.id for o in chosen], combined_digest(chosen))
+
+
+def backed_by_labels(
+    db: Session, result: RuleResult, read: Observation | None
+) -> tuple[RuleResult, ManyEvidence | None]:
+    """A label-rule result, or ``unknown`` when its label observations do not support it.
+
+    The project's own label observation must back it like any single observation; then every
+    label observation the drift was computed from must still be stored with the digest judged,
+    and pass its integrity check.
+    """
+    result = backed(result, LABEL_EVIDENCE, read)
+    if result.outcome not in ("pass", "fail"):
+        return result, None
+    listed = [(int(pair[0]), pair[1]) for pair in result.observed.get("observations", [])]
+    if not listed:
+        return result, None
+    rows = {
+        row.id: row
+        for row in db.scalars(
+            select(Observation).where(Observation.id.in_([obs_id for obs_id, _ in listed]))
+        )
+    }
+    path = result.target.path
+    for obs_id, digest in listed:
+        row = rows.get(obs_id)
+        if row is None or row.payload_digest != digest:
+            return _unbacked(
+                result,
+                "evidence_mismatch",
+                f"The label observations judged for project {path} are no longer stored as "
+                "they were judged.",
+            ), None
+        if not verify(row):
+            logger.warning(
+                "label observation %s fails its digest check; result for %s stored as unknown",
+                obs_id,
+                path,
+            )
+            return _unbacked(
+                result,
+                "evidence_digest_mismatch",
+                f"A stored label observation of project {path} fails its integrity check, so it "
+                "cannot back this value.",
+            ), None
+    chosen = [rows[obs_id] for obs_id, _ in listed]
+    return result, ManyEvidence(
+        [o.id for o in sorted(chosen, key=lambda o: o.id)], combined_digest(chosen)
+    )
 
 
 def excepted(result: RuleResult, exception: PolicyException | None) -> RuleResult:
@@ -481,6 +540,8 @@ def store_project(
         many: ManyEvidence | None = None
         if evidence is CHANGE_EVIDENCE:
             result, many = backed_by_changes(db, project.id, result, observation)
+        elif evidence is LABEL_EVIDENCE:
+            result, many = backed_by_labels(db, result, observation)
         else:
             result = backed(result, evidence, observation)
         exception = exceptions.get((result.policy.name, result.rule_id))

@@ -7,8 +7,8 @@ changed here unless the deployment's environment sets them (ADR-0008).
 from typing import Annotated, Literal
 
 import httpx
-from fastapi import APIRouter, Depends, Response, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from baluarte import __version__
@@ -22,6 +22,7 @@ from baluarte.changes import settings as change_settings
 from baluarte.changes.settings import ChangeEvidenceSettings
 from baluarte.config import database_url
 from baluarte.configuration import service
+from baluarte.configuration.crypto import load_secret_box
 from baluarte.configuration.schemas import (
     GitLabConfig,
     GitLabTest,
@@ -33,7 +34,10 @@ from baluarte.configuration.schemas import (
     OidcUpdate,
     Source,
 )
+from baluarte.configuration.service import CANNOT_STORE
 from baluarte.integrations.gitlab.settings import load_gitlab_settings
+from baluarte.labels import write_token
+from baluarte.labels.write_token import TokenInvalid, TokenStatus
 from baluarte.policy import changes
 from baluarte.settings import ConfigurationError, load_logging_settings
 
@@ -286,3 +290,75 @@ def write_change_evidence(
     change_settings.save(db, body, principal.actor)
     db.commit()
     return change_settings.load(db)
+
+
+class LabelWriteTokenIn(BaseModel):
+    # Checked by ``write_token.checked``, which answers 422 ``token_invalid``.
+    token: str = Field(max_length=4096)
+
+
+def _token_status(db: Session) -> TokenStatus:
+    try:
+        return write_token.status(db)
+    except ConfigurationError as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+
+
+@router.get(
+    "/label-write-token",
+    response_model=TokenStatus,
+    summary="Whether a label write token is stored, and what GitLab reported about it",
+    description="Never returns the token. `writes_enabled` is the deployment's "
+    "`BALUARTE_LABEL_WRITES`; label plans are applied only while it is true and a token is "
+    "stored.",
+)
+def read_label_write_token(_: Admin, db: Database) -> TokenStatus:
+    return _token_status(db)
+
+
+@router.put(
+    "/label-write-token",
+    response_model=TokenStatus,
+    summary="Store or replace the label write token",
+    description="The token is sealed (ADR-0008) and used only to apply approved label plans. "
+    "It is checked with `GET /personal_access_tokens/self` and stored even when the check "
+    "fails; `check_error` then says why. 422 `token_invalid` for an empty or overlong token; "
+    "409 when secrets cannot be stored. Audited as `settings.label_write_token_set` or "
+    "`_replaced`, without the token.",
+)
+def write_label_write_token(
+    body: LabelWriteTokenIn,
+    principal: Admin,
+    db: Database,
+    transport: Annotated[httpx.BaseTransport | None, Depends(gitlab_transport)],
+) -> TokenStatus:
+    try:
+        box = load_secret_box()
+        gitlab = load_gitlab_settings()
+    except ConfigurationError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    if box is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, CANNOT_STORE)
+    try:
+        write_token.save(db, body.token, box, gitlab, principal.actor, transport)
+    except TokenInvalid as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            {"code": "token_invalid", "message": str(exc), "reasons": []},
+        ) from None
+    db.commit()
+    return _token_status(db)
+
+
+@router.delete(
+    "/label-write-token",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove the label write token",
+    description="Label plans cannot be applied until a token is stored again. Audited as "
+    "`settings.label_write_token_removed`; 404 when none is stored.",
+)
+def delete_label_write_token(principal: Admin, db: Database) -> Response:
+    if not write_token.remove(db, principal.actor):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No label write token is stored")
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

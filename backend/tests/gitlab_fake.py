@@ -67,6 +67,7 @@ def healthy_routes() -> dict[str, list[Reply]]:
                 ],
             )
         ],
+        "/api/v4/groups/1/labels": [httpx.Response(200, json=[])],
         "/api/v4/projects/42/protected_branches": [
             httpx.Response(200, json=[{"id": 1, "name": "main"}])
         ],
@@ -270,3 +271,97 @@ def project(
         "archived": False,
         "default_branch": "main",
     } | extra
+
+
+WRITE_TOKEN = "fake-label-write-token-value"
+
+
+class LabelServer:
+    """A GitLab that keeps group and project labels: reads, creates and edits change its state.
+
+    Requests are recorded with the token that sent them. ``fail`` answers the next request to
+    a (method, path) with a status instead, and ``ignore_writes`` accepts writes without
+    changing anything, so a read-back does not match.
+    """
+
+    def __init__(self) -> None:
+        self.labels: dict[tuple[str, int], list[dict[str, Any]]] = {}
+        self.requests: list[tuple[str, str, str | None]] = []
+        self.failures: dict[tuple[str, str], int] = {}
+        self.ignore_writes = False
+        self.read_status: dict[tuple[str, int], int] = {}
+        self.token_info: dict[str, Any] = {
+            "id": 7,
+            "name": "label-writer",
+            "scopes": ["api"],
+            "active": True,
+            "revoked": False,
+            "expires_at": "2027-01-01",
+        }
+        self._next = 1000
+
+    def define(self, owner: tuple[str, int], name: str, color: str, **extra: Any) -> int:
+        self._next += 1
+        label = {"id": self._next, "name": name, "color": color, "description": None} | extra
+        self.labels.setdefault(owner, []).append(label)
+        return self._next
+
+    def fail(self, method: str, path: str, status: int) -> None:
+        self.failures[(method, "/api/v4" + path)] = status
+
+    def writes(self) -> list[tuple[str, str, str | None]]:
+        return [r for r in self.requests if r[0] != "GET"]
+
+    def handler(self, request: httpx.Request) -> httpx.Response:
+        path = request.url.path
+        token = request.headers.get("PRIVATE-TOKEN")
+        self.requests.append((request.method, path, token))
+        status = self.failures.pop((request.method, path), None)
+        if status is not None:
+            return httpx.Response(status, json={"message": f"{status} refused"})
+        if path == "/api/v4/personal_access_tokens/self":
+            return httpx.Response(200, json=self.token_info)
+        parts = path.removeprefix("/api/v4/").split("/")
+        if len(parts) < 3 or parts[0] not in ("groups", "projects") or parts[2] != "labels":
+            return httpx.Response(404, json={"message": "404 Not Found"})
+        owner = (parts[0].removesuffix("s"), int(parts[1]))
+        found = self.labels.setdefault(owner, [])
+        if request.method == "GET":
+            refused = self.read_status.get(owner)
+            if refused is not None:
+                return httpx.Response(refused, json={"message": "refused"})
+            extra = {"is_project_label": True} if owner[0] == "project" else {}
+            return httpx.Response(200, json=[label | extra for label in found])
+        form = dict(httpx.QueryParams(request.content.decode()))
+        if request.method == "POST" and len(parts) == 3 and owner[0] == "group":
+            if any(label["name"] == form.get("name") for label in found):
+                return httpx.Response(400, json={"message": {"title": ["already exists"]}})
+            self._next += 1
+            created = {
+                "id": self._next,
+                "name": form["name"],
+                "color": form["color"],
+                "description": form.get("description") or None,
+            }
+            if not self.ignore_writes:
+                found.append(created)
+            return httpx.Response(201, json=created)
+        if request.method == "PUT" and len(parts) == 4:
+            label = next((item for item in found if str(item["id"]) == parts[3]), None)
+            if label is None:
+                return httpx.Response(404, json={"message": "404 Label Not Found"})
+            changed = dict(label)
+            if "new_name" in form:
+                changed["name"] = form["new_name"]
+            if "color" in form:
+                changed["color"] = form["color"]
+            if "description" in form:
+                changed["description"] = form["description"] or None
+            if not self.ignore_writes:
+                label.update(changed)
+            return httpx.Response(200, json=changed)
+        return httpx.Response(405, json={"message": "405 Method Not Allowed"})
+
+    @property
+    def transport(self) -> httpx.MockTransport:
+        return httpx.MockTransport(self.handler)

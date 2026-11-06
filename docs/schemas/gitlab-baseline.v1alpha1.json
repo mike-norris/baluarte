@@ -313,6 +313,72 @@
       "title": "DefaultBranchProtectedRule",
       "type": "object"
     },
+    "LabelsConsistentRule": {
+      "additionalProperties": false,
+      "description": "Passes when no label drift from the label taxonomy in force reaches the project: on the\nproject itself or on a group above it (docs/LABELS.md). Drift kinds in ``ignore`` do not\ncount; a group or project whose labels could not be read is never ignored.",
+      "properties": {
+        "id": {
+          "description": "Unique within the baseline; named in findings.",
+          "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
+          "title": "Id",
+          "type": "string"
+        },
+        "severity": {
+          "default": "medium",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "type": {
+          "const": "gitlab.labels.consistent",
+          "title": "Type",
+          "type": "string"
+        },
+        "ignore": {
+          "default": [],
+          "description": "Drift kinds that do not make the rule fail.",
+          "items": {
+            "enum": [
+              "missing",
+              "misplaced",
+              "misnamed",
+              "color",
+              "description",
+              "duplicate",
+              "unknown_label"
+            ],
+            "type": "string"
+          },
+          "maxItems": 7,
+          "title": "Ignore",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "type"
+      ],
+      "title": "LabelsConsistentRule",
+      "type": "object"
+    },
     "MergeRequestApprovalsRule": {
       "additionalProperties": false,
       "description": "Passes when the project's own approval rules require at least ``min_approvals`` approvals\non merge requests to its default branch, and its approval settings meet every flag set.",
@@ -717,6 +783,7 @@
                 "gitlab.change.pipeline_passed": "#/$defs/ChangePipelinePassedRule",
                 "gitlab.change.reviewed": "#/$defs/ChangeReviewedRule",
                 "gitlab.group.two_factor_required": "#/$defs/TwoFactorRequiredRule",
+                "gitlab.labels.consistent": "#/$defs/LabelsConsistentRule",
                 "gitlab.project.access_tokens": "#/$defs/AccessTokensRule",
                 "gitlab.project.merge_request_approvals": "#/$defs/MergeRequestApprovalsRule",
                 "gitlab.project.privileged_members": "#/$defs/PrivilegedMembersRule",
@@ -759,6 +826,9 @@
               },
               {
                 "$ref": "#/$defs/ChangeDeployedAfterReviewRule"
+              },
+              {
+                "$ref": "#/$defs/LabelsConsistentRule"
               }
             ]
           },

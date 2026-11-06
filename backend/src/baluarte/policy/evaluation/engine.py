@@ -119,6 +119,20 @@ class ChangeHistory:
 
 
 @dataclass(frozen=True)
+class LabelFacts:
+    """The label drift that reaches a project, for ``gitlab.labels.consistent``."""
+
+    # The taxonomy in force (id, name, version, yaml_digest), or None when none is.
+    taxonomy: dict[str, Any] | None
+    # Whether the project is in the taxonomy's scope.
+    in_scope: bool
+    # Drift items on the project and the groups above it (``DriftItem.as_dict``).
+    drift: tuple[dict[str, Any], ...]
+    # Every label observation the drift was computed from, as (id, payload_digest).
+    observations: tuple[tuple[int, str | None], ...]
+
+
+@dataclass(frozen=True)
 class ProjectFacts:
     """A project as recorded in the inventory."""
 
@@ -141,6 +155,8 @@ class ProjectFacts:
     two_factor: ProjectObservation | None = None
     # Loaded only when a change rule is in force; None otherwise.
     changes: ChangeHistory | None = None
+    # Loaded only when a label rule is in force; None otherwise.
+    labels: LabelFacts | None = None
 
 
 @dataclass(frozen=True)

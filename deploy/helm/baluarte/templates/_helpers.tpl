@@ -296,6 +296,12 @@ https://{{ .Values.ingress.host }}
 {{- end }}
 {{- end }}
 
+{{/* API and worker: whether approved label plans may be applied (docs/LABELS.md). */}}
+{{- define "baluarte.labelWritesEnv" -}}
+- name: BALUARTE_LABEL_WRITES
+  value: {{ ternary "true" "false" (eq (toString .Values.gitlab.labelWrites) "true") | quote }}
+{{- end }}
+
 {{- define "baluarte.gitlabVolumeMount" -}}
 {{- if .Values.gitlab.url }}
 - name: gitlab-token
