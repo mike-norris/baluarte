@@ -14,13 +14,22 @@ import { useLoad } from "../api/useLoad";
 import { useAsOf } from "../asof/context";
 import { AsOfResult } from "../asof/AsOfResult";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
+import {
+  buttonClass,
+  fieldClass,
+  linkClass,
+  secondaryClass,
+} from "../components/styles";
 import { ExportLink } from "../evidence/ExportLink";
 import { findingsExportLink } from "../evidence/scope";
 import { findingsPlanLink } from "../remediation/format";
 import { PlanLink } from "../remediation/PlanLink";
 import { EvaluationNote } from "../findings/EvaluationNote";
-import { hasFindingFilters, readFindingFilters, writeFindingFilters } from "../findings/filters";
+import {
+  hasFindingFilters,
+  readFindingFilters,
+  writeFindingFilters,
+} from "../findings/filters";
 import {
   findingStateLabels,
   outcomeLabels,
@@ -31,6 +40,12 @@ import { formatTime } from "../time";
 
 const cell = "px-3 py-2";
 
+function withoutTag(filters: FindingFilters): FindingFilters {
+  const rest = { ...filters };
+  delete rest.tag;
+  return rest;
+}
+
 function Filters({ filters }: { filters: FindingFilters }) {
   const [params, setParams] = useSearchParams();
 
@@ -38,12 +53,21 @@ function Filters({ filters }: { filters: FindingFilters }) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const query = new URLSearchParams();
-    for (const field of ["state", "outcome", "severity", "project", "policy", "rule"]) {
+    for (const field of [
+      "state",
+      "outcome",
+      "severity",
+      "project",
+      "policy",
+      "rule",
+    ]) {
       const value = form.get(field);
-      if (typeof value === "string" && value.trim()) query.set(field, value.trim());
+      if (typeof value === "string" && value.trim())
+        query.set(field, value.trim());
     }
-    // The rule type comes from links (such as Labels), not the form; keep it.
+    // The rule type and tag come from links (such as Labels and Manager), not the form; keep them.
     if (filters.rule_type) query.set("rule_type", filters.rule_type);
+    if (filters.tag) query.set("tag", filters.tag);
     const next = writeFindingFilters(readFindingFilters(query));
     const asOf = params.get("as_of");
     if (asOf) next.set("as_of", asOf);
@@ -60,7 +84,11 @@ function Filters({ filters }: { filters: FindingFilters }) {
     >
       <label className="text-sm font-medium">
         State
-        <select name="state" defaultValue={filters.state ?? ""} className={fieldClass}>
+        <select
+          name="state"
+          defaultValue={filters.state ?? ""}
+          className={fieldClass}
+        >
           <option value="">Any</option>
           <option value="open">Open</option>
           <option value="resolved">Resolved</option>
@@ -69,7 +97,11 @@ function Filters({ filters }: { filters: FindingFilters }) {
       </label>
       <label className="text-sm font-medium">
         Latest outcome
-        <select name="outcome" defaultValue={filters.outcome ?? ""} className={fieldClass}>
+        <select
+          name="outcome"
+          defaultValue={filters.outcome ?? ""}
+          className={fieldClass}
+        >
           <option value="">Any</option>
           {outcomes.map((outcome) => (
             <option key={outcome} value={outcome}>
@@ -80,7 +112,11 @@ function Filters({ filters }: { filters: FindingFilters }) {
       </label>
       <label className="text-sm font-medium">
         Severity
-        <select name="severity" defaultValue={filters.severity ?? ""} className={fieldClass}>
+        <select
+          name="severity"
+          defaultValue={filters.severity ?? ""}
+          className={fieldClass}
+        >
           <option value="">Any</option>
           {severities.map((severity) => (
             <option key={severity} value={severity}>
@@ -118,6 +154,17 @@ function Filters({ filters }: { filters: FindingFilters }) {
           className={fieldClass}
         />
       </label>
+      {filters.tag && (
+        <p className="text-sm sm:col-span-2 lg:col-span-6">
+          {`Projects tagged ${filters.tag.replace(":", "=")} only. `}
+          <Link
+            to={`?${writeFindingFilters(withoutTag(filters)).toString()}`}
+            className={linkClass}
+          >
+            Remove the tag filter
+          </Link>
+        </p>
+      )}
       <div className="flex gap-2 sm:col-span-2 lg:col-span-6">
         <button type="submit" className={buttonClass}>
           Apply filters
@@ -133,11 +180,17 @@ function Filters({ filters }: { filters: FindingFilters }) {
 }
 
 function OutcomeCell({ finding }: { finding: Finding }) {
-  const doubtful = finding.latest_outcome === "unknown" || finding.latest_outcome === "unsupported";
+  const doubtful =
+    finding.latest_outcome === "unknown" ||
+    finding.latest_outcome === "unsupported";
   return (
     <td className={cell}>
       {outcomeLabels[finding.latest_outcome]}
-      {doubtful && <span className="sr-only">: {outcomeMeaning[finding.latest_outcome]}</span>}
+      {doubtful && (
+        <span className="sr-only">
+          : {outcomeMeaning[finding.latest_outcome]}
+        </span>
+      )}
     </td>
   );
 }
@@ -155,7 +208,9 @@ function FindingRows({ findings }: { findings: Finding[] }) {
         {finding.policy.name}{" "}
         <span className="text-slate-600">{`v${String(finding.policy.version)}`}</span>
       </td>
-      <td className={cell}>{severityLabels[finding.severity] ?? finding.severity}</td>
+      <td className={cell}>
+        {severityLabels[finding.severity] ?? finding.severity}
+      </td>
       <td className={cell}>
         {findingStateLabels[finding.state]}
         {finding.state === "excepted" && finding.exception && (
@@ -163,13 +218,20 @@ function FindingRows({ findings }: { findings: Finding[] }) {
             {`until ${formatTime(finding.exception.expires_at)}; not passing`}
           </span>
         )}
-        {finding.state === "resolved" && finding.resolution === "project_archived" && (
-          <span className="block text-xs text-slate-600">project archived; not checked</span>
-        )}
+        {finding.state === "resolved" &&
+          finding.resolution === "project_archived" && (
+            <span className="block text-xs text-slate-600">
+              project archived; not checked
+            </span>
+          )}
       </td>
       <OutcomeCell finding={finding} />
-      <td className={`${cell} whitespace-nowrap`}>{formatTime(finding.first_seen_at)}</td>
-      <td className={`${cell} whitespace-nowrap`}>{formatTime(finding.last_seen_at)}</td>
+      <td className={`${cell} whitespace-nowrap`}>
+        {formatTime(finding.first_seen_at)}
+      </td>
+      <td className={`${cell} whitespace-nowrap`}>
+        {formatTime(finding.last_seen_at)}
+      </td>
     </tr>
   ));
 }
@@ -188,7 +250,9 @@ const headers = [
 function Listing({ filters }: { filters: FindingFilters }) {
   const asOf = useAsOf();
   const key = `${writeFindingFilters(filters).toString()}@${asOf ?? "now"}`;
-  const first = useLoad(`findings?${key}`, (signal) => listFindings(filters, null, signal, asOf));
+  const first = useLoad(`findings?${key}`, (signal) =>
+    listFindings(filters, null, signal, asOf),
+  );
   const paged = usePaged<Finding, FindingPage>(
     key,
     first,
@@ -196,7 +260,8 @@ function Listing({ filters }: { filters: FindingFilters }) {
     (after) => listFindings(filters, after, undefined, asOf),
   );
 
-  if (first.error) return <ErrorMessage error={first.error} retry={first.retry} />;
+  if (first.error)
+    return <ErrorMessage error={first.error} retry={first.retry} />;
   if (first.loading) {
     return (
       <p role="status" className="text-slate-600">
@@ -242,7 +307,10 @@ function Listing({ filters }: { filters: FindingFilters }) {
         {`Showing ${String(paged.items.length)} findings${more}.`}
       </p>
       {paged.moreError && (
-        <ErrorMessage error={paged.moreError} retry={() => void paged.loadMore()} />
+        <ErrorMessage
+          error={paged.moreError}
+          retry={() => void paged.loadMore()}
+        />
       )}
       {paged.next !== null && (
         <button
@@ -270,14 +338,20 @@ export function FindingsPage() {
           Findings
         </h1>
         <p className="mt-2 text-slate-600">
-          Rules a project failed, followed until they pass. An unknown or unsupported latest outcome
-          means the last check could not decide; it never resolves a finding.
+          Rules a project failed, followed until they pass. An unknown or
+          unsupported latest outcome means the last check could not decide; it
+          never resolves a finding.
         </p>
       </div>
       <EvaluationNote />
       <Filters filters={filters} />
-      <ExportLink label="Export evidence for this view" {...findingsExportLink(filters)} />
-      {planLink && <PlanLink label="Plan a dry-run fix for this view" {...planLink} />}
+      <ExportLink
+        label="Export evidence for this view"
+        {...findingsExportLink(filters)}
+      />
+      {planLink && (
+        <PlanLink label="Plan a dry-run fix for this view" {...planLink} />
+      )}
       <Listing filters={filters} />
     </section>
   );

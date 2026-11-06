@@ -13,18 +13,36 @@ import {
   type Page,
   type Project,
 } from "../api/gitlab";
-import { includableHere, monitoringLabel, MAX_BATCH, type Monitoring } from "../api/scope";
+import {
+  includableHere,
+  monitoringLabel,
+  MAX_BATCH,
+  type Monitoring,
+} from "../api/scope";
 import { usePaged } from "../api/usePaged";
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
+import {
+  buttonClass,
+  fieldClass,
+  linkClass,
+  secondaryClass,
+} from "../components/styles";
 import { FreshnessPanel } from "../freshness/FreshnessPanel";
 import { PopulationNote } from "../freshness/PopulationNote";
-import { isFiltered, readFilters, writeFilters, type InventoryView } from "../inventory/filters";
+import {
+  isFiltered,
+  readFilters,
+  writeFilters,
+  type InventoryView,
+} from "../inventory/filters";
 import { stateHelp, stateLabels, visibilityLabel } from "../inventory/format";
 import { MonitoringScope } from "../inventory/MonitoringScope";
 import { ScopeForm, type ScopeIntent } from "../inventory/ScopeForm";
+import { TagForm, type TagIntent } from "../inventory/TagForm";
+import { canWriteTags } from "../manager/format";
+import { ItemTags } from "../manager/parts";
 import { canWritePolicies } from "../policies/format";
 import { formatTime } from "../time";
 
@@ -32,7 +50,9 @@ function StateCell({ state }: { state: InventoryState }) {
   return (
     <td className="px-3 py-2">
       <span title={stateHelp[state]}>{stateLabels[state]}</span>
-      {state !== "active" && <span className="sr-only">: {stateHelp[state]}</span>}
+      {state !== "active" && (
+        <span className="sr-only">: {stateHelp[state]}</span>
+      )}
     </td>
   );
 }
@@ -99,7 +119,13 @@ function Table({
 /** The row checkbox, or nothing for users who cannot change the monitoring scope. */
 type SelectCell = ((id: number, path: string) => ReactNode) | null;
 
-function ProjectRows({ projects, select }: { projects: Project[]; select: SelectCell }) {
+function ProjectRows({
+  projects,
+  select,
+}: {
+  projects: Project[];
+  select: SelectCell;
+}) {
   return projects.map((project) => (
     <tr key={project.id}>
       {select?.(project.id, project.path_with_namespace)}
@@ -121,21 +147,36 @@ function ProjectRows({ projects, select }: { projects: Project[]; select: Select
           </span>
         )}
         <ExcludedBadge
-          label={monitoringLabel(project.monitoring, "project", project.path_with_namespace)}
+          label={monitoringLabel(
+            project.monitoring,
+            "project",
+            project.path_with_namespace,
+          )}
         />
+        <ItemTags tags={project.tags} />
       </th>
       <td className="px-3 py-2">{visibilityLabel(project.visibility)}</td>
       <td className="px-3 py-2">
-        {project.default_branch ?? <span className="text-slate-500">None (empty)</span>}
+        {project.default_branch ?? (
+          <span className="text-slate-500">None (empty)</span>
+        )}
       </td>
       <StateCell state={project.state} />
-      <td className="px-3 py-2 whitespace-nowrap">{formatTime(project.last_seen_at)}</td>
+      <td className="px-3 py-2 whitespace-nowrap">
+        {formatTime(project.last_seen_at)}
+      </td>
       <ErrorCell error={project.last_error} at={project.last_error_at} />
     </tr>
   ));
 }
 
-function GroupRows({ groups, select }: { groups: Group[]; select: SelectCell }) {
+function GroupRows({
+  groups,
+  select,
+}: {
+  groups: Group[];
+  select: SelectCell;
+}) {
   return groups.map((group) => (
     <tr key={group.id}>
       {select?.(group.id, group.full_path)}
@@ -143,17 +184,28 @@ function GroupRows({ groups, select }: { groups: Group[]; select: SelectCell }) 
         <Link to={groupHref(group.gitlab_id)} className={linkClass}>
           {group.full_path}
         </Link>
-        <ExcludedBadge label={monitoringLabel(group.monitoring, "group", group.full_path)} />
+        <ExcludedBadge
+          label={monitoringLabel(group.monitoring, "group", group.full_path)}
+        />
+        <ItemTags tags={group.tags} />
       </th>
       <td className="px-3 py-2">{visibilityLabel(group.visibility)}</td>
       <StateCell state={group.state} />
-      <td className="px-3 py-2 whitespace-nowrap">{formatTime(group.last_seen_at)}</td>
+      <td className="px-3 py-2 whitespace-nowrap">
+        {formatTime(group.last_seen_at)}
+      </td>
       <ErrorCell error={group.last_error} at={group.last_error_at} />
     </tr>
   ));
 }
 
-function Filters({ view, filters }: { view: InventoryView; filters: InventoryFilters }) {
+function Filters({
+  view,
+  filters,
+}: {
+  view: InventoryView;
+  filters: InventoryFilters;
+}) {
   const [, setParams] = useSearchParams();
 
   function apply(event: FormEvent<HTMLFormElement>) {
@@ -170,9 +222,12 @@ function Filters({ view, filters }: { view: InventoryView; filters: InventoryFil
         visibility: value("visibility"),
         archived: value("archived"),
         has_error: form.get("has_error") ? "true" : "false",
+        tag: value("tag").replace("=", ":"),
       }),
     );
-    setParams(writeFilters(view, { ...parsed, showExcluded: filters.showExcluded }));
+    setParams(
+      writeFilters(view, { ...parsed, showExcluded: filters.showExcluded }),
+    );
   }
 
   // Remount the form when the URL changes so its defaults follow navigation.
@@ -199,7 +254,11 @@ function Filters({ view, filters }: { view: InventoryView; filters: InventoryFil
       </label>
       <label className="text-sm font-medium">
         State
-        <select name="state" defaultValue={filters.state} className={fieldClass}>
+        <select
+          name="state"
+          defaultValue={filters.state}
+          className={fieldClass}
+        >
           <option value="">Any</option>
           <option value="active">Active</option>
           <option value="inaccessible">Inaccessible</option>
@@ -210,7 +269,11 @@ function Filters({ view, filters }: { view: InventoryView; filters: InventoryFil
         <>
           <label className="text-sm font-medium">
             Visibility
-            <select name="visibility" defaultValue={filters.visibility} className={fieldClass}>
+            <select
+              name="visibility"
+              defaultValue={filters.visibility}
+              className={fieldClass}
+            >
               <option value="">Any</option>
               <option value="private">Private</option>
               <option value="internal">Internal</option>
@@ -219,7 +282,11 @@ function Filters({ view, filters }: { view: InventoryView; filters: InventoryFil
           </label>
           <label className="text-sm font-medium">
             Archived
-            <select name="archived" defaultValue={filters.archived} className={fieldClass}>
+            <select
+              name="archived"
+              defaultValue={filters.archived}
+              className={fieldClass}
+            >
               <option value="">Any</option>
               <option value="false">Not archived</option>
               <option value="true">Archived only</option>
@@ -227,8 +294,22 @@ function Filters({ view, filters }: { view: InventoryView; filters: InventoryFil
           </label>
         </>
       )}
+      <label className="text-sm font-medium">
+        Tag
+        <input
+          name="tag"
+          defaultValue={filters.tag.replace(":", "=")}
+          maxLength={127}
+          placeholder="team=payments"
+          className={fieldClass}
+        />
+      </label>
       <label className="flex items-center gap-2 text-sm font-medium">
-        <input name="has_error" type="checkbox" defaultChecked={filters.hasError} />
+        <input
+          name="has_error"
+          type="checkbox"
+          defaultChecked={filters.hasError}
+        />
         With collection errors
       </label>
       <div className="flex gap-2 sm:col-span-2 lg:col-span-6">
@@ -259,7 +340,13 @@ const emptyFilters: InventoryFilters = {
 };
 
 /** Shows or hides what is excluded from monitoring; the choice is kept in the URL. */
-function ExcludedToggle({ view, filters }: { view: InventoryView; filters: InventoryFilters }) {
+function ExcludedToggle({
+  view,
+  filters,
+}: {
+  view: InventoryView;
+  filters: InventoryFilters;
+}) {
   const [, setParams] = useSearchParams();
   const shown = filters.showExcluded;
   return (
@@ -296,6 +383,9 @@ function SelectionBar<T>({
   facts,
   selected,
   open,
+  openTags,
+  canScope,
+  canTag,
 }: {
   noun: string;
   type: "project" | "group";
@@ -303,14 +393,23 @@ function SelectionBar<T>({
   facts: (item: T) => RowFacts;
   selected: Set<number>;
   open: (intent: ScopeIntent) => void;
+  openTags: (intent: TagIntent) => void;
+  canScope: boolean;
+  canTag: boolean;
 }) {
   const chosen = rows.map(facts).filter((row) => selected.has(row.id));
   const toExclude = chosen.filter((row) => row.monitoring?.excluded !== true);
-  const toInclude = chosen.filter((row) => includableHere(row.monitoring, type, row.path));
-  const elsewhere = chosen.filter(
-    (row) => row.monitoring?.excluded === true && !includableHere(row.monitoring, type, row.path),
+  const toInclude = chosen.filter((row) =>
+    includableHere(row.monitoring, type, row.path),
   );
-  const ids = [...new Set(toInclude.map((row) => row.monitoring?.exclusion_id ?? 0))];
+  const elsewhere = chosen.filter(
+    (row) =>
+      row.monitoring?.excluded === true &&
+      !includableHere(row.monitoring, type, row.path),
+  );
+  const ids = [
+    ...new Set(toInclude.map((row) => row.monitoring?.exclusion_id ?? 0)),
+  ];
   return (
     <div
       role="group"
@@ -320,36 +419,62 @@ function SelectionBar<T>({
       <p aria-live="polite" className="mr-2">
         {`${count(chosen.length, type, `${type}s`)} selected.`}
       </p>
-      <button
-        type="button"
-        disabled={toExclude.length === 0 || toExclude.length > MAX_BATCH}
-        onClick={() => {
-          open({
-            mode: "exclude",
-            targets: toExclude.map((row) => ({ type, gitlab_id: row.gitlabId })),
-            labels: toExclude.map((row) => row.path),
-          });
-        }}
-        className={secondaryClass}
-      >
-        Exclude from monitoring
-      </button>
-      <button
-        type="button"
-        disabled={toInclude.length === 0}
-        onClick={() => {
-          open({ mode: "include", ids, labels: toInclude.map((row) => row.path) });
-        }}
-        className={secondaryClass}
-      >
-        Include again
-      </button>
-      {toExclude.length > MAX_BATCH && (
+      {canScope && (
+        <>
+          <button
+            type="button"
+            disabled={toExclude.length === 0 || toExclude.length > MAX_BATCH}
+            onClick={() => {
+              open({
+                mode: "exclude",
+                targets: toExclude.map((row) => ({
+                  type,
+                  gitlab_id: row.gitlabId,
+                })),
+                labels: toExclude.map((row) => row.path),
+              });
+            }}
+            className={secondaryClass}
+          >
+            Exclude from monitoring
+          </button>
+          <button
+            type="button"
+            disabled={toInclude.length === 0}
+            onClick={() => {
+              open({
+                mode: "include",
+                ids,
+                labels: toInclude.map((row) => row.path),
+              });
+            }}
+            className={secondaryClass}
+          >
+            Include again
+          </button>
+        </>
+      )}
+      {canTag && (
+        <button
+          type="button"
+          disabled={chosen.length === 0}
+          onClick={() => {
+            openTags({
+              targets: chosen.map((row) => ({ type, gitlab_id: row.gitlabId })),
+              labels: chosen.map((row) => row.path),
+            });
+          }}
+          className={secondaryClass}
+        >
+          Tag…
+        </button>
+      )}
+      {canScope && toExclude.length > MAX_BATCH && (
         <p className="w-full text-slate-700">
           {`At most ${String(MAX_BATCH)} can be excluded at once.`}
         </p>
       )}
-      {elsewhere.length > 0 && (
+      {canScope && elsewhere.length > 0 && (
         <p className="w-full text-slate-700">
           {`${count(elsewhere.length, "selected " + type + " is", `selected ${type}s are`)} excluded by a group or the personal-namespace setting; include them again under Monitoring scope.`}
         </p>
@@ -366,6 +491,7 @@ function Listing<T>({
   facts,
   headers,
   canWrite,
+  canTag,
   onChanged,
 }: {
   view: InventoryView;
@@ -375,6 +501,7 @@ function Listing<T>({
   facts: (item: T) => RowFacts;
   headers: string[];
   canWrite: boolean;
+  canTag: boolean;
   onChanged: (message: string) => void;
 }) {
   const key = `${view}?${writeFilters(view, filters).toString()}`;
@@ -387,10 +514,13 @@ function Listing<T>({
   );
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [intent, setIntent] = useState<ScopeIntent | null>(null);
+  const [tagIntent, setTagIntent] = useState<TagIntent | null>(null);
+  const selectable = canWrite || canTag;
   const noun = view === "projects" ? "projects" : "groups";
   const type = view === "projects" ? "project" : "group";
 
-  if (first.error) return <ErrorMessage error={first.error} retry={first.retry} />;
+  if (first.error)
+    return <ErrorMessage error={first.error} retry={first.retry} />;
   if (first.loading) {
     return (
       <p role="status" className="text-slate-600">
@@ -430,7 +560,7 @@ function Listing<T>({
       return next;
     });
   }
-  const select: SelectCell = canWrite
+  const select: SelectCell = selectable
     ? (id, path) => (
         <td className="w-8 px-3 py-2">
           <input
@@ -444,7 +574,7 @@ function Listing<T>({
         </td>
       )
     : null;
-  const leading = canWrite ? (
+  const leading = selectable ? (
     <th scope="col" className="w-8 px-3 py-2">
       <input
         type="checkbox"
@@ -459,14 +589,36 @@ function Listing<T>({
 
   return (
     <div className="space-y-3">
-      {canWrite && (
+      {selectable && (
         <SelectionBar
           noun={noun}
           type={type}
           rows={paged.items}
           facts={facts}
           selected={selected}
-          open={setIntent}
+          open={(next) => {
+            setTagIntent(null);
+            setIntent(next);
+          }}
+          openTags={(next) => {
+            setIntent(null);
+            setTagIntent(next);
+          }}
+          canScope={canWrite}
+          canTag={canTag}
+        />
+      )}
+      {tagIntent && (
+        <TagForm
+          intent={tagIntent}
+          onCancel={() => {
+            setTagIntent(null);
+          }}
+          onDone={(message) => {
+            setTagIntent(null);
+            setSelected(new Set());
+            onChanged(message);
+          }}
         />
       )}
       {intent && (
@@ -495,7 +647,10 @@ function Listing<T>({
       </p>
       {hiddenNote}
       {paged.moreError && (
-        <ErrorMessage error={paged.moreError} retry={() => void paged.loadMore()} />
+        <ErrorMessage
+          error={paged.moreError}
+          retry={() => void paged.loadMore()}
+        />
       )}
       {paged.next !== null && (
         <button
@@ -530,7 +685,9 @@ export function InventoryPage() {
   const { view, filters } = readFilters(params);
   const freshness = useLoad("freshness", getFreshness);
   const { session } = useAuth();
-  const canWrite = canWritePolicies(session.status === "signed_in" ? session.user : null);
+  const user = session.status === "signed_in" ? session.user : null;
+  const canWrite = canWritePolicies(user);
+  const canTag = canWriteTags(user);
   const [reload, setReload] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const tabs: { view: InventoryView; label: string }[] = [
@@ -552,7 +709,8 @@ export function InventoryPage() {
           Inventory
         </h1>
         <p className="mt-2 text-slate-600">
-          GitLab groups, subgroups and projects visible to Baluarte&apos;s read-only token.
+          GitLab groups, subgroups and projects visible to Baluarte&apos;s
+          read-only token.
         </p>
         <PopulationNote population={freshness.data?.population} />
       </div>
@@ -568,7 +726,10 @@ export function InventoryPage() {
       )}
 
       {message && (
-        <p role="status" className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm">
+        <p
+          role="status"
+          className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm"
+        >
           {message}
         </p>
       )}
@@ -611,9 +772,12 @@ export function InventoryPage() {
           view="projects"
           filters={filters}
           load={(after, signal) => listProjects(filters, after, signal)}
-          render={(items, select) => <ProjectRows projects={items} select={select} />}
+          render={(items, select) => (
+            <ProjectRows projects={items} select={select} />
+          )}
           facts={projectFacts}
           canWrite={canWrite}
+          canTag={canTag}
           onChanged={changed}
           headers={[
             "Project",
@@ -630,11 +794,20 @@ export function InventoryPage() {
           view="groups"
           filters={filters}
           load={(after, signal) => listGroups(filters, after, signal)}
-          render={(items, select) => <GroupRows groups={items} select={select} />}
+          render={(items, select) => (
+            <GroupRows groups={items} select={select} />
+          )}
           facts={groupFacts}
           canWrite={canWrite}
+          canTag={canTag}
           onChanged={changed}
-          headers={["Group", "Visibility", "State", "Last seen", "Collection error"]}
+          headers={[
+            "Group",
+            "Visibility",
+            "State",
+            "Last seen",
+            "Collection error",
+          ]}
         />
       )}
     </section>
