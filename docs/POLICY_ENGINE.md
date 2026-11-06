@@ -40,7 +40,7 @@ Status: the format, its validation and versioned storage (BAL-017), and assignme
 
 ### Rule types
 
-Each rule type supports SOC 2, ISO 27001 and NIST 800-53 controls through the default control mapping, which an organization can change ([CONTROL_MAPPING.md](CONTROL_MAPPING.md)).
+Each rule type supports SOC 2, ISO 27001 and NIST 800-53 controls through the default control mapping, which an organization can change ([CONTROL_MAPPING.md](CONTROL_MAPPING.md)). `gitlab.labels.consistent` has no default pair: an organization maps it to the control it uses it for.
 
 | `type` | Fields | Passes when |
 | --- | --- | --- |
@@ -55,6 +55,7 @@ Each rule type supports SOC 2, ISO 27001 and NIST 800-53 controls through the de
 | `gitlab.change.reviewed` | `window_days`: 1 to 365, default 90. `min_approvals`: 1 to 20, default 1. `forbid_self_approval`: default `true`. `allow_direct_push`: default `false` | Every merge request merged into the default branch in the window was approved by at least `min_approvals` people other than its author, and no commit was pushed directly unless allowed. |
 | `gitlab.change.pipeline_passed` | `window_days`. `require_tests`: default `false` | The pipeline for the last commit of every change in the window succeeded, with a test report and no failed tests when `require_tests`. |
 | `gitlab.change.deployed_after_review` | `window_days` | Every successful production deployment in the window deployed a commit of a reviewed merge request. |
+| `gitlab.labels.consistent` | `ignore`: drift kinds that do not count (any of `missing`, `misplaced`, `misnamed`, `color`, `description`, `duplicate`, `unknown_label`) | No label drift from the taxonomy in force is on the project or a group above it ([LABELS.md](LABELS.md)). Unknown without a taxonomy or when labels could not be read. |
 
 The security policy rules read what security policy discovery stored; a project whose policies were not read in full is `unknown`. [EVALUATION.md](EVALUATION.md#gitlab-security-policy-rules) gives the exact semantics. The access-control and approval rules read what project discovery stored for each project ([EVALUATION.md](EVALUATION.md#access-control-and-merge-request-approval-rules)).
 

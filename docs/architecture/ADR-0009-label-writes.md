@@ -1,7 +1,7 @@
 # ADR-0009: Write access to GitLab for approved label plans only
 
-- Status: Proposed
-- Date: 2026-11-05
+- Status: Accepted
+- Date: 2026-11-05 (accepted 2026-11-06)
 
 ## Context
 
@@ -22,6 +22,15 @@ Baluarte may write labels, and nothing else, under ADR-0007's constraints:
 - A leaked write token can change labels in the groups it can reach. Its scope should be limited to those groups and it should expire.
 - Read-only deployments keep working and still see drift.
 - The applier is the first write path, so it sets the pattern for later remediation.
+
+## Implementation
+
+Built as described in [LABELS.md](../LABELS.md), with these choices:
+
+- Writing needs both the deployment switch `BALUARTE_LABEL_WRITES=true` (default `false`) and a stored write token. The token alone is not enough, so a deployment forbids writes by leaving the switch off.
+- Plans create, rename and update labels on the top-level group only. Duplicates, misplaced labels and anything below the top-level group are listed for manual work, because fixing them would mean deleting or merging labels.
+- A write is sent once and never retried. A label that changed since the plan was built, a refused write, or a read-back that does not match stops the plan.
+- Approval goes through the same review as remediation plans: by someone other than the creator with `remediation:approve`, bound to the digest. While review is not required, the creator's submission approves it and is recorded as self-approved.
 
 ## Revisit when
 

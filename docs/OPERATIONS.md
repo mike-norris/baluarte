@@ -14,6 +14,7 @@ Keep these secrets in your secret store, separately from database backups:
 | Secret key (`BALUARTE_SECRET_KEY_FILE`) | API, worker | The client secret and GitLab token entered in the web UI can no longer be read: enter them again on the Settings page |
 | OIDC client secret (if set by the deployment) | API | Rotate at the identity provider |
 | GitLab token (if set by the deployment) | API, worker | Issue a new `read_api` token |
+| Label write token (entered in the web UI, sealed) | Worker, applying label plans | Revoke it in GitLab and store a new one on the Settings page ([LABELS.md](LABELS.md#the-write-token)) |
 
 A client secret or GitLab token entered in the web UI is in the database, sealed with the secret key ([ADR-0008](architecture/ADR-0008-settings-in-the-database.md)). Restoring a backup needs the key that was in use when it was taken. Rotate the key as described in [SECURITY.md](SECURITY.md#setup-and-secrets-entered-in-the-web-ui).
 

@@ -270,6 +270,10 @@ CoverageRow {
 
 After every project discovery, `gitlab.collect_changes` reads each monitored project's merged merge requests (with approvals, pipeline and test report summary), the first-parent commits on its default branch that no merged merge request brought, and successful deployments to the production environments, with `GET` only. Capability detection adds the probes `merge_requests.read`, `merge_request_approvals_state.read`, `pipelines.read`, `test_reports.read`, `deployments.read` and `commits.read`. Edition and version limits (approvals required and left are Enterprise Edition only; commits carry no usernames; the merge request `state` filter on a commit's merge requests needs GitLab 18.2) are in [CHANGE_EVIDENCE.md](CHANGE_EVIDENCE.md#gitlab-editions-and-versions).
 
+## Labels
+
+After every project discovery, `gitlab.collect_labels` reads the labels each active group and each monitored project defines itself (`GET /groups/:id/labels?only_group_labels=true&include_ancestor_groups=false&include_descendant_groups=false` and `GET /projects/:id/labels?include_ancestor_groups=false`). Capability detection adds the probe `labels.read`. The one write path in Baluarte, applying an approved label plan with a separate write token, uses `POST /groups/:id/labels` and `PUT /groups/:id/labels/:label_id` and nothing else; it never deletes. See [LABELS.md](LABELS.md) and [ADR-0009](architecture/ADR-0009-label-writes.md).
+
 ## Scheduling and freshness
 
 - **Security policies:** each finished project discovery queues `gitlab.discover_security_policies` (once per run), but only when the latest capability snapshot has `security_policies.read` and at least one policy type `supported`.
