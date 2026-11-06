@@ -13,10 +13,13 @@ function has(user: CurrentUser | null, permission: string): boolean {
   return user?.permissions.includes(permission) ?? false;
 }
 
-export const canReadManager = (user: CurrentUser | null) => has(user, "manager:read");
+export const canReadManager = (user: CurrentUser | null) =>
+  has(user, "manager:read");
 export const canReadTime = (user: CurrentUser | null) => has(user, "time:read");
-export const canReadPeople = (user: CurrentUser | null) => has(user, "time:read_people");
-export const canWriteTags = (user: CurrentUser | null) => has(user, "tags:write");
+export const canReadPeople = (user: CurrentUser | null) =>
+  has(user, "time:read_people");
+export const canWriteTags = (user: CurrentUser | null) =>
+  has(user, "tags:write");
 
 export interface ManagerTab {
   path: string;
@@ -42,7 +45,10 @@ export function readFocus(params: URLSearchParams): Focus {
   return tag ? { tag: tagParam(tag) } : {};
 }
 
-export function writeFocus(focus: Focus, params = new URLSearchParams()): URLSearchParams {
+export function writeFocus(
+  focus: Focus,
+  params = new URLSearchParams(),
+): URLSearchParams {
   const next = new URLSearchParams(params);
   next.delete("group");
   next.delete("tag");
@@ -75,6 +81,8 @@ const currentOnlyWords: Record<string, string> = {
 
 export function currentOnlyText(names: readonly string[]): string | null {
   if (names.length === 0) return null;
-  const words = names.map((name) => currentOnlyWords[name] ?? name.replace(/_/g, " "));
+  const words = names.map(
+    (name) => currentOnlyWords[name] ?? name.replace(/_/g, " "),
+  );
   return `Shown as of now, because Baluarte keeps no history of them: ${words.join(", ")}.`;
 }

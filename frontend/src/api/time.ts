@@ -7,7 +7,8 @@
 import { ApiError, getJson, withQuery } from "./client";
 import { changeFailure, detailMessage, readDetail, sendJson } from "./send";
 
-export type TimeGrouping = "group" | "project" | "label" | "milestone" | "week" | `tag:${string}`;
+export type TimeGrouping =
+  "group" | "project" | "label" | "milestone" | "week" | `tag:${string}`;
 
 export interface TimeFilters {
   from: string;
@@ -100,7 +101,8 @@ export const TIME_LIMITS = {
 } as const;
 
 /** Why figures per person were refused. */
-export type PeopleRefusal = "per_person_disabled" | "out_of_scope" | "forbidden";
+export type PeopleRefusal =
+  "per_person_disabled" | "out_of_scope" | "forbidden";
 
 export class PeopleRefused extends ApiError {
   readonly code: PeopleRefusal;
@@ -163,18 +165,30 @@ async function getPeopleJson<T>(
         ? (detail as { code?: unknown }).code
         : null;
     const refusal: PeopleRefusal =
-      code === "per_person_disabled" || code === "out_of_scope" ? code : "forbidden";
+      code === "per_person_disabled" || code === "out_of_scope"
+        ? code
+        : "forbidden";
     throw new PeopleRefused(refusal, peopleRefusalText[refusal]);
   }
   if (!response.ok) {
     const detail = await readDetail(response);
-    throw new ApiError(response.status, changeFailure(response.status, detailMessage(detail)));
+    throw new ApiError(
+      response.status,
+      changeFailure(response.status, detailMessage(detail)),
+    );
   }
   return (await response.json()) as T;
 }
 
-export function getPeople(filters: TimeFilters, signal?: AbortSignal): Promise<PeopleSummary> {
-  return getPeopleJson("/api/v1/time/people", { ...params(filters), by: "person" }, signal);
+export function getPeople(
+  filters: TimeFilters,
+  signal?: AbortSignal,
+): Promise<PeopleSummary> {
+  return getPeopleJson(
+    "/api/v1/time/people",
+    { ...params(filters), by: "person" },
+    signal,
+  );
 }
 
 export function getPersonEntries(
@@ -198,7 +212,12 @@ export async function saveTimeSettings(
   settings: TimeSettingsUpdate,
   csrfToken: string,
 ): Promise<TimeSettings> {
-  const saved = await sendJson<TimeSettings>("PUT", "/api/v1/settings/time", settings, csrfToken);
+  const saved = await sendJson<TimeSettings>(
+    "PUT",
+    "/api/v1/settings/time",
+    settings,
+    csrfToken,
+  );
   if (saved === null) throw new ApiError(204, "The API returned no content.");
   return saved;
 }
@@ -210,11 +229,16 @@ export function formatDuration(seconds: number | null): string {
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
   if (hours === 0) return `${String(rest)}m`;
-  return rest === 0 ? `${String(hours)}h` : `${String(hours)}h ${String(rest)}m`;
+  return rest === 0
+    ? `${String(hours)}h`
+    : `${String(hours)}h ${String(rest)}m`;
 }
 
 /** Spent against estimate in words: over, under, or no estimate. */
-export function againstEstimate(spent: number, estimate: number | null): string {
+export function againstEstimate(
+  spent: number,
+  estimate: number | null,
+): string {
   if (estimate === null || estimate === 0) return "No estimate";
   const ratio = Math.round((spent / estimate) * 100);
   return `${String(ratio)}% of estimate`;
@@ -230,12 +254,15 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
 /** A valid ``YYYY-MM-DD`` value, or null. */
 export function parseDate(value: string | null): string | null {
   const text = value?.trim() ?? "";
-  return DATE.test(text) && !Number.isNaN(Date.parse(`${text}T00:00:00Z`)) ? text : null;
+  return DATE.test(text) && !Number.isNaN(Date.parse(`${text}T00:00:00Z`))
+    ? text
+    : null;
 }
 
 /** Problems with a period, or null when it can be read. */
 export function periodProblem(from: string, to: string): string | null {
-  if (parseDate(from) === null || parseDate(to) === null) return "Enter both dates.";
+  if (parseDate(from) === null || parseDate(to) === null)
+    return "Enter both dates.";
   if (from > to) return "The start must be on or before the end.";
   return null;
 }

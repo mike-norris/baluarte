@@ -49,8 +49,11 @@ function Header({ title, intro }: { title: string; intro: string }) {
 
 function changeText(window: ChangeWindow): string {
   if (window.total === 0) return "No changes";
-  const parts = [`${percent(window.rate)} reviewed (${String(window.reviewed)} of ${String(window.total)})`];
-  if (window.direct_pushes > 0) parts.push(`${String(window.direct_pushes)} direct pushes`);
+  const parts = [
+    `${percent(window.rate)} reviewed (${String(window.reviewed)} of ${String(window.total)})`,
+  ];
+  if (window.direct_pushes > 0)
+    parts.push(`${String(window.direct_pushes)} direct pushes`);
   if (window.unknown > 0) parts.push(`${String(window.unknown)} unknown`);
   return parts.join(", ");
 }
@@ -64,22 +67,38 @@ function Figure({ term, children }: { term: string; children: ReactNode }) {
   );
 }
 
-function RowCard({ row, focusTag }: { row: OverviewRow; focusTag: string | undefined }) {
+function RowCard({
+  row,
+  focusTag,
+}: {
+  row: OverviewRow;
+  focusTag: string | undefined;
+}) {
   const [params] = useSearchParams();
   const name = rowName(row.key);
-  const tag = row.key.type === "tag" ? `${row.key.key}:${row.key.value}` : focusTag;
+  const tag =
+    row.key.type === "tag" ? `${row.key.key}:${row.key.value}` : focusTag;
   const group = row.key.type === "group" ? row.key.path : undefined;
   const findings = new URLSearchParams({ state: "open" });
   if (tag) findings.set("tag", tag);
-  const frameworks = Object.entries(row.controls_not_met) as [FrameworkId, number][];
+  const frameworks = Object.entries(row.controls_not_met) as [
+    FrameworkId,
+    number,
+  ][];
   const topLevel = group?.split("/")[0];
   const time = writeFocus(group ? { group } : tag ? { tag } : {});
   return (
-    <article aria-labelledby={`row-${name}`} className="space-y-3 rounded border border-slate-200 bg-white p-4">
+    <article
+      aria-labelledby={`row-${name}`}
+      className="space-y-3 rounded border border-slate-200 bg-white p-4"
+    >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 id={`row-${name}`} className="font-semibold">
           {row.key.type === "group" ? (
-            <Link to={`${MANAGER}?${writeFocus({ group: row.key.path }, params).toString()}`} className={linkClass}>
+            <Link
+              to={`${MANAGER}?${writeFocus({ group: row.key.path }, params).toString()}`}
+              className={linkClass}
+            >
               {name}
             </Link>
           ) : (
@@ -87,7 +106,10 @@ function RowCard({ row, focusTag }: { row: OverviewRow; focusTag: string | undef
           )}
         </h2>
         {row.key.type === "group" && (
-          <Link to={groupHref(row.key.gitlab_id)} className={`text-sm ${linkClass}`}>
+          <Link
+            to={groupHref(row.key.gitlab_id)}
+            className={`text-sm ${linkClass}`}
+          >
             In the inventory
           </Link>
         )}
@@ -95,7 +117,8 @@ function RowCard({ row, focusTag }: { row: OverviewRow; focusTag: string | undef
       <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[max-content_1fr]">
         <Figure term="Projects">
           {`${String(row.projects.monitored)} monitored`}
-          {row.projects.excluded > 0 && `, ${String(row.projects.excluded)} excluded`}
+          {row.projects.excluded > 0 &&
+            `, ${String(row.projects.excluded)} excluded`}
         </Figure>
         <Figure term="Open findings">
           <Link to={`/findings?${findings.toString()}`} className={linkClass}>
@@ -110,7 +133,10 @@ function RowCard({ row, focusTag }: { row: OverviewRow; focusTag: string | undef
           ) : (
             <Link to="/controls" className={linkClass}>
               {frameworks
-                .map(([framework, count]) => `${frameworkLabels[framework] ?? framework}: ${String(count)}`)
+                .map(
+                  ([framework, count]) =>
+                    `${frameworkLabels[framework] ?? framework}: ${String(count)}`,
+                )
                 .join("; ")}
             </Link>
           )}
@@ -120,12 +146,21 @@ function RowCard({ row, focusTag }: { row: OverviewRow; focusTag: string | undef
             {changeText(row.changes.days_30)}
           </Link>
         </Figure>
-        <Figure term="Changes, last 90 days">{changeText(row.changes.days_90)}</Figure>
+        <Figure term="Changes, last 90 days">
+          {changeText(row.changes.days_90)}
+        </Figure>
         <Figure term="Label drift">
           {row.label_drift === null ? (
             "No label taxonomy in force"
           ) : (
-            <Link to={topLevel ? `/labels?group=${encodeURIComponent(topLevel)}` : "/labels"} className={linkClass}>
+            <Link
+              to={
+                topLevel
+                  ? `/labels?group=${encodeURIComponent(topLevel)}`
+                  : "/labels"
+              }
+              className={linkClass}
+            >
               {`${String(row.label_drift)} items`}
             </Link>
           )}
@@ -134,7 +169,10 @@ function RowCard({ row, focusTag }: { row: OverviewRow; focusTag: string | undef
           {row.time_30d === null ? (
             "Not collected yet"
           ) : (
-            <Link to={`${MANAGER_TIME}?${time.toString()}`} className={linkClass}>
+            <Link
+              to={`${MANAGER_TIME}?${time.toString()}`}
+              className={linkClass}
+            >
               {`${formatDuration(row.time_30d.spent_seconds)} spent, ${row.time_30d.estimate_seconds === null ? "no estimate" : `${formatDuration(row.time_30d.estimate_seconds)} estimated`}`}
             </Link>
           )}
@@ -152,7 +190,8 @@ export function ManagerPage() {
   const key = `overview?${writeFocus(focus).toString()}@${asOf ?? "now"}`;
   const overview = useLoad(key, (signal) => getOverview(focus, signal, asOf));
   const parent = focus.group ? parentPath(focus.group) : null;
-  const note = overview.data && asOf ? currentOnlyText(overview.data.current_only) : null;
+  const note =
+    overview.data && asOf ? currentOnlyText(overview.data.current_only) : null;
 
   return (
     <section aria-labelledby="page-title" className="space-y-6">
@@ -213,7 +252,8 @@ const hours = (seconds: number) => `${String(Math.round(seconds / 360) / 10)}h`;
 
 function TrendCharts({ trends }: { trends: Trends }) {
   const labels = trends.points.map((point) => bucketLabel(point.end));
-  const at = <T,>(read: (point: Trends["points"][number]) => T) => trends.points.map(read);
+  const at = <T,>(read: (point: Trends["points"][number]) => T) =>
+    trends.points.map(read);
   if (trends.points.length === 0) {
     return (
       <p className="rounded border border-dashed border-slate-300 p-4 text-sm text-slate-600">
@@ -228,7 +268,10 @@ function TrendCharts({ trends }: { trends: Trends }) {
         labels={labels}
         format={count}
         series={[
-          { name: "Critical", values: at((point) => point.findings_open.critical) },
+          {
+            name: "Critical",
+            values: at((point) => point.findings_open.critical),
+          },
           { name: "High", values: at((point) => point.findings_open.high) },
           { name: "Medium", values: at((point) => point.findings_open.medium) },
           { name: "Low", values: at((point) => point.findings_open.low) },
@@ -239,20 +282,35 @@ function TrendCharts({ trends }: { trends: Trends }) {
         labels={labels}
         format={share}
         max={1}
-        series={[{ name: "Rules passing", values: at((point) => point.rule_pass_rate) }]}
+        series={[
+          {
+            name: "Rules passing",
+            values: at((point) => point.rule_pass_rate),
+          },
+        ]}
       />
       <LineChart
         title="Changes reviewed"
         labels={labels}
         format={share}
         max={1}
-        series={[{ name: "Changes reviewed", values: at((point) => point.change_review_rate) }]}
+        series={[
+          {
+            name: "Changes reviewed",
+            values: at((point) => point.change_review_rate),
+          },
+        ]}
       />
       <LineChart
         title="Time spent"
         labels={labels}
         format={hours}
-        series={[{ name: "Time spent", values: at((point) => point.time_spent_seconds) }]}
+        series={[
+          {
+            name: "Time spent",
+            values: at((point) => point.time_spent_seconds),
+          },
+        ]}
       />
     </div>
   );
@@ -271,7 +329,9 @@ export function TrendsPage() {
   const to = parseDate(params.get("to")) ?? undefined;
   const [problem, setProblem] = useState<string | null>(null);
   const key = `trends?${params.toString()}`;
-  const trends = useLoad(key, (signal) => getTrends(focus, bucket, { from, to }, signal));
+  const trends = useLoad(key, (signal) =>
+    getTrends(focus, bucket, { from, to }, signal),
+  );
 
   function apply(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -283,7 +343,9 @@ export function TrendsPage() {
     const nextFrom = parseDate(text("from"));
     const nextTo = parseDate(text("to"));
     if ((text("from") && !nextFrom) || (text("to") && !nextTo)) {
-      setProblem("Enter dates as YYYY-MM-DD, or leave them empty for the default period.");
+      setProblem(
+        "Enter dates as YYYY-MM-DD, or leave them empty for the default period.",
+      );
       return;
     }
     if (nextFrom && nextTo && nextFrom > nextTo) {
@@ -322,11 +384,21 @@ export function TrendsPage() {
         </label>
         <label className="text-sm font-medium">
           From
-          <input name="from" type="date" defaultValue={from ?? ""} className={fieldClass} />
+          <input
+            name="from"
+            type="date"
+            defaultValue={from ?? ""}
+            className={fieldClass}
+          />
         </label>
         <label className="text-sm font-medium">
           To
-          <input name="to" type="date" defaultValue={to ?? ""} className={fieldClass} />
+          <input
+            name="to"
+            type="date"
+            defaultValue={to ?? ""}
+            className={fieldClass}
+          />
         </label>
         <button type="submit" className={buttonClass}>
           Show
@@ -336,12 +408,18 @@ export function TrendsPage() {
         </p>
       </form>
       {problem && (
-        <p role="alert" className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900">
+        <p
+          role="alert"
+          className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900"
+        >
           {problem}
         </p>
       )}
       {trends.error?.status === 422 ? (
-        <p role="alert" className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900">
+        <p
+          role="alert"
+          className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900"
+        >
           {`That period is too long: at most ${String(MAX_BUCKETS.week)} weeks or ${String(MAX_BUCKETS.month)} months.`}
         </p>
       ) : trends.error ? (

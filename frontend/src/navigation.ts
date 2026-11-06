@@ -41,6 +41,13 @@ export const navItems: readonly NavItem[] = [
       "One label taxonomy for every group, where groups and projects drift from it, and reviewed fixes.",
   },
   {
+    path: "/manager",
+    label: "Manager",
+    description:
+      "Posture, change review, label drift and time rolled up by group or tag, with trends.",
+    permission: "manager:read",
+  },
+  {
     path: "/exceptions",
     label: "Exceptions",
     description: "Time-limited, approved waivers of known failures.",

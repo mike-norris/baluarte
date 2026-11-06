@@ -132,7 +132,13 @@ export function getTrends(
 ): Promise<Trends> {
   return getJson(
     "/api/v1/manager/trends",
-    { group: focus.group, tag: focus.tag, bucket, from: range.from, to: range.to },
+    {
+      group: focus.group,
+      tag: focus.tag,
+      bucket,
+      from: range.from,
+      to: range.to,
+    },
     signal,
   );
 }
@@ -176,7 +182,10 @@ export async function assignScopes(
   return result;
 }
 
-export async function endScope(id: number, csrfToken: string): Promise<ManagerScope> {
+export async function endScope(
+  id: number,
+  csrfToken: string,
+): Promise<ManagerScope> {
   const result = await sendJson<ManagerScope>(
     "POST",
     `/api/v1/manager/scopes/${String(id)}/end`,

@@ -66,7 +66,8 @@ export const MAX_TAG_DESCRIPTION = 500;
 /** Sentences for the API's reasons for refusing a tag change. */
 export const tagRefusalReasons: Record<string, string> = {
   tag_exists: "a tag with that key and value already exists",
-  key_conflict: "a selected item already has another value of this key assigned directly",
+  key_conflict:
+    "a selected item already has another value of this key assigned directly",
   tag_unknown: "that tag no longer exists",
   target_unknown: "a selected project or group is not in the inventory",
 };
@@ -86,7 +87,9 @@ async function required<T>(result: Promise<T | null>): Promise<T> {
 }
 
 export function createTag(tag: NewTag, csrfToken: string): Promise<Tag> {
-  return required(sendJson<Tag>("POST", "/api/v1/tags", tag, csrfToken, tagRefusalReasons));
+  return required(
+    sendJson<Tag>("POST", "/api/v1/tags", tag, csrfToken, tagRefusalReasons),
+  );
 }
 
 export function updateTag(
@@ -95,7 +98,13 @@ export function updateTag(
   csrfToken: string,
 ): Promise<Tag> {
   return required(
-    sendJson<Tag>("PATCH", `/api/v1/tags/${String(id)}`, change, csrfToken, tagRefusalReasons),
+    sendJson<Tag>(
+      "PATCH",
+      `/api/v1/tags/${String(id)}`,
+      change,
+      csrfToken,
+      tagRefusalReasons,
+    ),
   );
 }
 
@@ -142,26 +151,35 @@ export function tagParam(tag: { key: string; value: string }): string {
 }
 
 /** ``key:value`` from a URL, or null when it is not a valid tag. */
-export function parseTagParam(value: string | null): { key: string; value: string } | null {
+export function parseTagParam(
+  value: string | null,
+): { key: string; value: string } | null {
   const [key = "", rest = "", ...extra] = (value ?? "").trim().split(":");
-  if (extra.length > 0 || !TAG_PART.test(key) || !TAG_PART.test(rest)) return null;
+  if (extra.length > 0 || !TAG_PART.test(key) || !TAG_PART.test(rest))
+    return null;
   return { key, value: rest };
 }
 
 /** The problems with a new tag, by field; empty when it can be sent. */
-export function tagProblems(tag: NewTag): Partial<Record<keyof NewTag, string>> {
+export function tagProblems(
+  tag: NewTag,
+): Partial<Record<keyof NewTag, string>> {
   const problems: Partial<Record<keyof NewTag, string>> = {};
-  const rule = "Use lowercase letters, digits, dots, dashes or underscores, up to 63 characters.";
+  const rule =
+    "Use lowercase letters, digits, dots, dashes or underscores, up to 63 characters.";
   if (!TAG_PART.test(tag.key)) problems.key = rule;
   if (!TAG_PART.test(tag.value)) problems.value = rule;
   if ((tag.description ?? "").length > MAX_TAG_DESCRIPTION) {
     problems.description = `Keep it to at most ${String(MAX_TAG_DESCRIPTION)} characters.`;
   }
-  if (tag.color && !COLOR.test(tag.color)) problems.color = "Use a colour such as #1f6feb.";
+  if (tag.color && !COLOR.test(tag.color))
+    problems.color = "Use a colour such as #1f6feb.";
   return problems;
 }
 
 /** How a tag reaches an item, in words. */
 export function tagVia(tag: ItemTag): string {
-  return tag.via === "group" ? `from group ${tag.from_path ?? "(unknown)"}` : "on the project";
+  return tag.via === "group"
+    ? `from group ${tag.from_path ?? "(unknown)"}`
+    : "on the project";
 }
