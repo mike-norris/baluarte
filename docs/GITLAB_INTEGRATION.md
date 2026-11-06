@@ -274,6 +274,10 @@ After every project discovery, `gitlab.collect_changes` reads each monitored pro
 
 After every project discovery, `gitlab.collect_labels` reads the labels each active group and each monitored project defines itself (`GET /groups/:id/labels?only_group_labels=true&include_ancestor_groups=false&include_descendant_groups=false` and `GET /projects/:id/labels?include_ancestor_groups=false`). Capability detection adds the probe `labels.read`. The one write path in Baluarte, applying an approved label plan with a separate write token, uses `POST /groups/:id/labels` and `PUT /groups/:id/labels/:label_id` and nothing else; it never deletes. See [LABELS.md](LABELS.md) and [ADR-0009](architecture/ADR-0009-label-writes.md).
 
+## Time tracking
+
+After every project discovery, `gitlab.collect_time` reads each monitored, unarchived project's time logs with the GraphQL query `project(fullPath) { timelogs(startTime, endTime, first, after) }` sent as a `GET`, and its issues' estimates with `GET /projects/:id/issues?scope=all&updated_after=...` (`time_stats`). Capability detection adds the probe `timelogs.read`. The text written with a log is stored only as a SHA-256. Windows, re-reads, removed logs and the API notes behind them are in [TIME_TRACKING.md](TIME_TRACKING.md).
+
 ## Scheduling and freshness
 
 - **Security policies:** each finished project discovery queues `gitlab.discover_security_policies` (once per run), but only when the latest capability snapshot has `security_policies.read` and at least one policy type `supported`.
