@@ -14,6 +14,7 @@ Create Date: 2026-11-06 10:00:00.000000
 """
 
 from collections.abc import Sequence
+from datetime import datetime
 
 import sqlalchemy as sa
 from alembic import op
@@ -108,7 +109,7 @@ def _allowed(table: str, column: str, values: Sequence[str], validate: bool = Tr
     )
 
 
-def _timestamp(name: str, nullable: bool = True) -> sa.Column[object]:
+def _timestamp(name: str, nullable: bool = True) -> sa.Column[datetime]:
     if nullable:
         return sa.Column(name, sa.DateTime(timezone=True), nullable=True)
     return sa.Column(
