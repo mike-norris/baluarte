@@ -24,6 +24,9 @@ Sections, in this order (each later section only references rows of earlier ones
   collection error. Unknown state is exported, never dropped.
 - ``collection_runs``: collection and evaluation runs (all started inside the time window, or
   the latest finished run of each kind).
+- ``time_entries``: only with ``include_people``: time logged per person in monitored projects
+  of the scope (and of the requester's manager scope), spent inside the time window. Never the
+  summary written with a log.
 
 Every export ends with a manifest (BAL-028, :mod:`baluarte.evidence.manifest`): the hash and row
 count of every file (ZIP) or section (JSON), the policy versions, observation digest results,
@@ -50,7 +53,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, PositiveInt, m
 from sqlalchemy import ColumnElement, Engine, and_, case, exists, func, or_, select, text
 from sqlalchemy.orm import Session, aliased
 
-from baluarte import __version__
+from baluarte import __version__, tags
 from baluarte.audit import details_digest
 from baluarte.compliance.catalogue import FrameworkId
 from baluarte.compliance.posture import operations_summary
@@ -69,6 +72,7 @@ from baluarte.db.models import (
     Policy,
     PolicyException,
     ScopeExclusion,
+    TimeEntry,
 )
 from baluarte.evidence import manifest
 from baluarte.evidence.observations import verify
@@ -84,7 +88,8 @@ from baluarte.scope.exclusions import coverage, justification_sha256
 # v3 (monitoring scope): adds monitoring_excluded, exclusion_id and excluded_via to inventory;
 # projects out of monitoring scope are left out of every other section.
 # v4 (change evidence): adds observation_ids and evidence_digest to evaluations.
-FORMAT = "baluarte.evidence-export/v4"
+# v5 (manager space): adds tags to inventory, and the time_entries section with include_people.
+FORMAT = "baluarte.evidence-export/v5"
 MAX_ROWS = 100_000
 PAGE = 500
 
@@ -118,6 +123,7 @@ export.json            Export metadata: scope and the collection and evaluation 
 inventory.csv          Projects in scope, as the inventory holds them at export time.
                        monitoring_excluded marks projects taken out of monitoring scope
                        (exclusion_id, excluded_via say how); the other files leave them out.
+                       tags lists the project's Baluarte tags as key=value, separated by ;.
 evaluations.csv        Stored rule results. Without a time window, the latest result of each
                        project, policy and rule; with one, every result evaluated inside it.
 findings.csv           Findings in scope and the observation their latest evaluation judged.
@@ -131,6 +137,8 @@ exceptions.csv         Policy exceptions in scope and those the results referenc
 collection_errors.csv  Projects and groups in scope that are missing, inaccessible or failed to
                        collect. Unknown state is listed here, never dropped.
 collection_runs.csv    Collection and evaluation runs for the window (or the latest of each).
+time_entries.csv       Only when requested with include_people: time logged in GitLab per
+                       person. Effort data, not evidence of compliance.
 manifest.json          Every file above with its SHA-256 and row count, the policy versions,
                        observation digest results, collection errors, freshness and these
                        limitations. Its own SHA-256 (of its canonical JSON) is in the
@@ -181,10 +189,19 @@ class ExportScope(BaseModel):
     )
     since: AwareDatetime | None = Field(None, description="Evaluated at or after (inclusive).")
     until: AwareDatetime | None = Field(None, description="Evaluated before (exclusive).")
+    include_people: bool = Field(
+        False,
+        description="Add time logged per person (needs time:read_people; limited to your "
+        "manager scope). Audited and noted in the manifest.",
+    )
 
     @model_validator(mode="after")
     def _bounded(self) -> "ExportScope":
-        narrowed = [name for name in self.model_fields_set if name != "all" and getattr(self, name)]
+        narrowed = [
+            name
+            for name in self.model_fields_set
+            if name not in ("all", "include_people") and getattr(self, name)
+        ]
         if self.all and narrowed:
             raise ValueError("all cannot be combined with other scope fields")
         if not self.all and not narrowed:
@@ -264,8 +281,12 @@ class EvidenceExport:
         fmt: ExportFormat,
         export_id: str,
         requested_by: str | None = None,
+        people_projects: frozenset[int] | None = None,
     ) -> None:
         self.settings = settings
+        # With include_people: the project row IDs whose time per person may be exported; None
+        # for every project.
+        self.people_projects = people_projects
         self.requested_by = requested_by
         self.scope = scope
         self.format = fmt
@@ -280,6 +301,7 @@ class EvidenceExport:
             ).first()
             # Projects out of monitoring scope, as of the snapshot.
             self.coverage = coverage(self.db, self.instance_id)
+            self.tags = tags.index(self.db, self.instance_id)
         except BaseException:
             self.db.close()
             raise
@@ -554,6 +576,47 @@ class EvidenceExport:
                     "monitoring_excluded": covering is not None,
                     "exclusion_id": covering.exclusion_id if covering else None,
                     "excluded_via": covering.via if covering else None,
+                    "tags": ";".join(
+                        f"{a.key}={a.value}" for a in self.tags.of_project(project.id)
+                    ),
+                }
+            )
+
+    def _time_conditions(self) -> list[ColumnElement[bool]]:
+        conditions: list[ColumnElement[bool]] = [
+            TimeEntry.instance_id == (self.instance_id or 0),
+            TimeEntry.project_id.in_(select(GitLabProject.id).where(*self._monitored_scope())),
+        ]
+        if self.people_projects is not None:
+            conditions.append(TimeEntry.project_id.in_(sorted(self.people_projects)))
+        if self.scope.since is not None:
+            conditions.append(TimeEntry.spent_at >= self.scope.since)
+        if self.scope.until is not None:
+            conditions.append(TimeEntry.spent_at < self.scope.until)
+        return conditions
+
+    def time_entries(self) -> Iterator[dict[str, Any]]:
+        statement = (
+            select(TimeEntry, GitLabProject)
+            .join(GitLabProject, GitLabProject.id == TimeEntry.project_id)
+            .where(*self._time_conditions())
+        )
+        for entry, project in self._pages(statement, TimeEntry.id):
+            yield _safe(
+                {
+                    "timelog_id": entry.timelog_id,
+                    "project_gitlab_id": project.gitlab_id,
+                    "project_path": project.path_with_namespace,
+                    "username": entry.username,
+                    "spent_at": _ts(entry.spent_at),
+                    "seconds": entry.seconds,
+                    "issue_iid": entry.issue_iid,
+                    "merge_request_iid": entry.merge_request_iid,
+                    "labels": ";".join(entry.labels or []),
+                    "milestone": entry.milestone,
+                    "summary_sha256": entry.summary_sha256,
+                    "observation_id": entry.observation_id,
+                    "removed_at": _ts(entry.removed_at),
                 }
             )
 
@@ -880,12 +943,23 @@ class EvidenceExport:
             control_mapping=self._control_mapping(),
             monitoring_scope=self._monitoring_scope(),
             evidence_package=self._package(),
+            time_people=self._time_people(),
         )
         self.result.manifest_sha256 = details_digest(built)
         return built
 
     def _control_mapping(self) -> dict[str, Any]:
         return mapping_summary(self.db)
+
+    def _time_people(self) -> dict[str, Any] | None:
+        """Whether time per person is included, and for which projects; None when it is not."""
+        if not self.scope.include_people:
+            return None
+        return {
+            "included": True,
+            "projects": "all" if self.people_projects is None else "manager_scope",
+            "entries": self.result.rows.get("time_entries", 0),
+        }
 
     def _package(self) -> dict[str, Any] | None:
         """The audit-period package's period and sample; None for a scoped export."""
@@ -914,6 +988,7 @@ class EvidenceExport:
             ("exceptions", self.exceptions),
             ("collection_errors", self.collection_errors),
             ("collection_runs", self.collection_runs),
+            *([("time_entries", self.time_entries)] if self.scope.include_people else []),
         ]
 
     # Output ---------------------------------------------------------------------------------
@@ -1042,6 +1117,22 @@ COLUMNS: dict[str, tuple[str, ...]] = {
         "monitoring_excluded",
         "exclusion_id",
         "excluded_via",
+        "tags",
+    ),
+    "time_entries": (
+        "timelog_id",
+        "project_gitlab_id",
+        "project_path",
+        "username",
+        "spent_at",
+        "seconds",
+        "issue_iid",
+        "merge_request_iid",
+        "labels",
+        "milestone",
+        "summary_sha256",
+        "observation_id",
+        "removed_at",
     ),
     "evaluations": (
         "id",

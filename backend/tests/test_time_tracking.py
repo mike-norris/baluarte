@@ -384,3 +384,42 @@ def test_retention_expires_time_before_the_shorter_period(engine: Engine) -> Non
         db.commit()
     assert details["deleted"]["time_entry"] == 1
     assert set(entries(engine)) == {"2"}
+
+
+def test_exports_hold_tags_and_time_per_person_only_on_request(
+    logged: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mia = user(logged, "mia")
+    with Session(logged) as db:
+        scopes.assign(db, instance_id(logged), mia, [11], ADMIN)
+        db.commit()
+    assign(logged, make_tag(logged, "team", "payments"), ("group", 11))
+    body: dict[str, Any] = {"format": "json", "scope": {"all": True}}
+    auditor = as_user(logged, user(logged, "aud"), Role.AUDITOR)
+    response = auditor.post("/api/v1/evidence/exports", json=body)
+    assert response.status_code == 200, response.text
+    plain = response.json()
+    assert "time_entries" not in plain and "time_people" not in plain["manifest"]
+    web = next(p for p in plain["inventory"] if p["gitlab_id"] == 100)
+    assert web["tags"] == "team=payments"
+
+    body["scope"]["include_people"] = True
+    refused = auditor.post("/api/v1/evidence/exports", json=body)
+    assert refused.status_code == 403
+    manager = as_user(logged, mia, Role.MANAGER, Role.AUDITOR)
+    document = manager.post("/api/v1/evidence/exports", json=body).json()
+    assert {e["project_path"] for e in document["time_entries"]} == {"acme/team/web"}
+    assert "summary" not in document["time_entries"][0]
+    assert document["manifest"]["time_people"] == {
+        "included": True,
+        "projects": "manager_scope",
+        "entries": 3,
+    }
+    exported = audit_actions(logged, "time.people_exported")
+    assert len(exported) == 1 and (exported[0][1] or {})["projects"] == "manager_scope"
+    admin = as_user(logged, user(logged, "admin"), Role.ADMIN)
+    everyone = admin.post("/api/v1/evidence/exports", json=body).json()
+    assert len(everyone["time_entries"]) == 5
+    monkeypatch.setenv("BALUARTE_TIME_PER_PERSON", "false")
+    off = admin.post("/api/v1/evidence/exports", json=body)
+    assert off.status_code == 403 and off.json()["detail"]["code"] == "per_person_disabled"

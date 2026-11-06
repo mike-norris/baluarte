@@ -20,7 +20,8 @@ from typing import Any
 # v5: adds ``monitoring_scope``, the exclusions from monitoring in force (export format v3).
 # v6: adds ``evidence_package`` to audit-period packages (period, evaluation run and the change
 # sample), and evaluations' ``observation_ids`` and ``evidence_digest`` (export format v4).
-MANIFEST_FORMAT = "baluarte.evidence-manifest/v6"
+# v7: adds ``time_people`` when an export includes time per person (export format v5).
+MANIFEST_FORMAT = "baluarte.evidence-manifest/v7"
 # Invalid observation IDs listed by ID; beyond this only the count is given.
 MAX_LISTED = 1000
 
@@ -184,6 +185,7 @@ def build(
     control_mapping: dict[str, Any] | None = None,
     monitoring_scope: dict[str, Any] | None = None,
     evidence_package: dict[str, Any] | None = None,
+    time_people: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The manifest. ``contents`` lists the ZIP's files, or the JSON document's sections."""
     manifest: dict[str, Any] = {
@@ -247,6 +249,15 @@ def build(
         # results come from and how the sample of changes was drawn.
         manifest["evidence_package"] = evidence_package
         manifest["limitations"] = [*manifest["limitations"], *evidence_package["limitations"]]
+    if time_people is not None:
+        # Time logged per person (docs/TIME_TRACKING.md), included only on request and audited.
+        manifest["time_people"] = time_people
+        manifest["limitations"] = [
+            *manifest["limitations"],
+            "time_entries.csv is effort data from GitLab time tracking, not evidence of "
+            "compliance; it covers only the requester's manager scope unless they are an "
+            "administrator.",
+        ]
     if metadata_sha256 is not None:
         manifest["metadata_sha256"] = metadata_sha256
     return manifest
