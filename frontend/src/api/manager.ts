@@ -31,10 +31,11 @@ export interface MyScopes {
 }
 
 export interface AppUser {
-  user_id: number;
+  id: number;
   display_name: string | null;
   email: string | null;
   roles: string[];
+  last_login_at: string | null;
 }
 
 export interface SeverityCounts {
@@ -55,7 +56,15 @@ export interface ChangeWindow {
 }
 
 export type RowKey =
-  { type: "group"; gitlab_id: number; path: string } | { type: "tag"; key: string; value: string };
+  | {
+      type: "group";
+      gitlab_id: number;
+      path: string;
+      /** The group's own projects, without its subgroups. */
+      direct_only?: boolean;
+    }
+  /** ``value`` is null for projects without a value for the key. */
+  | { type: "tag"; key: string; value: string | null };
 
 export interface OverviewRow {
   key: RowKey;
@@ -69,12 +78,14 @@ export interface OverviewRow {
   time_30d: { spent_seconds: number; estimate_seconds: number | null } | null;
 }
 
-export interface OverviewParent {
-  type: "instance" | "group" | "tag";
-  path?: string;
-  key?: string;
-  value?: string;
-}
+export type OverviewParent = (
+  { type: "instance" } | { type: "group"; gitlab_id: number; path: string }
+) & {
+  /** Set when the overview is filtered by a tag. */
+  tag?: { key: string; value: string };
+  /** Set when the rows are one per value of this tag key. */
+  by_tag?: string;
+};
 
 export interface Overview extends AsOfAnswer {
   /** Figures shown as of now even when viewing the past, e.g. ``time`` and ``tags``. */
@@ -88,7 +99,10 @@ export type Bucket = "week" | "month";
 export interface TrendPoint {
   /** The end of the bucket. */
   end: string;
-  findings_open: SeverityCounts;
+  /** The evaluation run in force at the end of the bucket, if any. */
+  evaluation_run_id: number | null;
+  /** Null when no evaluation run was in force. */
+  findings_open: SeverityCounts | null;
   /** 0 to 1, or null when nothing was evaluated. */
   rule_pass_rate: number | null;
   change_review_rate: number | null;
@@ -98,7 +112,10 @@ export interface TrendPoint {
 export interface Trends {
   bucket: Bucket;
   from: string;
+  /** Exclusive: the end of the last bucket. */
   to: string;
+  projects: number;
+  current_only: string[];
   points: TrendPoint[];
 }
 
@@ -195,7 +212,10 @@ export async function endScope(id: number, csrfToken: string): Promise<ManagerSc
 
 /** A row's name: the group path or ``key=value``. */
 export function rowName(key: RowKey): string {
-  return key.type === "group" ? key.path : `${key.key}=${key.value}`;
+  if (key.type === "group") {
+    return key.direct_only ? `${key.path} (its own projects)` : key.path;
+  }
+  return key.value === null ? `${key.key} not set` : `${key.key}=${key.value}`;
 }
 
 /** A share as a whole percentage, or a dash when there is nothing to divide. */
@@ -209,5 +229,5 @@ export function personName(person: Person): string {
 }
 
 export function userName(user: AppUser): string {
-  return user.display_name ?? user.email ?? `User ${String(user.user_id)}`;
+  return user.display_name ?? user.email ?? `User ${String(user.id)}`;
 }

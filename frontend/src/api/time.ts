@@ -37,9 +37,14 @@ export interface TimeTotals {
   entries: number;
 }
 
-export interface TimeSummary {
+/** ``to`` is exclusive: the day after the last day asked for. */
+export interface Period {
   from: string;
   to: string;
+}
+
+export interface TimeSummary {
+  period: Period;
   by: string;
   rows: TimeRow[];
   totals: TimeTotals;
@@ -56,10 +61,12 @@ export interface PersonRow {
 }
 
 export interface PeopleSummary {
-  from: string;
-  to: string;
+  period: Period;
   rows: PersonRow[];
   totals: TimeTotals;
+  /** True when the reader may see every project, as administrators do. */
+  all_projects: boolean;
+  collected_at: string | null;
 }
 
 export interface TimeEntry {
@@ -78,6 +85,7 @@ export interface TimeEntry {
 
 export interface PersonEntries {
   username: string;
+  period: Period;
   items: TimeEntry[];
   next_after: string | null;
 }

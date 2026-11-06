@@ -108,7 +108,7 @@ function AssignForm({ csrf, onAssigned }: { csrf: string; onAssigned: (message: 
     setSaving(true);
     try {
       await assignScopes(Number(userId), [picked.gitlabId], csrf);
-      const user = managers.find((item) => String(item.user_id) === userId);
+      const user = managers.find((item) => String(item.id) === userId);
       setPicked(null);
       onAssigned(`${user ? userName(user) : "The manager"} now has ${picked.path}.`);
     } catch (error) {
@@ -142,7 +142,7 @@ function AssignForm({ csrf, onAssigned }: { csrf: string; onAssigned: (message: 
             >
               <option value="">{users.data ? "Choose a manager" : "Loading users…"}</option>
               {managers.map((user) => (
-                <option key={user.user_id} value={String(user.user_id)}>
+                <option key={user.id} value={String(user.id)}>
                   {userName(user)}
                 </option>
               ))}

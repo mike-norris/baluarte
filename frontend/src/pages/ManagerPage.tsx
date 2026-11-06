@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useId, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router";
 
 import type { FrameworkId } from "../api/controls";
@@ -69,7 +69,10 @@ function Figure({ term, children }: { term: string; children: ReactNode }) {
 function RowCard({ row, focusTag }: { row: OverviewRow; focusTag: string | undefined }) {
   const [params] = useSearchParams();
   const name = rowName(row.key);
-  const tag = row.key.type === "tag" ? `${row.key.key}:${row.key.value}` : focusTag;
+  const headingId = useId();
+  // Projects without a value for the key cannot be filtered by tag; keep the focus instead.
+  const tag =
+    row.key.type === "tag" && row.key.value !== null ? `${row.key.key}:${row.key.value}` : focusTag;
   const group = row.key.type === "group" ? row.key.path : undefined;
   const findings = new URLSearchParams({ state: "open" });
   if (tag) findings.set("tag", tag);
@@ -78,12 +81,12 @@ function RowCard({ row, focusTag }: { row: OverviewRow; focusTag: string | undef
   const time = writeFocus(group ? { group } : tag ? { tag } : {});
   return (
     <article
-      aria-labelledby={`row-${name}`}
+      aria-labelledby={headingId}
       className="space-y-3 rounded border border-slate-200 bg-white p-4"
     >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id={`row-${name}`} className="font-semibold">
-          {row.key.type === "group" ? (
+        <h2 id={headingId} className="font-semibold">
+          {row.key.type === "group" && !row.key.direct_only ? (
             <Link
               to={`${MANAGER}?${writeFocus({ group: row.key.path }, params).toString()}`}
               className={linkClass}
@@ -187,7 +190,17 @@ export function ManagerPage() {
       )}
       <AsOfResult answer={overview.data} />
       {note && <p className="text-sm text-slate-700">{note}</p>}
-      {overview.error ? (
+      {overview.error?.status === 404 && focus.group ? (
+        <p
+          role="alert"
+          className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900"
+        >
+          {`There is no group ${focus.group} in the inventory. `}
+          <Link to={MANAGER} className={linkClass}>
+            Back to all top-level groups
+          </Link>
+        </p>
+      ) : overview.error ? (
         <ErrorMessage error={overview.error} retry={overview.retry} />
       ) : overview.data ? (
         overview.data.rows.length === 0 ? (
@@ -235,57 +248,64 @@ function TrendCharts({ trends }: { trends: Trends }) {
       </p>
     );
   }
+  const note = currentOnlyText(trends.current_only);
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <LineChart
-        title="Open findings"
-        labels={labels}
-        format={count}
-        series={[
-          {
-            name: "Critical",
-            values: at((point) => point.findings_open.critical),
-          },
-          { name: "High", values: at((point) => point.findings_open.high) },
-          { name: "Medium", values: at((point) => point.findings_open.medium) },
-          { name: "Low", values: at((point) => point.findings_open.low) },
-        ]}
-      />
-      <LineChart
-        title="Rules passing"
-        labels={labels}
-        format={share}
-        max={1}
-        series={[
-          {
-            name: "Rules passing",
-            values: at((point) => point.rule_pass_rate),
-          },
-        ]}
-      />
-      <LineChart
-        title="Changes reviewed"
-        labels={labels}
-        format={share}
-        max={1}
-        series={[
-          {
-            name: "Changes reviewed",
-            values: at((point) => point.change_review_rate),
-          },
-        ]}
-      />
-      <LineChart
-        title="Time spent"
-        labels={labels}
-        format={hours}
-        series={[
-          {
-            name: "Time spent",
-            values: at((point) => point.time_spent_seconds),
-          },
-        ]}
-      />
+    <div className="space-y-3">
+      <p className="text-sm text-slate-700">
+        {`${String(trends.projects)} projects. Open findings are left out of periods with no evaluation run.`}
+        {note && ` ${note}`}
+      </p>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <LineChart
+          title="Open findings"
+          labels={labels}
+          format={count}
+          series={[
+            {
+              name: "Critical",
+              values: at((point) => point.findings_open?.critical ?? null),
+            },
+            { name: "High", values: at((point) => point.findings_open?.high ?? null) },
+            { name: "Medium", values: at((point) => point.findings_open?.medium ?? null) },
+            { name: "Low", values: at((point) => point.findings_open?.low ?? null) },
+          ]}
+        />
+        <LineChart
+          title="Rules passing"
+          labels={labels}
+          format={share}
+          max={1}
+          series={[
+            {
+              name: "Rules passing",
+              values: at((point) => point.rule_pass_rate),
+            },
+          ]}
+        />
+        <LineChart
+          title="Changes reviewed"
+          labels={labels}
+          format={share}
+          max={1}
+          series={[
+            {
+              name: "Changes reviewed",
+              values: at((point) => point.change_review_rate),
+            },
+          ]}
+        />
+        <LineChart
+          title="Time spent"
+          labels={labels}
+          format={hours}
+          series={[
+            {
+              name: "Time spent",
+              values: at((point) => point.time_spent_seconds),
+            },
+          ]}
+        />
+      </div>
     </div>
   );
 }
@@ -380,7 +400,7 @@ export function TrendsPage() {
           role="alert"
           className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900"
         >
-          {`That period is too long: at most ${String(MAX_BUCKETS.week)} weeks or ${String(MAX_BUCKETS.month)} months.`}
+          {`That period is not possible: it must start before it ends and cover at most ${String(MAX_BUCKETS.week)} weeks or ${String(MAX_BUCKETS.month)} months.`}
         </p>
       ) : trends.error ? (
         <ErrorMessage error={trends.error} retry={trends.retry} />

@@ -162,7 +162,7 @@ describe("manager overview", () => {
                 key: { type: "tag", key: "team", value: "payments" },
               }),
             ],
-            { parent: { type: "tag", key: "team", value: "payments" } },
+            { parent: { type: "instance", tag: { key: "team", value: "payments" } } },
           ),
         ),
     });
@@ -263,7 +263,69 @@ describe("trends", () => {
     });
     renderAt("/manager/trends?from=2020-01-01&to=2026-01-01");
     expect(
-      await screen.findByText("That period is too long: at most 105 weeks or 36 months."),
+      await screen.findByText(
+        "That period is not possible: it must start before it ends and cover at most 105 weeks or 36 months.",
+      ),
     ).toBeInTheDocument();
+  });
+});
+
+describe("overview rows the backend adds", () => {
+  it("shows a group's own projects and projects without a tag value, without drilling in", async () => {
+    api(manager, {
+      [`${OVERVIEW}?group=acme`]: () =>
+        json(
+          overview(
+            [
+              overviewRow("acme", {
+                key: { type: "group", gitlab_id: 10, path: "acme", direct_only: true },
+              }),
+              overviewRow("x", { key: { type: "tag", key: "team", value: null } }),
+            ],
+            { parent: { type: "group", gitlab_id: 10, path: "acme" } },
+          ),
+        ),
+    });
+
+    renderAt("/manager?group=acme");
+
+    const own = await screen.findByRole("article", { name: "acme (its own projects)" });
+    expect(within(own).queryByRole("link", { name: "acme (its own projects)" })).toBeNull();
+    const unset = screen.getByRole("article", { name: "team not set" });
+    expect(within(unset).getByRole("link", { name: "8 open" })).toHaveAttribute(
+      "href",
+      "/findings?state=open",
+    );
+  });
+
+  it("explains a group that is not in the inventory", async () => {
+    api(manager, {
+      [`${OVERVIEW}?group=gone`]: () =>
+        json({ detail: { code: "unknown_group", message: "Unknown group" } }, 404),
+    });
+    renderAt("/manager?group=gone");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "There is no group gone in the inventory.",
+    );
+  });
+
+  it("leaves open findings out of periods without an evaluation run", async () => {
+    const base = trends();
+    api(manager, {
+      [TRENDS]: () =>
+        json({
+          ...base,
+          points: base.points.map((point, index) =>
+            index === 0 ? { ...point, evaluation_run_id: null, findings_open: null } : point,
+          ),
+        }),
+    });
+    renderAt("/manager/trends");
+
+    const findings = await screen.findByRole("figure", { name: "Open findings" });
+    const table = within(findings).getByRole("table", { hidden: true });
+    const rows = within(table).getAllByRole("row", { hidden: true });
+    expect(rows[1]).toHaveTextContent("19 Oct 2026No dataNo dataNo dataNo data");
+    expect(screen.getByText(/^14 projects\./)).toBeInTheDocument();
   });
 });

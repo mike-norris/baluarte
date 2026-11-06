@@ -70,6 +70,7 @@ export function overview(rows: OverviewRow[], extra: Partial<Overview> = {}): Ov
 export function trends(extra: Partial<Trends> = {}): Trends {
   const point = (end: string, total: number, rate: number | null) => ({
     end,
+    evaluation_run_id: 40,
     findings_open: { critical: 1, high: 2, medium: total - 3, low: 0, total },
     rule_pass_rate: rate,
     change_review_rate: rate === null ? null : rate - 0.1,
@@ -78,7 +79,9 @@ export function trends(extra: Partial<Trends> = {}): Trends {
   return {
     bucket: "week",
     from: "2026-10-19",
-    to: "2026-11-02",
+    to: "2026-11-09",
+    projects: 14,
+    current_only: [],
     points: [
       point("2026-10-19T00:00:00Z", 10, 0.8),
       point("2026-10-26T00:00:00Z", 8, null),
@@ -122,8 +125,7 @@ export function tagDetail(base: Tag, extra: Partial<TagDetail> = {}): TagDetail 
 
 export function timeSummary(extra: Partial<TimeSummary> = {}): TimeSummary {
   return {
-    from: "2026-10-07",
-    to: "2026-11-06",
+    period: { from: "2026-10-07", to: "2026-11-07" },
     by: "group",
     rows: [
       {
@@ -152,16 +154,18 @@ export function timeSummary(extra: Partial<TimeSummary> = {}): TimeSummary {
 
 export function people(): PeopleSummary {
   return {
-    from: "2026-10-07",
-    to: "2026-11-06",
+    period: { from: "2026-10-07", to: "2026-11-07" },
     rows: [{ username: "dev.one", spent_seconds: 30_600, issues: 6, entries: 14 }],
     totals: { spent_seconds: 30_600, estimate_seconds: null, issues: 6, entries: 14 },
+    all_projects: false,
+    collected_at: "2026-11-06T06:00:00Z",
   };
 }
 
 export function entries(next: string | null = null): PersonEntries {
   return {
     username: "dev.one",
+    period: { from: "2026-10-07", to: "2026-11-07" },
     items: [
       {
         id: "gid://gitlab/Timelog/501",
@@ -213,6 +217,18 @@ export function scope(id: number, path: string): ManagerScope {
 }
 
 export const users: AppUser[] = [
-  { user_id: 1, display_name: "Ada Lovelace", email: "ada@example.test", roles: ["admin"] },
-  { user_id: 3, display_name: "Grace Hopper", email: "grace@example.test", roles: ["manager"] },
+  {
+    id: 1,
+    display_name: "Ada Lovelace",
+    email: "ada@example.test",
+    roles: ["admin"],
+    last_login_at: "2026-11-06T08:00:00Z",
+  },
+  {
+    id: 3,
+    display_name: "Grace Hopper",
+    email: "grace@example.test",
+    roles: ["manager"],
+    last_login_at: "2026-11-05T08:00:00Z",
+  },
 ];
