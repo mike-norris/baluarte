@@ -445,10 +445,11 @@ def decide(
             )
     elif not (note or "").strip():
         raise ValueError("A rejection needs a note")
+    now = db.execute(select(func.now())).scalar_one()
     row.state = decision
     row.decided_by = by.actor
     row.decided_by_user_id = by.user_id
-    row.decided_at = db.execute(select(func.now())).scalar_one()
+    row.decided_at = now
     row.decision_note = (note or "").strip() or None
     row.approved_digest = row.plan_digest if decision == "approved" else None
     db.flush()
@@ -502,9 +503,10 @@ def start_apply(db: Session, row: LabelPlan, by: Actor) -> LabelPlan:
     if reasons:
         code = "plan_expired" if reasons[0] == "expired" else reasons[0]
         raise PlanConflict(code, " ".join(REFUSAL_MESSAGES[r] for r in reasons))
+    now = db.execute(select(func.now())).scalar_one()
     row.state = "applying"
     row.applied_by = by.actor
-    row.apply_started_at = db.execute(select(func.now())).scalar_one()
+    row.apply_started_at = now
     row.progress = [
         {"step": step["step"], "status": "pending"} for step in row.plan.get("steps", [])
     ]
