@@ -1,4 +1,5 @@
 import type { InventoryFilters, InventoryState, Visibility } from "../api/gitlab";
+import { parseTagParam, tagParam } from "../api/tags";
 
 export type InventoryView = "projects" | "groups";
 
@@ -7,6 +8,11 @@ const visibilities: readonly Visibility[] = ["private", "internal", "public"];
 
 function oneOf<T extends string>(value: string | null, allowed: readonly T[]): T | "" {
   return allowed.find((item) => item === value) ?? "";
+}
+
+function tagOf(value: string | null): string {
+  const tag = parseTagParam(value);
+  return tag ? tagParam(tag) : "";
 }
 
 /** Filters live in the URL so a filtered view can be bookmarked and shared. */
@@ -23,6 +29,7 @@ export function readFilters(params: URLSearchParams): {
       archived: oneOf(params.get("archived"), ["true", "false"] as const),
       hasError: params.get("has_error") === "true",
       showExcluded: params.get("excluded") === "show",
+      tag: tagOf(params.get("tag")),
     },
   };
 }
@@ -35,6 +42,7 @@ export function writeFilters(view: InventoryView, filters: InventoryFilters): UR
   if (view === "projects" && filters.visibility) params.set("visibility", filters.visibility);
   if (view === "projects" && filters.archived) params.set("archived", filters.archived);
   if (filters.hasError) params.set("has_error", "true");
+  if (filters.tag) params.set("tag", filters.tag);
   if (filters.showExcluded) params.set("excluded", "show");
   return params;
 }
@@ -43,9 +51,10 @@ export function writeFilters(view: InventoryView, filters: InventoryFilters): UR
 export function isFiltered(filters: InventoryFilters): boolean {
   return Boolean(
     filters.search.trim() ||
-      filters.state ||
-      filters.visibility ||
-      filters.archived ||
-      filters.hasError,
+    filters.state ||
+    filters.visibility ||
+    filters.archived ||
+    filters.hasError ||
+    filters.tag,
   );
 }

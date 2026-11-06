@@ -11,6 +11,9 @@ class Role(StrEnum):
     ADMIN = "admin"
     ANALYST = "analyst"
     AUDITOR = "auditor"
+    # Follows posture, consistency and effort across the groups they own; changes no baseline
+    # or setting.
+    MANAGER = "manager"
 
 
 class Permission(StrEnum):
@@ -34,6 +37,14 @@ class Permission(StrEnum):
     JOBS_READ = "jobs:read"
     # The operating profile, Baluarte's posture against it, its exceptions and attestations.
     COMPLIANCE_READ = "compliance:read"
+    # The manager space: overview and trends across groups and tags.
+    MANAGER_READ = "manager:read"
+    # Time spent and estimated, as totals.
+    TIME_READ = "time:read"
+    # Time per person, only for projects in the reader's manager scope (admins: all).
+    TIME_READ_PEOPLE = "time:read_people"
+    # Create Baluarte tags and assign them to groups and projects; never changes GitLab.
+    TAGS_WRITE = "tags:write"
 
 
 _READ = frozenset({Permission.INVENTORY_READ, Permission.FINDINGS_READ, Permission.EVIDENCE_READ})
@@ -46,6 +57,9 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = {
         Permission.EXCEPTION_REQUEST,
         Permission.REMEDIATION_PLAN,
         Permission.EVIDENCE_PACKAGE,
+        Permission.MANAGER_READ,
+        Permission.TIME_READ,
+        Permission.TAGS_WRITE,
     },
     Role.AUDITOR: _READ
     | {
@@ -53,6 +67,15 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = {
         Permission.EVIDENCE_PACKAGE,
         Permission.AUDIT_LOG_READ,
         Permission.COMPLIANCE_READ,
+        Permission.MANAGER_READ,
+        Permission.TIME_READ,
+    },
+    Role.MANAGER: _READ
+    | {
+        Permission.MANAGER_READ,
+        Permission.TIME_READ,
+        Permission.TIME_READ_PEOPLE,
+        Permission.TAGS_WRITE,
     },
 }
 

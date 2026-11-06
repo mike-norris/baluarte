@@ -7,7 +7,7 @@ Protect GitLab API tokens, OIDC sessions, organization policies, inventory, audi
 ## Minimum controls
 
 - OIDC authorization-code flow with PKCE where applicable; validate issuer, audience, signatures, expiration; CSRF-safe session handling.
-- Server-side RBAC: admin, analyst, auditor. Deny by default.
+- Server-side RBAC: admin, analyst, auditor, manager. Deny by default.
 - Read-only GitLab token for v0.1; minimize scopes and document required permissions.
 - TLS to GitLab and web clients; no disabled certificate verification.
 - Secrets through mounted files or external secret systems; never in repository, logs, or exports.
@@ -20,21 +20,27 @@ Protect GitLab API tokens, OIDC sessions, organization policies, inventory, audi
 
 Implemented as described in [ADR-0006](architecture/ADR-0006-server-side-oidc-sessions.md): the API completes the OIDC authorization code flow with PKCE and gives the browser only an opaque `HttpOnly` session cookie. Sessions are stored as SHA-256 digests with idle (default 60 minutes) and absolute (default 8 hours) expiry. State-changing requests require the `X-CSRF-Token` header returned by `GET /api/v1/auth/me`. Every route requires a session except health, readiness, `/auth/login` and `/auth/callback`.
 
-Roles come from the identity provider's groups claim (`BALUARTE_OIDC_*_GROUPS`); a user in no mapped group cannot sign in. Endpoints check permissions:
+Roles come from the identity provider's groups claim (`BALUARTE_OIDC_ADMIN_GROUPS`, `BALUARTE_OIDC_ANALYST_GROUPS`, `BALUARTE_OIDC_AUDITOR_GROUPS`, `BALUARTE_OIDC_MANAGER_GROUPS`, or the same lists in the stored OIDC settings); a user in no mapped group cannot sign in, and a user in several gets every matching role. Endpoints check permissions:
 
-| Permission | admin | analyst | auditor |
-|---|---|---|---|
-| `inventory:read`, `findings:read`, `evidence:read` | yes | yes | yes |
-| `policy:write` (change baselines and where they apply; approve or reject others' proposed changes, never one's own) | yes | yes | no |
-| `exception:request` | yes | yes | no |
-| `exception:approve` (approve, reject, revoke; never one's own request) | yes | no | no |
-| `remediation:plan` (create and submit dry-run remediation plans) | yes | yes | no |
-| `remediation:approve` (approve or reject a plan; never one's own) | yes | no | no |
-| `evidence:export` | yes | no | yes |
-| `audit_log:read` | yes | no | yes |
-| `settings:manage` (includes running GitLab diagnostics) | yes | no | no |
-| `jobs:read` | yes | no | no |
-| `compliance:read` (the operating profile, posture, compliance exceptions and attestations; changing them needs `settings:manage`) | yes | no | yes |
+| Permission | admin | analyst | auditor | manager |
+|---|---|---|---|---|
+| `inventory:read`, `findings:read`, `evidence:read` | yes | yes | yes | yes |
+| `policy:write` (change baselines and where they apply; approve or reject others' proposed changes, never one's own) | yes | yes | no | no |
+| `exception:request` | yes | yes | no | no |
+| `exception:approve` (approve, reject, revoke; never one's own request) | yes | no | no | no |
+| `remediation:plan` (create and submit dry-run remediation plans) | yes | yes | no | no |
+| `remediation:approve` (approve or reject a plan; never one's own) | yes | no | no | no |
+| `evidence:export` | yes | no | yes | no |
+| `audit_log:read` | yes | no | yes | no |
+| `settings:manage` (includes running GitLab diagnostics) | yes | no | no | no |
+| `jobs:read` | yes | no | no | no |
+| `compliance:read` (the operating profile, posture, compliance exceptions and attestations; changing them needs `settings:manage`) | yes | no | yes | no |
+| `manager:read` (the manager overview, trends and manager scopes) | yes | yes | yes | yes |
+| `time:read` (time summaries, never naming a person) | yes | yes | yes | yes |
+| `time:read_people` (time per person, within the manager's scope; administrators everywhere) | yes | no | no | yes |
+| `tags:write` (create, edit, assign and unassign tags) | yes | yes | no | yes |
+
+Time per person is personal data ([ADR-0010](architecture/ADR-0010-time-tracking-personal-data.md)). Besides `time:read_people`, a manager sees it only for the groups an administrator assigned them ([MANAGER_SPACE.md](MANAGER_SPACE.md#manager-scopes)); `BALUARTE_TIME_PER_PERSON=false` turns it off for everyone; every read is audited as `time.people_viewed` with the filters only; and the text written with a time log is never stored ([TIME_TRACKING.md](TIME_TRACKING.md)).
 
 Exceptions separate duties: the user who requests one cannot approve or reject it, which the API and a database constraint both enforce. With the default role mapping only admins approve, so a deployment that wants two people involved needs at least two admins, or an analyst requesting and an admin approving.
 

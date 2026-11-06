@@ -717,6 +717,13 @@ def judge(
     return assess.assess(payload)
 
 
+def review_of(payload: Mapping[str, Any]) -> str | None:
+    """The review check alone with the default settings; None for a deployment."""
+    if payload.get("kind") == "deployment":
+        return None
+    return assess.review(payload)[0]
+
+
 def write(
     db: Session,
     instance_id: int,
@@ -752,6 +759,7 @@ def write(
             row = current.get(payload_key(payload))
             digest = payload_digest(payload)
             outcome, reasons = judge(payload, shas, target.default_branch)
+            reviewed = review_of(payload)
             complete = not assess.incomplete(payload)
             for name in ("approvals", "pipeline", "deployments"):
                 part = payload.get(name)
@@ -761,8 +769,13 @@ def write(
                 previous = db.get(Observation, row.observation_id)
                 if previous is not None and previous.payload_digest == digest:
                     tally.changes[f"{payload['kind']}:unchanged"] += 1
-                    if row.complete != complete or row.outcome != outcome:
+                    if (
+                        row.complete != complete
+                        or row.outcome != outcome
+                        or row.review_outcome != reviewed
+                    ):
                         row.outcome, row.reasons, row.complete = outcome, reasons, complete
+                        row.review_outcome = reviewed
                         row.updated_at = func.now()
                     continue
             observation = Observation(
@@ -797,6 +810,7 @@ def write(
                         changed_at=changed_at,
                         observation_id=observation.id,
                         outcome=outcome,
+                        review_outcome=reviewed,
                         reasons=reasons,
                         complete=complete,
                     )
@@ -805,6 +819,7 @@ def write(
             else:
                 row.observation_id = observation.id
                 row.outcome, row.reasons, row.complete = outcome, reasons, complete
+                row.review_outcome = reviewed
                 row.updated_at = func.now()
                 tally.changes[f"{payload['kind']}:updated"] += 1
         _advance(db, project)

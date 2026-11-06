@@ -13,7 +13,8 @@ from sqlalchemy import ColumnElement, Select, and_, func, or_, select
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.orm import Session
 
-from baluarte import audit
+from baluarte import audit, tags
+from baluarte.api.v1.tags import TagFilter, tag_filters
 from baluarte.auth.dependencies import Principal, database, require
 from baluarte.auth.roles import Permission
 from baluarte.controls.posture import Effective, effective
@@ -311,6 +312,13 @@ def _findings() -> FindingRows:
     )
 
 
+def _tagged_projects(db: Session, wanted: list[tuple[str, str]]) -> frozenset[int] | None:
+    """Row IDs of the projects with every tag in ``wanted``; None when no tag is asked for."""
+    if not wanted:
+        return None
+    return frozenset(tags.index(db, _instance_id(db, _settings())).projects_with(wanted))
+
+
 def _scoped(statement: FindingRows, db: Session) -> FindingRows:
     """Limit to the configured instance; nothing when GitLab is not configured."""
     instance_id = _instance_id(db, _settings())
@@ -598,16 +606,22 @@ def list_findings(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     as_of: AsOf = None,
     rule_type: Annotated[str | None, Query(max_length=63)] = None,
+    tag: TagFilter = None,
 ) -> FindingPage:
+    tagged = _tagged_projects(db, tag_filters(tag))
     if as_of is not None:
         return _findings_as_of(
             db,
             as_of,
-            FindingFilters(state, outcome, severity, project, policy, rule, monitoring, rule_type),
+            FindingFilters(
+                state, outcome, severity, project, policy, rule, monitoring, rule_type, tagged
+            ),
             after_id,
             limit,
         )
     statement = _scoped(_findings(), db)
+    if tagged is not None:
+        statement = statement.where(GitLabProject.id.in_(tagged))
     if monitoring != "all":
         scope = coverage(db, _instance_id(db, _settings()))
         statement = statement.where(
@@ -650,6 +664,8 @@ class FindingFilters:
     rule: str | None = None
     monitoring: str = "all"
     rule_type: str | None = None
+    # Project row IDs with every requested tag (today's tags); None without a tag filter.
+    projects: frozenset[int] | None = None
 
 
 def _finding_at_out(
@@ -725,6 +741,8 @@ def _findings_as_of(
         statement = statement.where(Finding.severity == filters.severity)
     if filters.project is not None:
         statement = statement.where(GitLabProject.gitlab_id == filters.project)
+    if filters.projects is not None:
+        statement = statement.where(GitLabProject.id.in_(filters.projects))
     if filters.policy is not None:
         statement = statement.where(Finding.policy_name == filters.policy)
     if filters.rule is not None:

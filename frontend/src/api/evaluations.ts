@@ -177,6 +177,8 @@ export interface FindingFilters {
   rule?: string;
   /** A rule type such as ``gitlab.labels.consistent``. */
   rule_type?: string;
+  /** A Baluarte tag as ``key:value``. */
+  tag?: string;
 }
 
 export function getEvaluationFreshness(signal: AbortSignal): Promise<EvaluationFreshness> {

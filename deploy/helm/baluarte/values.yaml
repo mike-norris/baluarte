@@ -159,6 +159,7 @@ auth:
     adminGroups: []
     analystGroups: []
     auditorGroups: []
+    managerGroups: []
   # Session idle and absolute expiry in minutes. Empty (the default) leaves them to the operating
   # profile chosen in the web UI; a value here overrides it there.
   session:
@@ -182,6 +183,11 @@ gitlab:
   # Allow approved label plans to be applied to GitLab (docs/LABELS.md). The write token is
   # entered in the web UI, never here; while this is false no plan is applied.
   labelWrites: false
+
+# Time tracking (docs/TIME_TRACKING.md). perPerson false hides time per person everywhere:
+# only totals are shown.
+timeTracking:
+  perPerson: true
 
 # Key that seals the GitLab token and OIDC client secret entered in the web UI (ADR-0008):
 # 32 random bytes, base64-encoded. With existingSecret empty the chart generates one on install,

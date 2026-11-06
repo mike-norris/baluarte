@@ -233,6 +233,8 @@ https://{{ .Values.ingress.host }}
   value: {{ join "," $oidc.analystGroups | quote }}
 - name: BALUARTE_OIDC_AUDITOR_GROUPS
   value: {{ join "," $oidc.auditorGroups | quote }}
+- name: BALUARTE_OIDC_MANAGER_GROUPS
+  value: {{ join "," ($oidc.managerGroups | default list) | quote }}
 {{- with .Values.auth.session.idleMinutes }}
 - name: BALUARTE_SESSION_IDLE_MINUTES
   value: {{ . | quote }}
@@ -300,6 +302,12 @@ https://{{ .Values.ingress.host }}
 {{- define "baluarte.labelWritesEnv" -}}
 - name: BALUARTE_LABEL_WRITES
   value: {{ ternary "true" "false" (eq (toString .Values.gitlab.labelWrites) "true") | quote }}
+{{- end }}
+
+{{/* API and worker: whether time per person is shown (docs/TIME_TRACKING.md). */}}
+{{- define "baluarte.timeTrackingEnv" -}}
+- name: BALUARTE_TIME_PER_PERSON
+  value: {{ ternary "false" "true" (eq (toString (dig "perPerson" true (.Values.timeTracking | default dict))) "false") | quote }}
 {{- end }}
 
 {{- define "baluarte.gitlabVolumeMount" -}}

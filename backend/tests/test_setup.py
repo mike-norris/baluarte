@@ -333,6 +333,7 @@ def test_saving_the_identity_provider(harness: Harness) -> None:
         "admin_groups": ["baluarte-admins"],
         "analyst_groups": ["baluarte-analysts"],
         "auditor_groups": [],
+        "manager_groups": [],
         "redirect_uri": f"{PUBLIC_URL}/api/v1/auth/callback",
     }
     assert harness.client.get("/api/v1/setup/oidc").json() == response.json()
@@ -756,12 +757,15 @@ def test_admins_change_and_disconnect_gitlab(harness: Harness) -> None:
 def test_admins_change_the_identity_provider(harness: Harness) -> None:
     client = admin_client(harness, Role.ADMIN)
 
-    saved = client.put("/api/v1/settings/oidc", json=oidc_body(auditor_groups=["audit"]))
+    saved = client.put(
+        "/api/v1/settings/oidc", json=oidc_body(auditor_groups=["audit"], manager_groups=["leads"])
+    )
     read = client.get("/api/v1/settings/oidc")
     tested = client.post("/api/v1/settings/oidc/test", json={"issuer": ISSUER})
 
     assert saved.status_code == 200
     assert read.json()["auditor_groups"] == ["audit"]
+    assert read.json()["manager_groups"] == ["leads"]
     assert tested.json()["ok"] is True
     assert harness.audit()[-1][:2] == ("user:1", "settings.oidc_updated")
 

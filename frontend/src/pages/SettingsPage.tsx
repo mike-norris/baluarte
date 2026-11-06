@@ -19,6 +19,8 @@ import { ErrorMessage } from "../components/ErrorMessage";
 import { buttonClass, secondaryClass } from "../components/styles";
 import { ChangeEvidenceCard } from "../settings/ChangeEvidenceCard";
 import { LabelWriteTokenCard } from "../settings/LabelWriteTokenCard";
+import { ManagerScopesCard } from "../settings/ManagerScopesCard";
+import { TimeSettingsCard } from "../settings/TimeSettingsCard";
 import { describeInterval } from "../settings/format";
 import { GitLabForm } from "../settings/GitLabForm";
 import { OidcForm } from "../settings/OidcForm";
@@ -256,6 +258,7 @@ function OidcCard({ csrf, secretKey }: { csrf: string; secretKey: boolean | null
                 ["Admin groups", groupList(config.admin_groups)],
                 ["Analyst groups", groupList(config.analyst_groups)],
                 ["Auditor groups", groupList(config.auditor_groups)],
+                ["Manager groups", groupList(config.manager_groups ?? [])],
               ]}
             />
           )}
@@ -427,6 +430,8 @@ function SettingsContent({ csrf }: { csrf: string }) {
       <ReviewCard csrf={csrf} />
       <ChangeEvidenceCard csrf={csrf} />
       <LabelWriteTokenCard csrf={csrf} secretKey={secretKey} />
+      <ManagerScopesCard csrf={csrf} />
+      <TimeSettingsCard csrf={csrf} />
       <ComplianceCard csrf={csrf} />
       <AuditShippingCard csrf={csrf} />
       {info.error ? (

@@ -11,6 +11,8 @@ import { finding } from "../test/findings";
 import { EVALUATION_FRESHNESS, evaluationFreshness, freshness } from "../test/freshness";
 
 const ME = "GET /api/v1/auth/me";
+const TAGGED = "GET /api/v1/findings?state=open&tag=team%3Apayments&limit=50";
+const OPEN = "GET /api/v1/findings?state=open&limit=50";
 const FRESHNESS = "GET /api/v1/gitlab/freshness";
 const ALL = "GET /api/v1/findings?limit=50";
 
@@ -231,5 +233,23 @@ describe("findings list", () => {
         "These results are not current compliance until an evaluation succeeds again.",
       ),
     ).toBeInTheDocument();
+  });
+});
+
+describe("findings for a tag", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("says the list is limited to a tag and links to the whole list", async () => {
+    api({ [TAGGED]: () => page([finding(1)]), [OPEN]: () => page([]) });
+    const user = userEvent.setup();
+    const router = renderAt("/findings?state=open&tag=team:payments");
+
+    expect(await screen.findByText(/Projects tagged team=payments only\./)).toBeInTheDocument();
+    await user.click(screen.getByRole("link", { name: "Remove the tag filter" }));
+
+    expect(router.state.location.search).toBe("?state=open");
+    expect(screen.queryByText(/Projects tagged/)).not.toBeInTheDocument();
   });
 });

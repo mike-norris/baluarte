@@ -31,6 +31,12 @@ import { formatTime } from "../time";
 
 const cell = "px-3 py-2";
 
+function withoutTag(filters: FindingFilters): FindingFilters {
+  const rest = { ...filters };
+  delete rest.tag;
+  return rest;
+}
+
 function Filters({ filters }: { filters: FindingFilters }) {
   const [params, setParams] = useSearchParams();
 
@@ -42,8 +48,9 @@ function Filters({ filters }: { filters: FindingFilters }) {
       const value = form.get(field);
       if (typeof value === "string" && value.trim()) query.set(field, value.trim());
     }
-    // The rule type comes from links (such as Labels), not the form; keep it.
+    // The rule type and tag come from links (such as Labels and Manager), not the form; keep them.
     if (filters.rule_type) query.set("rule_type", filters.rule_type);
+    if (filters.tag) query.set("tag", filters.tag);
     const next = writeFindingFilters(readFindingFilters(query));
     const asOf = params.get("as_of");
     if (asOf) next.set("as_of", asOf);
@@ -118,6 +125,17 @@ function Filters({ filters }: { filters: FindingFilters }) {
           className={fieldClass}
         />
       </label>
+      {filters.tag && (
+        <p className="text-sm sm:col-span-2 lg:col-span-6">
+          {`Projects tagged ${filters.tag.replace(":", "=")} only. `}
+          <Link
+            to={`?${writeFindingFilters(withoutTag(filters)).toString()}`}
+            className={linkClass}
+          >
+            Remove the tag filter
+          </Link>
+        </p>
+      )}
       <div className="flex gap-2 sm:col-span-2 lg:col-span-6">
         <button type="submit" className={buttonClass}>
           Apply filters

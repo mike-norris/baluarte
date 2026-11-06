@@ -283,6 +283,7 @@ function oidcRows(config: OidcConfig): [string, ReactNode][] {
     ["Admin groups", groupList(config.admin_groups)],
     ["Analyst groups", groupList(config.analyst_groups)],
     ["Auditor groups", groupList(config.auditor_groups)],
+    ["Manager groups", groupList(config.manager_groups ?? [])],
   ];
 }
 

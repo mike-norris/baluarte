@@ -31,6 +31,7 @@ function initialFields(config: OidcConfig | null): OidcFields {
     admin_groups: config?.admin_groups.join("\n") ?? "",
     analyst_groups: config?.analyst_groups.join("\n") ?? "",
     auditor_groups: config?.auditor_groups.join("\n") ?? "",
+    manager_groups: config?.manager_groups?.join("\n") ?? "",
   };
 }
 
@@ -170,6 +171,7 @@ export function OidcForm({
           admin_groups: parseGroups(fields.admin_groups),
           analyst_groups: parseGroups(fields.analyst_groups),
           auditor_groups: parseGroups(fields.auditor_groups),
+          manager_groups: parseGroups(fields.manager_groups),
         },
         csrf,
       );
@@ -330,6 +332,21 @@ export function OidcForm({
             className={fieldClass}
           />
         </label>
+        <label className="block text-sm font-medium">
+          Manager groups
+          <textarea
+            name="manager_groups"
+            rows={2}
+            value={fields.manager_groups}
+            onChange={change}
+            aria-describedby="manager-groups-help"
+            className={fieldClass}
+          />
+        </label>
+        <p id="manager-groups-help" className="text-xs text-slate-600">
+          Managers see the manager space and time tracking, and tag projects. They cannot change
+          baselines or settings.
+        </p>
       </fieldset>
 
       <details className="rounded border border-slate-200 p-3">

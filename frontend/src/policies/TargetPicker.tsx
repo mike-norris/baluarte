@@ -27,6 +27,7 @@ function filters(search: string): InventoryFilters {
     hasError: false,
     // Policies can still be assigned to excluded targets; they apply once included again.
     showExcluded: true,
+    tag: "",
   };
 }
 

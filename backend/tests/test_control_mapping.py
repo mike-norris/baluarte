@@ -792,7 +792,7 @@ def test_the_manifest_records_the_mapping_in_force(world: World) -> None:
 
     assert response.status_code == 200, response.text
     manifest = response.json()["manifest"]
-    assert manifest["manifest_format"] == "baluarte.evidence-manifest/v6"
+    assert manifest["manifest_format"] == "baluarte.evidence-manifest/v7"
     mapping = manifest["control_mapping"]
     assert mapping["mapping_version"] == MAPPING_VERSION
     assert len(mapping["effective"]) == len(DEFAULT_MAPPING)

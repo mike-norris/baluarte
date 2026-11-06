@@ -155,6 +155,7 @@ def _oidc_out(settings: AuthSettings, secret: bool) -> OidcConfig:
         admin_groups=sorted(settings.group_roles.get(Role.ADMIN, ())),
         analyst_groups=sorted(settings.group_roles.get(Role.ANALYST, ())),
         auditor_groups=sorted(settings.group_roles.get(Role.AUDITOR, ())),
+        manager_groups=sorted(settings.group_roles.get(Role.MANAGER, ())),
         redirect_uri=settings.redirect_uri,
     )
 
@@ -185,6 +186,7 @@ def update_oidc(db: Session, update: OidcUpdate, actor: str, via: Via) -> OidcCo
         "admin": sorted({group.strip() for group in update.admin_groups if group.strip()}),
         "analyst": sorted({group.strip() for group in update.analyst_groups if group.strip()}),
         "auditor": sorted({group.strip() for group in update.auditor_groups if group.strip()}),
+        "manager": sorted({group.strip() for group in update.manager_groups if group.strip()}),
     }
     try:
         checked = stored_auth_settings(
@@ -241,6 +243,7 @@ def update_oidc(db: Session, update: OidcUpdate, actor: str, via: Via) -> OidcCo
             "admin_groups": groups["admin"],
             "analyst_groups": groups["analyst"],
             "auditor_groups": groups["auditor"],
+            "manager_groups": groups["manager"],
             "client_secret_replaced": update.client_secret is not None,
             "client_secret_cleared": update.clear_client_secret,
         },

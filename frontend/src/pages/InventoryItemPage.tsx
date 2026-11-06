@@ -37,6 +37,7 @@ import {
   typeLabels,
 } from "../security-policies/format";
 import { formatTime } from "../time";
+import { ItemTags } from "../manager/parts";
 
 type Kind = "group" | "project";
 
@@ -448,6 +449,11 @@ export function ProjectPage() {
           </Fact>
         )}
         {project.namespace_kind === "user" && <Fact term="Namespace">Personal</Fact>}
+        {project.tags && project.tags.length > 0 && (
+          <Fact term="Tags">
+            <ItemTags tags={project.tags} />
+          </Fact>
+        )}
         <Fact term="Last seen">{formatTime(project.last_seen_at)}</Fact>
         {project.last_error && (
           <Fact term="Last error">
@@ -515,6 +521,11 @@ export function GroupPage() {
             Find them in the inventory
           </Link>
         </Fact>
+        {group.tags && group.tags.length > 0 && (
+          <Fact term="Tags">
+            <ItemTags tags={group.tags} />
+          </Fact>
+        )}
         <Fact term="Last seen">{formatTime(group.last_seen_at)}</Fact>
         {group.last_error && (
           <Fact term="Last error">

@@ -10,7 +10,8 @@ from pydantic import AwareDatetime, BaseModel
 from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.orm import Session
 
-from baluarte import audit
+from baluarte import audit, tags
+from baluarte.api.v1.tags import TagFilter, tag_filters
 from baluarte.auth.dependencies import Principal, database, require
 from baluarte.auth.roles import Permission
 from baluarte.db.models import CollectionRun, GitLabGroup, GitLabInstance, GitLabProject
@@ -303,6 +304,18 @@ def _scope(db: Session, url: str) -> Coverage:
     return coverage(db, instance_id_for(db, url))
 
 
+class AppliedTag(BaseModel):
+    key: str
+    value: str
+    # "project": assigned to the project directly; "group": inherited from ``from_path``.
+    via: Literal["project", "group"]
+    from_path: str
+
+
+def _applied(found: list[tags.Applied]) -> list[AppliedTag]:
+    return [AppliedTag(key=a.key, value=a.value, via=a.via, from_path=a.from_path) for a in found]
+
+
 class GroupOut(BaseModel):
     id: int
     gitlab_id: int
@@ -316,6 +329,8 @@ class GroupOut(BaseModel):
     last_error: str | None
     last_error_at: datetime | None
     monitoring: Monitoring
+    # Tags that apply to the group, its own and inherited (docs/TAGS.md).
+    tags: list[AppliedTag] = []
 
 
 class GroupPage(BaseModel):
@@ -325,11 +340,16 @@ class GroupPage(BaseModel):
     excluded_hidden: int
 
 
-def _group_out(group: GitLabGroup, scope: Coverage) -> GroupOut:
+def _group_out(group: GitLabGroup, scope: Coverage, index: tags.TagIndex) -> GroupOut:
     return GroupOut.model_validate(
         {
-            **{key: getattr(group, key) for key in GroupOut.model_fields if key != "monitoring"},
+            **{
+                key: getattr(group, key)
+                for key in GroupOut.model_fields
+                if key not in ("monitoring", "tags")
+            },
             "monitoring": monitoring_of(scope.for_group(group.gitlab_id)),
+            "tags": _applied(index.of_group(group.gitlab_id)),
         }
     )
 
@@ -352,13 +372,16 @@ def list_groups(
     parent_gitlab_id: Annotated[int | None, Query(gt=0)] = None,
     has_error: Annotated[bool | None, Query()] = None,
     monitoring: Annotated[MonitoringFilter, Query()] = "included",
+    tag: TagFilter = None,
     after_id: Annotated[int | None, Query(gt=0)] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> GroupPage:
+    wanted = tag_filters(tag)
     url = _configured_url()
     if url is None:
         return GroupPage(items=[], next_after_id=None, excluded_hidden=0)
     scope = _scope(db, url)
+    index = tags.index(db, instance_id_for(db, url))
     statement = (
         select(GitLabGroup)
         .join(GitLabInstance, GitLabInstance.id == GitLabGroup.instance_id)
@@ -370,6 +393,8 @@ def list_groups(
         statement = statement.where(GitLabGroup.full_path.ilike(_like(search), escape="\\"))
     if parent_gitlab_id is not None:
         statement = statement.where(GitLabGroup.parent_gitlab_id == parent_gitlab_id)
+    if wanted:
+        statement = statement.where(GitLabGroup.gitlab_id.in_(index.groups_with(wanted)))
     if has_error is not None:
         statement = statement.where(
             GitLabGroup.last_error.is_not(None) if has_error else GitLabGroup.last_error.is_(None)
@@ -385,7 +410,7 @@ def list_groups(
     if after_id is not None:
         statement = statement.where(GitLabGroup.id > after_id)
     rows = db.scalars(statement.order_by(GitLabGroup.id).limit(limit + 1)).all()
-    items = [_group_out(row, scope) for row in rows[:limit]]
+    items = [_group_out(row, scope, index) for row in rows[:limit]]
     return GroupPage(
         items=items,
         next_after_id=items[-1].id if len(rows) > limit else None,
@@ -409,6 +434,8 @@ class ProjectOut(BaseModel):
     last_error: str | None
     last_error_at: datetime | None
     monitoring: Monitoring
+    # Tags that apply to the project: assigned directly or inherited from its groups.
+    tags: list[AppliedTag] = []
 
 
 class ProjectPage(BaseModel):
@@ -418,13 +445,16 @@ class ProjectPage(BaseModel):
     excluded_hidden: int
 
 
-def _project_out(project: GitLabProject, scope: Coverage) -> ProjectOut:
+def _project_out(project: GitLabProject, scope: Coverage, index: tags.TagIndex) -> ProjectOut:
     return ProjectOut.model_validate(
         {
             **{
-                key: getattr(project, key) for key in ProjectOut.model_fields if key != "monitoring"
+                key: getattr(project, key)
+                for key in ProjectOut.model_fields
+                if key not in ("monitoring", "tags")
             },
             "monitoring": monitoring_of(scope.of(project)),
+            "tags": _applied(index.of_project(project.id)),
         }
     )
 
@@ -449,13 +479,16 @@ def list_projects(
     archived: Annotated[bool | None, Query()] = None,
     has_error: Annotated[bool | None, Query()] = None,
     monitoring: Annotated[MonitoringFilter, Query()] = "included",
+    tag: TagFilter = None,
     after_id: Annotated[int | None, Query(gt=0)] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> ProjectPage:
+    wanted = tag_filters(tag)
     url = _configured_url()
     if url is None:
         return ProjectPage(items=[], next_after_id=None, excluded_hidden=0)
     scope = _scope(db, url)
+    index = tags.index(db, instance_id_for(db, url))
     statement = (
         select(GitLabProject)
         .join(GitLabInstance, GitLabInstance.id == GitLabProject.instance_id)
@@ -475,6 +508,8 @@ def list_projects(
         statement = statement.where(GitLabProject.visibility == visibility)
     if archived is not None:
         statement = statement.where(GitLabProject.archived.is_(archived))
+    if wanted:
+        statement = statement.where(GitLabProject.id.in_(index.projects_with(wanted)))
     if has_error is not None:
         statement = statement.where(
             GitLabProject.last_error.is_not(None)
@@ -492,7 +527,7 @@ def list_projects(
     if after_id is not None:
         statement = statement.where(GitLabProject.id > after_id)
     rows = db.scalars(statement.order_by(GitLabProject.id).limit(limit + 1)).all()
-    items = [_project_out(row, scope) for row in rows[:limit]]
+    items = [_project_out(row, scope, index) for row in rows[:limit]]
     return ProjectPage(
         items=items,
         next_after_id=items[-1].id if len(rows) > limit else None,
@@ -606,7 +641,7 @@ def read_group(
         )
     ).scalar_one()
     return GroupDetail(
-        group=_group_out(group, coverage(db, instance.id)),
+        group=_group_out(group, coverage(db, instance.id), tags.index(db, instance.id)),
         ancestry=_ancestry_out(db, instance.id, group.parent_gitlab_id, {gitlab_id}),
         subgroups=subgroups,
         projects=projects,
@@ -648,7 +683,7 @@ def read_project(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such project in the inventory")
     settings, instance = configured
     start = None if project.namespace_kind == "user" else project.namespace_gitlab_id
-    out = _project_out(project, coverage(db, instance.id, as_of))
+    out = _project_out(project, coverage(db, instance.id, as_of), tags.index(db, instance.id))
     return ProjectDetail(
         project=out,
         ancestry=_ancestry_out(db, instance.id, start, set()),

@@ -65,6 +65,7 @@ def test_full_detection_on_a_healthy_instance() -> None:
         "security_policies.approval": "supported",
         "security_policies.pipeline_execution": "supported",
         "security_policies.vulnerability_management": "supported",
+        "timelogs.read": "supported",
     }
     assert snapshot.probes["protected_branches.read"].endpoint == (
         "GET /projects/:id/protected_branches"

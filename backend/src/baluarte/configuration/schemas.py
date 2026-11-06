@@ -49,6 +49,7 @@ class OidcUpdate(BaseModel):
     admin_groups: list[GroupName] = Field(min_length=1, max_length=100)
     analyst_groups: list[GroupName] = Field(default=[], max_length=100)
     auditor_groups: list[GroupName] = Field(default=[], max_length=100)
+    manager_groups: list[GroupName] = Field(default=[], max_length=100)
 
 
 class OidcConfig(BaseModel):
@@ -62,6 +63,7 @@ class OidcConfig(BaseModel):
     admin_groups: list[str]
     analyst_groups: list[str]
     auditor_groups: list[str]
+    manager_groups: list[str]
     # Register this with the identity provider.
     redirect_uri: str
 

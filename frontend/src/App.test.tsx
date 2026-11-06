@@ -32,12 +32,18 @@ describe("navigation", () => {
     );
   });
 
-  it("shows Settings, Compliance and the Audit log only to users with their permissions", async () => {
+  it("shows Manager, Settings, Compliance and the Audit log only to users with their permissions", async () => {
     vi.unstubAllGlobals();
     signedIn({
       ...analyst,
       roles: ["admin"],
-      permissions: [...analyst.permissions, "settings:manage", "audit_log:read", "compliance:read"],
+      permissions: [
+        ...analyst.permissions,
+        "settings:manage",
+        "audit_log:read",
+        "compliance:read",
+        "manager:read",
+      ],
     });
 
     renderAt("/governance");

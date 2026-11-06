@@ -20,6 +20,7 @@ from baluarte.api.v1 import (
     health,
     jobs,
     labels,
+    manager,
     observations,
     policies,
     policy_assignments,
@@ -30,6 +31,8 @@ from baluarte.api.v1 import (
     security_policies,
     setup,
     system,
+    tags,
+    time,
 )
 from baluarte.auth.dependencies import current_principal
 
@@ -67,6 +70,9 @@ protected.include_router(remediation.router)
 protected.include_router(compliance.router)
 protected.include_router(controls.router)
 protected.include_router(labels.router)
+protected.include_router(manager.router)
+protected.include_router(tags.router)
+protected.include_router(time.router)
 
 router = APIRouter(prefix="/api/v1")
 router.include_router(public)

@@ -37,8 +37,11 @@ from baluarte.evidence.export import (
     ScopeError,
 )
 from baluarte.evidence.package import EvidencePackage, PackageConflict, PackageRequest
+from baluarte.integrations.gitlab.instances import instance_id_for
 from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_settings
+from baluarte.manager.scopes import people_scope
 from baluarte.settings import ConfigurationError
+from baluarte.timetracking.settings import per_person_enabled
 
 logger = logging.getLogger(__name__)
 
@@ -133,9 +136,16 @@ def export_evidence(
     settings = _settings()
     if settings is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "GitLab is not configured")
+    people = _people_projects(engine, principal, settings) if request.scope.include_people else None
     export_id = uuid.uuid4().hex
     export = EvidenceExport(
-        engine, settings, request.scope, request.format, export_id, requested_by=principal.actor
+        engine,
+        settings,
+        request.scope,
+        request.format,
+        export_id,
+        requested_by=principal.actor,
+        people_projects=people,
     )
     try:
         if export.instance_id is None:
@@ -158,6 +168,19 @@ def export_evidence(
                     "instance": settings.url,
                 },
             )
+            if request.scope.include_people:
+                # Who exported time per person, and for which scope; never what it held.
+                audit.record(
+                    db,
+                    actor=principal.actor,
+                    action="time.people_exported",
+                    resource_type="evidence_export",
+                    resource_id=export_id,
+                    details={
+                        "scope": request.scope.described(),
+                        "projects": "all" if people is None else "manager_scope",
+                    },
+                )
             db.commit()
     except BaseException:
         export.close()
@@ -172,6 +195,35 @@ def export_evidence(
             "X-Baluarte-Export-Id": export_id,
         },
     )
+
+
+def _people_projects(
+    engine: Engine, principal: Principal, settings: GitLabSettings
+) -> frozenset[int] | None:
+    """The projects whose time per person this export may hold; None for every project.
+
+    403 without ``time:read_people``, when the deployment turned it off, or without a scope.
+    """
+
+    def refused(code: str, message: str) -> HTTPException:
+        return HTTPException(status.HTTP_403_FORBIDDEN, detail={"code": code, "message": message})
+
+    if Permission.TIME_READ_PEOPLE not in principal.permissions:
+        raise refused("forbidden", "Exporting time per person needs time:read_people")
+    try:
+        enabled = per_person_enabled()
+    except ConfigurationError as error:
+        raise refused("per_person_disabled", str(error)) from error
+    if not enabled:
+        raise refused("per_person_disabled", "Time per person is turned off for this deployment")
+    with Session(engine) as db:
+        instance_id = instance_id_for(db, settings.url)
+        found = people_scope(db, instance_id, principal.user_id, principal.roles)
+    if found.all:
+        return None
+    if not found.project_ids:
+        raise refused("out_of_scope", "No groups are assigned to you as a manager")
+    return found.project_ids
 
 
 PACKAGE = "evidence_package"

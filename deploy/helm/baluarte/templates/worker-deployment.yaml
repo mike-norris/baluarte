@@ -44,6 +44,7 @@ spec:
             {{- include "baluarte.loggingEnv" . | nindent 12 }}
             {{- include "baluarte.secretKeyEnv" . | nindent 12 }}
             {{- include "baluarte.labelWritesEnv" . | nindent 12 }}
+            {{- include "baluarte.timeTrackingEnv" . | nindent 12 }}
             {{- with include "baluarte.gitlabEnv" . | trim }}
             {{- . | nindent 12 }}
             {{- end }}

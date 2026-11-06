@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from baluarte.db.models import GitLabInstance
 from baluarte.evidence.observations import Observed, Provenance, record
-from baluarte.integrations.gitlab import security_policies
+from baluarte.integrations.gitlab import security_policies, timelogs
 from baluarte.integrations.gitlab.client import (
     GRAPHQL_ENDPOINT,
     Forbidden,
@@ -149,6 +149,25 @@ def security_policy_probes(client: GitLabClient, group: Any) -> dict[str, Probe]
             client, security_policies.type_probe_query(policy_type), path
         )
     return probes
+
+
+def timelog_probe(client: GitLabClient, project: Any) -> Probe:
+    """Whether time logs can be read with GraphQL on the sample project."""
+    path = project.get("path_with_namespace") if isinstance(project, dict) else None
+    if not isinstance(path, str):
+        return Probe(status="skipped", endpoint=GRAPHQL_ENDPOINT, detail="no visible project")
+    try:
+        data = client.graphql(timelogs.PROBE_QUERY, {"path": path})
+    except GitLabError as error:
+        return _failed_probe(GRAPHQL_ENDPOINT, error)
+    if not isinstance(data.get("project"), dict):
+        return Probe(
+            status="not_found",
+            endpoint=GRAPHQL_ENDPOINT,
+            http_status=200,
+            detail="GraphQL returned no project for the sample project's path",
+        )
+    return Probe(status="supported", endpoint=GRAPHQL_ENDPOINT, http_status=200)
 
 
 def change_probes(client: GitLabClient, project_id: int | None) -> dict[str, Probe]:
@@ -301,6 +320,7 @@ def detect(client: GitLabClient, now: datetime | None = None) -> CapabilitySnaps
             probes[name] = Probe(status="skipped", endpoint=template, detail="no visible project")
 
     probes.update(change_probes(client, project_id if isinstance(project_id, int) else None))
+    probes[timelogs.PROBE] = timelog_probe(client, project)
 
     group = _first(groups)
     group_id = group.get("id") if isinstance(group, dict) else None

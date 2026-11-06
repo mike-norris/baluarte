@@ -449,7 +449,7 @@ def test_the_package_holds_results_changes_and_a_reproducible_sample(
         "SHA256SUMS",
     } <= names
     manifest = json.loads(archive.read("manifest.json"))
-    assert manifest["manifest_format"] == "baluarte.evidence-manifest/v6"
+    assert manifest["manifest_format"] == "baluarte.evidence-manifest/v7"
     assert manifest["export_format"] == "baluarte.evidence-package/v1"
     evidence_package = manifest["evidence_package"]
     sample = evidence_package["sample"]

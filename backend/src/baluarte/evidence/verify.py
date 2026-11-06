@@ -40,6 +40,7 @@ REQUIRED = {
     "baluarte.evidence-export/v2": {"zip": "exceptions.csv", "json": "exceptions"},
     "baluarte.evidence-export/v3": {"zip": "exceptions.csv", "json": "exceptions"},
     "baluarte.evidence-export/v4": {"zip": "exceptions.csv", "json": "exceptions"},
+    "baluarte.evidence-export/v5": {"zip": "exceptions.csv", "json": "exceptions"},
     "baluarte.evidence-package/v1": {"zip": "exceptions.csv"},
 }
 # What an audit-period package must hold besides the exceptions.

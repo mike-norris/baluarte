@@ -40,8 +40,16 @@ TARGET_TYPES = ("instance", "group", "project")
 SEVERITIES = ("low", "medium", "high", "critical")
 FINDING_STATES = ("open", "resolved", "excepted")
 EXPORT_STATES = ("queued", "running", "succeeded", "failed")
-ROLES = ("admin", "analyst", "auditor")
-RUN_KINDS = ("capabilities", "groups", "projects", "security_policies", "changes", "labels")
+ROLES = ("admin", "analyst", "auditor", "manager")
+RUN_KINDS = (
+    "capabilities",
+    "groups",
+    "projects",
+    "security_policies",
+    "changes",
+    "labels",
+    "time",
+)
 SECURITY_POLICY_TYPES = (
     "scan_execution",
     "approval",
@@ -87,6 +95,7 @@ SETTING_KEYS = (
     "audit_shipping",
     "change_evidence",
     "label_write_token",
+    "time_tracking",
 )
 SECRET_NAMES = (
     "oidc_client_secret",
@@ -448,6 +457,10 @@ class Evaluation(Base):
         Index("ix_evaluation_policy_rule", "policy_id", "rule_id"),
         Index("ix_evaluation_project_rule", "project_id", "policy_name", "rule_id", "evaluated_at"),
         Index("ix_evaluation_run", "evaluation_run_id"),
+        # Trends count each run's results by outcome and severity for a set of projects.
+        Index(
+            "ix_evaluation_run_outcome", "evaluation_run_id", "outcome", "severity", "project_id"
+        ),
         one_of("outcome", OUTCOMES),
         one_of("severity", SEVERITIES),
         one_of("ancestry", ANCESTRIES),
@@ -1002,6 +1015,7 @@ class ChangeRecord(Base):
         ),
         one_of("kind", CHANGE_KINDS),
         one_of("outcome", CHANGE_OUTCOMES),
+        one_of("review_outcome", CHANGE_OUTCOMES),
         CheckConstraint(
             "(kind = 'merge_request') = (iid IS NOT NULL)", name="iid_for_merge_requests"
         ),
@@ -1026,6 +1040,9 @@ class ChangeRecord(Base):
     reasons: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'::text[]"))
     # False when part of it could not be read for a passing reason; it is read again.
     complete: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
+    # The review check alone (approvals, no direct push), for review rates; null for a
+    # deployment, or for a change recorded before it was kept.
+    review_outcome: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = utc_now()
     updated_at: Mapped[datetime] = utc_now()
 
@@ -1620,3 +1637,178 @@ class SetupSession(Base):
     token_digest: Mapped[str] = mapped_column(Text, primary_key=True)
     created_at: Mapped[datetime] = utc_now()
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+
+
+TAG_NAME_FORMAT = "^[a-z0-9][a-z0-9._-]{0,62}$"
+TAG_TARGET_TYPES = ("group", "project")
+
+
+class ManagerScope(Base):
+    """A GitLab group an administrator assigned to a manager (docs/MANAGER_SPACE.md).
+
+    The manager sees time per person for the group's projects, subgroups included. Rows are
+    never rewritten or deleted; a trigger lets an open assignment be ended, once.
+    """
+
+    __tablename__ = "manager_scope"
+    __table_args__ = (
+        Index(
+            "uq_manager_scope_open",
+            "user_id",
+            "group_gitlab_id",
+            unique=True,
+            postgresql_where=text("ended_at IS NULL"),
+        ),
+        Index("ix_manager_scope_user", "user_id"),
+        CheckConstraint("(ended_at IS NULL) = (ended_by IS NULL)", name="ended_by_whom"),
+    )
+
+    id: Mapped[int] = pk()
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id"))
+    group_gitlab_id: Mapped[int] = mapped_column(BigInteger)
+    # As the inventory recorded it when assigned.
+    group_path: Mapped[str] = mapped_column(Text)
+    assigned_by: Mapped[str] = mapped_column(Text)
+    assigned_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    assigned_at: Mapped[datetime] = utc_now()
+    ended_by: Mapped[str | None] = mapped_column(Text)
+    ended_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Tag(Base):
+    """A key=value tag kept in Baluarte to group projects (docs/TAGS.md); never sent to GitLab.
+
+    Only the description and colour can change; tags are never deleted.
+    """
+
+    __tablename__ = "tag"
+    __table_args__ = (
+        UniqueConstraint("instance_id", "key", "value"),
+        CheckConstraint(f"key ~ '{TAG_NAME_FORMAT}'", name="key_format"),
+        CheckConstraint(f"value ~ '{TAG_NAME_FORMAT}'", name="value_format"),
+        CheckConstraint("color IS NULL OR color ~ '^#[0-9A-F]{6}$'", name="color_format"),
+        CheckConstraint(
+            "description IS NULL OR char_length(description) <= 500", name="description_length"
+        ),
+    )
+
+    id: Mapped[int] = pk()
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    key: Mapped[str] = mapped_column(Text)
+    value: Mapped[str] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
+    color: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[str] = mapped_column(Text)
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = utc_now()
+    updated_at: Mapped[datetime] = utc_now()
+
+
+class TagAssignment(Base):
+    """A tag assigned to a group (and so its subgroups and projects) or to a project.
+
+    Rows are never rewritten or deleted; a trigger lets an open assignment be ended, once.
+    """
+
+    __tablename__ = "tag_assignment"
+    __table_args__ = (
+        Index(
+            "uq_tag_assignment_open",
+            "tag_id",
+            "target_type",
+            "target_gitlab_id",
+            unique=True,
+            postgresql_where=text("ended_at IS NULL"),
+        ),
+        Index("ix_tag_assignment_target", "target_type", "target_gitlab_id"),
+        one_of("target_type", TAG_TARGET_TYPES),
+        CheckConstraint("(ended_at IS NULL) = (ended_by IS NULL)", name="ended_by_whom"),
+    )
+
+    id: Mapped[int] = pk()
+    tag_id: Mapped[int] = mapped_column(ForeignKey("tag.id"))
+    target_type: Mapped[str] = mapped_column(Text)
+    target_gitlab_id: Mapped[int] = mapped_column(BigInteger)
+    target_path: Mapped[str] = mapped_column(Text)
+    assigned_by: Mapped[str] = mapped_column(Text)
+    assigned_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    assigned_at: Mapped[datetime] = utc_now()
+    ended_by: Mapped[str | None] = mapped_column(Text)
+    ended_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class TimeEntry(Base):
+    """One time log from GitLab (docs/TIME_TRACKING.md).
+
+    The summary text is never stored, only its SHA-256. ``removed_at`` marks a log GitLab no
+    longer returns when its period is read again (deleted in GitLab); it is kept as history.
+    """
+
+    __tablename__ = "time_entry"
+    __table_args__ = (
+        UniqueConstraint("instance_id", "timelog_id"),
+        Index("ix_time_entry_instance_spent", "instance_id", "spent_at"),
+        Index("ix_time_entry_project_spent", "project_id", "spent_at"),
+        Index("ix_time_entry_user_spent", "username", "spent_at"),
+        Index("ix_time_entry_observation", "observation_id"),
+        sha256_hex("summary_sha256"),
+    )
+
+    id: Mapped[int] = pk()
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    project_id: Mapped[int] = mapped_column(ForeignKey("gitlab_project.id"))
+    # GitLab's global ID, such as gid://gitlab/Timelog/12.
+    timelog_id: Mapped[str] = mapped_column(Text)
+    username: Mapped[str | None] = mapped_column(Text)
+    spent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    seconds: Mapped[int] = mapped_column(Integer)
+    issue_iid: Mapped[int | None] = mapped_column(BigInteger)
+    merge_request_iid: Mapped[int | None] = mapped_column(BigInteger)
+    # The issue's or merge request's labels and milestone when the log was read.
+    labels: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'::text[]"))
+    milestone: Mapped[str | None] = mapped_column(Text)
+    summary_sha256: Mapped[str | None] = mapped_column(Text)
+    observation_id: Mapped[int] = mapped_column(ForeignKey("observation.id"))
+    created_at: Mapped[datetime] = utc_now()
+    updated_at: Mapped[datetime] = utc_now()
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class IssueEstimate(Base):
+    """An issue's time estimate and total time spent, as GitLab last reported them."""
+
+    __tablename__ = "issue_estimate"
+    __table_args__ = (
+        Index("ix_issue_estimate_instance", "instance_id"),
+        Index("ix_issue_estimate_observation", "observation_id"),
+    )
+
+    project_id: Mapped[int] = mapped_column(ForeignKey("gitlab_project.id"), primary_key=True)
+    issue_iid: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    state: Mapped[str | None] = mapped_column(Text)
+    estimate_seconds: Mapped[int] = mapped_column(Integer)
+    spent_seconds: Mapped[int] = mapped_column(Integer)
+    labels: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'::text[]"))
+    milestone: Mapped[str | None] = mapped_column(Text)
+    issue_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    observation_id: Mapped[int] = mapped_column(ForeignKey("observation.id"))
+    read_at: Mapped[datetime] = utc_now()
+
+
+class TimeCursor(Base):
+    """How far a project's time logs and issue estimates have been read.
+
+    ``history_since`` is where its time history starts: the first collection's look-back.
+    """
+
+    __tablename__ = "time_cursor"
+
+    project_id: Mapped[int] = mapped_column(ForeignKey("gitlab_project.id"), primary_key=True)
+    history_since: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    last_spent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    issues_updated_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = utc_now()

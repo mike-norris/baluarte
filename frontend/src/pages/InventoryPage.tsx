@@ -25,6 +25,9 @@ import { isFiltered, readFilters, writeFilters, type InventoryView } from "../in
 import { stateHelp, stateLabels, visibilityLabel } from "../inventory/format";
 import { MonitoringScope } from "../inventory/MonitoringScope";
 import { ScopeForm, type ScopeIntent } from "../inventory/ScopeForm";
+import { TagForm, type TagIntent } from "../inventory/TagForm";
+import { canWriteTags } from "../manager/format";
+import { ItemTags } from "../manager/parts";
 import { canWritePolicies } from "../policies/format";
 import { formatTime } from "../time";
 
@@ -123,6 +126,7 @@ function ProjectRows({ projects, select }: { projects: Project[]; select: Select
         <ExcludedBadge
           label={monitoringLabel(project.monitoring, "project", project.path_with_namespace)}
         />
+        <ItemTags tags={project.tags} />
       </th>
       <td className="px-3 py-2">{visibilityLabel(project.visibility)}</td>
       <td className="px-3 py-2">
@@ -144,6 +148,7 @@ function GroupRows({ groups, select }: { groups: Group[]; select: SelectCell }) 
           {group.full_path}
         </Link>
         <ExcludedBadge label={monitoringLabel(group.monitoring, "group", group.full_path)} />
+        <ItemTags tags={group.tags} />
       </th>
       <td className="px-3 py-2">{visibilityLabel(group.visibility)}</td>
       <StateCell state={group.state} />
@@ -170,6 +175,7 @@ function Filters({ view, filters }: { view: InventoryView; filters: InventoryFil
         visibility: value("visibility"),
         archived: value("archived"),
         has_error: form.get("has_error") ? "true" : "false",
+        tag: value("tag").replace("=", ":"),
       }),
     );
     setParams(writeFilters(view, { ...parsed, showExcluded: filters.showExcluded }));
@@ -227,6 +233,16 @@ function Filters({ view, filters }: { view: InventoryView; filters: InventoryFil
           </label>
         </>
       )}
+      <label className="text-sm font-medium">
+        Tag
+        <input
+          name="tag"
+          defaultValue={filters.tag.replace(":", "=")}
+          maxLength={127}
+          placeholder="team=payments"
+          className={fieldClass}
+        />
+      </label>
       <label className="flex items-center gap-2 text-sm font-medium">
         <input name="has_error" type="checkbox" defaultChecked={filters.hasError} />
         With collection errors
@@ -255,6 +271,7 @@ const emptyFilters: InventoryFilters = {
   archived: "",
   hasError: false,
   showExcluded: false,
+  tag: "",
 };
 
 /** Shows or hides what is excluded from monitoring; the choice is kept in the URL. */
@@ -295,6 +312,9 @@ function SelectionBar<T>({
   facts,
   selected,
   open,
+  openTags,
+  canScope,
+  canTag,
 }: {
   noun: string;
   type: "project" | "group";
@@ -302,6 +322,9 @@ function SelectionBar<T>({
   facts: (item: T) => RowFacts;
   selected: Set<number>;
   open: (intent: ScopeIntent) => void;
+  openTags: (intent: TagIntent) => void;
+  canScope: boolean;
+  canTag: boolean;
 }) {
   const chosen = rows.map(facts).filter((row) => selected.has(row.id));
   const toExclude = chosen.filter((row) => row.monitoring?.excluded !== true);
@@ -319,36 +342,55 @@ function SelectionBar<T>({
       <p aria-live="polite" className="mr-2">
         {`${count(chosen.length, type, `${type}s`)} selected.`}
       </p>
-      <button
-        type="button"
-        disabled={toExclude.length === 0 || toExclude.length > MAX_BATCH}
-        onClick={() => {
-          open({
-            mode: "exclude",
-            targets: toExclude.map((row) => ({ type, gitlab_id: row.gitlabId })),
-            labels: toExclude.map((row) => row.path),
-          });
-        }}
-        className={secondaryClass}
-      >
-        Exclude from monitoring
-      </button>
-      <button
-        type="button"
-        disabled={toInclude.length === 0}
-        onClick={() => {
-          open({ mode: "include", ids, labels: toInclude.map((row) => row.path) });
-        }}
-        className={secondaryClass}
-      >
-        Include again
-      </button>
-      {toExclude.length > MAX_BATCH && (
+      {canScope && (
+        <>
+          <button
+            type="button"
+            disabled={toExclude.length === 0 || toExclude.length > MAX_BATCH}
+            onClick={() => {
+              open({
+                mode: "exclude",
+                targets: toExclude.map((row) => ({ type, gitlab_id: row.gitlabId })),
+                labels: toExclude.map((row) => row.path),
+              });
+            }}
+            className={secondaryClass}
+          >
+            Exclude from monitoring
+          </button>
+          <button
+            type="button"
+            disabled={toInclude.length === 0}
+            onClick={() => {
+              open({ mode: "include", ids, labels: toInclude.map((row) => row.path) });
+            }}
+            className={secondaryClass}
+          >
+            Include again
+          </button>
+        </>
+      )}
+      {canTag && (
+        <button
+          type="button"
+          disabled={chosen.length === 0}
+          onClick={() => {
+            openTags({
+              targets: chosen.map((row) => ({ type, gitlab_id: row.gitlabId })),
+              labels: chosen.map((row) => row.path),
+            });
+          }}
+          className={secondaryClass}
+        >
+          Tag…
+        </button>
+      )}
+      {canScope && toExclude.length > MAX_BATCH && (
         <p className="w-full text-slate-700">
           {`At most ${String(MAX_BATCH)} can be excluded at once.`}
         </p>
       )}
-      {elsewhere.length > 0 && (
+      {canScope && elsewhere.length > 0 && (
         <p className="w-full text-slate-700">
           {`${count(elsewhere.length, "selected " + type + " is", `selected ${type}s are`)} excluded by a group or the personal-namespace setting; include them again under Monitoring scope.`}
         </p>
@@ -365,6 +407,7 @@ function Listing<T>({
   facts,
   headers,
   canWrite,
+  canTag,
   onChanged,
 }: {
   view: InventoryView;
@@ -374,6 +417,7 @@ function Listing<T>({
   facts: (item: T) => RowFacts;
   headers: string[];
   canWrite: boolean;
+  canTag: boolean;
   onChanged: (message: string) => void;
 }) {
   const key = `${view}?${writeFilters(view, filters).toString()}`;
@@ -386,6 +430,8 @@ function Listing<T>({
   );
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [intent, setIntent] = useState<ScopeIntent | null>(null);
+  const [tagIntent, setTagIntent] = useState<TagIntent | null>(null);
+  const selectable = canWrite || canTag;
   const noun = view === "projects" ? "projects" : "groups";
   const type = view === "projects" ? "project" : "group";
 
@@ -429,7 +475,7 @@ function Listing<T>({
       return next;
     });
   }
-  const select: SelectCell = canWrite
+  const select: SelectCell = selectable
     ? (id, path) => (
         <td className="w-8 px-3 py-2">
           <input
@@ -443,7 +489,7 @@ function Listing<T>({
         </td>
       )
     : null;
-  const leading = canWrite ? (
+  const leading = selectable ? (
     <th scope="col" className="w-8 px-3 py-2">
       <input
         type="checkbox"
@@ -458,14 +504,36 @@ function Listing<T>({
 
   return (
     <div className="space-y-3">
-      {canWrite && (
+      {selectable && (
         <SelectionBar
           noun={noun}
           type={type}
           rows={paged.items}
           facts={facts}
           selected={selected}
-          open={setIntent}
+          open={(next) => {
+            setTagIntent(null);
+            setIntent(next);
+          }}
+          openTags={(next) => {
+            setIntent(null);
+            setTagIntent(next);
+          }}
+          canScope={canWrite}
+          canTag={canTag}
+        />
+      )}
+      {tagIntent && (
+        <TagForm
+          intent={tagIntent}
+          onCancel={() => {
+            setTagIntent(null);
+          }}
+          onDone={(message) => {
+            setTagIntent(null);
+            setSelected(new Set());
+            onChanged(message);
+          }}
         />
       )}
       {intent && (
@@ -529,7 +597,9 @@ export function InventoryPage() {
   const { view, filters } = readFilters(params);
   const freshness = useLoad("freshness", getFreshness);
   const { session } = useAuth();
-  const canWrite = canWritePolicies(session.status === "signed_in" ? session.user : null);
+  const user = session.status === "signed_in" ? session.user : null;
+  const canWrite = canWritePolicies(user);
+  const canTag = canWriteTags(user);
   const [reload, setReload] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const tabs: { view: InventoryView; label: string }[] = [
@@ -613,6 +683,7 @@ export function InventoryPage() {
           render={(items, select) => <ProjectRows projects={items} select={select} />}
           facts={projectFacts}
           canWrite={canWrite}
+          canTag={canTag}
           onChanged={changed}
           headers={[
             "Project",
@@ -632,6 +703,7 @@ export function InventoryPage() {
           render={(items, select) => <GroupRows groups={items} select={select} />}
           facts={groupFacts}
           canWrite={canWrite}
+          canTag={canTag}
           onChanged={changed}
           headers={["Group", "Visibility", "State", "Last seen", "Collection error"]}
         />

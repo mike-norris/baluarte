@@ -55,7 +55,9 @@ export function reasonSentences(detail: unknown, words: Record<string, string> =
   if (typeof detail !== "object" || detail === null || Array.isArray(detail)) return [];
   const reasons = (detail as { reasons?: unknown }).reasons;
   if (!Array.isArray(reasons)) return [];
-  const sentence = (code: string) => words[code] ?? code.replace(/_/g, " ");
+  // Codes read as words; anything else, such as a path, is kept as sent.
+  const sentence = (code: string) =>
+    words[code] ?? (/^[a-z]+(_[a-z]+)+$/.test(code) ? code.replace(/_/g, " ") : code);
   return reasons
     .map((item: unknown) => {
       if (typeof item === "string") return sentence(item);
@@ -109,7 +111,7 @@ export function changeFailure(status: number, detail: string | null): string {
   }
 }
 
-type Method = "POST" | "PUT" | "DELETE";
+type Method = "POST" | "PUT" | "PATCH" | "DELETE";
 
 /** Send ``body`` as JSON with a CSRF token; resolves to the JSON response, or null for 204. */
 export async function sendJson<T>(
@@ -117,8 +119,9 @@ export async function sendJson<T>(
   path: string,
   body: unknown,
   csrfToken: string,
+  words: Record<string, string> = {},
 ): Promise<T | null> {
-  const { data } = await sendJsonWithStatus<T>(method, path, body, csrfToken);
+  const { data } = await sendJsonWithStatus<T>(method, path, body, csrfToken, words);
   return data;
 }
 
@@ -128,6 +131,7 @@ export async function sendJsonWithStatus<T>(
   path: string,
   body: unknown,
   csrfToken: string,
+  words: Record<string, string> = {},
 ): Promise<{ status: number; data: T | null }> {
   let response: Response;
   try {
@@ -147,7 +151,7 @@ export async function sendJsonWithStatus<T>(
   if (!response.ok) {
     const detail = await readDetail(response);
     const message = changeFailure(response.status, detailMessage(detail));
-    const reasons = reasonSentences(detail);
+    const reasons = reasonSentences(detail, words);
     throw reasons.length > 0
       ? new RefusalError(response.status, message, reasons)
       : new ApiError(response.status, message);
