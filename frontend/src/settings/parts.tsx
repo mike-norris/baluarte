@@ -3,13 +3,18 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ApiError } from "../api/client";
 import { secondaryClass } from "../components/styles";
 
-export const errorClass = "rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900";
-export const noteClass = "rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950";
-export const cardClass = "space-y-4 rounded border border-slate-200 bg-white p-4";
+export const errorClass =
+  "rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900";
+export const noteClass =
+  "rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950";
+export const cardClass =
+  "space-y-4 rounded border border-slate-200 bg-white p-4";
 
 /** An ApiError for anything thrown by a request. */
 export function asApiError(error: unknown): ApiError {
-  return error instanceof ApiError ? error : new ApiError(0, "The response could not be read.");
+  return error instanceof ApiError
+    ? error
+    : new ApiError(0, "The response could not be read.");
 }
 
 /** An error summary that takes focus when it appears, so keyboard and screen reader users hear it. */
@@ -53,7 +58,11 @@ export function secretLabel(state: "configured" | "not_set"): string {
 }
 
 export function groupList(groups: string[]): ReactNode {
-  return groups.length > 0 ? groups.join(", ") : <span className="text-slate-500">None</span>;
+  return groups.length > 0 ? (
+    groups.join(", ")
+  ) : (
+    <span className="text-slate-500">None</span>
+  );
 }
 
 /** A value with a button that copies it; the result is announced politely. */
@@ -61,7 +70,8 @@ export function CopyValue({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState<"yes" | "no" | null>(null);
 
   function copy() {
-    const clipboard = typeof navigator === "undefined" ? undefined : navigator.clipboard;
+    const clipboard =
+      typeof navigator === "undefined" ? undefined : navigator.clipboard;
     if (!clipboard) {
       setCopied("no");
       return;
@@ -80,7 +90,9 @@ export function CopyValue({ label, value }: { label: string; value: string }) {
     <div className="space-y-1">
       <p className="text-sm font-medium">{label}</p>
       <div className="flex flex-wrap items-center gap-2">
-        <code className="rounded bg-slate-100 px-2 py-1 text-sm break-all">{value}</code>
+        <code className="rounded bg-slate-100 px-2 py-1 text-sm break-all">
+          {value}
+        </code>
         <button type="button" onClick={copy} className={secondaryClass}>
           Copy<span className="sr-only"> {label.toLowerCase()}</span>
         </button>
@@ -112,11 +124,14 @@ export function SecretKeyNotice() {
       <p className="font-medium">Secrets cannot be saved yet</p>
       <p className="mt-1">
         Baluarte encrypts stored secrets with a key read from the file named by{" "}
-        <code>BALUARTE_SECRET_KEY_FILE</code>, and that key is not configured. Generate one and
-        restart the API and worker, for example with Docker Compose:
+        <code>BALUARTE_SECRET_KEY_FILE</code>, and that key is not configured.
+        Generate one and restart the API and worker, for example with Docker
+        Compose:
       </p>
       <pre className="mt-2 overflow-x-auto rounded bg-white p-2 text-xs">
-        {"(umask 022 && openssl rand -base64 32 > secrets/secret_key)\ndocker compose up -d"}
+        {
+          "(umask 022 && openssl rand -base64 32 > secrets/secret_key)\ndocker compose up -d"
+        }
       </pre>
       <p className="mt-1">Settings without secrets can still be saved.</p>
     </div>

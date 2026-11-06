@@ -17,7 +17,14 @@ import {
   redirectUri,
   type OidcFields,
 } from "./format";
-import { asApiError, CopyValue, errorClass, noteClass, Problems, SecretKeyNotice } from "./parts";
+import {
+  asApiError,
+  CopyValue,
+  errorClass,
+  noteClass,
+  Problems,
+  SecretKeyNotice,
+} from "./parts";
 
 function initialFields(config: OidcConfig | null): OidcFields {
   return {
@@ -58,7 +65,9 @@ export function OidcTestResultView({ result }: { result: OidcTestResult }) {
         )}
       </ul>
       {result.scopes_supported.length > 0 && !openid && (
-        <p className="mt-2 font-medium">The provider does not list the openid scope.</p>
+        <p className="mt-2 font-medium">
+          The provider does not list the openid scope.
+        </p>
       )}
     </div>
   );
@@ -73,17 +82,21 @@ function ProviderHints() {
       </summary>
       <ul className="mt-2 list-disc space-y-1 pl-5 text-slate-700">
         <li>
-          In GitLab, add an application under <em>User settings → Applications</em> or a
-          group&apos;s <em>Settings → Applications</em>, with the redirect URI below and the scopes{" "}
-          <code>openid profile email</code>. Keep it confidential and copy its secret.
+          In GitLab, add an application under{" "}
+          <em>User settings → Applications</em> or a group&apos;s{" "}
+          <em>Settings → Applications</em>, with the redirect URI below and the
+          scopes <code>openid profile email</code>. Keep it confidential and
+          copy its secret.
         </li>
         <li>
-          The issuer is GitLab&apos;s address, for example <code>https://gitlab.example.com</code>.
+          The issuer is GitLab&apos;s address, for example{" "}
+          <code>https://gitlab.example.com</code>.
         </li>
         <li>
-          Keep the roles claim <code>groups</code>: GitLab lists the full paths of the user&apos;s
-          groups there, such as <code>platform/security</code>. Enter group paths exactly; matching
-          is case-sensitive.
+          Keep the roles claim <code>groups</code>: GitLab lists the full paths
+          of the user&apos;s groups there, such as{" "}
+          <code>platform/security</code>. Enter group paths exactly; matching is
+          case-sensitive.
         </li>
       </ul>
     </details>
@@ -127,8 +140,12 @@ export function OidcForm({
 
   function change(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
     const { name, value, type } = event.currentTarget;
-    const checked = type === "checkbox" && (event.currentTarget as HTMLInputElement).checked;
-    setFields((current) => ({ ...current, [name]: type === "checkbox" ? checked : value }));
+    const checked =
+      type === "checkbox" && (event.currentTarget as HTMLInputElement).checked;
+    setFields((current) => ({
+      ...current,
+      [name]: type === "checkbox" ? checked : value,
+    }));
   }
 
   async function runTest() {
@@ -175,7 +192,11 @@ export function OidcForm({
         },
         csrf,
       );
-      setFields((current) => ({ ...current, client_secret: "", clear_client_secret: false }));
+      setFields((current) => ({
+        ...current,
+        client_secret: "",
+        clear_client_secret: false,
+      }));
       onSaved(saved);
     } catch (error) {
       const apiError = asApiError(error);
@@ -196,9 +217,10 @@ export function OidcForm({
       <Problems messages={failure ? [failure] : problems} />
       {lockoutWarning && (
         <p className={noteClass}>
-          Changing the issuer, client or admin groups can lock every administrator out. Make sure
-          you are in one of the admin groups, and keep this browser signed in until you have tested
-          a new sign-in in another window.
+          Changing the issuer, client or admin groups can lock every
+          administrator out. Make sure you are in one of the admin groups, and
+          keep this browser signed in until you have tested a new sign-in in
+          another window.
         </p>
       )}
       <ProviderHints />
@@ -215,9 +237,12 @@ export function OidcForm({
         />
       </label>
       <p id={`${id}-public-help`} className="text-xs text-slate-600">
-        The address people use to open Baluarte, with no path. Plain http works only for localhost.
+        The address people use to open Baluarte, with no path. Plain http works
+        only for localhost.
       </p>
-      {redirect && <CopyValue label="Redirect URI to register" value={redirect} />}
+      {redirect && (
+        <CopyValue label="Redirect URI to register" value={redirect} />
+      )}
 
       <div className="space-y-2">
         <label className="block text-sm font-medium">
@@ -233,7 +258,8 @@ export function OidcForm({
           />
         </label>
         <p id={`${id}-issuer-help`} className="text-xs text-slate-600">
-          Baluarte reads <code>/.well-known/openid-configuration</code> from this https URL.
+          Baluarte reads <code>/.well-known/openid-configuration</code> from
+          this https URL.
         </p>
         <button
           type="button"
@@ -297,10 +323,12 @@ export function OidcForm({
       )}
 
       <fieldset className="space-y-3 rounded border border-slate-200 p-3">
-        <legend className="px-1 text-sm font-medium">Roles from identity provider groups</legend>
+        <legend className="px-1 text-sm font-medium">
+          Roles from identity provider groups
+        </legend>
         <p className="text-xs text-slate-600">
-          One group per line. A user gets every role whose groups they belong to; users in none of
-          these groups cannot sign in.
+          One group per line. A user gets every role whose groups they belong
+          to; users in none of these groups cannot sign in.
         </p>
         <label className="block text-sm font-medium">
           Admin groups
@@ -344,17 +372,24 @@ export function OidcForm({
           />
         </label>
         <p id="manager-groups-help" className="text-xs text-slate-600">
-          Managers see the manager space and time tracking, and tag projects. They cannot change
-          baselines or settings.
+          Managers see the manager space and time tracking, and tag projects.
+          They cannot change baselines or settings.
         </p>
       </fieldset>
 
       <details className="rounded border border-slate-200 p-3">
-        <summary className="cursor-pointer text-sm font-medium">Advanced</summary>
+        <summary className="cursor-pointer text-sm font-medium">
+          Advanced
+        </summary>
         <div className="mt-3 space-y-3">
           <label className="block text-sm font-medium">
             Scopes
-            <input name="scopes" value={fields.scopes} onChange={change} className={fieldClass} />
+            <input
+              name="scopes"
+              value={fields.scopes}
+              onChange={change}
+              className={fieldClass}
+            />
           </label>
           <label className="block text-sm font-medium">
             Roles claim
@@ -366,8 +401,8 @@ export function OidcForm({
             />
           </label>
           <p className="text-xs text-slate-600">
-            The claim listing the user&apos;s groups, read from the ID token or userinfo. Add the
-            scope your provider needs to release it.
+            The claim listing the user&apos;s groups, read from the ID token or
+            userinfo. Add the scope your provider needs to release it.
           </p>
         </div>
       </details>

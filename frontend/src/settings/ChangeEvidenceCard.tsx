@@ -10,7 +10,11 @@ import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { buttonClass, fieldClass } from "../components/styles";
-import { changeEvidenceProblems, parseGroups, type ChangeEvidenceFields } from "./format";
+import {
+  changeEvidenceProblems,
+  parseGroups,
+  type ChangeEvidenceFields,
+} from "./format";
 import { asApiError, cardClass, Problems } from "./parts";
 
 function fieldsOf(settings: ChangeEvidenceSettings): ChangeEvidenceFields {
@@ -52,7 +56,9 @@ function ChangeEvidenceForm({
           {
             lookback_days: Number(fields.lookback_days.trim()),
             redeploy_days: Number(fields.redeploy_days.trim()),
-            production_environments: parseGroups(fields.production_environments),
+            production_environments: parseGroups(
+              fields.production_environments,
+            ),
           },
           csrf,
         ),
@@ -91,8 +97,8 @@ function ChangeEvidenceForm({
             />
           </label>
           <p id="lookback-help" className="mt-1 text-xs text-slate-600">
-            How far back the first read of a project goes, 1 to 730 days. Changes from before then
-            are never recorded.
+            How far back the first read of a project goes, 1 to 730 days.
+            Changes from before then are never recorded.
           </p>
         </div>
         <div>
@@ -111,8 +117,8 @@ function ChangeEvidenceForm({
             />
           </label>
           <p id="redeploy-help" className="mt-1 text-xs text-slate-600">
-            Merged changes are read again for this long, 1 to 30 days, so a later deployment is
-            recorded.
+            Merged changes are read again for this long, 1 to 30 days, so a
+            later deployment is recorded.
           </p>
         </div>
       </div>
@@ -129,8 +135,8 @@ function ChangeEvidenceForm({
           />
         </label>
         <p id="environments-help" className="mt-1 text-xs text-slate-600">
-          One per line or separated by commas, at most 20. Only successful deployments to these
-          GitLab environments are recorded.
+          One per line or separated by commas, at most 20. Only successful
+          deployments to these GitLab environments are recorded.
         </p>
       </div>
       <button type="submit" disabled={saving} className={buttonClass}>
@@ -144,8 +150,9 @@ function ChangeEvidenceForm({
 export function ChangeEvidenceCard({ csrf }: { csrf: string }) {
   const [version, setVersion] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
-  const loaded = useLoad(`settings-change-evidence#${String(version)}`, (signal) =>
-    getChangeEvidenceSettings(signal),
+  const loaded = useLoad(
+    `settings-change-evidence#${String(version)}`,
+    (signal) => getChangeEvidenceSettings(signal),
   );
 
   return (
@@ -154,8 +161,9 @@ export function ChangeEvidenceCard({ csrf }: { csrf: string }) {
         Change evidence
       </h2>
       <p className="text-sm text-slate-600">
-        Which merge requests, direct pushes and deployments are read for each monitored project.
-        Every change to these settings is recorded in the audit log.
+        Which merge requests, direct pushes and deployments are read for each
+        monitored project. Every change to these settings is recorded in the
+        audit log.
       </p>
       {loaded.error ? (
         <ErrorMessage error={loaded.error} retry={loaded.retry} />
@@ -165,7 +173,9 @@ export function ChangeEvidenceCard({ csrf }: { csrf: string }) {
           csrf={csrf}
           settings={loaded.data}
           onSaved={() => {
-            setMessage("Change evidence settings saved. They apply from the next collection.");
+            setMessage(
+              "Change evidence settings saved. They apply from the next collection.",
+            );
             setVersion((value) => value + 1);
           }}
         />
