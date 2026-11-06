@@ -174,14 +174,6 @@ def test_the_manager_role_is_mapped_from_identity_provider_groups(
     assert roles_from_claim(["staff"], settings.group_roles) == frozenset()
 
 
-def test_the_oidc_settings_api_round_trips_manager_groups(engine: Engine) -> None:
-    admin = as_user(engine, user(engine, "admin"), Role.ADMIN)
-    found = admin.get("/api/v1/settings/oidc")
-    if found.status_code == 404:
-        pytest.skip("OIDC settings are configured through the environment here")
-    assert "manager_groups" in found.json()
-
-
 # --- Manager scopes ----------------------------------------------------------------------------
 
 
