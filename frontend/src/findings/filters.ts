@@ -5,6 +5,7 @@ import {
   type FindingState,
   type Outcome,
 } from "../api/evaluations";
+import { parseTagParam, tagParam } from "../api/tags";
 
 const states: readonly FindingState[] = ["open", "resolved", "excepted"];
 // The API limits policy names and rule IDs to 63 characters.
@@ -42,6 +43,8 @@ export function readFindingFilters(params: URLSearchParams): FindingFilters {
   if (rule) filters.rule = rule;
   const ruleType = params.get("rule_type")?.trim();
   if (ruleType && ruleType.length <= 255 && RULE_TYPE.test(ruleType)) filters.rule_type = ruleType;
+  const tag = parseTagParam(params.get("tag"));
+  if (tag) filters.tag = tagParam(tag);
   return filters;
 }
 
@@ -55,6 +58,7 @@ export function writeFindingFilters(filters: FindingFilters): URLSearchParams {
   if (filters.policy) params.set("policy", filters.policy);
   if (filters.rule) params.set("rule", filters.rule);
   if (filters.rule_type) params.set("rule_type", filters.rule_type);
+  if (filters.tag) params.set("tag", filters.tag);
   return params;
 }
 

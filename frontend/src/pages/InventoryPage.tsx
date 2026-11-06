@@ -255,6 +255,7 @@ const emptyFilters: InventoryFilters = {
   archived: "",
   hasError: false,
   showExcluded: false,
+  tag: "",
 };
 
 /** Shows or hides what is excluded from monitoring; the choice is kept in the URL. */

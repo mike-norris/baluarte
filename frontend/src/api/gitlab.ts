@@ -2,6 +2,7 @@
 
 import { getJson } from "./client";
 import type { Monitoring } from "./scope";
+import type { ItemTag } from "./tags";
 import type { AsOfAnswer } from "../asof/format";
 
 export type InventoryState = "active" | "missing" | "inaccessible";
@@ -21,6 +22,8 @@ interface Tracked {
   last_error_at: string | null;
   /** Whether it is excluded from monitoring, and how; absent from older servers. */
   monitoring?: Monitoring;
+  /** Baluarte tags, its own and inherited from groups; absent from older servers. */
+  tags?: ItemTag[];
 }
 
 export interface Group extends Tracked {
@@ -110,6 +113,8 @@ export interface InventoryFilters {
   hasError: boolean;
   /** Show projects and groups excluded from monitoring; the API hides them by default. */
   showExcluded: boolean;
+  /** A Baluarte tag as ``key:value``, or empty for any. */
+  tag: string;
 }
 
 function common(filters: InventoryFilters, afterId: number | null) {
@@ -118,6 +123,7 @@ function common(filters: InventoryFilters, afterId: number | null) {
     state: filters.state,
     has_error: filters.hasError ? true : null,
     monitoring: filters.showExcluded ? "all" : null,
+    tag: filters.tag,
     after_id: afterId,
     limit: 100,
   };
