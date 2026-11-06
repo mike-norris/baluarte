@@ -34,8 +34,10 @@ export const managerTabs: readonly ManagerTab[] = [
   { path: MANAGER_TAGS, label: "Tags", visible: () => true },
 ];
 
-// GitLab group paths: segments of letters, digits, dot, dash and underscore.
-const GROUP_PATH = /^[A-Za-z0-9_.-]+(\/[A-Za-z0-9_.-]+)*$/;
+// GitLab group paths: segments of letters, digits, dot, dash and underscore, not starting with
+// a dot or dash.
+const SEGMENT = "[A-Za-z0-9_][A-Za-z0-9_.-]*";
+const GROUP_PATH = new RegExp(`^${SEGMENT}(/${SEGMENT})*$`);
 
 /** The group or tag the overview and trends are rolled up to, from the URL. */
 export function readFocus(params: URLSearchParams): Focus {
