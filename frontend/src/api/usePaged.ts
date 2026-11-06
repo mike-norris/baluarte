@@ -3,15 +3,15 @@ import { useState } from "react";
 import { ApiError } from "./client";
 import type { Loaded } from "./useLoad";
 
-interface Extra<T> {
+interface Extra<T, C> {
   key: string;
   items: T[];
-  next: number | null;
+  next: C | null;
 }
 
-export interface Paged<T> {
+export interface Paged<T, C = number> {
   items: T[];
-  next: number | null;
+  next: C | null;
   pending: boolean;
   moreError: ApiError | undefined;
   loadMore: () => Promise<void>;
@@ -19,15 +19,16 @@ export interface Paged<T> {
 
 /**
  * The first page from ``useLoad``, with later pages appended by "Load more" for the same key.
- * ``cursor`` reads the page's next cursor (``next_after_id`` or ``next_before_id``).
+ * ``cursor`` reads the page's next cursor (``next_after_id``, ``next_before_id``, or a string
+ * ``next_after``).
  */
-export function usePaged<T, P extends { items: T[] }>(
+export function usePaged<T, P extends { items: T[] }, C = number>(
   key: string,
   first: Loaded<P>,
-  cursor: (page: P) => number | null,
-  fetchPage: (next: number) => Promise<P>,
-): Paged<T> {
-  const [extra, setExtra] = useState<Extra<T> | null>(null);
+  cursor: (page: P) => C | null,
+  fetchPage: (next: C) => Promise<P>,
+): Paged<T, C> {
+  const [extra, setExtra] = useState<Extra<T, C> | null>(null);
   const [pending, setPending] = useState(false);
   const [moreError, setMoreError] = useState<{ key: string; error: ApiError } | null>(null);
   const current = extra?.key === key ? extra : null;
