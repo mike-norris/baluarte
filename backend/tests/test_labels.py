@@ -17,6 +17,8 @@ from baluarte.api.v1.gitlab import gitlab_transport
 from baluarte.auth.roles import Role
 from baluarte.db.models import (
     AuditEvent,
+    CollectionJob,
+    CollectionRun,
     GitLabGroup,
     GitLabProject,
     LabelTaxonomy,
@@ -25,11 +27,14 @@ from baluarte.db.models import (
 from baluarte.integrations.gitlab import labels as label_reads
 from baluarte.integrations.gitlab.client import GitLabClient
 from baluarte.integrations.gitlab.instances import instance_for
+from baluarte.integrations.gitlab.jobs import COLLECT_LABELS, make_collect_labels, queue_labels
+from baluarte.jobs.worker import Worker
 from baluarte.labels import drift, taxonomy
 from baluarte.policy import changes
 from baluarte.policy.changes import Actor, ChangeConflict, NotAllowed
 from baluarte.policy.evaluation import labels as label_rule
 from baluarte.policy.evaluation.engine import ProjectFacts
+from baluarte.policy.evaluation.runner import EVALUATE
 from baluarte.policy.schema import LabelsConsistentRule
 
 pytestmark = pytest.mark.db
@@ -199,6 +204,24 @@ def test_collection_reads_every_owner_with_get_and_records_unreadable_ones(
             .where(Observation.source.in_(label_reads.SOURCES))
         ).scalar_one()
     assert count == 5
+
+
+def test_the_collection_job_records_a_labels_run_and_queues_an_evaluation(
+    engine: Engine, server: LabelServer
+) -> None:
+    with Session(engine) as db:
+        queue_labels(db, "after-run:1")
+        db.commit()
+
+    handler = make_collect_labels(server.transport)
+    assert Worker(engine, {COLLECT_LABELS: handler}).run_once()
+
+    with Session(engine) as db:
+        run = db.scalars(select(CollectionRun).where(CollectionRun.kind == "labels")).one()
+        kinds = set(db.scalars(select(CollectionJob.kind)))
+    assert (run.status, run.seen, run.error) == ("succeeded", 5, None)
+    assert run.counts["labels"] == 3
+    assert EVALUATE in kinds
 
 
 def test_a_rejected_token_stops_collection_and_the_rest_is_not_read(
