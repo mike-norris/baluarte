@@ -244,10 +244,10 @@ export function TagsPage() {
                     <td className="px-3 py-2">
                       <Link
                         to={`${MANAGER}?${writeFocus({ tag: tagParam(tag) }).toString()}`}
+                        aria-label={`Overview for ${tagText(tag)}`}
                         className={linkClass}
                       >
                         Overview
-                        <span className="sr-only">{` for ${tagText(tag)}`}</span>
                       </Link>
                     </td>
                   </tr>
@@ -493,10 +493,10 @@ function Assignments({
                 <button
                   type="button"
                   onClick={() => void remove(assignment)}
+                  aria-label={`Remove from ${assignment.target_path}`}
                   className={`ml-auto ${secondaryClass}`}
                 >
                   Remove
-                  <span className="sr-only">{` from ${assignment.target_path}`}</span>
                 </button>
               )}
             </li>

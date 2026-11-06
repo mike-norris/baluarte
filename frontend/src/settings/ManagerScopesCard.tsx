@@ -84,10 +84,10 @@ function ScopeList({
                     type="button"
                     disabled={ending === scope.id}
                     onClick={() => void end(scope)}
+                    aria-label={`End ${scope.group.path} for ${personName(scope.user)}`}
                     className={secondaryClass}
                   >
                     End
-                    <span className="sr-only">{` ${scope.group.path} for ${personName(scope.user)}`}</span>
                   </button>
                 </td>
               </tr>
