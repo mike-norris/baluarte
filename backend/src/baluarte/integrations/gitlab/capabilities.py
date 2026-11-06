@@ -302,6 +302,20 @@ def detect(client: GitLabClient, now: datetime | None = None) -> CapabilitySnaps
 
     probes.update(change_probes(client, project_id if isinstance(project_id, int) else None))
 
+    group = _first(groups)
+    group_id = group.get("id") if isinstance(group, dict) else None
+    if isinstance(group_id, int):
+        _, probes["labels.read"] = _get(
+            client,
+            "GET /groups/:id/labels",
+            f"/groups/{group_id}/labels",
+            {"per_page": 1, "only_group_labels": "true", "include_ancestor_groups": "false"},
+        )
+    else:
+        probes["labels.read"] = Probe(
+            status="skipped", endpoint="GET /groups/:id/labels", detail="no visible group"
+        )
+
     license_body, probes["license.read"] = _get(client, "GET /license", "/license")
     plan = license_body.get("plan") if isinstance(license_body, dict) else None
     probes.update(security_policy_probes(client, _first(groups)))

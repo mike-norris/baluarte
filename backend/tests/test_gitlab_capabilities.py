@@ -58,6 +58,7 @@ def test_full_detection_on_a_healthy_instance() -> None:
         "test_reports.read": "supported",
         "deployments.read": "supported",
         "commits.read": "supported",
+        "labels.read": "supported",
         "license.read": "forbidden",
         "security_policies.read": "supported",
         "security_policies.scan_execution": "supported",

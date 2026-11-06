@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from baluarte.changes import settings as change_settings
 from baluarte.db.models import GitLabInstance
 from baluarte.evidence.observations import Provenance
-from baluarte.integrations.gitlab import changes, security_policies
+from baluarte.integrations.gitlab import changes, labels, security_policies
 from baluarte.integrations.gitlab.capabilities import detect, observe_snapshot, record_snapshot
 from baluarte.integrations.gitlab.client import GitLabClient, GitLabError
 from baluarte.integrations.gitlab.discovery import Discovery
@@ -38,10 +38,11 @@ DISCOVER_GROUPS = "gitlab.discover_groups"
 DISCOVER_PROJECTS = "gitlab.discover_projects"
 DISCOVER_SECURITY_POLICIES = "gitlab.discover_security_policies"
 COLLECT_CHANGES = "gitlab.collect_changes"
+COLLECT_LABELS = "gitlab.collect_labels"
 
-# Scheduled each interval, in this order. Security policy discovery and change collection are
-# queued by each finished project discovery instead, so they always read the inventory that
-# discovery just confirmed.
+# Scheduled each interval, in this order. Security policy discovery, change collection and label
+# collection are queued by each finished project discovery instead, so they always read the
+# inventory that discovery just confirmed.
 SCHEDULED_KINDS = (DETECT_CAPABILITIES, DISCOVER_GROUPS, DISCOVER_PROJECTS)
 
 # Retries of a scheduled collection, in seconds after each failed attempt: long enough to ride
@@ -181,6 +182,7 @@ def _make_discovery(
                 queue_after_collection(db, run_id)
                 queue_security_policies(db, settings.url, run_id)
                 queue_changes(db, run_id)
+                queue_labels(db, f"after-run:{run_id}")
                 db.commit()
         logger.info(
             "gitlab %s: %s listed (%s new, %s known, %s restored); %s not listed: %s still "
@@ -357,6 +359,56 @@ def make_collect_changes(transport: httpx.BaseTransport | None = None) -> GitLab
         if outcome == "failed":
             raise JobError("change collection read no project")
         # The change rules judge these observations: re-evaluate, once per run.
+        with Session(engine) as db:
+            queue_after_collection(db, run_id)
+            db.commit()
+
+    return collect
+
+
+def queue_labels(db: Session, key: str) -> int:
+    """Queue a label collection; ``key`` makes it once per discovery run or per plan applied."""
+    return queue.enqueue(db, COLLECT_LABELS, f"{COLLECT_LABELS}:{key}", max_attempts=3)
+
+
+def make_collect_labels(transport: httpx.BaseTransport | None = None) -> GitLabHandler:
+    def collect(job: ClaimedJob, engine: Engine) -> None:
+        settings = _settings()
+        run_id = start_run(engine, settings.url, "labels", job)
+        try:
+            with Session(engine) as db:
+                instance_id = instance_for(db, settings.url).id
+                db.commit()
+            with GitLabClient(settings, transport=transport) as client:
+                result = labels.collect(client, engine, instance_id, Provenance(run_id, job.id))
+        except Exception as exc:
+            _unexpected(engine, run_id, exc)
+            raise
+        problems = []
+        if result.failed:
+            problems.append(f"labels of {result.failed} groups or projects could not be read")
+        if result.rejected or (result.read and result.failed == result.read):
+            outcome: RunOutcome = "failed"
+        else:
+            outcome = "partial" if problems else "succeeded"
+        finish_run(
+            engine,
+            run_id,
+            outcome,
+            seen=result.read,
+            counts=result.as_counts(),
+            error="; ".join(problems) or None,
+        )
+        logger.info(
+            "gitlab labels: %s groups and projects read, %s not read, %s labels",
+            result.read,
+            result.failed,
+            result.labels,
+            extra={"job_id": job.id},
+        )
+        if outcome == "failed":
+            raise JobError("label collection read no group or project")
+        # The label rule judges these observations: re-evaluate, once per run.
         with Session(engine) as db:
             queue_after_collection(db, run_id)
             db.commit()

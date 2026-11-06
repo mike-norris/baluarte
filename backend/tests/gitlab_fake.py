@@ -67,6 +67,7 @@ def healthy_routes() -> dict[str, list[Reply]]:
                 ],
             )
         ],
+        "/api/v4/groups/1/labels": [httpx.Response(200, json=[])],
         "/api/v4/projects/42/protected_branches": [
             httpx.Response(200, json=[{"id": 1, "name": "main"}])
         ],
