@@ -66,6 +66,7 @@ const pages: Partial<Record<string, ReactNode>> = {
   "/inventory": page(() => import("./pages/InventoryPage"), "InventoryPage"),
   "/findings": page(() => import("./pages/FindingsPage"), "FindingsPage"),
   "/changes": page(() => import("./pages/ChangesPage"), "ChangesPage"),
+  "/labels": page(() => import("./pages/LabelsPage"), "LabelsPage"),
   "/evidence": page(() => import("./pages/EvidencePage"), "EvidencePage"),
   "/controls": page(() => import("./pages/ControlsPage"), "ControlsPage"),
   "/exceptions": page(() => import("./pages/ExceptionsPage"), "ExceptionsPage"),
@@ -111,6 +112,22 @@ export const routes: RouteObject[] = [
           {
             path: "/changes/:changeId",
             element: page(() => import("./pages/ChangeDetailPage"), "ChangeDetailPage"),
+          },
+          {
+            path: "/labels/owners/:ownerType/:gitlabId",
+            element: page(() => import("./pages/LabelOwnerPage"), "LabelOwnerPage"),
+          },
+          {
+            path: "/labels/taxonomy/new",
+            element: page(() => import("./pages/TaxonomyEditorPage"), "TaxonomyEditorPage"),
+          },
+          {
+            path: "/labels/plans",
+            element: page(() => import("./pages/LabelPlansPage"), "LabelPlansPage"),
+          },
+          {
+            path: "/labels/plans/:planId",
+            element: page(() => import("./pages/LabelPlanPage"), "LabelPlanPage"),
           },
           {
             path: "/controls/:framework/:controlId",

@@ -63,6 +63,8 @@ export interface TaxonomyIssue {
 export interface TaxonomyValidation {
   valid: boolean;
   errors: TaxonomyIssue[];
+  /** ``metadata.name`` when the document has one. */
+  name?: string | null;
   spec: TaxonomySpec | null;
 }
 

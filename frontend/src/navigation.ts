@@ -35,6 +35,12 @@ export const navItems: readonly NavItem[] = [
       "Merged merge requests and direct pushes, with their review and pipeline evidence.",
   },
   {
+    path: "/labels",
+    label: "Labels",
+    description:
+      "One label taxonomy for every group, where groups and projects drift from it, and reviewed fixes.",
+  },
+  {
     path: "/exceptions",
     label: "Exceptions",
     description: "Time-limited, approved waivers of known failures.",
