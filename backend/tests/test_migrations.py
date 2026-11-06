@@ -33,6 +33,8 @@ TABLES = {
     "gitlab_instance",
     "gitlab_project",
     "gitlab_security_policy",
+    "label_plan",
+    "label_taxonomy",
     "observation",
     "oidc_login",
     "policy",
@@ -85,7 +87,8 @@ def test_downgrade_to_base_and_upgrade_again(migrated_engine: Engine) -> None:
                 "('baluarte_reject_modification', 'baluarte_policy_exception_transition', "
                 "'baluarte_remediation_plan_transition', 'baluarte_policy_change_transition', "
                 "'baluarte_compliance_exception_transition', 'baluarte_audit_event_immutable', "
-                "'baluarte_expire_audit')"
+                "'baluarte_expire_audit', 'baluarte_label_taxonomy_transition', "
+                "'baluarte_label_plan_transition')"
             )
         ).scalar_one()
     assert functions == 0

@@ -41,7 +41,7 @@ SEVERITIES = ("low", "medium", "high", "critical")
 FINDING_STATES = ("open", "resolved", "excepted")
 EXPORT_STATES = ("queued", "running", "succeeded", "failed")
 ROLES = ("admin", "analyst", "auditor")
-RUN_KINDS = ("capabilities", "groups", "projects", "security_policies", "changes")
+RUN_KINDS = ("capabilities", "groups", "projects", "security_policies", "changes", "labels")
 SECURITY_POLICY_TYPES = (
     "scan_execution",
     "approval",
@@ -86,16 +86,33 @@ SETTING_KEYS = (
     "operations",
     "audit_shipping",
     "change_evidence",
+    "label_write_token",
 )
 SECRET_NAMES = (
     "oidc_client_secret",
     "gitlab_token",
     "audit_shipping_es_api_key",
     "audit_shipping_es_password",
+    "label_write_token",
 )
 BACKUP_STATUSES = ("succeeded", "failed")
 CHANGE_KINDS = ("merge_request", "direct_push", "deployment")
 CHANGE_OUTCOMES = ("pass", "fail", "unknown")
+LABEL_TAXONOMY_STATES = ("proposed", "approved", "rejected")
+LABEL_PLAN_STATES = (
+    "draft",
+    "submitted",
+    "approved",
+    "rejected",
+    "applying",
+    "applied",
+    "failed",
+    "expired",
+)
+# A label plan is valid this long from its creation, and holds at most this many steps.
+LABEL_PLAN_HOURS = 24
+MAX_LABEL_PLAN_STEPS = 1000
+MAX_TAXONOMY_JUSTIFICATION = 2000
 
 
 def one_of(column: str, values: Iterable[str]) -> CheckConstraint:
@@ -1212,6 +1229,163 @@ class RemediationPlan(Base):
     # The digest the approver reviewed; equal to ``plan_digest`` when approved.
     approved_digest: Mapped[str | None] = mapped_column(Text)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class LabelTaxonomy(Base):
+    """A version of the label taxonomy (``baluarte.labels.taxonomy``), proposed or decided.
+
+    The taxonomy in force is the latest ``approved`` version by ``decided_at``. A version is
+    reviewed like a baseline change: while review is required it waits ``proposed`` for someone
+    other than its proposer; otherwise it is approved at once by its proposer, ``self_approved``.
+    A trigger lets an update only decide a proposed version, and rejects ``DELETE``.
+    """
+
+    __tablename__ = "label_taxonomy"
+    __table_args__ = (
+        UniqueConstraint("instance_id", "version", name="uq_label_taxonomy_version"),
+        Index(
+            "uq_label_taxonomy_proposed",
+            "instance_id",
+            unique=True,
+            postgresql_where=text("state = 'proposed'"),
+        ),
+        Index("ix_label_taxonomy_decided", "instance_id", "state", "decided_at"),
+        one_of("state", LABEL_TAXONOMY_STATES),
+        sha256_hex("yaml_digest"),
+        CheckConstraint("version >= 1", name="version_positive"),
+        CheckConstraint(
+            f"justification IS NULL OR length(justification) <= {MAX_TAXONOMY_JUSTIFICATION}",
+            name="justification_length",
+        ),
+        CheckConstraint(
+            "(state = 'proposed') = (decided_at IS NULL)", name="decided_unless_proposed"
+        ),
+        CheckConstraint(
+            "(decided_at IS NULL) = (decided_by IS NULL) "
+            "AND (decided_at IS NULL) = (decided_by_user_id IS NULL)",
+            name="decision_complete",
+        ),
+        CheckConstraint(
+            "NOT review_required OR decided_by_user_id IS NULL "
+            "OR decided_by_user_id <> proposed_by_user_id",
+            name="decided_by_another_user",
+        ),
+        CheckConstraint("review_required OR state = 'approved'", name="unreviewed_is_approved"),
+        CheckConstraint(
+            "self_approved = NOT review_required", name="self_approved_when_unreviewed"
+        ),
+        CheckConstraint(
+            "state <> 'rejected' OR length(decision_note) > 0", name="rejection_explained"
+        ),
+    )
+
+    id: Mapped[int] = pk()
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    version: Mapped[int] = mapped_column(Integer)
+    name: Mapped[str] = mapped_column(Text)
+    source_yaml: Mapped[str] = mapped_column(Text)
+    yaml_digest: Mapped[str] = mapped_column(Text)
+    justification: Mapped[str | None] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(Text)
+    review_required: Mapped[bool] = mapped_column(Boolean)
+    self_approved: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    proposed_by: Mapped[str] = mapped_column(Text)
+    proposed_by_user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id"))
+    proposed_at: Mapped[datetime] = utc_now()
+    decided_by: Mapped[str | None] = mapped_column(Text)
+    decided_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_note: Mapped[str | None] = mapped_column(Text)
+
+
+class LabelPlan(Base):
+    """A dry-run label plan (``baluarte.labels.plans``) and, once approved, its application.
+
+    The plan document, its digest and the taxonomy it was built for never change. ``draft`` ->
+    ``submitted`` -> ``approved`` or ``rejected``; ``approved`` -> ``applying`` -> ``applied`` or
+    ``failed``; ``draft``, ``submitted`` and ``approved`` become ``expired`` after ``expires_at``.
+    ``progress`` holds each step's outcome as it is applied. A trigger keeps the plan unchanged
+    and rejects ``DELETE``.
+    """
+
+    __tablename__ = "label_plan"
+    __table_args__ = (
+        Index("ix_label_plan_state", "instance_id", "state", "id"),
+        one_of("state", LABEL_PLAN_STATES),
+        sha256_hex("plan_digest"),
+        CheckConstraint(
+            f"expires_at > created_at AND expires_at <= created_at + "
+            f"interval '{LABEL_PLAN_HOURS} hours'",
+            name="expiry_bounded",
+        ),
+        CheckConstraint(
+            f"steps BETWEEN 0 AND {MAX_LABEL_PLAN_STEPS} AND manual >= 0 AND steps + manual >= 1",
+            name="steps_bounded",
+        ),
+        CheckConstraint(
+            "NOT review_required OR decided_by_user_id IS NULL "
+            "OR decided_by_user_id <> created_by_user_id",
+            name="decided_by_another_user",
+        ),
+        CheckConstraint(
+            "(decided_at IS NULL) = (decided_by_user_id IS NULL)", name="decision_complete"
+        ),
+        CheckConstraint(
+            "state NOT IN ('approved', 'rejected', 'applying', 'applied', 'failed') "
+            "OR decided_at IS NOT NULL",
+            name="decided_has_decision",
+        ),
+        CheckConstraint(
+            "state NOT IN ('approved', 'applying', 'applied', 'failed') "
+            "OR approved_digest = plan_digest",
+            name="approval_binds_digest",
+        ),
+        CheckConstraint(
+            "state NOT IN ('draft', 'submitted', 'rejected') OR approved_digest IS NULL",
+            name="unapproved_has_no_digest",
+        ),
+        CheckConstraint(
+            "state NOT IN ('applying', 'applied', 'failed') OR apply_started_at IS NOT NULL",
+            name="applying_has_start",
+        ),
+        CheckConstraint(
+            "(state IN ('applied', 'failed', 'expired')) = (finished_at IS NOT NULL)",
+            name="finished_has_time",
+        ),
+        CheckConstraint("(state = 'failed') = (failure IS NOT NULL)", name="failure_explained"),
+    )
+
+    id: Mapped[int] = pk()
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    taxonomy_id: Mapped[int] = mapped_column(ForeignKey("label_taxonomy.id"))
+    state: Mapped[str] = mapped_column(Text, server_default="draft")
+    created_by: Mapped[str] = mapped_column(Text)
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = utc_now()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # The canonical plan document; ``plan_digest`` is the SHA-256 of its canonical JSON.
+    plan: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    plan_digest: Mapped[str] = mapped_column(Text)
+    steps: Mapped[int] = mapped_column(Integer)
+    manual: Mapped[int] = mapped_column(Integer)
+    review_required: Mapped[bool] = mapped_column(Boolean)
+    self_approved: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_by: Mapped[str | None] = mapped_column(Text)
+    decided_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_note: Mapped[str | None] = mapped_column(Text)
+    # The digest the approver reviewed; equal to ``plan_digest`` once approved.
+    approved_digest: Mapped[str | None] = mapped_column(Text)
+    applied_by: Mapped[str | None] = mapped_column(Text)
+    apply_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failed_step: Mapped[int | None] = mapped_column(Integer)
+    failure: Mapped[str | None] = mapped_column(Text)
+    # One entry per step reached: its status, the write's HTTP status and the verification.
+    progress: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb")
+    )
 
 
 class AuditEvent(Base):
