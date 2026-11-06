@@ -267,12 +267,25 @@ class PersonRow:
     _issues: set[tuple[int, int]] = field(default_factory=set, repr=False)
 
 
+def allowed_projects(
+    db: Session, instance_id: int | None, filters: Filters, scope: PeopleScope
+) -> set[int]:
+    """The selected projects ``scope`` allows. A ``group`` or ``project`` filter reaching
+    outside the scope is refused (``out_of_scope``) rather than silently narrowed."""
+    selection = select_projects(db, instance_id, filters)
+    allowed = {p for p in selection.project_ids if scope.allows(p)}
+    if (filters.group is not None or filters.project is not None) and (
+        selection.project_ids - allowed
+    ):
+        raise SummaryRefused("out_of_scope", "The group or project is outside your manager scope")
+    return allowed
+
+
 def people(
     db: Session, instance_id: int | None, filters: Filters, scope: PeopleScope
 ) -> tuple[list[PersonRow], PersonRow]:
     """Time per person in the projects the filters and ``scope`` allow."""
-    selection = select_projects(db, instance_id, filters)
-    allowed = {p for p in selection.project_ids if scope.allows(p)}
+    allowed = allowed_projects(db, instance_id, filters, scope)
     statement = (
         select(
             TimeEntry.username,
@@ -309,8 +322,7 @@ def entries_of(
     limit: int,
 ) -> tuple[list[tuple[TimeEntry, GitLabProject]], int | None]:
     """One person's entries, newest first, in the projects ``scope`` allows; removed ones too."""
-    selection = select_projects(db, instance_id, filters)
-    allowed = [p for p in selection.project_ids if scope.allows(p)]
+    allowed = allowed_projects(db, instance_id, filters, scope)
     statement = (
         select(TimeEntry, GitLabProject)
         .join(GitLabProject, GitLabProject.id == TimeEntry.project_id)
@@ -359,7 +371,9 @@ def estimates_for(
                 & (issues.c.issue_iid == IssueEstimate.issue_iid),
             )
             .group_by(IssueEstimate.project_id)
-        ).tuples()
+        )
+        .tuples()
+        .all()
     )
 
 

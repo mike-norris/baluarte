@@ -276,7 +276,9 @@ def change_facts(
                 select(Observation.id, Observation.payload).where(
                     Observation.id.in_(missing[start : start + 1000])
                 )
-            ).tuples()
+            )
+            .tuples()
+            .all()
         )
     facts = []
     for project_id, kind, changed_at, stored, observation_id in rows:
@@ -329,7 +331,9 @@ def _time(
                 TimeEntry.project_id.in_(projects),
             )
             .group_by(TimeEntry.project_id)
-        ).tuples()
+        )
+        .tuples()
+        .all()
     )
 
 
