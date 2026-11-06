@@ -19,17 +19,7 @@ const WIDTH = 640;
 const HEIGHT = 220;
 const PAD = { top: 12, right: 16, bottom: 28, left: 52 };
 
-function Marker({
-  kind,
-  x,
-  y,
-  color,
-}: {
-  kind: string;
-  x: number;
-  y: number;
-  color: string;
-}) {
+function Marker({ kind, x, y, color }: { kind: string; x: number; y: number; color: string }) {
   if (kind === "square") {
     return <rect x={x - 3.5} y={y - 3.5} width={7} height={7} fill={color} />;
   }
@@ -43,19 +33,14 @@ function Marker({
   }
   if (kind === "diamond") {
     return (
-      <polygon
-        points={`${x},${y - 5} ${x + 5},${y} ${x},${y + 5} ${x - 5},${y}`}
-        fill={color}
-      />
+      <polygon points={`${x},${y - 5} ${x + 5},${y} ${x},${y + 5} ${x - 5},${y}`} fill={color} />
     );
   }
   return <circle cx={x} cy={y} r={3.5} fill={color} />;
 }
 
 /** Runs of consecutive values, so a gap is not drawn as a line. */
-function runs(
-  points: ({ x: number; y: number } | null)[],
-): { x: number; y: number }[][] {
+function runs(points: ({ x: number; y: number } | null)[]): { x: number; y: number }[][] {
   const found: { x: number; y: number }[][] = [];
   let current: { x: number; y: number }[] = [];
   for (const point of points) {
@@ -86,27 +71,19 @@ export function LineChart({
   max?: number;
 }) {
   const id = useId();
-  const values = series
-    .flatMap((item) => item.values)
-    .filter((v): v is number => v !== null);
+  const values = series.flatMap((item) => item.values).filter((v): v is number => v !== null);
   const top = max ?? Math.max(1, ...values);
   const plotWidth = WIDTH - PAD.left - PAD.right;
   const plotHeight = HEIGHT - PAD.top - PAD.bottom;
   const x = (index: number) =>
-    PAD.left +
-    (labels.length <= 1
-      ? plotWidth / 2
-      : (index / (labels.length - 1)) * plotWidth);
-  const y = (value: number) =>
-    PAD.top + plotHeight - (value / top) * plotHeight;
+    PAD.left + (labels.length <= 1 ? plotWidth / 2 : (index / (labels.length - 1)) * plotWidth);
+  const y = (value: number) => PAD.top + plotHeight - (value / top) * plotHeight;
   const ticks = [0, 0.5, 1].map((share) => share * top);
   const step = Math.max(1, Math.ceil(labels.length / 6));
   const latest = series
     .map((item) => {
       const last = [...item.values].reverse().find((value) => value !== null);
-      return last === undefined || last === null
-        ? null
-        : `${item.name} ${format(last)}`;
+      return last === undefined || last === null ? null : `${item.name} ${format(last)}`;
     })
     .filter(Boolean)
     .join(", ");
@@ -174,9 +151,7 @@ export function LineChart({
               {runs(points).map((run) => (
                 <polyline
                   key={`${String(run[0]?.x)}`}
-                  points={run
-                    .map((point) => `${String(point.x)},${String(point.y)}`)
-                    .join(" ")}
+                  points={run.map((point) => `${String(point.x)},${String(point.y)}`).join(" ")}
                   fill="none"
                   stroke={style.color}
                   strokeWidth={2}
@@ -199,10 +174,7 @@ export function LineChart({
         })}
       </svg>
       {series.length > 1 && (
-        <ul
-          aria-hidden="true"
-          className="flex flex-wrap gap-4 text-xs text-slate-700"
-        >
+        <ul aria-hidden="true" className="flex flex-wrap gap-4 text-xs text-slate-700">
           {series.map((item, index) => {
             const style = styles[index % styles.length] ?? styles[0];
             return (
@@ -217,12 +189,7 @@ export function LineChart({
                     strokeWidth={2}
                     strokeDasharray={style.dash}
                   />
-                  <Marker
-                    kind={style.marker}
-                    x={14}
-                    y={5}
-                    color={style.color}
-                  />
+                  <Marker kind={style.marker} x={14} y={5} color={style.color} />
                 </svg>
                 {item.name}
               </li>
@@ -241,11 +208,7 @@ export function LineChart({
                   Period ending
                 </th>
                 {series.map((item) => (
-                  <th
-                    key={item.name}
-                    scope="col"
-                    className="px-2 py-1 font-medium"
-                  >
+                  <th key={item.name} scope="col" className="px-2 py-1 font-medium">
                     {item.name}
                   </th>
                 ))}
@@ -254,19 +217,14 @@ export function LineChart({
             <tbody className="divide-y divide-slate-100">
               {labels.map((label, at) => (
                 <tr key={label}>
-                  <th
-                    scope="row"
-                    className="px-2 py-1 font-normal whitespace-nowrap"
-                  >
+                  <th scope="row" className="px-2 py-1 font-normal whitespace-nowrap">
                     {label}
                   </th>
                   {series.map((item) => {
                     const value = item.values[at];
                     return (
                       <td key={item.name} className="px-2 py-1">
-                        {value === null || value === undefined
-                          ? "No data"
-                          : format(value)}
+                        {value === null || value === undefined ? "No data" : format(value)}
                       </td>
                     );
                   })}

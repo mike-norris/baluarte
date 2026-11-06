@@ -44,11 +44,7 @@ function ScopeList({
   }
 
   if (scopes.length === 0) {
-    return (
-      <p className="text-sm text-slate-600">
-        No groups are assigned to managers yet.
-      </p>
-    );
+    return <p className="text-sm text-slate-600">No groups are assigned to managers yet.</p>;
   }
   return (
     <div className="space-y-2">
@@ -59,11 +55,7 @@ function ScopeList({
           <thead className="border-b border-slate-200 bg-slate-50">
             <tr>
               {["Manager", "Group", "Assigned", ""].map((title) => (
-                <th
-                  key={title || "actions"}
-                  scope="col"
-                  className="px-3 py-2 font-medium"
-                >
+                <th key={title || "actions"} scope="col" className="px-3 py-2 font-medium">
                   {title || <span className="sr-only">Actions</span>}
                 </th>
               ))}
@@ -99,21 +91,13 @@ function ScopeList({
   );
 }
 
-function AssignForm({
-  csrf,
-  onAssigned,
-}: {
-  csrf: string;
-  onAssigned: (message: string) => void;
-}) {
+function AssignForm({ csrf, onAssigned }: { csrf: string; onAssigned: (message: string) => void }) {
   const users = useLoad("manager-users", (signal) => listUsers(signal));
   const [userId, setUserId] = useState("");
   const [picked, setPicked] = useState<Picked | null>(null);
   const [problems, setProblems] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
-  const managers = (users.data?.items ?? []).filter((user) =>
-    user.roles.includes("manager"),
-  );
+  const managers = (users.data?.items ?? []).filter((user) => user.roles.includes("manager"));
 
   async function assign() {
     const found: string[] = [];
@@ -126,9 +110,7 @@ function AssignForm({
       await assignScopes(Number(userId), [picked.gitlabId], csrf);
       const user = managers.find((item) => String(item.user_id) === userId);
       setPicked(null);
-      onAssigned(
-        `${user ? userName(user) : "The manager"} now has ${picked.path}.`,
-      );
+      onAssigned(`${user ? userName(user) : "The manager"} now has ${picked.path}.`);
     } catch (error) {
       const apiError = asApiError(error);
       setProblems([apiError.message, ...errorReasons(apiError)]);
@@ -137,17 +119,15 @@ function AssignForm({
     }
   }
 
-  if (users.error)
-    return <ErrorMessage error={users.error} retry={users.retry} />;
+  if (users.error) return <ErrorMessage error={users.error} retry={users.retry} />;
   return (
     <div className="space-y-3 rounded border border-slate-200 p-3">
       <h3 className="font-medium">Assign a group</h3>
       <Problems messages={problems} />
       {users.data && managers.length === 0 ? (
         <p className="text-sm text-slate-600">
-          No one with the manager role has signed in yet. Map a group to the
-          manager role under Identity provider, and ask the person to sign in
-          once.
+          No one with the manager role has signed in yet. Map a group to the manager role under
+          Identity provider, and ask the person to sign in once.
         </p>
       ) : (
         <>
@@ -160,9 +140,7 @@ function AssignForm({
               }}
               className={fieldClass}
             >
-              <option value="">
-                {users.data ? "Choose a manager" : "Loading users…"}
-              </option>
+              <option value="">{users.data ? "Choose a manager" : "Loading users…"}</option>
               {managers.map((user) => (
                 <option key={user.user_id} value={String(user.user_id)}>
                   {userName(user)}
@@ -204,9 +182,8 @@ export function ManagerScopesCard({ csrf }: { csrf: string }) {
         Manager groups
       </h2>
       <p className="text-sm text-slate-600">
-        A manager sees time per person only for projects under the groups
-        assigned here, subgroups included. Every assignment and its end is
-        recorded in the audit log.
+        A manager sees time per person only for projects under the groups assigned here, subgroups
+        included. Every assignment and its end is recorded in the audit log.
       </p>
       {scopes.error ? (
         <ErrorMessage error={scopes.error} retry={scopes.retry} />

@@ -78,15 +78,9 @@ export function ItemTags({ tags }: { tags: ItemTag[] | undefined }) {
         <li key={`${tag.key}=${tag.value}`}>
           <TagChip
             tag={tag}
-            title={
-              tag.via === "group"
-                ? `From group ${tag.from_path ?? ""}`
-                : "On the project"
-            }
+            title={tag.via === "group" ? `From group ${tag.from_path ?? ""}` : "On the project"}
           />
-          {tag.via === "group" && (
-            <span className="sr-only"> (from group {tag.from_path})</span>
-          )}
+          {tag.via === "group" && <span className="sr-only"> (from group {tag.from_path})</span>}
         </li>
       ))}
     </ul>
@@ -97,9 +91,7 @@ export function ItemTags({ tags }: { tags: ItemTag[] | undefined }) {
 export function FocusPicker() {
   const [params, setParams] = useSearchParams();
   const focus = readFocus(params);
-  const [mode, setMode] = useState<"group" | "tag">(
-    focus.tag ? "tag" : "group",
-  );
+  const [mode, setMode] = useState<"group" | "tag">(focus.tag ? "tag" : "group");
   const [picked, setPicked] = useState<Picked | null>(null);
   const tags = useLoad("tags", (signal) => listTags(signal));
 
@@ -156,11 +148,7 @@ export function FocusPicker() {
             <select
               value={focus.tag ?? ""}
               onChange={(event) => {
-                apply(
-                  event.currentTarget.value
-                    ? { tag: event.currentTarget.value }
-                    : {},
-                );
+                apply(event.currentTarget.value ? { tag: event.currentTarget.value } : {});
               }}
               className={fieldClass}
             >

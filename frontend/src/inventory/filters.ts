@@ -51,10 +51,10 @@ export function writeFilters(view: InventoryView, filters: InventoryFilters): UR
 export function isFiltered(filters: InventoryFilters): boolean {
   return Boolean(
     filters.search.trim() ||
-      filters.state ||
-      filters.visibility ||
-      filters.archived ||
-      filters.hasError ||
-      filters.tag,
+    filters.state ||
+    filters.visibility ||
+    filters.archived ||
+    filters.hasError ||
+    filters.tag,
   );
 }

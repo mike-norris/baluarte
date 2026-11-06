@@ -55,8 +55,7 @@ export interface ChangeWindow {
 }
 
 export type RowKey =
-  | { type: "group"; gitlab_id: number; path: string }
-  | { type: "tag"; key: string; value: string };
+  { type: "group"; gitlab_id: number; path: string } | { type: "tag"; key: string; value: string };
 
 export interface OverviewRow {
   key: RowKey;
@@ -182,10 +181,7 @@ export async function assignScopes(
   return result;
 }
 
-export async function endScope(
-  id: number,
-  csrfToken: string,
-): Promise<ManagerScope> {
+export async function endScope(id: number, csrfToken: string): Promise<ManagerScope> {
   const result = await sendJson<ManagerScope>(
     "POST",
     `/api/v1/manager/scopes/${String(id)}/end`,

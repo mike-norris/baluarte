@@ -6,20 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CurrentUser } from "../auth/session";
 import { routes } from "../routes";
 import { analyst, json, mockApi, type Call } from "../test/api";
-import {
-  EVALUATION_FRESHNESS,
-  evaluationFreshness,
-  freshness,
-} from "../test/freshness";
-import {
-  TAGS,
-  auditor,
-  manager,
-  overview,
-  overviewRow,
-  tag,
-  trends,
-} from "../test/manager";
+import { EVALUATION_FRESHNESS, evaluationFreshness, freshness } from "../test/freshness";
+import { TAGS, auditor, manager, overview, overviewRow, tag, trends } from "../test/manager";
 
 const OVERVIEW = "GET /api/v1/manager/overview";
 const TRENDS = "GET /api/v1/manager/trends?bucket=week";
@@ -51,9 +39,7 @@ describe("manager navigation", () => {
     api(analyst);
     renderAt("/inventory");
     const nav = await screen.findByRole("navigation", { name: "Primary" });
-    expect(
-      within(nav).queryByRole("link", { name: "Manager" }),
-    ).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("link", { name: "Manager" })).not.toBeInTheDocument();
   });
 
   it.each([
@@ -63,9 +49,7 @@ describe("manager navigation", () => {
     api(user, { [OVERVIEW]: () => json(overview([])) });
     renderAt("/manager");
     const nav = await screen.findByRole("navigation", { name: "Primary" });
-    expect(
-      within(nav).getByRole("link", { name: "Manager" }),
-    ).toBeInTheDocument();
+    expect(within(nav).getByRole("link", { name: "Manager" })).toBeInTheDocument();
     const sections = await screen.findByRole("navigation", {
       name: "Manager space",
     });
@@ -119,19 +103,19 @@ describe("manager overview", () => {
       "/findings?state=open",
     );
     expect(acme).toHaveTextContent("1 critical, 3 high, 4 medium, 0 low");
-    expect(
-      within(acme).getByRole("link", { name: "SOC 2: 2; ISO 27001: 1" }),
-    ).toHaveAttribute("href", "/controls");
-    expect(acme).toHaveTextContent(
-      "75% reviewed (30 of 40), 4 direct pushes, 1 unknown",
+    expect(within(acme).getByRole("link", { name: "SOC 2: 2; ISO 27001: 1" })).toHaveAttribute(
+      "href",
+      "/controls",
     );
+    expect(acme).toHaveTextContent("75% reviewed (30 of 40), 4 direct pushes, 1 unknown");
     expect(within(acme).getByRole("link", { name: "5 items" })).toHaveAttribute(
       "href",
       "/labels?group=acme",
     );
-    expect(
-      within(acme).getByRole("link", { name: "10h spent, 15h estimated" }),
-    ).toHaveAttribute("href", "/manager/time?group=acme");
+    expect(within(acme).getByRole("link", { name: "10h spent, 15h estimated" })).toHaveAttribute(
+      "href",
+      "/manager/time?group=acme",
+    );
     expect(within(acme).getByRole("link", { name: "acme" })).toHaveAttribute(
       "href",
       "/manager?group=acme",
@@ -161,19 +145,11 @@ describe("manager overview", () => {
 
     await user.click(await screen.findByRole("link", { name: "acme" }));
 
-    expect(
-      await screen.findByRole("article", { name: "acme/payments" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("article", { name: "acme/payments" })).toBeInTheDocument();
     expect(router.state.location.search).toBe("?group=acme");
-    expect(
-      calls.some((call) => call.url === "/api/v1/manager/overview?group=acme"),
-    ).toBe(true);
-    await user.click(
-      screen.getByRole("link", { name: "Back to all top-level groups" }),
-    );
-    expect(
-      await screen.findByRole("article", { name: "acme" }),
-    ).toBeInTheDocument();
+    expect(calls.some((call) => call.url === "/api/v1/manager/overview?group=acme")).toBe(true);
+    await user.click(screen.getByRole("link", { name: "Back to all top-level groups" }));
+    expect(await screen.findByRole("article", { name: "acme" })).toBeInTheDocument();
   });
 
   it("rolls up by tag value, with findings filtered by the tag", async () => {
@@ -198,9 +174,7 @@ describe("manager overview", () => {
       "href",
       "/findings?state=open&tag=team%3Apayments",
     );
-    expect(
-      screen.getByText("Showing tag team=payments. Change"),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Showing tag team=payments. Change")).toBeInTheDocument();
   });
 
   it("asks for the past and says which figures are current", async () => {
@@ -216,9 +190,7 @@ describe("manager overview", () => {
 
     renderAt("/manager?as_of=2026-10-01T00:00:00Z");
 
-    expect(
-      await screen.findByRole("article", { name: "acme" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("article", { name: "acme" })).toBeInTheDocument();
     expect(screen.getByText(/from evaluation run 30/)).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -260,16 +232,14 @@ describe("trends", () => {
       "26 Oct 2026No data",
       "2 Nov 202690%",
     ]);
-    expect(
-      screen.getByRole("figure", { name: "Time spent" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("figure", { name: "Time spent" })).toBeInTheDocument();
   });
 
   it("asks for monthly buckets over a chosen period", async () => {
     const calls = api(manager, {
       [TRENDS]: () => json(trends()),
-      "GET /api/v1/manager/trends?bucket=month&from=2025-11-01&to=2026-10-31":
-        () => json(trends({ bucket: "month", points: [] })),
+      "GET /api/v1/manager/trends?bucket=month&from=2025-11-01&to=2026-10-31": () =>
+        json(trends({ bucket: "month", points: [] })),
     });
     const user = userEvent.setup();
     renderAt("/manager/trends");
@@ -280,9 +250,7 @@ describe("trends", () => {
     await user.type(within(form).getByLabelText("To"), "2026-10-31");
     await user.click(within(form).getByRole("button", { name: "Show" }));
 
-    expect(
-      await screen.findByText("No data in this period."),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("No data in this period.")).toBeInTheDocument();
     expect(calls.map((call) => call.url)).toContain(
       "/api/v1/manager/trends?bucket=month&from=2025-11-01&to=2026-10-31",
     );
@@ -290,14 +258,12 @@ describe("trends", () => {
 
   it("explains a period that is too long", async () => {
     api(manager, {
-      "GET /api/v1/manager/trends?bucket=week&from=2020-01-01&to=2026-01-01":
-        () => json({ detail: "too many buckets" }, 422),
+      "GET /api/v1/manager/trends?bucket=week&from=2020-01-01&to=2026-01-01": () =>
+        json({ detail: "too many buckets" }, 422),
     });
     renderAt("/manager/trends?from=2020-01-01&to=2026-01-01");
     expect(
-      await screen.findByText(
-        "That period is too long: at most 105 weeks or 36 months.",
-      ),
+      await screen.findByText("That period is too long: at most 105 weeks or 36 months."),
     ).toBeInTheDocument();
   });
 });

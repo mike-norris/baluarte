@@ -1,12 +1,7 @@
 import { useState, type ChangeEvent, type FormEvent } from "react";
 
 import { errorReasons } from "../api/send";
-import {
-  getTimeSettings,
-  saveTimeSettings,
-  TIME_LIMITS,
-  type TimeSettings,
-} from "../api/time";
+import { getTimeSettings, saveTimeSettings, TIME_LIMITS, type TimeSettings } from "../api/time";
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
@@ -23,8 +18,7 @@ function fieldsOf(settings: TimeSettings): Fields {
   return {
     lookback_days: String(settings.lookback_days),
     reread_days: String(settings.reread_days),
-    retention_days:
-      settings.retention_days === null ? "" : String(settings.retention_days),
+    retention_days: settings.retention_days === null ? "" : String(settings.retention_days),
   };
 }
 
@@ -36,11 +30,7 @@ function whole(value: string): number | null {
 /** Problems with the time settings, in field order; empty when they may be sent. */
 export function timeSettingsProblems(fields: Fields): string[] {
   const problems: string[] = [];
-  const check = (
-    value: string,
-    limits: { min: number; max: number },
-    what: string,
-  ) => {
+  const check = (value: string, limits: { min: number; max: number }, what: string) => {
     const number = whole(value);
     if (number === null || number < limits.min || number > limits.max) {
       problems.push(
@@ -50,8 +40,7 @@ export function timeSettingsProblems(fields: Fields): string[] {
   };
   check(fields.lookback_days, TIME_LIMITS.lookback, "Lookback");
   check(fields.reread_days, TIME_LIMITS.reread, "Read again for");
-  if (fields.retention_days.trim())
-    check(fields.retention_days, TIME_LIMITS.retention, "Keep for");
+  if (fields.retention_days.trim()) check(fields.retention_days, TIME_LIMITS.retention, "Keep for");
   return problems;
 }
 
@@ -167,9 +156,7 @@ function TimeForm({
 export function TimeSettingsCard({ csrf }: { csrf: string }) {
   const [version, setVersion] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
-  const loaded = useLoad(`settings-time#${String(version)}`, (signal) =>
-    getTimeSettings(signal),
-  );
+  const loaded = useLoad(`settings-time#${String(version)}`, (signal) => getTimeSettings(signal));
 
   return (
     <section aria-labelledby="time-settings-title" className={cardClass}>
@@ -177,9 +164,8 @@ export function TimeSettingsCard({ csrf }: { csrf: string }) {
         Time tracking
       </h2>
       <p className="text-sm text-slate-600">
-        Time logs and estimates are read from GitLab with the read-only token.
-        The text of a time log&apos;s summary is never stored. Every change to
-        these settings is audited.
+        Time logs and estimates are read from GitLab with the read-only token. The text of a time
+        log&apos;s summary is never stored. Every change to these settings is audited.
       </p>
       {loaded.error ? (
         <ErrorMessage error={loaded.error} retry={loaded.retry} />
@@ -195,9 +181,7 @@ export function TimeSettingsCard({ csrf }: { csrf: string }) {
             csrf={csrf}
             settings={loaded.data}
             onSaved={() => {
-              setMessage(
-                "Time tracking settings saved. They apply from the next collection.",
-              );
+              setMessage("Time tracking settings saved. They apply from the next collection.");
               setVersion((value) => value + 1);
             }}
           />

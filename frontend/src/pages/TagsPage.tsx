@@ -23,18 +23,8 @@ import {
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
-import {
-  buttonClass,
-  fieldClass,
-  linkClass,
-  secondaryClass,
-} from "../components/styles";
-import {
-  canWriteTags,
-  MANAGER,
-  MANAGER_TAGS,
-  writeFocus,
-} from "../manager/format";
+import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
+import { canWriteTags, MANAGER, MANAGER_TAGS, writeFocus } from "../manager/format";
 import { ManagerTabs, TagChip } from "../manager/parts";
 import { TargetPicker, type Picked } from "../policies/TargetPicker";
 import { asApiError, Problems } from "../settings/parts";
@@ -48,9 +38,8 @@ function Header({ title }: { title: string }) {
           {title}
         </h1>
         <p className="mt-2 text-slate-600">
-          Baluarte&apos;s own tags group projects across the GitLab hierarchy,
-          for example by team or cost centre. They never change GitLab and are
-          not evidence of compliance.
+          Baluarte&apos;s own tags group projects across the GitLab hierarchy, for example by team
+          or cost centre. They never change GitLab and are not evidence of compliance.
         </p>
       </div>
       <ManagerTabs />
@@ -87,9 +76,7 @@ function NewTagForm({ onCreated }: { onCreated: (message: string) => void }) {
     try {
       const created = await createTag(tag, csrf);
       form.reset();
-      onCreated(
-        `Tag ${tagText(created)} created. Assign it to groups or projects next.`,
-      );
+      onCreated(`Tag ${tagText(created)} created. Assign it to groups or projects next.`);
     } catch (error) {
       setProblems(failureMessages(error));
       if (asApiError(error).status === 401) void refresh();
@@ -110,13 +97,7 @@ function NewTagForm({ onCreated }: { onCreated: (message: string) => void }) {
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="text-sm font-medium">
           Key
-          <input
-            name="key"
-            required
-            maxLength={63}
-            placeholder="team"
-            className={fieldClass}
-          />
+          <input name="key" required maxLength={63} placeholder="team" className={fieldClass} />
         </label>
         <label className="text-sm font-medium">
           Value
@@ -130,11 +111,7 @@ function NewTagForm({ onCreated }: { onCreated: (message: string) => void }) {
         </label>
         <label className="text-sm font-medium sm:col-span-2">
           Description (optional)
-          <input
-            name="description"
-            maxLength={MAX_TAG_DESCRIPTION}
-            className={fieldClass}
-          />
+          <input name="description" maxLength={MAX_TAG_DESCRIPTION} className={fieldClass} />
         </label>
         <div className="flex items-end gap-3">
           <label className="flex items-center gap-2 text-sm font-medium">
@@ -143,18 +120,13 @@ function NewTagForm({ onCreated }: { onCreated: (message: string) => void }) {
           </label>
           <label className="text-sm font-medium">
             <span className="sr-only">Colour value</span>
-            <input
-              name="color"
-              type="color"
-              defaultValue="#1f6feb"
-              className="h-9 w-14"
-            />
+            <input name="color" type="color" defaultValue="#1f6feb" className="h-9 w-14" />
           </label>
         </div>
       </div>
       <p className="text-xs text-slate-600">
-        Keys and values use lowercase letters, digits, dots, dashes or
-        underscores. A project has one value per key.
+        Keys and values use lowercase letters, digits, dots, dashes or underscores. A project has
+        one value per key.
       </p>
       <button type="submit" disabled={saving} className={buttonClass}>
         {saving ? "Creating…" : "Create tag"}
@@ -166,9 +138,7 @@ function NewTagForm({ onCreated }: { onCreated: (message: string) => void }) {
 /** Every tag, with how many groups and projects it covers. */
 export function TagsPage() {
   const { session } = useAuth();
-  const canWrite = canWriteTags(
-    session.status === "signed_in" ? session.user : null,
-  );
+  const canWrite = canWriteTags(session.status === "signed_in" ? session.user : null);
   const [version, setVersion] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const tags = useLoad(`tags#${String(version)}`, (signal) => listTags(signal));
@@ -177,10 +147,7 @@ export function TagsPage() {
     <section aria-labelledby="page-title" className="space-y-6">
       <Header title="Tags" />
       {message && (
-        <p
-          role="status"
-          className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm"
-        >
+        <p role="status" className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm">
           {message}
         </p>
       )}
@@ -205,18 +172,8 @@ export function TagsPage() {
               <caption className="sr-only">Tags</caption>
               <thead className="border-b border-slate-200 bg-slate-50">
                 <tr>
-                  {[
-                    "Tag",
-                    "Description",
-                    "Groups",
-                    "Projects covered",
-                    "Roll-up",
-                  ].map((title) => (
-                    <th
-                      key={title}
-                      scope="col"
-                      className="px-3 py-2 font-medium"
-                    >
+                  {["Tag", "Description", "Groups", "Projects covered", "Roll-up"].map((title) => (
+                    <th key={title} scope="col" className="px-3 py-2 font-medium">
                       {title}
                     </th>
                   ))}
@@ -235,9 +192,7 @@ export function TagsPage() {
                       </Link>
                     </th>
                     <td className="px-3 py-2">
-                      {tag.description ?? (
-                        <span className="text-slate-500">None</span>
-                      )}
+                      {tag.description ?? <span className="text-slate-500">None</span>}
                     </td>
                     <td className="px-3 py-2">{tag.groups}</td>
                     <td className="px-3 py-2">{tag.projects}</td>
@@ -265,13 +220,7 @@ export function TagsPage() {
   );
 }
 
-function EditTag({
-  tag,
-  onSaved,
-}: {
-  tag: TagDetail;
-  onSaved: (message: string) => void;
-}) {
+function EditTag({ tag, onSaved }: { tag: TagDetail; onSaved: (message: string) => void }) {
   const { session } = useAuth();
   const csrf = session.status === "signed_in" ? session.user.csrf_token : "";
   const [problems, setProblems] = useState<string[]>([]);
@@ -281,9 +230,7 @@ function EditTag({
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const description = String(data.get("description") ?? "").trim();
-    const color = data.get("use_color")
-      ? String(data.get("color") ?? "")
-      : null;
+    const color = data.get("use_color") ? String(data.get("color") ?? "") : null;
     const found = Object.values(
       tagProblems({
         key: tag.key,
@@ -296,11 +243,7 @@ function EditTag({
     if (found.length > 0) return;
     setSaving(true);
     try {
-      await updateTag(
-        tag.id,
-        { description: description || null, color },
-        csrf,
-      );
+      await updateTag(tag.id, { description: description || null, color }, csrf);
       onSaved("Tag saved.");
     } catch (error) {
       setProblems(failureMessages(error));
@@ -329,11 +272,7 @@ function EditTag({
       </label>
       <div className="flex items-end gap-3">
         <label className="flex items-center gap-2 text-sm font-medium">
-          <input
-            name="use_color"
-            type="checkbox"
-            defaultChecked={tag.color !== null}
-          />
+          <input name="use_color" type="checkbox" defaultChecked={tag.color !== null} />
           Colour
         </label>
         <label className="text-sm font-medium">
@@ -353,13 +292,7 @@ function EditTag({
   );
 }
 
-function AssignForm({
-  tag,
-  onDone,
-}: {
-  tag: TagDetail;
-  onDone: (message: string) => void;
-}) {
+function AssignForm({ tag, onDone }: { tag: TagDetail; onDone: (message: string) => void }) {
   const { session } = useAuth();
   const csrf = session.status === "signed_in" ? session.user.csrf_token : "";
   const [type, setType] = useState<TagTargetType>("group");
@@ -372,11 +305,7 @@ function AssignForm({
     setSaving(true);
     setProblems([]);
     try {
-      await assignTag(
-        tag.id,
-        [{ type: picked.type, gitlab_id: picked.gitlabId }],
-        csrf,
-      );
+      await assignTag(tag.id, [{ type: picked.type, gitlab_id: picked.gitlabId }], csrf);
       setPicked(null);
       onDone(`${tagText(tag)} assigned to ${picked.path}.`);
     } catch (error) {
@@ -390,8 +319,8 @@ function AssignForm({
     <div className="space-y-3 rounded border border-slate-200 bg-white p-4">
       <h2 className="font-semibold">Assign</h2>
       <p className="text-sm text-slate-600">
-        A group&apos;s tag applies to its subgroups and projects. A value
-        assigned to a project itself wins over one it inherits.
+        A group&apos;s tag applies to its subgroups and projects. A value assigned to a project
+        itself wins over one it inherits.
       </p>
       <Problems messages={problems} />
       <fieldset className="flex gap-4 text-sm">
@@ -463,16 +392,11 @@ function Assignments({
       </h2>
       <Problems messages={problems} />
       {tag.assignments.length === 0 ? (
-        <p className="text-sm text-slate-600">
-          Not assigned to any group or project yet.
-        </p>
+        <p className="text-sm text-slate-600">Not assigned to any group or project yet.</p>
       ) : (
         <ul className="divide-y divide-slate-100 rounded border border-slate-200 bg-white">
           {tag.assignments.map((assignment) => (
-            <li
-              key={assignment.id}
-              className="flex flex-wrap items-center gap-3 px-3 py-2 text-sm"
-            >
+            <li key={assignment.id} className="flex flex-wrap items-center gap-3 px-3 py-2 text-sm">
               <span className="font-medium">
                 {assignment.target_type === "group" ? "Group " : "Project "}
                 <Link
@@ -512,14 +436,10 @@ export function TagPage() {
   const { tagId = "" } = useParams();
   const id = Number(tagId);
   const { session } = useAuth();
-  const canWrite = canWriteTags(
-    session.status === "signed_in" ? session.user : null,
-  );
+  const canWrite = canWriteTags(session.status === "signed_in" ? session.user : null);
   const [version, setVersion] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
-  const tag = useLoad(`tag-${tagId}#${String(version)}`, (signal) =>
-    getTag(id, signal),
-  );
+  const tag = useLoad(`tag-${tagId}#${String(version)}`, (signal) => getTag(id, signal));
 
   function done(text: string) {
     setMessage(text);
@@ -535,10 +455,7 @@ export function TagPage() {
         </Link>
       </p>
       {message && (
-        <p
-          role="status"
-          className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm"
-        >
+        <p role="status" className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm">
           {message}
         </p>
       )}
@@ -568,9 +485,7 @@ export function TagPage() {
           </p>
           <Assignments tag={tag.data} canWrite={canWrite} onDone={done} />
           {canWrite && <AssignForm tag={tag.data} onDone={done} />}
-          {canWrite && (
-            <EditTag key={String(version)} tag={tag.data} onSaved={done} />
-          )}
+          {canWrite && <EditTag key={String(version)} tag={tag.data} onSaved={done} />}
         </>
       ) : (
         <p role="status" className="text-slate-600">

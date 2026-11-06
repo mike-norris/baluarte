@@ -42,15 +42,7 @@ function Loading({ what }: { what: string }) {
   );
 }
 
-function Card({
-  id,
-  title,
-  children,
-}: {
-  id: string;
-  title: string;
-  children: ReactNode;
-}) {
+function Card({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
     <section aria-labelledby={id} className={cardClass}>
       <h2 id={id} className="text-lg font-semibold">
@@ -69,13 +61,7 @@ function Saved({ message }: { message: string | null }) {
   );
 }
 
-function GitLabCard({
-  csrf,
-  secretKey,
-}: {
-  csrf: string;
-  secretKey: boolean | null;
-}) {
+function GitLabCard({ csrf, secretKey }: { csrf: string; secretKey: boolean | null }) {
   const { refresh } = useAuth();
   const [version, setVersion] = useState(0);
   const loaded = useLoad(`settings-gitlab#${String(version)}`, (signal) =>
@@ -137,10 +123,7 @@ function GitLabCard({
               rows={[
                 ["GitLab address", config.url],
                 ["Access token", secretLabel(config.token)],
-                [
-                  "Request timeout",
-                  `${String(config.timeout_seconds)} seconds`,
-                ],
+                ["Request timeout", `${String(config.timeout_seconds)} seconds`],
                 ["Collection", describeInterval(config.sync_interval_minutes)],
               ]}
             />
@@ -186,15 +169,11 @@ function GitLabCard({
               className="space-y-2 rounded border border-red-200 p-3"
             >
               <p className="text-sm">
-                Disconnect GitLab? The stored token is deleted and collection
-                stops. Collected inventory, evidence and findings are kept.
+                Disconnect GitLab? The stored token is deleted and collection stops. Collected
+                inventory, evidence and findings are kept.
               </p>
               <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => void disconnect()}
-                  className={buttonClass}
-                >
+                <button type="button" onClick={() => void disconnect()} className={buttonClass}>
                   Disconnect GitLab
                 </button>
                 <button
@@ -222,13 +201,7 @@ function GitLabCard({
   );
 }
 
-function OidcCard({
-  csrf,
-  secretKey,
-}: {
-  csrf: string;
-  secretKey: boolean | null;
-}) {
+function OidcCard({ csrf, secretKey }: { csrf: string; secretKey: boolean | null }) {
   const { refresh } = useAuth();
   const [version, setVersion] = useState(0);
   const loaded = useLoad(`settings-oidc#${String(version)}`, (signal) =>
@@ -327,10 +300,7 @@ function SystemCard({ info }: { info: SettingsInfo }) {
               ? `${database.user ?? "?"}@${database.host ?? "?"}:${String(database.port ?? 5432)}/${database.name ?? "?"}${database.ssl_mode ? ` (sslmode ${database.ssl_mode})` : ""}`
               : "Not configured",
           ],
-          [
-            "Database password",
-            database ? secretLabel(database.password) : "Not set",
-          ],
+          ["Database password", database ? secretLabel(database.password) : "Not set"],
           [
             "Logging",
             info.logging
@@ -339,9 +309,7 @@ function SystemCard({ info }: { info: SettingsInfo }) {
           ],
           [
             "Secret encryption key",
-            info.secret_key === undefined
-              ? "Unknown"
-              : secretLabel(info.secret_key),
+            info.secret_key === undefined ? "Unknown" : secretLabel(info.secret_key),
           ],
           [
             "Session lifetime",
@@ -359,8 +327,7 @@ function SystemCard({ info }: { info: SettingsInfo }) {
 export function SettingsPage() {
   const { session } = useAuth();
   const allowed =
-    session.status === "signed_in" &&
-    session.user.permissions.includes("settings:manage");
+    session.status === "signed_in" && session.user.permissions.includes("settings:manage");
 
   return (
     <section aria-labelledby="page-title" className="space-y-6">
@@ -369,9 +336,9 @@ export function SettingsPage() {
           Settings
         </h1>
         <p className="mt-2 text-slate-600">
-          The identity provider, the GitLab connection, the compliance profile,
-          audit log shipping and system information. Every change is audited;
-          secrets can be replaced but are never shown.
+          The identity provider, the GitLab connection, the compliance profile, audit log shipping
+          and system information. Every change is audited; secrets can be replaced but are never
+          shown.
         </p>
       </div>
       {allowed ? (
@@ -420,11 +387,10 @@ function ReviewCard({ csrf }: { csrf: string }) {
   return (
     <Card id="governance-title" title="Baseline change review">
       <p className="mt-1 text-sm text-slate-600">
-        When required, a new baseline version, or a change to where a baseline
-        applies, takes effect only after someone other than the person who
-        proposed it approves it under Governance → Changes. Every change is
-        recorded either way, with whether it was reviewed. Turn this on once at
-        least two people can manage baselines.
+        When required, a new baseline version, or a change to where a baseline applies, takes effect
+        only after someone other than the person who proposed it approves it under Governance →
+        Changes. Every change is recorded either way, with whether it was reviewed. Turn this on
+        once at least two people can manage baselines.
       </p>
       {loaded.error ? (
         <ErrorMessage error={loaded.error} retry={loaded.retry} />
@@ -455,9 +421,7 @@ function ReviewCard({ csrf }: { csrf: string }) {
 function SettingsContent({ csrf }: { csrf: string }) {
   const info = useLoad("settings", getSettings);
   const secretKey =
-    info.data?.secret_key === undefined
-      ? null
-      : info.data.secret_key === "configured";
+    info.data?.secret_key === undefined ? null : info.data.secret_key === "configured";
 
   return (
     <>

@@ -2,22 +2,11 @@ import { useState } from "react";
 import { Link } from "react-router";
 
 import { errorReasons } from "../api/send";
-import {
-  assignTag,
-  listTags,
-  tagText,
-  unassignTag,
-  type TagTarget,
-} from "../api/tags";
+import { assignTag, listTags, tagText, unassignTag, type TagTarget } from "../api/tags";
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
-import {
-  buttonClass,
-  fieldClass,
-  linkClass,
-  secondaryClass,
-} from "../components/styles";
+import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
 import { MANAGER_TAGS } from "../manager/format";
 import { asApiError, Problems } from "../settings/parts";
 
@@ -106,9 +95,7 @@ export function TagForm({
             }}
             className={fieldClass}
           >
-            <option value="">
-              {tags.data ? "Choose a tag" : "Loading tags…"}
-            </option>
+            <option value="">{tags.data ? "Choose a tag" : "Loading tags…"}</option>
             {(tags.data?.items ?? []).map((tag) => (
               <option key={tag.id} value={String(tag.id)}>
                 {tagText(tag)}
@@ -118,8 +105,8 @@ export function TagForm({
         </label>
       )}
       <p className="text-xs text-slate-600">
-        Tags are kept in Baluarte only; GitLab is not changed. A group&apos;s
-        tag applies to its subgroups and projects.
+        Tags are kept in Baluarte only; GitLab is not changed. A group&apos;s tag applies to its
+        subgroups and projects.
       </p>
       <div className="flex flex-wrap gap-2">
         <button

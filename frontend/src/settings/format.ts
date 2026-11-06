@@ -28,15 +28,9 @@ function parseUrl(value: string): URL | null {
 /** The origin Baluarte is served from, or null when it is not a valid public URL. */
 export function publicOrigin(value: string): string | null {
   const url = parseUrl(value);
-  if (!url || (url.protocol !== "https:" && url.protocol !== "http:"))
-    return null;
+  if (!url || (url.protocol !== "https:" && url.protocol !== "http:")) return null;
   if (url.protocol === "http:" && !LOOPBACK.has(url.hostname)) return null;
-  if (
-    (url.pathname !== "/" && url.pathname !== "") ||
-    url.search ||
-    url.hash ||
-    url.username
-  ) {
+  if ((url.pathname !== "/" && url.pathname !== "") || url.search || url.hash || url.username) {
     return null;
   }
   return url.origin;
@@ -49,12 +43,7 @@ export function redirectUri(publicUrl: string): string | null {
 
 export function isHttpsUrl(value: string): boolean {
   const url = parseUrl(value);
-  return (
-    url !== null &&
-    url.protocol === "https:" &&
-    url.hostname !== "" &&
-    !url.username
-  );
+  return url !== null && url.protocol === "https:" && url.hostname !== "" && !url.username;
 }
 
 export interface OidcFields {
@@ -79,18 +68,12 @@ export function oidcProblems(fields: OidcFields): string[] {
       "Enter Baluarte's address as an origin with no path, such as https://baluarte.example.com. Plain http is allowed only for localhost.",
     );
   }
-  if (!isHttpsUrl(fields.issuer))
-    problems.push("Enter the issuer as an https URL.");
-  if (!fields.client_id.trim())
-    problems.push("Enter the client ID from your identity provider.");
-  if (!fields.scopes.split(/\s+/).includes("openid"))
-    problems.push("Scopes must include openid.");
-  if (!fields.roles_claim.trim())
-    problems.push("Enter the claim that lists the user's groups.");
+  if (!isHttpsUrl(fields.issuer)) problems.push("Enter the issuer as an https URL.");
+  if (!fields.client_id.trim()) problems.push("Enter the client ID from your identity provider.");
+  if (!fields.scopes.split(/\s+/).includes("openid")) problems.push("Scopes must include openid.");
+  if (!fields.roles_claim.trim()) problems.push("Enter the claim that lists the user's groups.");
   if (parseGroups(fields.admin_groups).length === 0) {
-    problems.push(
-      "Map at least one group to the admin role, or no one can manage Baluarte.",
-    );
+    problems.push("Map at least one group to the admin role, or no one can manage Baluarte.");
   }
   return problems;
 }
@@ -103,29 +86,20 @@ export interface GitLabFields {
 }
 
 /** Problems with the GitLab form; ``tokenStored`` allows leaving the token blank to keep it. */
-export function gitlabProblems(
-  fields: GitLabFields,
-  tokenStored: boolean,
-): string[] {
+export function gitlabProblems(fields: GitLabFields, tokenStored: boolean): string[] {
   const problems: string[] = [];
   const url = parseUrl(fields.url);
   if (!isHttpsUrl(fields.url) || url?.search || url?.hash) {
     problems.push("Enter the GitLab address as an https URL, without /api/v4.");
   }
-  if (!tokenStored && !fields.token.trim())
-    problems.push("Enter a token with the read_api scope.");
+  if (!tokenStored && !fields.token.trim()) problems.push("Enter a token with the read_api scope.");
   const timeout = Number(fields.timeout_seconds);
   if (!Number.isFinite(timeout) || timeout < 1 || timeout > 120) {
     problems.push("Choose a request timeout between 1 and 120 seconds.");
   }
   const interval = Number(fields.sync_interval_minutes);
-  if (
-    !Number.isInteger(interval) ||
-    (interval !== 0 && (interval < 15 || interval > 10080))
-  ) {
-    problems.push(
-      "Choose a collection interval of 0 (off) or 15 to 10080 minutes.",
-    );
+  if (!Number.isInteger(interval) || (interval !== 0 && (interval < 15 || interval > 10080))) {
+    problems.push("Choose a collection interval of 0 (off) or 15 to 10080 minutes.");
   }
   return problems;
 }
@@ -141,12 +115,7 @@ const MAX_ENVIRONMENT = 255;
 
 function wholeIn(value: string, low: number, high: number): boolean {
   const number = Number(value.trim());
-  return (
-    value.trim() !== "" &&
-    Number.isInteger(number) &&
-    number >= low &&
-    number <= high
-  );
+  return value.trim() !== "" && Number.isInteger(number) && number >= low && number <= high;
 }
 
 /** Problems with the change evidence form, in field order; empty when it may be sent. */
@@ -162,9 +131,7 @@ export function changeEvidenceProblems(fields: ChangeEvidenceFields): string[] {
   if (environments.length === 0) {
     problems.push("Name at least one production environment.");
   } else if (environments.length > MAX_ENVIRONMENTS) {
-    problems.push(
-      `Name at most ${String(MAX_ENVIRONMENTS)} production environments.`,
-    );
+    problems.push(`Name at most ${String(MAX_ENVIRONMENTS)} production environments.`);
   }
   if (environments.some((name) => name.length > MAX_ENVIRONMENT)) {
     problems.push("An environment name is at most 255 characters.");

@@ -7,11 +7,7 @@ import type { Group, Page, Project } from "../api/gitlab";
 import type { CurrentUser } from "../auth/session";
 import { routes } from "../routes";
 import { analyst, json, mockApi, type Call } from "../test/api";
-import {
-  EVALUATION_FRESHNESS,
-  evaluationFreshness,
-  freshness,
-} from "../test/freshness";
+import { EVALUATION_FRESHNESS, evaluationFreshness, freshness } from "../test/freshness";
 import { TAGS, auditor, manager, tag, tagDetail } from "../test/manager";
 import { SCOPE_ACTIVE, SCOPE_PROPOSED, exclusions } from "../test/scope";
 
@@ -44,9 +40,7 @@ function renderAt(path: string) {
 
 function bodyOf(calls: Call[], key: string): unknown {
   const [method, url] = key.split(" ");
-  const call = calls
-    .filter((c) => c.url === url && c.init?.method === method)
-    .at(-1);
+  const call = calls.filter((c) => c.url === url && c.init?.method === method).at(-1);
   return call?.init?.body ? JSON.parse(String(call.init.body)) : undefined;
 }
 
@@ -76,9 +70,7 @@ describe("tags", () => {
     ).toHaveAttribute("href", "/manager?tag=team%3Apayments");
     expect(rows[2]).toHaveTextContent("cost-center=cc-104None02");
     // Without tags:write there is nothing to change.
-    expect(
-      screen.queryByRole("form", { name: "New tag" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("form", { name: "New tag" })).not.toBeInTheDocument();
   });
 
   it("creates a tag after checking it", async () => {
@@ -100,16 +92,11 @@ describe("tags", () => {
 
     await user.clear(within(form).getByLabelText("Key"));
     await user.type(within(form).getByLabelText("Key"), "team");
-    await user.type(
-      within(form).getByLabelText("Description (optional)"),
-      "Web team",
-    );
+    await user.type(within(form).getByLabelText("Description (optional)"), "Web team");
     await user.click(within(form).getByRole("button", { name: "Create tag" }));
 
     expect(
-      await screen.findByText(
-        "Tag team=web created. Assign it to groups or projects next.",
-      ),
+      await screen.findByText("Tag team=web created. Assign it to groups or projects next."),
     ).toBeInTheDocument();
     expect(bodyOf(calls, "POST /api/v1/tags")).toEqual({
       key: "team",
@@ -142,9 +129,7 @@ describe("tags", () => {
 
     const alert = await within(form).findByRole("alert");
     expect(alert).toHaveTextContent("Not possible now: team=payments exists.");
-    expect(alert).toHaveTextContent(
-      "a tag with that key and value already exists",
-    );
+    expect(alert).toHaveTextContent("a tag with that key and value already exists");
   });
 });
 
@@ -152,8 +137,7 @@ describe("one tag", () => {
   it("shows where it is assigned and removes an assignment", async () => {
     const calls = api(manager, {
       "GET /api/v1/tags/1": () => json(tagDetail(payments)),
-      "POST /api/v1/tags/1/unassign": () =>
-        json(tagDetail(payments, { assignments: [] })),
+      "POST /api/v1/tags/1/unassign": () => json(tagDetail(payments, { assignments: [] })),
     });
     const user = userEvent.setup();
     renderAt("/manager/tags/1");
@@ -164,20 +148,14 @@ describe("one tag", () => {
         name: "Tag team=payments",
       }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText("6 projects, through 1 groups and direct assignments"),
-    ).toBeVisible();
+    expect(screen.getByText("6 projects, through 1 groups and direct assignments")).toBeVisible();
     expect(screen.getByRole("link", { name: "acme/payments" })).toHaveAttribute(
       "href",
       "/inventory/groups/110",
     );
-    await user.click(
-      screen.getByRole("button", { name: "Remove from acme/payments" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Remove from acme/payments" }));
 
-    expect(
-      await screen.findByText("team=payments removed from acme/payments."),
-    ).toBeVisible();
+    expect(await screen.findByText("team=payments removed from acme/payments.")).toBeVisible();
     expect(bodyOf(calls, "POST /api/v1/tags/1/unassign")).toEqual({
       targets: [{ type: "group", gitlab_id: 110 }],
     });
@@ -200,8 +178,8 @@ describe("one tag", () => {
     const groups: Page<Group> = { items: [group], next_after_id: null };
     api(manager, {
       "GET /api/v1/tags/1": () => json(tagDetail(payments)),
-      "GET /api/v1/gitlab/groups?search=acme%2Fweb&state=active&monitoring=all&limit=100":
-        () => json(groups),
+      "GET /api/v1/gitlab/groups?search=acme%2Fweb&state=active&monitoring=all&limit=100": () =>
+        json(groups),
       "POST /api/v1/tags/1/assign": () =>
         json(
           {
@@ -217,15 +195,10 @@ describe("one tag", () => {
     const user = userEvent.setup();
     renderAt("/manager/tags/1");
 
-    await user.type(
-      await screen.findByLabelText("Find a group by path"),
-      "acme/web",
-    );
+    await user.type(await screen.findByLabelText("Find a group by path"), "acme/web");
     await user.click(screen.getByRole("button", { name: "Search groups" }));
     await user.click(await screen.findByRole("radio", { name: /acme\/web/ }));
-    await user.click(
-      screen.getByRole("button", { name: "Assign team=payments" }),
-    );
+    await user.click(screen.getByRole("button", { name: "Assign team=payments" }));
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("acme/web already has another team");
@@ -235,26 +208,14 @@ describe("one tag", () => {
   it("is read-only without tags:write", async () => {
     api(auditor, { "GET /api/v1/tags/1": () => json(tagDetail(payments)) });
     renderAt("/manager/tags/1");
-    expect(
-      await screen.findByRole("link", { name: "acme/payments" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /Remove/ }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("form", { name: "Edit tag" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("heading", { name: "Assign" }),
-    ).not.toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "acme/payments" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Remove/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("form", { name: "Edit tag" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Assign" })).not.toBeInTheDocument();
   });
 });
 
-function project(
-  id: number,
-  path: string,
-  extra: Partial<Project> = {},
-): Project {
+function project(id: number, path: string, extra: Partial<Project> = {}): Project {
   return {
     id,
     gitlab_id: id + 100,
@@ -313,9 +274,7 @@ describe("tags in the inventory", () => {
 
     const form = await screen.findByRole("form", { name: "Filter projects" });
     await user.type(within(form).getByLabelText("Tag"), "team=payments");
-    await user.click(
-      within(form).getByRole("button", { name: "Apply filters" }),
-    );
+    await user.click(within(form).getByRole("button", { name: "Apply filters" }));
 
     expect(await screen.findByText("Showing 1 projects.")).toBeInTheDocument();
     expect(router.state.location.search).toBe("?tag=team%3Apayments");
@@ -332,13 +291,9 @@ describe("tags in the inventory", () => {
     const user = userEvent.setup();
     renderAt("/inventory");
 
-    await user.click(
-      await screen.findByRole("checkbox", { name: "Select acme/web/site" }),
-    );
+    await user.click(await screen.findByRole("checkbox", { name: "Select acme/web/site" }));
     const bar = screen.getByRole("group", { name: "Selected projects" });
-    expect(
-      within(bar).queryByRole("button", { name: "Exclude from monitoring" }),
-    ).toBeNull();
+    expect(within(bar).queryByRole("button", { name: "Exclude from monitoring" })).toBeNull();
     await user.click(within(bar).getByRole("button", { name: "Tag…" }));
     const form = screen.getByRole("group", { name: "Tag 1 selected item" });
     await user.selectOptions(
@@ -347,9 +302,7 @@ describe("tags in the inventory", () => {
     );
     await user.click(within(form).getByRole("button", { name: "Add tag" }));
 
-    expect(
-      await screen.findByText("cost-center=cc-104 added to 1 item."),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("cost-center=cc-104 added to 1 item.")).toBeInTheDocument();
     expect(bodyOf(calls, "POST /api/v1/tags/2/assign")).toEqual({
       targets: [{ type: "project", gitlab_id: 102 }],
     });
@@ -361,8 +314,6 @@ describe("tags in the inventory", () => {
     });
     renderAt("/inventory");
     await screen.findByRole("table", { name: "GitLab projects" });
-    expect(
-      screen.queryByRole("checkbox", { name: /^Select/ }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /^Select/ })).not.toBeInTheDocument();
   });
 });

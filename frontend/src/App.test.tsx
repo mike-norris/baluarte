@@ -60,12 +60,13 @@ describe("navigation", () => {
     renderAt("/inventory");
 
     const nav = await screen.findByRole("navigation", { name: "Primary" });
-    expect(
-      within(nav).getByRole("link", { name: "Inventory" }),
-    ).toHaveAttribute("aria-current", "page");
-    expect(
-      within(nav).getByRole("link", { name: "Dashboard" }),
-    ).not.toHaveAttribute("aria-current");
+    expect(within(nav).getByRole("link", { name: "Inventory" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(within(nav).getByRole("link", { name: "Dashboard" })).not.toHaveAttribute(
+      "aria-current",
+    );
   });
 
   it("navigates between sections", async () => {
@@ -75,39 +76,32 @@ describe("navigation", () => {
     await user.click(await screen.findByRole("link", { name: "Findings" }));
 
     expect(router.state.location.pathname).toBe("/findings");
-    expect(
-      await screen.findByRole("heading", { level: 1, name: "Findings" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { level: 1, name: "Findings" })).toBeInTheDocument();
   });
 
-  it.each(navItems)(
-    "renders a page heading for $label",
-    async ({ path, label }) => {
-      renderAt(path);
+  it.each(navItems)("renders a page heading for $label", async ({ path, label }) => {
+    renderAt(path);
 
-      expect(
-        await screen.findByRole("heading", { level: 1, name: label }),
-      ).toBeInTheDocument();
-    },
-  );
+    expect(await screen.findByRole("heading", { level: 1, name: label })).toBeInTheDocument();
+  });
 
   it("shows a not-found page for unknown paths", () => {
     renderAt("/does-not-exist");
 
-    expect(
-      screen.getByRole("heading", { level: 1, name: "Page not found" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "Return to the dashboard" }),
-    ).toHaveAttribute("href", "/");
+    expect(screen.getByRole("heading", { level: 1, name: "Page not found" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Return to the dashboard" })).toHaveAttribute(
+      "href",
+      "/",
+    );
   });
 
   it("offers a skip link to the main landmark", () => {
     renderAt("/");
 
-    expect(
-      screen.getByRole("link", { name: "Skip to main content" }),
-    ).toHaveAttribute("href", "#main");
+    expect(screen.getByRole("link", { name: "Skip to main content" })).toHaveAttribute(
+      "href",
+      "#main",
+    );
     expect(screen.getByRole("main")).toHaveAttribute("id", "main");
   });
 });
