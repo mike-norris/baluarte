@@ -12,26 +12,14 @@ import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { buttonClass, fieldClass, secondaryClass } from "../components/styles";
 import { formatTime } from "../time";
-import {
-  asApiError,
-  cardClass,
-  noteClass,
-  Problems,
-  SecretKeyNotice,
-  Values,
-} from "./parts";
+import { asApiError, cardClass, noteClass, Problems, SecretKeyNotice, Values } from "./parts";
 
 /** At most this many characters; the API refuses longer tokens. */
 export const MAX_TOKEN = 1024;
 
 function StatusValues({ status }: { status: WriteTokenStatus }) {
   const rows: [string, ReactNode][] = [
-    [
-      "Label writes",
-      status.writes_enabled
-        ? "Enabled for this deployment"
-        : "Turned off for this deployment",
-    ],
+    ["Label writes", status.writes_enabled ? "Enabled for this deployment" : "Turned off for this deployment"],
     ["Write token", status.set ? "Set (hidden)" : "Not set"],
   ];
   if (status.set) {
@@ -44,10 +32,7 @@ function StatusValues({ status }: { status: WriteTokenStatus }) {
           ? status.scopes.join(", ")
           : "None",
     ]);
-    rows.push([
-      "Expires",
-      status.expires_at ? formatTime(status.expires_at) : "Not reported",
-    ]);
+    rows.push(["Expires", status.expires_at ? formatTime(status.expires_at) : "Not reported"]);
     rows.push(["Last checked", formatTime(status.checked_at)]);
   }
   return <Values rows={rows} />;
@@ -85,8 +70,7 @@ function TokenForm({
     if (!value) found.push("Enter the write token.");
     else if (value.length > MAX_TOKEN) {
       found.push(`The token is longer than ${String(MAX_TOKEN)} characters.`);
-    } else if (/\s/.test(value))
-      found.push("The token cannot contain spaces or line breaks.");
+    } else if (/\s/.test(value)) found.push("The token cannot contain spaces or line breaks.");
     setProblems(found);
     if (found.length > 0) return;
     setSending("save");
@@ -111,9 +95,7 @@ function TokenForm({
     try {
       await removeWriteToken(csrf);
       setConfirmRemove(false);
-      onSaved(
-        "Write token removed. Label plans cannot be applied until a new one is set.",
-      );
+      onSaved("Write token removed. Label plans cannot be applied until a new one is set.");
     } catch (error) {
       failed(error);
     } finally {
@@ -124,12 +106,7 @@ function TokenForm({
   return (
     <div className="space-y-4">
       <Problems messages={problems} />
-      <form
-        onSubmit={(event) => void save(event)}
-        aria-label="Label write token"
-        noValidate
-        className="space-y-3"
-      >
+      <form onSubmit={(event) => void save(event)} aria-label="Label write token" noValidate className="space-y-3">
         <label className="block text-sm font-medium">
           {status.set ? "Replace the write token" : "Write token"}
           <input
@@ -146,24 +123,15 @@ function TokenForm({
           />
         </label>
         <p id={`${id}-help`} className="text-xs text-slate-600">
-          Never shown again once saved. Use a group access token with the
-          Maintainer role and the <code>api</code> scope, limited to the groups
-          whose labels Baluarte should fix, with an expiry date. It is used only
-          to apply approved label plans; every other read keeps using the
-          read-only token.
+          Never shown again once saved. Use a group access token with the Maintainer role and the{" "}
+          <code>api</code> scope, limited to the groups whose labels Baluarte should fix, with an
+          expiry date. It is used only to apply approved label plans; every other read keeps using
+          the read-only token.
         </p>
         {!canStore && <SecretKeyNotice />}
         <div className="flex flex-wrap gap-2">
-          <button
-            type="submit"
-            disabled={!canStore || sending !== null}
-            className={buttonClass}
-          >
-            {sending === "save"
-              ? "Checking and saving…"
-              : status.set
-                ? "Replace token"
-                : "Save token"}
+          <button type="submit" disabled={!canStore || sending !== null} className={buttonClass}>
+            {sending === "save" ? "Checking and saving…" : status.set ? "Replace token" : "Save token"}
           </button>
           {status.set && !confirmRemove && (
             <button
@@ -180,10 +148,7 @@ function TokenForm({
       </form>
       {confirmRemove && (
         <div className={noteClass}>
-          <p>
-            Remove the write token? Approved label plans cannot be applied
-            without one.
-          </p>
+          <p>Remove the write token? Approved label plans cannot be applied without one.</p>
           <div className="mt-2 flex flex-wrap gap-2">
             <button
               type="button"
@@ -219,9 +184,8 @@ export function LabelWriteTokenCard({
 }) {
   const [version, setVersion] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
-  const loaded = useLoad(
-    `settings-label-write-token#${String(version)}`,
-    (signal) => getWriteToken(signal),
+  const loaded = useLoad(`settings-label-write-token#${String(version)}`, (signal) =>
+    getWriteToken(signal),
   );
 
   return (
@@ -230,9 +194,9 @@ export function LabelWriteTokenCard({
         Label write token
       </h2>
       <p className="text-sm text-slate-600">
-        The only credential Baluarte writes to GitLab with, and only to create,
-        rename or update labels from an approved plan. It never deletes.
-        Setting, replacing and removing it are recorded in the audit log.
+        The only credential Baluarte writes to GitLab with, and only to create, rename or update
+        labels from an approved plan. It never deletes. Setting, replacing and removing it are
+        recorded in the audit log.
       </p>
       {loaded.error ? (
         <ErrorMessage error={loaded.error} retry={loaded.retry} />
@@ -240,16 +204,13 @@ export function LabelWriteTokenCard({
         <>
           <StatusValues status={loaded.data} />
           {loaded.data.check_error && (
-            <p
-              className={noteClass}
-            >{`GitLab could not confirm the token: ${loaded.data.check_error}`}</p>
+            <p className={noteClass}>{`GitLab could not confirm the token: ${loaded.data.check_error}`}</p>
           )}
           {!loaded.data.writes_enabled && (
             <p className={noteClass}>
-              Label writes are turned off for this deployment, so plans cannot
-              be applied even with a token. Set{" "}
-              <code>BALUARTE_LABEL_WRITES=true</code> in the deployment and
-              restart Baluarte to allow them.
+              Label writes are turned off for this deployment, so plans cannot be applied even with
+              a token. Set <code>BALUARTE_LABEL_WRITES=true</code> in the deployment and restart
+              Baluarte to allow them.
             </p>
           )}
           <TokenForm

@@ -17,19 +17,9 @@ import {
   gitlabProblems,
   type GitLabFields,
 } from "./format";
-import {
-  asApiError,
-  errorClass,
-  noteClass,
-  Problems,
-  SecretKeyNotice,
-} from "./parts";
+import { asApiError, errorClass, noteClass, Problems, SecretKeyNotice } from "./parts";
 
-const checkLabels: Record<CheckStatus, string> = {
-  pass: "Pass",
-  warn: "Warning",
-  fail: "Fail",
-};
+const checkLabels: Record<CheckStatus, string> = { pass: "Pass", warn: "Warning", fail: "Fail" };
 const checkClasses: Record<CheckStatus, string> = {
   pass: "bg-emerald-100 text-emerald-900",
   warn: "bg-amber-100 text-amber-950",
@@ -49,11 +39,7 @@ const WRITE_SCOPES = new Set([
 ]);
 
 function readOnly(scopes: string[] | null): boolean {
-  return (
-    scopes !== null &&
-    scopes.includes("read_api") &&
-    !scopes.some((s) => WRITE_SCOPES.has(s))
-  );
+  return scopes !== null && scopes.includes("read_api") && !scopes.some((s) => WRITE_SCOPES.has(s));
 }
 
 export function GitLabTestResultView({ result }: { result: GitLabTestResult }) {
@@ -65,19 +51,14 @@ export function GitLabTestResultView({ result }: { result: GitLabTestResult }) {
           : "border-red-300 bg-red-50 text-red-900"
       }`}
     >
-      <p className="font-medium">
-        {result.ok ? "Connection succeeded" : "Connection failed"}
-      </p>
+      <p className="font-medium">{result.ok ? "Connection succeeded" : "Connection failed"}</p>
       {result.error && <p>{result.error}</p>}
       <ul className="list-disc pl-5">
         {result.version && <li>GitLab version: {result.version}</li>}
         {result.user && <li>Token user: {result.user.username}</li>}
         {result.token_scopes && (
           <li>
-            Token scopes:{" "}
-            {result.token_scopes.length > 0
-              ? result.token_scopes.join(", ")
-              : "none"}
+            Token scopes: {result.token_scopes.length > 0 ? result.token_scopes.join(", ") : "none"}
           </li>
         )}
         {result.token_scopes !== null && (
@@ -91,18 +72,15 @@ export function GitLabTestResultView({ result }: { result: GitLabTestResult }) {
       </ul>
       {result.user?.is_admin && !readOnly(result.token_scopes) && (
         <p className={noteClass}>
-          This token belongs to a GitLab administrator and can change GitLab, or
-          its scopes could not be read. Issue it with <code>read_api</code> only
-          (add <code>admin_mode</code> to cover the whole instance).
+          This token belongs to a GitLab administrator and can change GitLab, or its scopes could
+          not be read. Issue it with <code>read_api</code> only (add <code>admin_mode</code> to
+          cover the whole instance).
         </p>
       )}
       {result.checks.length > 0 && (
         <ul className="space-y-1">
           {result.checks.map((check) => (
-            <li
-              key={check.name}
-              className="flex flex-wrap items-baseline gap-2"
-            >
+            <li key={check.name} className="flex flex-wrap items-baseline gap-2">
               <span
                 className={`rounded px-1.5 py-0.5 text-xs font-medium ${checkClasses[check.status]}`}
               >
@@ -123,9 +101,7 @@ function initialFields(config: GitLabConfig | null): GitLabFields {
     url: config?.url ?? "",
     token: "",
     timeout_seconds: String(config?.timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS),
-    sync_interval_minutes: String(
-      config?.sync_interval_minutes ?? DEFAULT_SYNC_INTERVAL_MINUTES,
-    ),
+    sync_interval_minutes: String(config?.sync_interval_minutes ?? DEFAULT_SYNC_INTERVAL_MINUTES),
   };
 }
 
@@ -150,9 +126,7 @@ export function GitLabForm({
   onCancel?: () => void;
 }) {
   const id = useId();
-  const [fields, setFields] = useState<GitLabFields>(() =>
-    initialFields(config),
-  );
+  const [fields, setFields] = useState<GitLabFields>(() => initialFields(config));
   const [problems, setProblems] = useState<string[]>([]);
   const [failure, setFailure] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -250,9 +224,8 @@ export function GitLabForm({
         />
       </label>
       <p id={`${id}-url-help`} className="text-xs text-slate-600">
-        The https address of your self-managed GitLab, without{" "}
-        <code>/api/v4</code>. Relative-URL installs such as{" "}
-        <code>https://example.com/gitlab</code> work.
+        The https address of your self-managed GitLab, without <code>/api/v4</code>. Relative-URL
+        installs such as <code>https://example.com/gitlab</code> work.
       </p>
 
       <label className="block text-sm font-medium">
@@ -272,9 +245,8 @@ export function GitLabForm({
         {tokenStored
           ? "A token is stored and is never shown. Leave this blank to keep it, or enter a new one to replace it. "
           : ""}
-        Use a token with only the <code>read_api</code> scope and an expiry
-        date, from a dedicated non-admin account. Baluarte only reads from
-        GitLab.
+        Use a token with only the <code>read_api</code> scope and an expiry date, from a dedicated
+        non-admin account. Baluarte only reads from GitLab.
       </p>
       {!canStoreSecret && <SecretKeyNotice />}
 
@@ -306,8 +278,8 @@ export function GitLabForm({
         </label>
       </div>
       <p id={`${id}-interval-help`} className="text-xs text-slate-600">
-        0 turns scheduled collection off; otherwise 15 to 10080 minutes (one
-        week). The default is 360 (six hours).
+        0 turns scheduled collection off; otherwise 15 to 10080 minutes (one week). The default is
+        360 (six hours).
       </p>
 
       <div className="space-y-2">
