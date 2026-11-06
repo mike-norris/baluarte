@@ -415,7 +415,7 @@ class DriftItemOut(BaseModel):
     label: str | None
     observed: dict[str, Any] | None
     expected: dict[str, Any] | None
-    reason: str
+    reason: str | None
     observations: list[ObservationRef]
 
 
