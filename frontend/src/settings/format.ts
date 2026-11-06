@@ -57,6 +57,7 @@ export interface OidcFields {
   admin_groups: string;
   analyst_groups: string;
   auditor_groups: string;
+  manager_groups: string;
 }
 
 /** Problems with the identity provider form, in field order; empty when it may be sent. */

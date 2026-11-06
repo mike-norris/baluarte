@@ -38,6 +38,8 @@ export interface OidcConfig {
   admin_groups: string[];
   analyst_groups: string[];
   auditor_groups: string[];
+  /** Absent from older servers. */
+  manager_groups?: string[];
   redirect_uri: string;
 }
 
@@ -53,6 +55,7 @@ export interface OidcUpdate {
   admin_groups: string[];
   analyst_groups: string[];
   auditor_groups: string[];
+  manager_groups: string[];
 }
 
 export interface OidcTestResult {

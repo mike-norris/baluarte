@@ -317,6 +317,7 @@ describe("identity provider step", () => {
       admin_groups: ["platform/security", "ops"],
       analyst_groups: [],
       auditor_groups: [],
+      manager_groups: [],
     });
     expect(headersOf(calls, "/api/v1/setup/oidc")?.["X-CSRF-Token"]).toBe(CSRF);
   });
