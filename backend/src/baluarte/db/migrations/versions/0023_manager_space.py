@@ -21,6 +21,7 @@ Create Date: 2026-11-07 10:00:00.000000
 """
 
 from collections.abc import Sequence
+from typing import Any
 
 import sqlalchemy as sa
 from alembic import op
@@ -146,7 +147,7 @@ def _roles(values: Sequence[str], validate: bool = True) -> None:
     )
 
 
-def _ended_columns() -> list[sa.Column[object]]:
+def _ended_columns() -> list[sa.Column[Any]]:
     return [
         sa.Column("ended_by", sa.Text(), nullable=True),
         sa.Column("ended_by_user_id", sa.BigInteger(), nullable=True),
@@ -154,7 +155,7 @@ def _ended_columns() -> list[sa.Column[object]]:
     ]
 
 
-def _now(name: str) -> sa.Column[object]:
+def _now(name: str) -> sa.Column[Any]:
     return sa.Column(
         name, sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
     )

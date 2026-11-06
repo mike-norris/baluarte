@@ -458,7 +458,9 @@ class Evaluation(Base):
         Index("ix_evaluation_project_rule", "project_id", "policy_name", "rule_id", "evaluated_at"),
         Index("ix_evaluation_run", "evaluation_run_id"),
         # Trends count each run's results by outcome and severity for a set of projects.
-        Index("ix_evaluation_run_outcome", "evaluation_run_id", "outcome", "severity", "project_id"),
+        Index(
+            "ix_evaluation_run_outcome", "evaluation_run_id", "outcome", "severity", "project_id"
+        ),
         one_of("outcome", OUTCOMES),
         one_of("severity", SEVERITIES),
         one_of("ancestry", ANCESTRIES),
