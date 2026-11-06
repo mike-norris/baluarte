@@ -430,9 +430,14 @@ def inventory(db: Session, instance_id: int, as_of: datetime | None = None) -> I
 
 
 def observations(
-    db: Session, instance_id: int, as_of: datetime | None = None
+    db: Session,
+    instance_id: int,
+    as_of: datetime | None = None,
+    only: Iterable[tuple[str, int]] | None = None,
 ) -> dict[tuple[str, int], OwnerLabels]:
-    """The latest label observation of every group and project (collected by ``as_of``)."""
+    """The latest label observation of every group and project (collected by ``as_of``), or
+    only of the (type, row ID) pairs in ``only``."""
+    wanted = set(only) if only is not None else None
     found: dict[tuple[str, int], OwnerLabels] = {}
     for kind, column, source in (
         ("group", Observation.group_id, GROUP_SOURCE),
@@ -443,6 +448,11 @@ def observations(
             Observation.source == source,
             column.is_not(None),
         )
+        if wanted is not None:
+            ids = [row_id for owner_type, row_id in wanted if owner_type == kind]
+            if not ids:
+                continue
+            statement = statement.where(column.in_(ids))
         if as_of is not None:
             statement = statement.where(Observation.collected_at <= as_of)
         rows = db.scalars(

@@ -24,7 +24,13 @@ from baluarte.auth.dependencies import (
 )
 from baluarte.auth.roles import Role
 from baluarte.compliance.catalogue import FRAMEWORK_IDS
-from baluarte.controls.catalogue import CONTROLS, DEFAULT_MAPPING, MAPPING_VERSION, control
+from baluarte.controls.catalogue import (
+    CONTROLS,
+    DEFAULT_MAPPING,
+    MAPPING_VERSION,
+    UNMAPPED_BY_DEFAULT,
+    control,
+)
 from baluarte.controls.posture import Counts, MappedRule, status_of
 from baluarte.db.models import AuditEvent, ControlMappingChange
 from baluarte.main import create_app
@@ -54,7 +60,8 @@ def test_every_default_pair_names_a_control_and_a_rule_type_once() -> None:
 def test_every_rule_type_supports_a_control_in_every_framework() -> None:
     for rule_type in RULE_TYPES:
         frameworks = {p.framework for p in DEFAULT_MAPPING if p.rule_type == rule_type}
-        assert frameworks == set(FRAMEWORK_IDS), rule_type
+        expected = set() if rule_type in UNMAPPED_BY_DEFAULT else set(FRAMEWORK_IDS)
+        assert frameworks == expected, rule_type
 
 
 def test_controls_are_unique_with_short_paraphrased_titles() -> None:

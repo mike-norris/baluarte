@@ -19,6 +19,9 @@ from baluarte.compliance.catalogue import ISO27001, NIST, SOC2, FrameworkId
 from baluarte.policy.schema import RULE_TYPES
 
 MAPPING_VERSION = "2026.11.1"
+# Rule types with no default pair: which control they support is the organization's choice
+# (label consistency is configuration management for some, process hygiene for others).
+UNMAPPED_BY_DEFAULT = ("gitlab.labels.consistent",)
 
 
 ACCESS = "Access control"
