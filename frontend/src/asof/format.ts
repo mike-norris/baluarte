@@ -1,7 +1,8 @@
 /**
  * The past-date view: ``?as_of=`` in the URL, a UTC instant. Pages that can show the state at
- * that instant (findings, controls, the dashboard, a project, changes and labels) pass it to every
- * request; the API answers from the latest evaluation run finished at or before it.
+ * that instant (findings, controls, the dashboard, a project, changes, labels and the manager
+ * overview) pass it to every request; the API answers from the latest evaluation run finished at
+ * or before it.
  */
 
 import { formatTime } from "../time";
@@ -32,6 +33,7 @@ const AWARE: readonly RegExp[] = [
   /^\/changes(\/[^/]+)?\/?$/,
   /^\/labels\/?$/,
   /^\/labels\/owners\/[^/]+\/[^/]+\/?$/,
+  /^\/manager\/?$/,
 ];
 
 export function asOfAware(pathname: string): boolean {

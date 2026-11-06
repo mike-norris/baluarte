@@ -127,7 +127,7 @@ export function getOverview(
 export function getTrends(
   focus: Focus,
   bucket: Bucket,
-  range: { from?: string; to?: string },
+  range: { from?: string | undefined; to?: string | undefined },
   signal?: AbortSignal,
 ): Promise<Trends> {
   return getJson(
