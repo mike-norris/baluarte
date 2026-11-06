@@ -10,6 +10,7 @@ import { routes } from "../routes";
 import { analyst, json, mockApi, type Call } from "../test/api";
 import { controlException, profile, shippingConfig, shippingStatus } from "../test/compliance";
 import { EVALUATION_FRESHNESS, evaluationFreshness, freshness } from "../test/freshness";
+import { WRITE_TOKEN, tokenStatus } from "../test/labels";
 
 const admin: CurrentUser = {
   ...analyst,
@@ -94,6 +95,7 @@ function api(user: CurrentUser, routes: Routes = {}): Call[] {
     "GET /api/v1/settings/oidc": () => json(oidcConfig),
     "GET /api/v1/settings/governance": () => json({ require_review: false }),
     "GET /api/v1/settings/change-evidence": () => json(changeSettings),
+    [WRITE_TOKEN]: () => json(tokenStatus()),
     "GET /api/v1/compliance/profile": () => json(socProfile),
     "GET /api/v1/settings/audit-shipping": () => json(shippingConfig()),
     "GET /api/v1/compliance/audit-shipping": () => json(shippingStatus()),
@@ -613,5 +615,98 @@ describe("audit log shipping in settings", () => {
       api_key: "new-key-value",
       password: null,
     });
+  });
+});
+
+describe("label write token in settings", () => {
+  it("saves a token without ever showing it, and reports what GitLab says about it", async () => {
+    let status = tokenStatus();
+    const calls = api(admin, {
+      [WRITE_TOKEN]: () => json(status),
+      "PUT /api/v1/settings/label-write-token": () => {
+        status = tokenStatus({
+          set: true,
+          token_name: "baluarte-labels",
+          scopes: ["api"],
+          expires_at: "2027-01-31T00:00:00Z",
+          checked_at: "2026-11-06T09:00:00Z",
+        });
+        return json(status);
+      },
+    });
+    const user = userEvent.setup();
+    renderSettings();
+
+    const section = await card("Label write token");
+    expect(await within(section).findByText("Not set")).toBeInTheDocument();
+    expect(within(section).getByText("Enabled for this deployment")).toBeInTheDocument();
+    const field = within(section).getByLabelText("Write token");
+    expect(field).toHaveAttribute("type", "password");
+    await user.type(field, "glpat-example-write");
+    await user.click(within(section).getByRole("button", { name: "Save token" }));
+
+    expect(
+      await within(section).findByText("Write token saved and checked with GitLab."),
+    ).toBeInTheDocument();
+    expect(await within(section).findByText("Set (hidden)")).toBeInTheDocument();
+    expect(within(section).getByText("baluarte-labels")).toBeInTheDocument();
+    expect(section).toHaveTextContent("Scopesapi");
+    expect(within(section).queryByText("glpat-example-write")).not.toBeInTheDocument();
+    expect(bodyOf(calls, "PUT", "/api/v1/settings/label-write-token")).toEqual({
+      token: "glpat-example-write",
+    });
+  });
+
+  it("says when GitLab could not confirm a saved token", async () => {
+    api(admin, {
+      "PUT /api/v1/settings/label-write-token": () =>
+        json(tokenStatus({ set: true, check_error: "GitLab answered 401" })),
+    });
+    const user = userEvent.setup();
+    renderSettings();
+
+    const section = await card("Label write token");
+    await user.type(await within(section).findByLabelText("Write token"), "glpat-wrong");
+    await user.click(within(section).getByRole("button", { name: "Save token" }));
+    expect(
+      await within(section).findByText(
+        "Write token saved, but GitLab could not confirm it: GitLab answered 401",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("removes the token only after confirmation", async () => {
+    const calls = api(admin, {
+      [WRITE_TOKEN]: () => json(tokenStatus({ set: true, scopes: ["api"] })),
+      "DELETE /api/v1/settings/label-write-token": () => new Response(null, { status: 204 }),
+    });
+    const user = userEvent.setup();
+    renderSettings();
+
+    const section = await card("Label write token");
+    await user.click(await within(section).findByRole("button", { name: "Remove token" }));
+    expect(calls.some((call) => call.init?.method === "DELETE")).toBe(false);
+    await user.click(within(section).getByRole("button", { name: "Remove the token" }));
+    expect(
+      await within(section).findByText(
+        "Write token removed. Label plans cannot be applied until a new one is set.",
+      ),
+    ).toBeInTheDocument();
+    expect(calls.filter((call) => call.init?.method === "DELETE")).toHaveLength(1);
+  });
+
+  it("explains that writes are off for the deployment, and asks for a token before saving", async () => {
+    const calls = api(admin, {
+      [WRITE_TOKEN]: () => json(tokenStatus({ writes_enabled: false })),
+    });
+    const user = userEvent.setup();
+    renderSettings();
+
+    const section = await card("Label write token");
+    expect(await within(section).findByText("Turned off for this deployment")).toBeInTheDocument();
+    expect(section).toHaveTextContent("BALUARTE_LABEL_WRITES=true");
+    await user.click(within(section).getByRole("button", { name: "Save token" }));
+    expect(await within(section).findByRole("alert")).toHaveTextContent("Enter the write token.");
+    expect(calls.some((call) => call.init?.method === "PUT")).toBe(false);
   });
 });
