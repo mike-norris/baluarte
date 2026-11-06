@@ -333,6 +333,7 @@ def test_saving_the_identity_provider(harness: Harness) -> None:
         "admin_groups": ["baluarte-admins"],
         "analyst_groups": ["baluarte-analysts"],
         "auditor_groups": [],
+        "manager_groups": [],
         "redirect_uri": f"{PUBLIC_URL}/api/v1/auth/callback",
     }
     assert harness.client.get("/api/v1/setup/oidc").json() == response.json()

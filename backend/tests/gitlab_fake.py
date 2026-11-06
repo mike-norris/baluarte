@@ -86,7 +86,7 @@ def healthy_routes() -> dict[str, list[Reply]]:
         "/api/v4/projects/42/deployments": [httpx.Response(200, json=[])],
         "/api/v4/projects/42/repository/commits": [httpx.Response(200, json=[])],
         "/api/v4/license": [httpx.Response(403, json={"message": "403 Forbidden"})],
-        "/api/graphql": [graphql()],
+        "/api/graphql": [timelogs_graphql({"platform/api": []}, fallback=graphql())],  # type: ignore[arg-type]
     }
 
 
@@ -365,3 +365,108 @@ class LabelServer:
     @property
     def transport(self) -> httpx.MockTransport:
         return httpx.MockTransport(self.handler)
+
+
+def _work(iid: int, labels: Collection[str], milestone: str | None) -> dict[str, Any]:
+    return {
+        "iid": str(iid),
+        "labels": {"nodes": [{"title": label} for label in labels]},
+        "milestone": {"title": milestone} if milestone else None,
+    }
+
+
+def timelog(
+    log_id: int,
+    spent_at: str,
+    seconds: int,
+    username: str | None = "dev1",
+    *,
+    issue: int | None = None,
+    merge_request: int | None = None,
+    labels: Collection[str] = (),
+    milestone: str | None = None,
+    summary: str | None = "worked on it",
+) -> dict[str, Any]:
+    """A GraphQL Timelog node."""
+    return {
+        "id": f"gid://gitlab/Timelog/{log_id}",
+        "spentAt": spent_at,
+        "timeSpent": seconds,
+        "summary": summary,
+        "user": {"username": username} if username else None,
+        "issue": _work(issue, labels, milestone) if issue is not None else None,
+        "mergeRequest": (
+            _work(merge_request, labels, milestone) if merge_request is not None else None
+        ),
+    }
+
+
+def timelogs_graphql(
+    logs: dict[str, list[dict[str, Any]]],
+    *,
+    page_size: int = 2,
+    forbidden: Collection[str] = (),
+    hidden: Collection[str] = (),
+    unsupported: bool = False,
+    fallback: Callable[[httpx.Request], httpx.Response] | None = None,
+) -> Reply:
+    """Answer ``project(fullPath) { timelogs }`` queries like GitLab's GraphQL API over GET.
+
+    ``logs`` maps a project path to its Timelog nodes. Nodes are filtered by ``startTime`` and
+    ``endTime`` and served ``page_size`` at a time with cursors. Other queries go to ``fallback``.
+    """
+
+    def errors(message: str) -> httpx.Response:
+        return httpx.Response(200, json={"errors": [{"message": message}]})
+
+    def reply(request: httpx.Request) -> httpx.Response:
+        if request.method != "GET":
+            return httpx.Response(405)
+        query = request.url.params["query"]
+        if "timelogs(" not in query:
+            return fallback(request) if fallback is not None else httpx.Response(404)
+        if unsupported:
+            return errors("Field 'timelogs' doesn't exist on type 'Project'")
+        variables = json.loads(request.url.params.get("variables", "{}"))
+        path = variables.get("path")
+        if path in forbidden:
+            return errors(
+                "The resource that you are attempting to access does not exist or you don't "
+                "have permission to perform this action"
+            )
+        if path in hidden or path not in logs:
+            return httpx.Response(200, json={"data": {"project": None}})
+        start, end = variables.get("start"), variables.get("end")
+        nodes = sorted(
+            (
+                node
+                for node in logs[path]
+                if (start is None or node["spentAt"] >= start)
+                and (end is None or node["spentAt"] <= end)
+            ),
+            key=lambda node: (node["spentAt"], node["id"]),
+        )
+        offset = int(variables.get("after") or 0)
+        size = 1 if "first: 1)" in query else page_size
+        more = offset + size < len(nodes)
+        found = {
+            "pageInfo": {"hasNextPage": more, "endCursor": str(offset + size) if more else None},
+            "nodes": nodes[offset : offset + size],
+        }
+        return httpx.Response(200, json={"data": {"project": {"timelogs": found}}})
+
+    return reply
+
+
+def issue_with_time(
+    iid: int, estimate: int, spent: int, updated_at: str = "2026-10-01T00:00:00Z", **extra: Any
+) -> dict[str, Any]:
+    """A REST issue with ``time_stats``."""
+    return {
+        "iid": iid,
+        "state": "opened",
+        "labels": [],
+        "milestone": None,
+        "updated_at": updated_at,
+        "time_stats": {"time_estimate": estimate, "total_time_spent": spent},
+    } | extra
