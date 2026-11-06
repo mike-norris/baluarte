@@ -5,8 +5,10 @@ The ``retention.expire`` job runs once a day (``RetentionSchedule``) and, in one
 * evaluations older than the evidence period, except a finding's latest;
 * changes (``change_record``) that reached their branch before it, unless an evaluation still
   refers to their observation;
+* time entries spent, and issue estimates last read, before the time period: the time tracking
+  ``retention_days`` when it is shorter than the evidence period, else the evidence period;
 * observations older than it, except the newest of each target and source and any an
-  evaluation or change still refers to;
+  evaluation, change, time entry or estimate still refers to;
 * evaluation and collection runs older than it that nothing still refers to;
 * finished jobs and exports older than the job period that nothing still refers to;
 * sessions, sign-ins and setup sessions that ended more than ``SESSION_DAYS`` ago;
@@ -34,6 +36,7 @@ from baluarte.compliance import operations
 from baluarte.compliance.shipping import oldest_unshipped
 from baluarte.jobs import queue
 from baluarte.jobs.queue import ClaimedJob
+from baluarte.timetracking import settings as time_settings
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +67,8 @@ _DELETE: list[tuple[str, str, str]] = [
                SELECT 1 FROM evaluation e WHERE e.observation_ids @> ARRAY[c.observation_id])
         """,
     ),
+    ("time_entry", "time", "DELETE FROM time_entry t WHERE t.spent_at < :cutoff"),
+    ("issue_estimate", "time", "DELETE FROM issue_estimate i WHERE i.read_at < :cutoff"),
     (
         "observation",
         "evidence",
@@ -73,6 +78,8 @@ _DELETE: list[tuple[str, str, str]] = [
            AND NOT EXISTS (SELECT 1 FROM evaluation e WHERE e.observation_id = o.id)
            AND NOT EXISTS (SELECT 1 FROM evaluation e WHERE e.observation_ids @> ARRAY[o.id])
            AND NOT EXISTS (SELECT 1 FROM change_record c WHERE c.observation_id = o.id)
+           AND NOT EXISTS (SELECT 1 FROM time_entry t WHERE t.observation_id = o.id)
+           AND NOT EXISTS (SELECT 1 FROM issue_estimate i WHERE i.observation_id = o.id)
            AND EXISTS (
                SELECT 1 FROM observation n
                 WHERE n.instance_id = o.instance_id
@@ -158,6 +165,10 @@ def expire(db: Session) -> dict[str, Any]:
         "jobs": now - timedelta(days=int(settings["job_retention_days"])),
         "sessions": now - timedelta(days=SESSION_DAYS),
     }
+    time_days = time_settings.load(db).retention_days
+    cutoffs["time"] = max(
+        cutoffs["evidence"], now - timedelta(days=time_days) if time_days else cutoffs["evidence"]
+    )
     unshipped = oldest_unshipped(db)
     if unshipped is not None and unshipped < cutoffs["audit"]:
         cutoffs["audit"] = unshipped
