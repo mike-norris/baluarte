@@ -28,6 +28,7 @@ from baluarte.integrations.gitlab.jobs import (
     make_discover_security_policies,
 )
 from baluarte.jobs.queue import ClaimedJob
+from baluarte.labels.plans import APPLY_LABEL_PLAN, make_apply_label_plan
 from baluarte.policy.evaluation.runner import EVALUATE, evaluate
 
 Handler = Callable[[ClaimedJob, Engine], None]
@@ -39,6 +40,7 @@ HANDLERS: Mapping[str, Handler] = {
     DISCOVER_SECURITY_POLICIES: make_discover_security_policies(),
     COLLECT_CHANGES: make_collect_changes(),
     COLLECT_LABELS: make_collect_labels(),
+    APPLY_LABEL_PLAN: make_apply_label_plan(),
     EVALUATE: evaluate,
     RETENTION_EXPIRE: handle_expire,
     AUDIT_SHIP: handle_ship,
