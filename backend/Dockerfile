@@ -1,13 +1,13 @@
 # syntax=docker/dockerfile:1
 
 # Shared image for the API and (from BAL-009) the worker; they differ only by command.
-FROM python:3.12-slim AS build
+FROM python:3.15-slim AS build
 WORKDIR /src
 COPY pyproject.toml README.md ./
 COPY src ./src
 RUN python -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir .
 
-FROM python:3.12-slim
+FROM python:3.15-slim
 ENV PATH=/opt/venv/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
