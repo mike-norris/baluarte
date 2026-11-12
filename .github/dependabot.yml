@@ -25,6 +25,10 @@ updates:
         update-types: ["version-update:semver-major"]
       - dependency-name: "@eslint/js"
         update-types: ["version-update:semver-major"]
+      # typescript-eslint 8.x declares TypeScript < 6.1 as a peer, so TypeScript 7 fails
+      # `npm ci`. Remove once typescript-eslint supports TypeScript 7.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: docker
     directories: [/backend, /frontend]
     schedule:

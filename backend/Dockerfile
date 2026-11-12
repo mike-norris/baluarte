@@ -5,12 +5,18 @@ FROM python:3.15-slim AS build
 WORKDIR /src
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN python -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir .
+# pip is only needed to build the environment, so it is removed from it afterwards.
+RUN python -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir . \
+    && /opt/venv/bin/pip uninstall -y pip
 
 FROM python:3.15-slim
 ENV PATH=/opt/venv/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
+# Pick up Debian security fixes released after the base image was built. pip and its bundled
+# wheel are never used at runtime and vendor their own dependencies, so they are removed.
+RUN apt-get update && apt-get upgrade -y --no-install-recommends && rm -rf /var/lib/apt/lists/* \
+    && python -m pip uninstall -y pip && rm -f /usr/local/lib/python3.*/ensurepip/_bundled/*.whl
 RUN useradd --system --uid 10001 --no-create-home --shell /usr/sbin/nologin baluarte
 COPY --from=build /opt/venv /opt/venv
 USER 10001
