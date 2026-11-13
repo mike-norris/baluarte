@@ -69,6 +69,7 @@ _DELETE: list[tuple[str, str, str]] = [
     ),
     ("time_entry", "time", "DELETE FROM time_entry t WHERE t.spent_at < :cutoff"),
     ("issue_estimate", "time", "DELETE FROM issue_estimate i WHERE i.read_at < :cutoff"),
+    ("issue_context", "time", "DELETE FROM issue_context i WHERE i.read_at < :cutoff"),
     (
         "observation",
         "evidence",
@@ -80,6 +81,7 @@ _DELETE: list[tuple[str, str, str]] = [
            AND NOT EXISTS (SELECT 1 FROM change_record c WHERE c.observation_id = o.id)
            AND NOT EXISTS (SELECT 1 FROM time_entry t WHERE t.observation_id = o.id)
            AND NOT EXISTS (SELECT 1 FROM issue_estimate i WHERE i.observation_id = o.id)
+           AND NOT EXISTS (SELECT 1 FROM issue_context i WHERE i.observation_id = o.id)
            AND EXISTS (
                SELECT 1 FROM observation n
                 WHERE n.instance_id = o.instance_id

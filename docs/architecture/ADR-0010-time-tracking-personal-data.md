@@ -31,6 +31,7 @@ Built as described in [TIME_TRACKING.md](../TIME_TRACKING.md) and [MANAGER_SPACE
 - `BALUARTE_TIME_PER_PERSON=false` turns per-person figures off for everyone, administrators included (`403 per_person_disabled`).
 - Each per-person read is audited as `time.people_viewed` with the filters only. Exports add per-person entries only with `include_people: true`, audited as `time.people_exported` and noted in the manifest (`time_people`); audit-period packages never include them.
 - Retention deletes time entries before the shorter of the time tracking `retention_days` and the evidence period.
+- Timecards (`GET /time/timecard`, CSV and HTML downloads) are per-person data under the same rules. They add each person's GitLab display name and the planning context of issues with logged time (parent, top-level epic, milestone, iteration, estimate, title). Issue titles are work metadata, not personal data, but they reach the timecard only through the per-person view. Views and downloads are audited as `time.timecard_viewed` and `time.timecard_exported` with the filters only.
 
 ## Revisit when
 

@@ -123,6 +123,10 @@ export const routes: RouteObject[] = [
             element: page(() => import("./pages/TimePage"), "TimePage"),
           },
           {
+            path: "/manager/timecard",
+            element: page(() => import("./pages/TimecardPage"), "TimecardPage"),
+          },
+          {
             path: "/manager/tags",
             element: page(() => import("./pages/TagsPage"), "TagsPage"),
           },

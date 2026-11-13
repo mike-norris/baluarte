@@ -7,6 +7,7 @@ import type { CurrentUser } from "../auth/session";
 export const MANAGER = "/manager";
 export const MANAGER_TRENDS = "/manager/trends";
 export const MANAGER_TIME = "/manager/time";
+export const MANAGER_TIMECARD = "/manager/timecard";
 export const MANAGER_TAGS = "/manager/tags";
 
 function has(user: CurrentUser | null, permission: string): boolean {
@@ -28,6 +29,7 @@ export const managerTabs: readonly ManagerTab[] = [
   { path: MANAGER, label: "Overview", visible: canReadManager },
   { path: MANAGER_TRENDS, label: "Trends", visible: canReadManager },
   { path: MANAGER_TIME, label: "Time", visible: canReadTime },
+  { path: MANAGER_TIMECARD, label: "Timecard", visible: canReadPeople },
   { path: MANAGER_TAGS, label: "Tags", visible: () => true },
 ];
 

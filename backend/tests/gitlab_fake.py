@@ -386,14 +386,19 @@ def timelog(
     labels: Collection[str] = (),
     milestone: str | None = None,
     summary: str | None = "worked on it",
+    name: str | None = None,
 ) -> dict[str, Any]:
-    """A GraphQL Timelog node."""
+    """A GraphQL Timelog node; ``name`` is the person's display name."""
     return {
         "id": f"gid://gitlab/Timelog/{log_id}",
         "spentAt": spent_at,
         "timeSpent": seconds,
         "summary": summary,
-        "user": {"username": username} if username else None,
+        "user": (
+            ({"username": username, "name": name} if name else {"username": username})
+            if username
+            else None
+        ),
         "issue": _work(issue, labels, milestone) if issue is not None else None,
         "mergeRequest": (
             _work(merge_request, labels, milestone) if merge_request is not None else None
@@ -454,6 +459,99 @@ def timelogs_graphql(
             "nodes": nodes[offset : offset + size],
         }
         return httpx.Response(200, json={"data": {"project": {"timelogs": found}}})
+
+    return reply
+
+
+def _ref(item: tuple[str, str, str] | None) -> dict[str, Any] | None:
+    if item is None:
+        return None
+    kind, reference, title = item
+    return {
+        "iid": reference.rsplit("#", 1)[-1].rsplit("&", 1)[-1],
+        "title": title,
+        "webUrl": f"{URL}/{reference}",
+        "reference": reference,
+        "workItemType": {"name": kind},
+    }
+
+
+def work_item(
+    iid: int,
+    title: str | None = None,
+    *,
+    parent: tuple[str, str, str] | None = None,
+    ancestors: Collection[tuple[str, str, str]] = (),
+    milestone: str | None = None,
+    iteration: dict[str, Any] | None = None,
+    estimate: int = 0,
+    kind: str = "Issue",
+) -> dict[str, Any]:
+    """A GraphQL WorkItem node with hierarchy, milestone, time tracking and iteration widgets.
+
+    ``parent`` and each of ``ancestors`` (top-level first) are (type, reference, title).
+    """
+    return {
+        "iid": str(iid),
+        "title": title or f"Issue {iid}",
+        "webUrl": f"{URL}/issues/{iid}",
+        "workItemType": {"name": kind},
+        "widgets": [
+            {"type": "ASSIGNEES"},
+            {
+                "type": "HIERARCHY",
+                "parent": _ref(parent),
+                "ancestors": {"nodes": [_ref(a) for a in ancestors]},
+            },
+            {"type": "MILESTONE", "milestone": {"title": milestone} if milestone else None},
+            {"type": "TIME_TRACKING", "timeEstimate": estimate},
+            {"type": "ITERATION", "iteration": iteration},
+        ],
+    }
+
+
+def work_items_graphql(
+    items: dict[str, list[dict[str, Any]]],
+    *,
+    iterations: bool = True,
+    available: bool = True,
+    fallback: Callable[[httpx.Request], httpx.Response] | None = None,
+) -> Reply:
+    """Answer ``project(fullPath) { workItems(iids) }`` queries like GitLab's GraphQL API.
+
+    Without ``iterations`` a query using the iteration widget fails as GitLab Free does; without
+    ``available`` any work item query fails as an unknown field.
+    """
+
+    def errors(message: str) -> httpx.Response:
+        return httpx.Response(200, json={"errors": [{"message": message}]})
+
+    def reply(request: httpx.Request) -> httpx.Response:
+        if request.method != "GET":
+            return httpx.Response(405)
+        query = request.url.params["query"]
+        if "workItems(" not in query:
+            return fallback(request) if fallback is not None else httpx.Response(404)
+        if not available:
+            return errors("Field 'workItems' doesn't exist on type 'Project'")
+        if not iterations and "WorkItemWidgetIteration" in query:
+            return errors(
+                "No such type WorkItemWidgetIteration, so it can't be a fragment condition"
+            )
+        variables = json.loads(request.url.params.get("variables", "{}"))
+        path = variables.get("path")
+        if path not in items:
+            return httpx.Response(200, json={"data": {"project": None}})
+        wanted = set(variables.get("iids") or [])
+        nodes = []
+        for node in items[path]:
+            if node["iid"] not in wanted:
+                continue
+            shown = dict(node)
+            if not iterations:
+                shown["widgets"] = [w for w in node["widgets"] if w["type"] != "ITERATION"]
+            nodes.append(shown)
+        return httpx.Response(200, json={"data": {"project": {"workItems": {"nodes": nodes}}}})
 
     return reply
 

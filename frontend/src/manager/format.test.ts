@@ -57,7 +57,7 @@ describe("manager permissions", () => {
   it("shows each section only to the roles that may read it", () => {
     const tabs = (user: typeof manager) =>
       managerTabs.filter((tab) => tab.visible(user)).map((tab) => tab.label);
-    expect(tabs(manager)).toEqual(["Overview", "Trends", "Time", "Tags"]);
+    expect(tabs(manager)).toEqual(["Overview", "Trends", "Time", "Timecard", "Tags"]);
     expect(tabs(auditor)).toEqual(["Overview", "Trends", "Time", "Tags"]);
     expect(tabs(analyst)).toEqual(["Tags"]);
     expect([canReadPeople(manager), canReadPeople(auditor)]).toEqual([true, false]);

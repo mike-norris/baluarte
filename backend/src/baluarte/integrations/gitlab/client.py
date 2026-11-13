@@ -109,7 +109,11 @@ def _graphql_error(errors: Any) -> GitLabError:
     if len(message) > MAX_GRAPHQL_MESSAGE:
         message = message[: MAX_GRAPHQL_MESSAGE - 1] + "…"
     lowered = message.lower()
-    if "doesn't exist on type" in lowered or "does not exist on type" in lowered:
+    if (
+        "doesn't exist on type" in lowered
+        or "does not exist on type" in lowered
+        or "no such type" in lowered
+    ):
         return UnsupportedField(f"GraphQL: {message}")
     if "permission" in lowered or "not licensed" in lowered:
         return GraphQLForbidden(f"GraphQL: {message}")

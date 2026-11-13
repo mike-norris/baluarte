@@ -43,7 +43,7 @@ describe("manager navigation", () => {
   });
 
   it.each([
-    ["a manager", manager, ["Overview", "Trends", "Time", "Tags"]],
+    ["a manager", manager, ["Overview", "Trends", "Time", "Timecard", "Tags"]],
     ["an auditor", auditor, ["Overview", "Trends", "Time", "Tags"]],
   ])("gives %s the manager sections", async (_name, user, tabs) => {
     api(user, { [OVERVIEW]: () => json(overview([])) });
