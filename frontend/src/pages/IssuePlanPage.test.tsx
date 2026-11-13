@@ -178,6 +178,31 @@ describe("issue plans", () => {
     });
   });
 
+  it("leaves the creator's own plan to someone else outside development mode", async () => {
+    api(planner, { "GET /api/v1/issue-plans/4": () => json(plan({ state: "submitted" })) });
+    renderAt("/time/issue-plans/4");
+    expect(await screen.findByText(/Someone else must approve or reject it/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Approve this digest" })).not.toBeInTheDocument();
+  });
+
+  it("lets the creator decide their own plan in development mode", async () => {
+    const calls = api(
+      { ...planner, development_mode: true },
+      {
+        "GET /api/v1/issue-plans/4": () => json(plan({ state: "submitted" })),
+        "POST /api/v1/issue-plans/4/approve": () => json(plan({ state: "approved" })),
+      },
+    );
+    const user = userEvent.setup();
+    renderAt("/time/issue-plans/4");
+
+    await user.click(await screen.findByRole("button", { name: "Approve this digest" }));
+    expect(await screen.findByText("Plan 4 approved.")).toBeInTheDocument();
+    expect(bodyOf(calls, "/api/v1/issue-plans/4/approve")).toEqual({
+      plan_digest: "a".repeat(64),
+    });
+  });
+
   it("shows issues that changed since the plan as left alone", async () => {
     api(planner, {
       "GET /api/v1/issue-plans/4": () =>

@@ -5,7 +5,7 @@ import { personId } from "../api/controls";
 import { decideBatch, listExclusions, targetText, type Exclusion } from "../api/scope";
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
-import type { CurrentUser } from "../auth/session";
+import { leavesOwnToOthers, type CurrentUser } from "../auth/session";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { buttonClass, fieldClass, secondaryClass } from "../components/styles";
 import { changePerson } from "../controls/format";
@@ -47,8 +47,7 @@ function PendingBatch({
   const [failure, setFailure] = useState<string | null>(null);
   const first = batch.items[0];
   const canDecide = canWritePolicies(user);
-  const own =
-    user !== null && first !== undefined && personId(first.proposed_by) === user.user_id;
+  const own = first !== undefined && leavesOwnToOthers(user, personId(first.proposed_by));
   const summary = batchText(batch);
 
   async function decide(decision: "approve" | "reject") {

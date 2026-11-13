@@ -23,6 +23,7 @@ from baluarte.db.models import GitLabInstance, Policy, PolicyAssignment, PolicyC
 from baluarte.policy.assignments import Target, TargetType, assign, find_target
 from baluarte.policy.loader import parse_policy
 from baluarte.policy.store import latest_version, save_version
+from baluarte.settings import own_decision_refused
 
 GOVERNANCE = "governance"
 MAX_NOTE = 2000
@@ -107,6 +108,8 @@ def change_details(change: PolicyChange) -> dict[str, Any]:
             target_id=change.target_id,
             assignment_id=change.assignment_id,
         )
+    if change.development_decision:
+        details["development_decision"] = True
     return details
 
 
@@ -295,7 +298,7 @@ class Applied:
 def _check_decider(change: PolicyChange, by: Actor) -> None:
     if change.state != "proposed":
         raise ChangeConflict(f"The change is already {change.state}")
-    if change.proposed_by_user_id == by.user_id:
+    if own_decision_refused(change.proposed_by_user_id, by.user_id):
         raise NotAllowed("A change must be approved or rejected by someone other than its proposer")
 
 
@@ -356,6 +359,7 @@ def approve(
     change.state = "approved"
     change.decided_by = by.actor
     change.decided_by_user_id = by.user_id
+    change.development_decision = change.decided_by_user_id == change.proposed_by_user_id
     change.decided_at = func.now()
     change.decision_note = note or None
     db.flush()
@@ -379,6 +383,7 @@ def reject(db: Session, change_id: int, by: Actor, note: str) -> PolicyChange:
     change.state = "rejected"
     change.decided_by = by.actor
     change.decided_by_user_id = by.user_id
+    change.development_decision = change.decided_by_user_id == change.proposed_by_user_id
     change.decided_at = func.now()
     change.decision_note = note
     db.flush()

@@ -602,8 +602,13 @@ class PolicyException(Base):
             name="expiry_bounded",
         ),
         CheckConstraint(
-            "decided_by_user_id IS NULL OR decided_by_user_id <> requested_by_user_id",
+            "decided_by_user_id IS NULL OR decided_by_user_id <> requested_by_user_id "
+            "OR development_decision",
             name="decided_by_another_user",
+        ),
+        CheckConstraint(
+            "NOT development_decision OR decided_by_user_id = requested_by_user_id",
+            name="development_decision_by_proposer",
         ),
         CheckConstraint(
             "(decided_at IS NULL) = (decided_by_user_id IS NULL)", name="decision_complete"
@@ -631,6 +636,8 @@ class PolicyException(Base):
     requested_at: Mapped[datetime] = utc_now()
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     decided_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    # Development mode only: the proposer decided their own item (baluarte.settings).
+    development_decision: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decision_note: Mapped[str | None] = mapped_column(Text)
     # Set when revoked (with the user) or expired (by the system).
@@ -714,8 +721,12 @@ class PolicyChange(Base):
         ),
         CheckConstraint(
             "NOT review_required OR decided_by_user_id IS NULL "
-            "OR decided_by_user_id <> proposed_by_user_id",
+            "OR decided_by_user_id <> proposed_by_user_id OR development_decision",
             name="decided_by_another_user",
+        ),
+        CheckConstraint(
+            "NOT development_decision OR decided_by_user_id = proposed_by_user_id",
+            name="development_decision_by_proposer",
         ),
         CheckConstraint("review_required OR state = 'approved'", name="unreviewed_is_applied"),
         CheckConstraint(
@@ -757,6 +768,8 @@ class PolicyChange(Base):
     proposed_at: Mapped[datetime] = utc_now()
     decided_by: Mapped[str | None] = mapped_column(Text)
     decided_by_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    # Development mode only: the proposer decided their own item (baluarte.settings).
+    development_decision: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decision_note: Mapped[str | None] = mapped_column(Text)
 
@@ -834,8 +847,12 @@ class ControlMappingChange(Base):
         ),
         CheckConstraint(
             "NOT review_required OR decided_by_user_id IS NULL "
-            "OR decided_by_user_id <> proposed_by_user_id",
+            "OR decided_by_user_id <> proposed_by_user_id OR development_decision",
             name="decided_by_another_user",
+        ),
+        CheckConstraint(
+            "NOT development_decision OR decided_by_user_id = proposed_by_user_id",
+            name="development_decision_by_proposer",
         ),
         CheckConstraint(
             "review_required OR state IN ('active', 'withdrawn')", name="unreviewed_is_applied"
@@ -874,6 +891,8 @@ class ControlMappingChange(Base):
     proposed_at: Mapped[datetime] = utc_now()
     decided_by: Mapped[str | None] = mapped_column(Text)
     decided_by_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    # Development mode only: the proposer decided their own item (baluarte.settings).
+    development_decision: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decision_note: Mapped[str | None] = mapped_column(Text)
 
@@ -938,8 +957,12 @@ class ScopeExclusion(Base):
         ),
         CheckConstraint(
             "NOT review_required OR decided_by_user_id IS NULL "
-            "OR decided_by_user_id <> proposed_by_user_id",
+            "OR decided_by_user_id <> proposed_by_user_id OR development_decision",
             name="decided_by_another_user",
+        ),
+        CheckConstraint(
+            "NOT development_decision OR decided_by_user_id = proposed_by_user_id",
+            name="development_decision_by_proposer",
         ),
         CheckConstraint(
             "review_required OR state IN ('active', 'ended')", name="unreviewed_is_applied"
@@ -971,6 +994,8 @@ class ScopeExclusion(Base):
     proposed_at: Mapped[datetime] = utc_now()
     decided_by: Mapped[str | None] = mapped_column(Text)
     decided_by_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    # Development mode only: the proposer decided their own item (baluarte.settings).
+    development_decision: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decision_note: Mapped[str | None] = mapped_column(Text)
     ended_by: Mapped[str | None] = mapped_column(Text)
@@ -1119,8 +1144,12 @@ class ComplianceException(Base):
         ),
         CheckConstraint(
             "NOT review_required OR decided_by_user_id IS NULL "
-            "OR decided_by_user_id <> requested_by_user_id",
+            "OR decided_by_user_id <> requested_by_user_id OR development_decision",
             name="decided_by_another_user",
+        ),
+        CheckConstraint(
+            "NOT development_decision OR decided_by_user_id = requested_by_user_id",
+            name="development_decision_by_proposer",
         ),
         CheckConstraint("self_approved = NOT review_required", name="self_approved_unreviewed"),
         CheckConstraint(
@@ -1147,6 +1176,8 @@ class ComplianceException(Base):
     requested_at: Mapped[datetime] = utc_now()
     decided_by: Mapped[str | None] = mapped_column(Text)
     decided_by_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    # Development mode only: the proposer decided their own item (baluarte.settings).
+    development_decision: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decision_note: Mapped[str | None] = mapped_column(Text)
     revoked_by: Mapped[str | None] = mapped_column(Text)
@@ -1204,8 +1235,13 @@ class RemediationPlan(Base):
         CheckConstraint(f"steps BETWEEN 1 AND {MAX_PLAN_STEPS}", name="steps_bounded"),
         CheckConstraint("skipped >= 0", name="skipped_non_negative"),
         CheckConstraint(
-            "decided_by_user_id IS NULL OR decided_by_user_id <> created_by_user_id",
+            "decided_by_user_id IS NULL OR decided_by_user_id <> created_by_user_id "
+            "OR development_decision",
             name="decided_by_another_user",
+        ),
+        CheckConstraint(
+            "NOT development_decision OR decided_by_user_id = created_by_user_id",
+            name="development_decision_by_proposer",
         ),
         CheckConstraint(
             "(decided_at IS NULL) = (decided_by_user_id IS NULL)", name="decision_complete"
@@ -1245,6 +1281,8 @@ class RemediationPlan(Base):
     skipped: Mapped[int] = mapped_column(Integer)
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decided_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    # Development mode only: the proposer decided their own item (baluarte.settings).
+    development_decision: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decision_note: Mapped[str | None] = mapped_column(Text)
     # The digest the approver reviewed; equal to ``plan_digest`` when approved.
@@ -1288,8 +1326,12 @@ class LabelTaxonomy(Base):
         ),
         CheckConstraint(
             "NOT review_required OR decided_by_user_id IS NULL "
-            "OR decided_by_user_id <> proposed_by_user_id",
+            "OR decided_by_user_id <> proposed_by_user_id OR development_decision",
             name="decided_by_another_user",
+        ),
+        CheckConstraint(
+            "NOT development_decision OR decided_by_user_id = proposed_by_user_id",
+            name="development_decision_by_proposer",
         ),
         CheckConstraint("review_required OR state = 'approved'", name="unreviewed_is_approved"),
         CheckConstraint(
@@ -1315,6 +1357,8 @@ class LabelTaxonomy(Base):
     proposed_at: Mapped[datetime] = utc_now()
     decided_by: Mapped[str | None] = mapped_column(Text)
     decided_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    # Development mode only: the proposer decided their own item (baluarte.settings).
+    development_decision: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decision_note: Mapped[str | None] = mapped_column(Text)
 
@@ -1345,8 +1389,12 @@ class LabelPlan(Base):
         ),
         CheckConstraint(
             "NOT review_required OR decided_by_user_id IS NULL "
-            "OR decided_by_user_id <> created_by_user_id",
+            "OR decided_by_user_id <> created_by_user_id OR development_decision",
             name="decided_by_another_user",
+        ),
+        CheckConstraint(
+            "NOT development_decision OR decided_by_user_id = created_by_user_id",
+            name="development_decision_by_proposer",
         ),
         CheckConstraint(
             "(decided_at IS NULL) = (decided_by_user_id IS NULL)", name="decision_complete"
@@ -1394,6 +1442,8 @@ class LabelPlan(Base):
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decided_by: Mapped[str | None] = mapped_column(Text)
     decided_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    # Development mode only: the proposer decided their own item (baluarte.settings).
+    development_decision: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decision_note: Mapped[str | None] = mapped_column(Text)
     # The digest the approver reviewed; equal to ``plan_digest`` once approved.
@@ -1472,8 +1522,12 @@ class IssuePlan(Base):
         ),
         CheckConstraint(
             "NOT review_required OR decided_by_user_id IS NULL "
-            "OR decided_by_user_id <> created_by_user_id",
+            "OR decided_by_user_id <> created_by_user_id OR development_decision",
             name="decided_by_another_user",
+        ),
+        CheckConstraint(
+            "NOT development_decision OR decided_by_user_id = created_by_user_id",
+            name="development_decision_by_proposer",
         ),
         CheckConstraint(
             "(decided_at IS NULL) = (decided_by_user_id IS NULL)", name="decision_complete"
@@ -1520,6 +1574,8 @@ class IssuePlan(Base):
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decided_by: Mapped[str | None] = mapped_column(Text)
     decided_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    # Development mode only: the proposer decided their own item (baluarte.settings).
+    development_decision: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decision_note: Mapped[str | None] = mapped_column(Text)
     # The digest the approver reviewed; equal to ``plan_digest`` once approved.

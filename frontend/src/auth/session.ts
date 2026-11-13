@@ -14,6 +14,17 @@ export interface CurrentUser {
   development_mode?: boolean;
 }
 
+/**
+ * Whether the user must leave an item they proposed, requested or created for someone else to
+ * decide. Development mode lets them decide it themselves; the API enforces the rule either way.
+ */
+export function leavesOwnToOthers(
+  user: CurrentUser | null | undefined,
+  proposerId: number | null | undefined,
+): boolean {
+  return user != null && proposerId === user.user_id && user.development_mode !== true;
+}
+
 export type Session =
   | { status: "loading" }
   | { status: "signed_in"; user: CurrentUser }

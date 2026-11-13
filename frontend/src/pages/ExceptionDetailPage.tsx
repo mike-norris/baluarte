@@ -205,7 +205,7 @@ function Actions({
 }) {
   const [action, setAction] = useState<ExceptionAction | null>(null);
   if (!hasPermission(user, CAN_APPROVE)) return null;
-  const own = isOwn(exception, user);
+  const own = isOwn(exception, user) && user.development_mode !== true;
   const available: ExceptionAction[] = [];
   if (exception.state === "requested" && !own) available.push("approve", "reject");
   if (exception.state === "requested" || exception.state === "approved") available.push("revoke");

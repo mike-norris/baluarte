@@ -4,7 +4,7 @@ import { ApiError } from "../api/client";
 import { decideTaxonomy, getTaxonomy, MAX_NOTE, type TaxonomyVersion } from "../api/labels";
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
-import type { CurrentUser } from "../auth/session";
+import { leavesOwnToOthers, type CurrentUser } from "../auth/session";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { buttonClass, fieldClass, secondaryClass } from "../components/styles";
 import { lineDiff } from "../policies/diff";
@@ -63,7 +63,7 @@ function PendingVersion({
   const [sending, setSending] = useState<"approve" | "reject" | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const canDecide = canWritePolicies(user);
-  const own = user !== null && version.proposed_by.user_id === user.user_id;
+  const own = leavesOwnToOthers(user, version.proposed_by.user_id);
   const summary = versionText(version);
 
   async function decide(decision: "approve" | "reject") {

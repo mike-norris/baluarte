@@ -53,6 +53,7 @@ from baluarte.integrations.gitlab.projects import PROJECT_SOURCES
 from baluarte.policy.loader import parse_policy
 from baluarte.policy.schema import DefaultBranchProtectedRule, ProjectVisibilityRule, Rule
 from baluarte.scope.exclusions import exclusion_for
+from baluarte.settings import own_decision_refused
 
 PlanState = Literal["draft", "submitted", "approved", "rejected", "expired"]
 FORMAT = "baluarte.remediation-plan/v1"
@@ -518,7 +519,12 @@ def _current(db: Session, row: RemediationPlan) -> str:
 
 
 def _details(row: RemediationPlan, **extra: Any) -> dict[str, Any]:
-    return {"plan_digest": row.plan_digest, "steps": row.steps, **extra}
+    return {
+        "plan_digest": row.plan_digest,
+        "steps": row.steps,
+        **({"development_decision": True} if row.development_decision else {}),
+        **extra,
+    }
 
 
 def submit(db: Session, row: RemediationPlan, user_id: int, actor: str) -> RemediationPlan:
@@ -562,7 +568,7 @@ def decide(
     state = _current(db, row)
     if state != "submitted":
         raise PlanConflict(f"Only a submitted plan can be decided; this one is {state}")
-    if user_id == row.created_by_user_id:
+    if own_decision_refused(row.created_by_user_id, user_id):
         raise PermissionError(
             "A plan must be approved or rejected by someone other than its creator"
         )
@@ -581,6 +587,7 @@ def decide(
     now = db.execute(select(func.now())).scalar_one()
     row.state = decision
     row.decided_by_user_id = user_id
+    row.development_decision = row.decided_by_user_id == row.created_by_user_id
     row.decided_at = now
     row.decision_note = note
     row.approved_digest = row.plan_digest if decision == "approved" else None

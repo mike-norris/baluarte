@@ -333,6 +333,61 @@ def test_the_taxonomy_api_validates_proposes_and_refuses_own_approval(
     assert body["review_required"] is True
 
 
+def test_in_development_mode_the_proposer_decides_their_own_version(
+    engine: Engine, server: LabelServer, people: dict[str, int], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    require_review(engine)
+    monkeypatch.setenv("BALUARTE_DEVELOPMENT_MODE", "true")
+    ana = as_user(engine, people["ana"], server, Role.ANALYST)
+    version = ana.post("/api/v1/labels/taxonomy", json={"source_yaml": TAXONOMY}).json()
+    assert version["state"] == "proposed"
+
+    approved = ana.post(f"/api/v1/labels/taxonomy/{version['id']}/approve", json={})
+    assert approved.status_code == 200 and approved.json()["state"] == "approved"
+    with Session(engine) as db:
+        row = db.get(LabelTaxonomy, version["id"])
+        assert row is not None and row.development_decision and not row.self_approved
+    decided = [d for a, d in audit_actions(engine, "labels.taxonomy") if a.endswith("approved")]
+    assert decided and decided[-1] is not None and decided[-1]["development_decision"] is True
+
+
+def test_the_database_records_development_decisions_only_with_the_decision(
+    engine: Engine, people: dict[str, int]
+) -> None:
+    require_review(engine)
+    ana, bea = people["ana"], people["bea"]
+    with Session(engine) as db:
+        row = taxonomy.propose(db, instance_id(engine), TAXONOMY, None, Actor(ana, "user:x")).row
+        db.commit()
+        taxonomy_id = row.id
+    by_ana = {"decided_by": f"user:{ana}", "decided_by_user_id": ana, "decided_at": text("now()")}
+    for values in (
+        # The proposer deciding without the flag, or the flag without a decision.
+        {"state": "approved", **by_ana},
+        {"development_decision": True},
+        # The flag for someone else's decision.
+        {
+            "state": "approved",
+            "decided_by": "user:b",
+            "decided_by_user_id": bea,
+            "decided_at": text("now()"),
+            "development_decision": True,
+        },
+    ):
+        with Session(engine) as db, pytest.raises(DBAPIError):
+            db.execute(
+                update(LabelTaxonomy).where(LabelTaxonomy.id == taxonomy_id).values(**values)
+            )
+            db.commit()
+    with Session(engine) as db:
+        db.execute(
+            update(LabelTaxonomy)
+            .where(LabelTaxonomy.id == taxonomy_id)
+            .values(state="approved", development_decision=True, **by_ana)
+        )
+        db.commit()
+
+
 @pytest.mark.parametrize(
     ("method", "path"),
     [

@@ -56,7 +56,7 @@ from baluarte.jobs.queue import ClaimedJob
 from baluarte.labels import write_token
 from baluarte.policy.changes import Actor
 from baluarte.scope.exclusions import coverage
-from baluarte.settings import ConfigurationError, env
+from baluarte.settings import ConfigurationError, env, own_decision_refused
 from baluarte.timetracking.settings import TimeTrackingSettings
 
 logger = logging.getLogger(__name__)
@@ -337,6 +337,7 @@ def _details(row: IssuePlan, **extra: Any) -> dict[str, Any]:
         "steps": row.steps,
         "manual": row.manual,
         "totals": row.plan.get("totals", {}),
+        **({"development_decision": True} if row.development_decision else {}),
         **extra,
     }
 
@@ -457,7 +458,7 @@ def decide(
             "plan_expired" if state == "expired" else "not_submitted",
             f"Only a submitted plan can be decided; this one is {state}",
         )
-    if by.user_id == row.created_by_user_id:
+    if own_decision_refused(row.created_by_user_id, by.user_id):
         raise PermissionError(
             "A plan must be approved or rejected by someone other than its creator"
         )
@@ -470,6 +471,7 @@ def decide(
     row.state = decision
     row.decided_by = by.actor
     row.decided_by_user_id = by.user_id
+    row.development_decision = row.decided_by_user_id == row.created_by_user_id
     row.decided_at = now
     row.decision_note = (note or "").strip() or None
     row.approved_digest = row.plan_digest if decision == "approved" else None
