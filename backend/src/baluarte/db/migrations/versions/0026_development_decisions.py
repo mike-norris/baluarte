@@ -91,7 +91,9 @@ def upgrade() -> None:
 def downgrade() -> None:
     for table, (proposer, reviewed) in TABLES.items():
         op.execute(f"DROP TRIGGER {table}_development_decision ON {table}")
-        op.drop_constraint(op.f(f"ck_{table}_development_decision_by_proposer"), table, type_="check")
+        op.drop_constraint(
+            op.f(f"ck_{table}_development_decision_by_proposer"), table, type_="check"
+        )
         op.drop_constraint(op.f(f"ck_{table}_decided_by_another_user"), table, type_="check")
         op.create_check_constraint(
             op.f(f"ck_{table}_decided_by_another_user"),
