@@ -14,6 +14,7 @@ Record a decision here when it changes or establishes a foundational choice: run
 | [ADR-0008](ADR-0008-settings-in-the-database.md) | Settings and sealed secrets entered in the web UI; one-time setup code | Accepted |
 | [ADR-0009](ADR-0009-label-writes.md) | Write access to GitLab for approved label plans only | Accepted |
 | [ADR-0010](ADR-0010-time-tracking-personal-data.md) | Time tracking, including time per person | Accepted |
+| [ADR-0011](ADR-0011-issue-time-writes.md) | Approved issue plans for time rules on closed issues | Accepted |
 
 ## Template
 

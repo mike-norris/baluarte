@@ -78,6 +78,7 @@ For evaluation only, `--set devDatabase.enabled=true` runs a single PostgreSQL p
 | `gitlab.timeoutSeconds` | `15` | Per-request timeout |
 | `gitlab.syncIntervalMinutes` | `360` | Scheduled collection interval (15 to 10080), or `0` for on request only; data older than twice this is stale |
 | `gitlab.labelWrites` | `false` | Allow approved label plans to be applied to GitLab; the write token is entered in the web UI (docs/LABELS.md) |
+| `gitlab.issueWrites` | `false` | Allow approved issue plans (the "missing time" label and estimates on closed issues) to be applied with the same write token (docs/TIME_TRACKING.md) |
 | `timeTracking.perPerson` | `true` | Show time per person to managers and administrators; `false` shows only totals (docs/TIME_TRACKING.md) |
 | `ingress.enabled`, `ingress.className`, `ingress.host`, `ingress.tls` | disabled | Ingress to the web Service |
 | `imagePullSecrets` | `[]` | Registry credentials |

@@ -149,6 +149,9 @@ class TimeSettingsOut(BaseModel):
     lookback_days: int
     reread_days: int
     retention_days: int | None
+    missing_time_label: str
+    estimate_round_minutes: int
+    rule_issue_types: list[str]
     per_person_enabled: bool
 
 
@@ -531,7 +534,9 @@ def _settings_out(value: TimeTrackingSettings) -> TimeSettingsOut:
     summary="Time tracking settings",
     description="How far back the first collection reads (`lookback_days`), how much recent "
     "time each collection re-reads to notice deleted logs (`reread_days`) and how long entries "
-    "are kept (`retention_days`, null: as long as evidence). `per_person_enabled` comes from "
+    "are kept (`retention_days`, null: as long as evidence); the time rules on closed issues: "
+    "`missing_time_label`, `estimate_round_minutes` and `rule_issue_types` (ADR-0011). "
+    "`per_person_enabled` comes from "
     "the deployment (`BALUARTE_TIME_PER_PERSON`) and cannot be changed here.",
 )
 def read_time_settings(

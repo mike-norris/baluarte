@@ -302,6 +302,8 @@ https://{{ .Values.ingress.host }}
 {{- define "baluarte.labelWritesEnv" -}}
 - name: BALUARTE_LABEL_WRITES
   value: {{ ternary "true" "false" (eq (toString .Values.gitlab.labelWrites) "true") | quote }}
+- name: BALUARTE_ISSUE_WRITES
+  value: {{ ternary "true" "false" (eq (toString (dig "issueWrites" false .Values.gitlab)) "true") | quote }}
 {{- end }}
 
 {{/* API and worker: whether time per person is shown (docs/TIME_TRACKING.md). */}}

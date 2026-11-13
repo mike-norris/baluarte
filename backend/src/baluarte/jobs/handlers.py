@@ -32,6 +32,7 @@ from baluarte.integrations.gitlab.jobs import (
 from baluarte.jobs.queue import ClaimedJob
 from baluarte.labels.plans import APPLY_LABEL_PLAN, make_apply_label_plan
 from baluarte.policy.evaluation.runner import EVALUATE, evaluate
+from baluarte.timetracking.issue_plans import APPLY_ISSUE_PLAN, make_apply_issue_plan
 
 Handler = Callable[[ClaimedJob, Engine], None]
 
@@ -44,6 +45,7 @@ HANDLERS: Mapping[str, Handler] = {
     COLLECT_LABELS: make_collect_labels(),
     COLLECT_TIME: make_collect_time(),
     APPLY_LABEL_PLAN: make_apply_label_plan(),
+    APPLY_ISSUE_PLAN: make_apply_issue_plan(),
     EVALUATE: evaluate,
     RETENTION_EXPIRE: handle_expire,
     AUDIT_SHIP: handle_ship,

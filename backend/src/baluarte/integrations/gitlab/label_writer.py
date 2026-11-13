@@ -1,13 +1,17 @@
-"""The only code in Baluarte that changes GitLab: creating and editing labels (ADR-0009).
+"""The only code in Baluarte that changes GitLab: labels, and labels and estimates on issues
+(ADR-0009, ADR-0011).
 
-``LabelWriter`` holds the separate label write token and is built only by the label plan applier
-(``baluarte.labels.plans``); collection never sees that token, and the read-only
-``GitLabClient`` has no write method. It can do exactly two things:
+``LabelWriter`` holds the separate write token and is built only by the label plan applier
+(``baluarte.labels.plans``) and the issue plan applier (``baluarte.timetracking.issue_plans``);
+collection never sees that token, and the read-only ``GitLabClient`` has no write method. It can
+do exactly these things:
 
 - ``POST /groups/:id/labels`` with ``name``, ``color`` and ``description``;
 - ``PUT /groups/:id/labels/:label_id`` or ``PUT /projects/:id/labels/:label_id`` with ``new_name``,
   ``color`` and ``description`` (GitLab's project endpoint needs ``new_name`` or ``color``, so
-  the colour is always sent).
+  the colour is always sent);
+- ``PUT /projects/:id/issues/:iid`` with only ``add_labels`` or ``remove_labels``, one label;
+- ``POST /projects/:id/issues/:iid/time_estimate`` with ``duration``.
 
 There is no delete. A write is sent once: it is never retried, whatever the answer, because a
 repeated POST could create a second label. Redirects are not followed, so the token never leaves
@@ -113,6 +117,23 @@ class LabelWriter:
         if description is not None:
             data["description"] = description
         return self._send("PUT", f"/{owner_type}s/{owner_id}/labels/{label_id}", data)
+
+    def issue_label(self, project_id: int, iid: int, label: str, *, add: bool) -> WriteResult:
+        """Add or remove one label on an issue, leaving its other labels as they are."""
+        if not label or "," in label:
+            raise ValueError("one label, without commas")
+        key = "add_labels" if add else "remove_labels"
+        return self._send("PUT", f"/projects/{project_id}/issues/{iid}", {key: label})
+
+    def issue_estimate(self, project_id: int, iid: int, seconds: int) -> WriteResult:
+        """Set an issue's time estimate, in whole minutes."""
+        if seconds <= 0 or seconds % 60:
+            raise ValueError("an estimate is a positive number of whole minutes")
+        return self._send(
+            "POST",
+            f"/projects/{project_id}/issues/{iid}/time_estimate",
+            {"duration": f"{seconds // 60}m"},
+        )
 
     def token_self(self) -> WriteResult:
         """``GET /personal_access_tokens/self`` with the write token: its scopes and expiry."""

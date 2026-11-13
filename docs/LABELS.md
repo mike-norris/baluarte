@@ -2,7 +2,7 @@
 
 Organizations with many groups want one set of labels everywhere: the same names, colours and descriptions, defined once at the top of each group hierarchy so every project inherits them. Baluarte reads the labels every group and project defines, compares them with a reviewed **label taxonomy**, reports the **drift**, judges it per project with the `gitlab.labels.consistent` rule, and can apply a reviewed **label plan** that fixes what can be fixed safely. Applying a plan is the only way Baluarte writes to GitLab ([ADR-0009](architecture/ADR-0009-label-writes.md)).
 
-Implemented in `backend/src/baluarte/integrations/gitlab/labels.py` (collection), `backend/src/baluarte/labels/` (taxonomy, drift, plans, write token), `backend/src/baluarte/integrations/gitlab/label_writer.py` (the only GitLab writes), `backend/src/baluarte/policy/evaluation/labels.py` (the rule), `backend/src/baluarte/api/v1/labels.py` (the API) and migration `0022`.
+Implemented in `backend/src/baluarte/integrations/gitlab/labels.py` (collection), `backend/src/baluarte/labels/` (taxonomy, drift, plans, write token), `backend/src/baluarte/integrations/gitlab/label_writer.py` (the GitLab writes, shared with issue plans), `backend/src/baluarte/policy/evaluation/labels.py` (the rule), `backend/src/baluarte/api/v1/labels.py` (the API) and migration `0022`.
 
 ## The taxonomy
 
@@ -96,7 +96,7 @@ The `gitlab.apply_label_plan` job (one attempt, never retried) applies the steps
 
 ## The write token
 
-An administrator stores it at `PUT /settings/label-write-token` (`settings:manage`). Use a token with the `api` scope that reaches only the groups in the taxonomy's scope and expires, ideally a group access token on a bot user. It is sealed like other secrets ([ADR-0008](architecture/ADR-0008-settings-in-the-database.md)), so `BALUARTE_SECRET_KEY_FILE` must be set. On save it is checked with `GET /personal_access_tokens/self`, and its name, scopes and expiry are shown; a failed check is shown as `check_error` and the token is stored anyway. The token is never returned, logged or audited. Only the applier decrypts it; collection never sees it, and the read-only client has no write method. `DELETE /settings/label-write-token` removes it. Storing, replacing and removing it are audited as `settings.label_write_token_set`, `_replaced` and `_removed`.
+An administrator stores it at `PUT /settings/label-write-token` (`settings:manage`). Use a token with the `api` scope that reaches only the groups in the taxonomy's scope and expires, ideally a group access token on a bot user. It is sealed like other secrets ([ADR-0008](architecture/ADR-0008-settings-in-the-database.md)), so `BALUARTE_SECRET_KEY_FILE` must be set. On save it is checked with `GET /personal_access_tokens/self`, and its name, scopes and expiry are shown; a failed check is shown as `check_error` and the token is stored anyway. The token is never returned, logged or audited. Only the label plan and issue plan appliers decrypt it; collection never sees it, and the read-only client has no write method. Issue plans ([TIME_TRACKING.md](TIME_TRACKING.md#closed-issues)) use the same token behind their own switch, `BALUARTE_ISSUE_WRITES`, so the token should also reach the projects whose closed issues they change. `DELETE /settings/label-write-token` removes it. Storing, replacing and removing it are audited as `settings.label_write_token_set`, `_replaced` and `_removed`.
 
 ## API
 

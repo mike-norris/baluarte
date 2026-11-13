@@ -5,6 +5,10 @@
   deleted in GitLab is marked removed (1-90, default 30).
 - ``retention_days``: how long time entries are kept (30-3650), or null to follow the evidence
   retention period. The shorter of the two applies.
+- ``missing_time_label``: the label for closed issues with commits but no time spent (default
+  ``missing-time``), and ``estimate_round_minutes``: the interval time spent is rounded up to
+  when it becomes a closed issue's estimate (5-480, default 30). ``rule_issue_types``: the issue
+  types these rules cover (default ``issue`` and ``task``). See ADR-0011.
 
 ``BALUARTE_TIME_PER_PERSON`` (``true`` or ``false``, default ``true``) is set only in the
 deployment's environment. While it is false no time per person is shown anywhere.
@@ -12,7 +16,7 @@ deployment's environment. While it is false no time per person is shown anywhere
 Changing the settings is audited as ``settings.time_tracking_updated``.
 """
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy.orm import Session
@@ -41,6 +45,13 @@ class TimeTrackingSettings(BaseModel):
     lookback_days: Annotated[int, Field(ge=1, le=730)] = 180
     reread_days: Annotated[int, Field(ge=1, le=90)] = 30
     retention_days: Annotated[int | None, Field(ge=30, le=3650)] = None
+    missing_time_label: Annotated[
+        str, Field(min_length=1, max_length=255, pattern=r"^[^,\n\r]+$")
+    ] = "missing-time"
+    estimate_round_minutes: Annotated[int, Field(ge=5, le=480)] = 30
+    rule_issue_types: Annotated[
+        tuple[Literal["issue", "task", "incident"], ...], Field(min_length=1, max_length=3)
+    ] = ("issue", "task")
 
 
 def load(db: Session) -> TimeTrackingSettings:

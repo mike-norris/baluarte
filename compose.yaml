@@ -24,6 +24,9 @@ x-app-env: &app-env
   # true lets approved label plans be applied to GitLab with the write token entered in the
   # web UI (docs/LABELS.md). Off by default.
   BALUARTE_LABEL_WRITES: ${BALUARTE_LABEL_WRITES:-false}
+  # true lets approved issue plans (labels and estimates on closed issues) be applied with the
+  # same write token (docs/TIME_TRACKING.md). Off by default.
+  BALUARTE_ISSUE_WRITES: ${BALUARTE_ISSUE_WRITES:-false}
   # false hides time per person everywhere (docs/TIME_TRACKING.md). On by default.
   BALUARTE_TIME_PER_PERSON: ${BALUARTE_TIME_PER_PERSON:-true}
 

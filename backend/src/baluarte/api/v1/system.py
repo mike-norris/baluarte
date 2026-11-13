@@ -310,7 +310,7 @@ def _token_status(db: Session) -> TokenStatus:
     summary="Whether a label write token is stored, and what GitLab reported about it",
     description="Never returns the token. `writes_enabled` is the deployment's "
     "`BALUARTE_LABEL_WRITES`; label plans are applied only while it is true and a token is "
-    "stored.",
+    "stored. Issue plans use the same token behind `BALUARTE_ISSUE_WRITES`.",
 )
 def read_label_write_token(_: Admin, db: Database) -> TokenStatus:
     return _token_status(db)
@@ -320,7 +320,8 @@ def read_label_write_token(_: Admin, db: Database) -> TokenStatus:
     "/label-write-token",
     response_model=TokenStatus,
     summary="Store or replace the label write token",
-    description="The token is sealed (ADR-0008) and used only to apply approved label plans. "
+    description="The token is sealed (ADR-0008) and used only to apply approved label and "
+    "issue plans. "
     "It is checked with `GET /personal_access_tokens/self` and stored even when the check "
     "fails; `check_error` then says why. 422 `token_invalid` for an empty or overlong token; "
     "409 when secrets cannot be stored. Audited as `settings.label_write_token_set` or "
