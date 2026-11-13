@@ -15,6 +15,7 @@ from gitlab_fake import (
     settings,
     timelog,
     timelogs_graphql,
+    work_items_graphql,
 )
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
@@ -72,10 +73,14 @@ def ago(days: float) -> str:
 def server(
     logs: dict[str, list[dict[str, Any]]],
     issues: dict[int, list[dict[str, Any]]] | None = None,
+    contexts: dict[str, list[dict[str, Any]]] | None = None,
+    *,
+    iterations: bool = True,
     **options: Any,
 ) -> FakeGitLab:
     fake = FakeGitLab({})
-    fake.graphql(timelogs_graphql(logs, **options))
+    items = work_items_graphql(contexts or {}, iterations=iterations)
+    fake.graphql(timelogs_graphql(logs, fallback=items, **options))
     for gitlab_id in (100, 101, 102, 200):
         path = f"/projects/{gitlab_id}/issues"
         fake.set(path, paged(path, [(issues or {}).get(gitlab_id, [])]))

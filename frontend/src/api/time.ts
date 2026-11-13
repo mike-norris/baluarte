@@ -148,14 +148,18 @@ export function getTimeSummary(
 }
 
 /** A per-person read; a 403 keeps its reason, so the page can say why. */
-async function getPeopleJson<T>(
+function getPeopleJson<T>(
   path: string,
   query: Record<string, string | number | undefined | null>,
   signal?: AbortSignal,
 ): Promise<T> {
+  return getPeopleUrl(withQuery(path, query), signal);
+}
+
+async function getPeopleUrl<T>(url: string, signal?: AbortSignal): Promise<T> {
   let response: Response;
   try {
-    response = await fetch(withQuery(path, query), {
+    response = await fetch(url, {
       credentials: "same-origin",
       headers: { Accept: "application/json" },
       signal: signal ?? null,
@@ -196,6 +200,116 @@ export function getPersonEntries(
     { from: range.from, to: range.to, after },
     signal,
   );
+}
+
+/** Columns of a timecard, in the order of its downloads. */
+export const TIMECARD_COLUMNS = [
+  "date",
+  "developer",
+  "minutes",
+  "top",
+  "parent",
+  "work_item",
+  "milestone",
+  "iteration",
+  "estimate_minutes",
+  "repository",
+  "entry",
+] as const;
+
+export type TimecardColumn =
+  (typeof TIMECARD_COLUMNS)[number] | "username" | "title" | "removed_on";
+
+/** A sort key: a column, descending when it starts with ``-``. */
+export type TimecardSort = TimecardColumn | `-${TimecardColumn}`;
+
+export const DEFAULT_TIMECARD_SORT: TimecardSort[] = ["date", "developer"];
+
+/** Matches an empty milestone, iteration, parent or top-level epic in the filters. */
+export const NONE = "(none)";
+
+export interface WorkItemRef {
+  title: string | null;
+  reference: string | null;
+}
+
+export interface TimecardRow {
+  entry_id: number;
+  timelog_id: string;
+  /** ``removed``: the negative of a log GitLab no longer returns, on the same date. */
+  kind: "logged" | "removed";
+  developer: string;
+  username: string | null;
+  spent_on: string;
+  spent_at: string;
+  minutes: number;
+  removed_on: string | null;
+  project: { gitlab_id: number; path: string };
+  /** ``#12`` for an issue, ``!4`` for a merge request. */
+  work_item: string | null;
+  title: string | null;
+  url: string | null;
+  milestone: string | null;
+  iteration: string | null;
+  parent: WorkItemRef | null;
+  /** The issue's top-level ancestor, usually an epic. */
+  top: WorkItemRef | null;
+  estimate_minutes: number | null;
+  context_read: boolean;
+}
+
+export interface Timecard {
+  period: Period;
+  sort: string[];
+  rows: TimecardRow[];
+  totals: {
+    minutes: number;
+    logged_minutes: number;
+    removed_minutes: number;
+    rows: number;
+    people: number;
+  };
+  per_person: Record<string, number>;
+  all_projects: boolean;
+  collected_at: string | null;
+}
+
+export interface TimecardQuery {
+  from: string;
+  to: string;
+  group?: string;
+  tag?: string;
+  person?: string;
+  top?: string;
+  parent?: string;
+  milestone?: string;
+  iteration?: string;
+  /** False leaves logs removed in GitLab out, with their balancing rows. */
+  removed: boolean;
+  sort: TimecardSort[];
+}
+
+/** The timecard's API URL: JSON for the page, or a CSV or HTML download of the same rows. */
+export function timecardUrl(query: TimecardQuery, format: "json" | "csv" | "html" = "json") {
+  return withQuery("/api/v1/time/timecard", {
+    from: query.from,
+    to: query.to,
+    group: query.group,
+    tag: query.tag,
+    person: query.person,
+    top: query.top,
+    parent: query.parent,
+    milestone: query.milestone,
+    iteration: query.iteration,
+    removed: query.removed ? undefined : "false",
+    sort: query.sort.join(","),
+    format: format === "json" ? undefined : format,
+  });
+}
+
+/** The timecard; the API audits every read. */
+export function getTimecard(query: TimecardQuery, signal?: AbortSignal): Promise<Timecard> {
+  return getPeopleUrl(timecardUrl(query), signal);
 }
 
 export function getTimeSettings(signal?: AbortSignal): Promise<TimeSettings> {

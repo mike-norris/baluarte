@@ -134,7 +134,7 @@ The operating profile ([COMPLIANCE.md](COMPLIANCE.md)) sets how long data is kep
 | `audit_event` | Older than the audit period, only through `baluarte_expire_audit` (below). Never younger than 30 days |
 | `evaluation` | Older than the evidence period, unless it is a finding's latest evaluation |
 | `change_record` | Landed on its branch before the evidence period, unless an evaluation still refers to its observation |
-| `time_entry`, `issue_estimate` | Spent (time entries) or last read (estimates) before the time tracking `retention_days` when that is shorter than the evidence period, else before the evidence period ([TIME_TRACKING.md](TIME_TRACKING.md#settings-and-retention)) |
+| `time_entry`, `issue_estimate`, `issue_context` | Spent (time entries) or last read (estimates, issue context) before the time tracking `retention_days` when that is shorter than the evidence period, else before the evidence period ([TIME_TRACKING.md](TIME_TRACKING.md#settings-and-retention)) |
 | `observation` | Older than the evidence period, unless it is the newest of its target (instance, project or group, and source), or an evaluation (`observation_id` or `observation_ids`), a change, a time entry or an issue estimate still refers to it |
 | `evaluation_run`, `collection_run` | Older than the evidence period and finished, unless an evaluation, observation or security policy still refers to it. Runs are evidence of collection failures, so they follow the evidence period, not the job period |
 | `collection_job`, `export_job` | Finished more than the job period ago and not referred to by a run or observation. Queued and running jobs are never deleted |

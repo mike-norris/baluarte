@@ -33,6 +33,7 @@ TABLES = {
     "gitlab_instance",
     "gitlab_project",
     "gitlab_security_policy",
+    "issue_context",
     "issue_estimate",
     "label_plan",
     "label_taxonomy",

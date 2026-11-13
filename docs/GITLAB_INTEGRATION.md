@@ -276,7 +276,7 @@ After every project discovery, `gitlab.collect_labels` reads the labels each act
 
 ## Time tracking
 
-After every project discovery, `gitlab.collect_time` reads each monitored, unarchived project's time logs with the GraphQL query `project(fullPath) { timelogs(startTime, endTime, first, after) }` sent as a `GET`, and its issues' estimates with `GET /projects/:id/issues?scope=all&updated_after=...` (`time_stats`). Capability detection adds the probe `timelogs.read`. The text written with a log is stored only as a SHA-256. Windows, re-reads, removed logs and the API notes behind them are in [TIME_TRACKING.md](TIME_TRACKING.md).
+After every project discovery, `gitlab.collect_time` reads each monitored, unarchived project's time logs with the GraphQL query `project(fullPath) { timelogs(startTime, endTime, first, after) }` sent as a `GET`, and its issues' estimates with `GET /projects/:id/issues?scope=all&updated_after=...` (`time_stats`). For timecards it also reads, for issues with logged time, their parent, top-level ancestor, milestone, iteration and estimate with the GraphQL query `project(fullPath) { workItems(iids) }` (also a `GET`), and display names from each log's `user { name }` or `GET /users?username=...`. Capability detection adds the probe `timelogs.read`. The text written with a log is stored only as a SHA-256. Windows, re-reads, removed logs and the API notes behind them are in [TIME_TRACKING.md](TIME_TRACKING.md).
 
 ## Scheduling and freshness
 

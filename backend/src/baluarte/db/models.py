@@ -1763,6 +1763,8 @@ class TimeEntry(Base):
     # GitLab's global ID, such as gid://gitlab/Timelog/12.
     timelog_id: Mapped[str] = mapped_column(Text)
     username: Mapped[str | None] = mapped_column(Text)
+    # The person's display name in GitLab, as last read.
+    user_name: Mapped[str | None] = mapped_column(Text)
     spent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     seconds: Mapped[int] = mapped_column(Integer)
     issue_iid: Mapped[int | None] = mapped_column(BigInteger)
@@ -1795,6 +1797,41 @@ class IssueEstimate(Base):
     labels: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'::text[]"))
     milestone: Mapped[str | None] = mapped_column(Text)
     issue_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    observation_id: Mapped[int] = mapped_column(ForeignKey("observation.id"))
+    read_at: Mapped[datetime] = utc_now()
+
+
+class IssueContext(Base):
+    """Where an issue with logged time sits in GitLab's planning, as last read.
+
+    Read from the issue's work item: its type and title, parent, top-level ancestor (the first
+    of its ancestors, usually an epic), milestone, iteration and estimate. ``iteration_status``
+    is ``ok`` or ``unsupported`` (no iterations on this GitLab), so a missing iteration is not
+    taken for "none".
+    """
+
+    __tablename__ = "issue_context"
+    __table_args__ = (
+        Index("ix_issue_context_instance", "instance_id"),
+        Index("ix_issue_context_observation", "observation_id"),
+    )
+
+    project_id: Mapped[int] = mapped_column(ForeignKey("gitlab_project.id"), primary_key=True)
+    issue_iid: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    work_item_type: Mapped[str | None] = mapped_column(Text)
+    title: Mapped[str | None] = mapped_column(Text)
+    web_url: Mapped[str | None] = mapped_column(Text)
+    parent_type: Mapped[str | None] = mapped_column(Text)
+    parent_reference: Mapped[str | None] = mapped_column(Text)
+    parent_title: Mapped[str | None] = mapped_column(Text)
+    top_type: Mapped[str | None] = mapped_column(Text)
+    top_reference: Mapped[str | None] = mapped_column(Text)
+    top_title: Mapped[str | None] = mapped_column(Text)
+    milestone: Mapped[str | None] = mapped_column(Text)
+    iteration_status: Mapped[str] = mapped_column(Text)
+    iteration: Mapped[str | None] = mapped_column(Text)
+    estimate_seconds: Mapped[int | None] = mapped_column(Integer)
     observation_id: Mapped[int] = mapped_column(ForeignKey("observation.id"))
     read_at: Mapped[datetime] = utc_now()
 
