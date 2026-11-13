@@ -151,6 +151,14 @@ export const routes: RouteObject[] = [
             element: page(() => import("./pages/LabelPlanPage"), "LabelPlanPage"),
           },
           {
+            path: "/time/issue-plans",
+            element: page(() => import("./pages/IssuePlansPage"), "IssuePlansPage"),
+          },
+          {
+            path: "/time/issue-plans/:planId",
+            element: page(() => import("./pages/IssuePlanPage"), "IssuePlanPage"),
+          },
+          {
             path: "/controls/:framework/:controlId",
             element: page(() => import("./pages/ControlDetailPage"), "ControlDetailPage"),
           },

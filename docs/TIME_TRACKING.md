@@ -16,6 +16,8 @@ The `gitlab.collect_time` job runs after each project discovery, as a collection
 | Estimates | `GET /projects/:id/issues?scope=all&updated_after=...&order_by=updated_at`, reading each issue's `time_stats.time_estimate` and `time_stats.total_time_spent`, state, labels and milestone. |
 | Issue context | GraphQL `project(fullPath) { workItems(iids, first: 50) { nodes { iid title webUrl workItemType widgets { ... on WorkItemWidgetHierarchy { parent ancestors } ... on WorkItemWidgetMilestone ... on WorkItemWidgetTimeTracking { timeEstimate } ... on WorkItemWidgetIteration { iteration } } } } }`, sent as a `GET`, for the issues with logged time. |
 | Display names | Each log's `user { name }`; for a person with no log read again, `GET /users?username=...`. |
+| Closed issues | `GET /projects/:id/issues?scope=all&state=closed` on a project's first read, then `GET /projects/:id/issues?scope=all&updated_after=...` in any state: labels, `time_stats`, `merge_requests_count`, `closed_at`. |
+| Commits on closed issues | `GET /projects/:id/issues/:iid/notes`, only for a closed issue with no time spent and no merge request, looking for the system notes "mentioned in commit" or "mentioned in merge request". |
 
 **Windows.** A project's first collection reads time spent in the last `lookback_days` (default 180). Later collections read from `reread_days` ago (default 30) to now, so a log deleted in GitLab within that window is noticed: an entry GitLab no longer returns is marked `removed_at`, not deleted, and a log that comes back is restored. A log backdated further than `reread_days` before the last collection is picked up only if it is later edited into the window. Results are also filtered by `spentAt` in Baluarte, because GitLab's date filters on time logs have been inexact on some versions. Issue estimates are read incrementally by `updated_after`, with a five-minute overlap. Each project's progress is kept in `time_cursor`.
 
@@ -48,7 +50,9 @@ The capability probe `timelogs.read` runs the smallest timelogs query on the sam
 | `time_entry` | One row per GitLab time log (`timelog_id`, the GitLab global ID): project, `username`, `user_name` (display name), `spent_at`, `seconds`, issue or merge request IID, its labels and milestone at collection, `summary_sha256`, the observation, `removed_at`. |
 | `issue_estimate` | Per project and issue IID: state, `estimate_seconds`, `spent_seconds`, labels, milestone, `issue_updated_at`, the observation. |
 | `issue_context` | Per project and issue IID with logged time: work item type, title and URL, parent and top-level ancestor (type, reference, title), milestone, `iteration_status` and iteration, `estimate_seconds`, the observation, `read_at`. |
-| `time_cursor` | Per project: `history_since`, `last_spent_at`, `issues_updated_after`. |
+| `closed_issue` | Per project and issue IID, each closed issue: type, title and URL, labels, `estimate_seconds`, `spent_seconds`, `merge_requests_count`, `closed_at`, `issue_updated_at`, `commits` and `commits_for`, the observation, `read_at`. A reopened issue's row is removed. |
+| `issue_plan` | Plans of the time rules on closed issues: the plan document and digest, lifecycle and apply progress (see [Closed issues](#closed-issues)). |
+| `time_cursor` | Per project: `history_since`, `last_spent_at`, `issues_updated_after`, `closed_updated_after`. |
 
 ## Summaries
 
@@ -130,6 +134,24 @@ Every per-person read is audited as `time.people_viewed` with the filters asked 
 
 In the web interface, **Manager → Timecard** shows the timecard with these filters, sortable columns (sorting in the page does not read the timecard again), totals and minutes per developer, and the two downloads.
 
+## Closed issues
+
+Every closed issue should account for its time. Two rules apply to closed issues of the covered types (`rule_issue_types`, by default `issue` and `task`) in active, unarchived projects in monitoring scope:
+
+- **Missing time.** A closed issue with commits and no time spent gets the `missing_time_label` (default `missing-time`). Commits means a merge request closes it or is linked to it (`merge_requests_count` > 0), or a system note says a commit or merge request mentions it. Once time is logged on it, the label is removed.
+- **Estimate from time spent.** A closed issue with time spent and no estimate gets the total time spent, rounded up to `estimate_round_minutes` (default 30), as its estimate: 10 minutes spent becomes a 30-minute estimate, 31 minutes becomes 1 hour. An existing estimate is never changed or removed.
+
+**Reading.** The time collection reads each project's closed issues after its time logs, all of them the first time and then those updated since, with a five-minute overlap; an issue reopened since is dropped. The notes of an issue with no time and no merge request are read once to look for commit mentions, and again only after the issue is updated, at most 1,000 issues per project and collection (`commits` is `unknown` until then). An issue with time spent is not checked (`not_checked`), since neither rule needs it. Each read is an observation (`GET /projects/:id/issues (closed)` and `GET /projects/:id/issues/:iid/notes (mentions)`).
+
+**Plans ([ADR-0011](architecture/ADR-0011-issue-time-writes.md)).** The rules change GitLab only through an approved issue plan:
+
+1. `GET /issue-plans/preview` (`findings:read`) counts the labels a plan would add or remove and the estimates it would set, from the closed issues as last read.
+2. `POST /issue-plans` (`remediation:plan`) builds a draft from the stored closed issues in `scope.groups` (every monitored project when empty). It checks with the read-only token which projects define the label, on the project or a group above it (`GET /projects/:id/labels?include_ancestor_groups=true&search=...`). Issues in a project that does not are listed as manual items, so GitLab never creates the label as a side effect; so are issues whose commits are still unknown. At most 5,000 steps.
+3. The plan is submitted, then approved by someone else with `remediation:approve` naming the digest they reviewed, or self-approved while review is off. It expires after 24 hours. A trigger keeps the plan document unchanged and rejects deletes.
+4. `POST /issue-plans/:id/apply` (`remediation:plan`) needs `BALUARTE_ISSUE_WRITES=true` (default `false`) and the write token stored on the Settings page (the label write token, with the `api` scope). The `gitlab.apply_issue_plan` job reads each issue with the read-only token first: a change already in place is `skipped`; an issue that changed since the plan (reopened, time logged or removed, an estimate set meanwhile, the label no longer defined) is `stale` and left alone. Otherwise it sends the write once with the write token, never retried: `PUT /projects/:id/issues/:iid` with `add_labels` or `remove_labels`, or `POST /projects/:id/issues/:iid/time_estimate` with `duration`. It reads the issue back. A refused write, a failed read or a read-back that does not match stops the plan. Each write is audited as `issues.write`, the plan's lifecycle as `issues.plan_*`, and a time collection is queued afterwards.
+
+In the web interface, **Labels → Closed issue time** shows the rules, what a plan would change now, and the plans; each plan shows its steps with links to the issues, the issues to fix by hand, and its review and apply progress.
+
 ## Exports
 
 An evidence export (`POST /evidence/exports`) leaves time out unless its scope sets `include_people: true`. That needs `time:read_people` as well as `evidence:export`, the switch on and a manager scope (administrators: every project); the export then adds `time_entries` (no summaries), its manifest gains `time_people: {included, projects, entries}` and a limitation, and the request is audited as `time.people_exported` besides `evidence.exported`. Audit-period evidence packages never include time per person.
@@ -143,7 +165,10 @@ An evidence export (`POST /evidence/exports`) leaves time out unless its scope s
 | `lookback_days` | 1 to 730 | 180 |
 | `reread_days` | 1 to 90 | 30 |
 | `retention_days` | 30 to 3650, or `null` | `null`: as long as evidence |
+| `missing_time_label` | a label name without commas | `missing-time` |
+| `estimate_round_minutes` | 5 to 480 | 30 |
+| `rule_issue_types` | `issue`, `task`, `incident` | `issue`, `task` |
 
 The response also carries `per_person_enabled`, which comes from the deployment and cannot be changed through the API.
 
-The daily retention job deletes time entries spent, and estimates last read, before the shorter of `retention_days` and the evidence retention period. Legal hold deletes nothing.
+The daily retention job deletes time entries spent, and estimates last read, before the shorter of `retention_days` and the evidence retention period. Legal hold deletes nothing. Closed issues are kept as current state: an unchanged issue is not read again, and the observation it was last read from is kept with it.

@@ -42,6 +42,7 @@ from sqlalchemy.orm import Session
 
 from baluarte.db.models import IssueContext, IssueEstimate, Observation, TimeCursor, TimeEntry
 from baluarte.evidence.observations import Observed, Provenance, payload_digest, record
+from baluarte.integrations.gitlab import closed_issues
 from baluarte.integrations.gitlab.client import (
     Forbidden,
     GitLabClient,
@@ -381,6 +382,7 @@ class TimeCollection:
     entries: Counter[str] = field(default_factory=Counter)
     contexts: Counter[str] = field(default_factory=Counter)
     names: Counter[str] = field(default_factory=Counter)
+    closed: closed_issues.ClosedTally = field(default_factory=closed_issues.ClosedTally)
     rejected: bool = False
 
     @property
@@ -395,6 +397,7 @@ class TimeCollection:
             "entries": dict(sorted(self.entries.items())),
             "contexts": dict(sorted(self.contexts.items())),
             "names": dict(sorted(self.names.items())),
+            "closed_issues": self.closed.as_counts(),
         }
 
 
@@ -815,11 +818,35 @@ def collect(
             write(db, instance_id, project, provenance, tally)
             db.commit()
         tally.projects += 1
+        if not tally.rejected:
+            _read_closed(client, engine, instance_id, target, provenance, tally)
     if not tally.rejected:
         _name_people(client, engine, instance_id, tally)
     if tally.failed:
         logger.warning("gitlab: time logs of %s projects could not be read", tally.failed)
     return tally
+
+
+def _read_closed(
+    client: GitLabClient,
+    engine: Engine,
+    instance_id: int,
+    target: ProjectTarget,
+    provenance: Provenance,
+    tally: TimeCollection,
+) -> None:
+    """Read the project's closed issues for the time rules (``closed_issues``)."""
+    with Session(engine) as db:
+        stored = closed_issues.stored_commits(db, target.row_id)
+        cursor = closed_issues.cursor_of(db, target.row_id)
+    try:
+        read = closed_issues.read_project(client, target, cursor, stored)
+    except Unauthorized as error:
+        tally.rejected = True
+        read = closed_issues.ClosedRead(target, cursor, error=str(error))
+    with Session(engine) as db:
+        closed_issues.write(db, instance_id, read, provenance, tally.closed)
+        db.commit()
 
 
 def _name_people(

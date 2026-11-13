@@ -1,6 +1,7 @@
 import type { FormEvent } from "react";
 import { Link, useSearchParams } from "react-router";
 
+import { ISSUE_PLANS } from "../api/issuePlans";
 import {
   CAN_PLAN,
   CAN_PROPOSE,
@@ -398,6 +399,11 @@ export function LabelsPage() {
           {canPlan && (
             <Link to={LABEL_PLANS} className={linkClass}>
               Label plans
+            </Link>
+          )}
+          {canPlan && (
+            <Link to={ISSUE_PLANS} className={linkClass}>
+              Closed issue time
             </Link>
           )}
         </p>

@@ -358,6 +358,9 @@ def test_time_settings_api(logged: Engine) -> None:
         "lookback_days": 180,
         "reread_days": 30,
         "retention_days": None,
+        "missing_time_label": "missing-time",
+        "estimate_round_minutes": 30,
+        "rule_issue_types": ["issue", "task"],
         "per_person_enabled": True,
     }
     saved = admin.put(

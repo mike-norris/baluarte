@@ -82,6 +82,7 @@ _DELETE: list[tuple[str, str, str]] = [
            AND NOT EXISTS (SELECT 1 FROM time_entry t WHERE t.observation_id = o.id)
            AND NOT EXISTS (SELECT 1 FROM issue_estimate i WHERE i.observation_id = o.id)
            AND NOT EXISTS (SELECT 1 FROM issue_context i WHERE i.observation_id = o.id)
+           AND NOT EXISTS (SELECT 1 FROM closed_issue i WHERE i.observation_id = o.id)
            AND EXISTS (
                SELECT 1 FROM observation n
                 WHERE n.instance_id = o.instance_id

@@ -121,6 +121,10 @@ LABEL_PLAN_STATES = (
 # A label plan is valid this long from its creation, and holds at most this many steps.
 LABEL_PLAN_HOURS = 24
 MAX_LABEL_PLAN_STEPS = 1000
+# An issue plan (ADR-0011) is valid this long, and holds at most this many steps.
+ISSUE_PLAN_HOURS = 24
+MAX_ISSUE_PLAN_STEPS = 5000
+CLOSED_ISSUE_COMMITS = ("merge_request", "mention", "none", "unknown", "not_checked")
 MAX_TAXONOMY_JUSTIFICATION = 2000
 
 
@@ -1405,6 +1409,132 @@ class LabelPlan(Base):
     )
 
 
+class ClosedIssue(Base):
+    """A closed issue as last read, for the time rules on closed issues (ADR-0011).
+
+    ``commits`` says what links the issue to code: ``merge_request`` (a merge request closes it
+    or is linked to it), ``mention`` (a commit or merge request mentions it in a system note),
+    ``none``, ``unknown`` while that could not be read, or ``not_checked`` when no rule needs it
+    (time was logged). ``commits_for`` is the
+    ``issue_updated_at`` it was determined for, so it is checked again after the issue changes.
+    A reopened issue's row is removed.
+    """
+
+    __tablename__ = "closed_issue"
+    __table_args__ = (
+        Index("ix_closed_issue_instance", "instance_id"),
+        Index("ix_closed_issue_observation", "observation_id"),
+        one_of("commits", CLOSED_ISSUE_COMMITS),
+    )
+
+    project_id: Mapped[int] = mapped_column(ForeignKey("gitlab_project.id"), primary_key=True)
+    issue_iid: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    issue_type: Mapped[str | None] = mapped_column(Text)
+    title: Mapped[str | None] = mapped_column(Text)
+    web_url: Mapped[str | None] = mapped_column(Text)
+    labels: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'::text[]"))
+    estimate_seconds: Mapped[int] = mapped_column(Integer)
+    spent_seconds: Mapped[int] = mapped_column(Integer)
+    merge_requests_count: Mapped[int] = mapped_column(Integer)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    issue_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    commits: Mapped[str] = mapped_column(Text)
+    commits_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    observation_id: Mapped[int] = mapped_column(ForeignKey("observation.id"))
+    read_at: Mapped[datetime] = utc_now()
+
+
+class IssuePlan(Base):
+    """A dry-run issue plan (``baluarte.timetracking.issue_plans``, ADR-0011): labels and time
+    estimates to set on closed issues, and once approved, its application.
+
+    The plan document and its digest never change. ``draft`` ->
+    ``submitted`` -> ``approved`` or ``rejected``; ``approved`` -> ``applying`` -> ``applied`` or
+    ``failed``; ``draft``, ``submitted`` and ``approved`` become ``expired`` after ``expires_at``.
+    ``progress`` holds each step's outcome as it is applied. A trigger keeps the plan unchanged
+    and rejects ``DELETE``.
+    """
+
+    __tablename__ = "issue_plan"
+    __table_args__ = (
+        Index("ix_issue_plan_state", "instance_id", "state", "id"),
+        one_of("state", LABEL_PLAN_STATES),
+        sha256_hex("plan_digest"),
+        CheckConstraint(
+            f"expires_at > created_at AND expires_at <= created_at + "
+            f"interval '{ISSUE_PLAN_HOURS} hours'",
+            name="expiry_bounded",
+        ),
+        CheckConstraint(
+            f"steps BETWEEN 0 AND {MAX_ISSUE_PLAN_STEPS} AND manual >= 0 AND steps + manual >= 1",
+            name="steps_bounded",
+        ),
+        CheckConstraint(
+            "NOT review_required OR decided_by_user_id IS NULL "
+            "OR decided_by_user_id <> created_by_user_id",
+            name="decided_by_another_user",
+        ),
+        CheckConstraint(
+            "(decided_at IS NULL) = (decided_by_user_id IS NULL)", name="decision_complete"
+        ),
+        CheckConstraint(
+            "state NOT IN ('approved', 'rejected', 'applying', 'applied', 'failed') "
+            "OR decided_at IS NOT NULL",
+            name="decided_has_decision",
+        ),
+        CheckConstraint(
+            "state NOT IN ('approved', 'applying', 'applied', 'failed') "
+            "OR approved_digest = plan_digest",
+            name="approval_binds_digest",
+        ),
+        CheckConstraint(
+            "state NOT IN ('draft', 'submitted', 'rejected') OR approved_digest IS NULL",
+            name="unapproved_has_no_digest",
+        ),
+        CheckConstraint(
+            "state NOT IN ('applying', 'applied', 'failed') OR apply_started_at IS NOT NULL",
+            name="applying_has_start",
+        ),
+        CheckConstraint(
+            "(state IN ('applied', 'failed', 'expired')) = (finished_at IS NOT NULL)",
+            name="finished_has_time",
+        ),
+        CheckConstraint("(state = 'failed') = (failure IS NOT NULL)", name="failure_explained"),
+    )
+
+    id: Mapped[int] = pk()
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    state: Mapped[str] = mapped_column(Text, server_default="draft")
+    created_by: Mapped[str] = mapped_column(Text)
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = utc_now()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    # The canonical plan document; ``plan_digest`` is the SHA-256 of its canonical JSON.
+    plan: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    plan_digest: Mapped[str] = mapped_column(Text)
+    steps: Mapped[int] = mapped_column(Integer)
+    manual: Mapped[int] = mapped_column(Integer)
+    review_required: Mapped[bool] = mapped_column(Boolean)
+    self_approved: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_by: Mapped[str | None] = mapped_column(Text)
+    decided_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_note: Mapped[str | None] = mapped_column(Text)
+    # The digest the approver reviewed; equal to ``plan_digest`` once approved.
+    approved_digest: Mapped[str | None] = mapped_column(Text)
+    applied_by: Mapped[str | None] = mapped_column(Text)
+    apply_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failed_step: Mapped[int | None] = mapped_column(Integer)
+    failure: Mapped[str | None] = mapped_column(Text)
+    # One entry per step reached: its status, the write's HTTP status and the verification.
+    progress: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb")
+    )
+
+
 class AuditEvent(Base):
     """Administrative audit trail. Rows cannot be updated or deleted, except by the retention
     function ``baluarte_expire_audit`` (migration 0016)."""
@@ -1848,4 +1978,6 @@ class TimeCursor(Base):
     history_since: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     last_spent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     issues_updated_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # How far closed issues have been read; null until every closed issue was read once.
+    closed_updated_after: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = utc_now()

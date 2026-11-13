@@ -183,6 +183,9 @@ gitlab:
   # Allow approved label plans to be applied to GitLab (docs/LABELS.md). The write token is
   # entered in the web UI, never here; while this is false no plan is applied.
   labelWrites: false
+  # Allow approved issue plans (labels and estimates on closed issues) to be applied with the
+  # same write token (docs/TIME_TRACKING.md).
+  issueWrites: false
 
 # Time tracking (docs/TIME_TRACKING.md). perPerson false hides time per person everywhere:
 # only totals are shown.
