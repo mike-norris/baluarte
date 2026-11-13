@@ -34,7 +34,7 @@ function PendingMappingChange({
   const [sending, setSending] = useState<"approve" | "reject" | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const canDecide = canWritePolicies(user);
-  const own = isOwnChange(change, user?.user_id);
+  const own = isOwnChange(change, user?.user_id) && user?.development_mode !== true;
   const summary = mappingChangeText(change);
 
   async function decide(decision: "approve" | "reject") {

@@ -23,6 +23,7 @@ from baluarte import audit
 from baluarte.controls.catalogue import MAPPING_VERSION, control, is_default, known_rule_type
 from baluarte.db.models import ControlMappingChange
 from baluarte.policy.changes import Actor, ChangeConflict, NotAllowed, review_required
+from baluarte.settings import own_decision_refused
 
 ChangeKind = Literal["map", "unmap", "not_applicable", "manual", "withdraw"]
 ChangeState = Literal["proposed", "active", "rejected", "withdrawn"]
@@ -182,6 +183,7 @@ def change_details(change: ControlMappingChange) -> dict[str, Any]:
         "review_by": change.review_by.isoformat() if change.review_by else None,
         "supersedes_id": change.supersedes_id,
         "mapping_version": change.mapping_version,
+        **({"development_decision": True} if change.development_decision else {}),
     }
 
 
@@ -267,7 +269,7 @@ def _decidable(db: Session, change_id: int, by: Actor) -> ControlMappingChange:
         raise LookupError(change_id)
     if change.state != "proposed":
         raise ChangeConflict(f"The change is already {change.state}")
-    if change.proposed_by_user_id == by.user_id:
+    if own_decision_refused(change.proposed_by_user_id, by.user_id):
         raise NotAllowed("A change must be approved or rejected by someone other than its proposer")
     return change
 
@@ -286,6 +288,7 @@ def approve(db: Session, change_id: int, by: Actor, note: str | None) -> Control
     change.state = "active"
     change.decided_by = by.actor
     change.decided_by_user_id = by.user_id
+    change.development_decision = change.decided_by_user_id == change.proposed_by_user_id
     change.decided_at = func.now()
     change.decision_note = note or None
     db.flush()
@@ -307,6 +310,7 @@ def reject(db: Session, change_id: int, by: Actor, note: str) -> ControlMappingC
     change.state = "rejected"
     change.decided_by = by.actor
     change.decided_by_user_id = by.user_id
+    change.development_decision = change.decided_by_user_id == change.proposed_by_user_id
     change.decided_at = func.now()
     change.decision_note = note
     db.flush()

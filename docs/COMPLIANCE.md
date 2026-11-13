@@ -45,11 +45,12 @@ Exceptions can name any control, so a known gap (for example a database without 
 
 ### Development mode
 
-With one person developing or testing, two-person review blocks every change, and the exception that would allow turning it off needs a second person too. `BALUARTE_DEVELOPMENT_MODE=true`, set only in the deployment's environment (Compose passes it to the API and worker; the Helm chart does not), lifts the profile's minimum for `require_review` alone:
+With one person developing or testing, two-person review blocks every change, and the exception that would allow turning it off needs a second person too. `BALUARTE_DEVELOPMENT_MODE=true`, set only in the deployment's environment (Compose passes it to the API and worker; the Helm chart does not), lifts the profile's minimum for `require_review` and lets one person decide their own items:
 
 - An administrator can turn review off in Settings, or save the profile with it off, without an exception. Every other minimum still applies.
 - With review off, changes apply at once and are recorded `self_approved`, as they always are without review. Turning review off is audited with `development_mode: true`.
-- Nothing else changes. The database still refuses a proposer deciding their own change while review is on. The posture still shows `change-review` as not met, and the evidence manifest records `development_mode: true`.
+- The person who proposed, requested or created an item waiting for review can approve or reject it themselves: baseline and control-mapping changes, monitoring exclusions, compliance and finding exceptions, label taxonomies, and label, issue and remediation plans. The item records `development_decision`, and its audit event has `development_decision: true`. This also settles items proposed before review was turned off.
+- Nothing else changes. Outside development mode the API refuses a proposer deciding their own item while review is required. The database accepts such a decision only as a `development_decision`, made by the proposer and recorded with the decision itself (migration `0026`). The posture still shows `change-review` as not met, and the evidence manifest records `development_mode: true`.
 - Every page shows a development mode banner, and the API logs a warning at start.
 
 Never set it on an instance whose evidence is meant for an audit.

@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 from baluarte import audit
 from baluarte.db.models import GitLabGroup, GitLabProject, ScopeExclusion
 from baluarte.policy.changes import Actor, ChangeConflict, NotAllowed, review_required
+from baluarte.settings import own_decision_refused
 
 TargetType = Literal["project", "group", "personal_namespaces"]
 ExclusionState = Literal["proposed", "active", "rejected", "ended"]
@@ -261,6 +262,7 @@ def _details(rows: Sequence[ScopeExclusion], **extra: Any) -> dict[str, Any]:
         "batch_id": first.batch_id,
         "targets": [_target_detail(row) for row in rows],
         "justification_sha256": justification_sha256(first.justification),
+        **({"development_decision": True} if first.development_decision else {}),
         **extra,
     }
 
@@ -389,7 +391,7 @@ def _decidable(db: Session, batch_id: str, by: Actor) -> list[ScopeExclusion]:
     states = {row.state for row in rows}
     if states != {"proposed"}:
         raise ChangeConflict(f"The batch is already {', '.join(sorted(states))}")
-    if rows[0].proposed_by_user_id == by.user_id:
+    if own_decision_refused(rows[0].proposed_by_user_id, by.user_id):
         raise NotAllowed("A batch must be approved or rejected by someone other than its proposer")
     return rows
 
@@ -402,6 +404,7 @@ def _decide(
         row.state = state
         row.decided_by = by.actor
         row.decided_by_user_id = by.user_id
+        row.development_decision = row.decided_by_user_id == row.proposed_by_user_id
         row.decided_at = func.now()
         row.decision_note = note or None
     db.flush()

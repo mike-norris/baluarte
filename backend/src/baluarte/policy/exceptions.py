@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 
 from baluarte import audit
 from baluarte.db.models import Finding, PolicyException
+from baluarte.settings import own_decision_refused
 
 ExceptionState = Literal["requested", "approved", "rejected", "revoked", "expired"]
 SYSTEM_ACTOR = "system:policy-exceptions"
@@ -122,6 +123,7 @@ def _details(row: PolicyException, **extra: Any) -> dict[str, Any]:
         "policy_name": row.policy_name,
         "rule_id": row.rule_id,
         "expires_at": row.expires_at.isoformat(),
+        **({"development_decision": True} if row.development_decision else {}),
         **extra,
     }
 
@@ -184,11 +186,12 @@ def decide(
     state = _current(db, row)
     if state != "requested":
         raise ExceptionConflict(f"Only a requested exception can be decided; this one is {state}")
-    if user_id == row.requested_by_user_id:
+    if own_decision_refused(row.requested_by_user_id, user_id):
         raise PermissionError("An exception must be approved or rejected by someone else")
     now = db.execute(select(func.now())).scalar_one()
     row.state = decision
     row.decided_by_user_id = user_id
+    row.development_decision = row.decided_by_user_id == row.requested_by_user_id
     row.decided_at = now
     row.decision_note = note
     db.flush()

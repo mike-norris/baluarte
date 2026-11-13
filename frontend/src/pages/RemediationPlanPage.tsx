@@ -293,16 +293,17 @@ function Actions({
 }) {
   const [action, setAction] = useState<Action | null>(null);
   const creator = isCreator(plan, user);
+  const ownDecision = creator && user.development_mode !== true;
   const available: Action[] = [];
   if (plan.state === "draft" && hasPermission(user, CAN_PLAN) && creator) {
     available.push("submit");
   }
   const mayDecide = plan.state === "submitted" && hasPermission(user, CAN_APPROVE);
-  if (mayDecide && !creator && plan.digest_valid) available.push("approve", "reject");
-  if (mayDecide && !creator && !plan.digest_valid) available.push("reject");
+  if (mayDecide && !ownDecision && plan.digest_valid) available.push("approve", "reject");
+  if (mayDecide && !ownDecision && !plan.digest_valid) available.push("reject");
 
   const notes: string[] = [];
-  if (mayDecide && creator) {
+  if (mayDecide && ownDecision) {
     notes.push("You created this plan. Someone else must approve or reject it.");
   }
   if (mayDecide && !plan.digest_valid) {

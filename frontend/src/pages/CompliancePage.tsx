@@ -596,7 +596,8 @@ export function CompliancePage() {
         <Exceptions
           catalogue={controls}
           exceptions={exceptions.data}
-          me={user ? `user:${String(user.user_id)}` : ""}
+          // In development mode the requester may decide their own exception.
+          me={user && user.development_mode !== true ? `user:${String(user.user_id)}` : ""}
           csrf={csrf}
           onChanged={changed}
         />

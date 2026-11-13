@@ -13,7 +13,7 @@ import {
 import { useLoad } from "../api/useLoad";
 import { usePaged } from "../api/usePaged";
 import { useAuth } from "../auth/context";
-import type { CurrentUser } from "../auth/session";
+import { leavesOwnToOthers, type CurrentUser } from "../auth/session";
 import { ErrorMessage } from "../components/ErrorMessage";
 import { MappingReview } from "../controls/MappingReview";
 import { ScopeReview } from "../inventory/ScopeReview";
@@ -103,7 +103,7 @@ function PendingChange({
   const [sending, setSending] = useState<"approve" | "reject" | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const canDecide = canWritePolicies(user);
-  const own = user !== null && change.proposed_by.user_id === user.user_id;
+  const own = leavesOwnToOthers(user, change.proposed_by.user_id);
   const summary = changeText(change);
 
   async function decide(decision: "approve" | "reject") {

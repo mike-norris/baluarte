@@ -18,6 +18,7 @@ from baluarte import audit
 from baluarte.compliance.catalogue import CONTROLS_BY_ID
 from baluarte.compliance.operations import stored_review, today
 from baluarte.db.models import MAX_COMPLIANCE_EXCEPTION_DAYS, ComplianceException
+from baluarte.settings import own_decision_refused
 
 
 class ExceptionInvalid(Exception):
@@ -66,6 +67,7 @@ def details(row: ComplianceException) -> dict[str, object]:
         "state": row.state,
         "review_required": row.review_required,
         "self_approved": row.self_approved,
+        **({"development_decision": True} if row.development_decision else {}),
     }
 
 
@@ -130,13 +132,14 @@ def _decide(
     row = _get(db, exception_id)
     if row.state != "proposed":
         raise ExceptionConflict(f"Compliance exception {exception_id} is {row.state}")
-    if row.requested_by_user_id == by.user_id:
+    if own_decision_refused(row.requested_by_user_id, by.user_id):
         raise NotAllowed("Someone other than the requester must decide this exception")
     if state == "approved" and row.expires_on <= today():
         raise ExceptionConflict(f"Compliance exception {exception_id} has already expired")
     row.state = state
     row.decided_by = by.actor
     row.decided_by_user_id = by.user_id
+    row.development_decision = row.decided_by_user_id == row.requested_by_user_id
     row.decided_at = func.now()
     row.decision_note = note.strip() if note and note.strip() else None
     db.flush()

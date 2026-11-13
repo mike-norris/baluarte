@@ -41,6 +41,7 @@ from baluarte.db.models import MAX_TAXONOMY_JUSTIFICATION, LabelTaxonomy
 from baluarte.policy.changes import Actor, ChangeConflict, NotAllowed, review_required
 from baluarte.policy.loader import PolicyError, PolicyInvalid, digest, load_yaml
 from baluarte.policy.schema import GROUP_PATTERN, Metadata
+from baluarte.settings import own_decision_refused
 
 MAX_LABELS = 500
 MAX_ALIASES = 20
@@ -206,6 +207,7 @@ def _details(row: LabelTaxonomy, **extra: Any) -> dict[str, Any]:
         "justification_digest": details_digest({"justification": row.justification})
         if row.justification
         else None,
+        **({"development_decision": True} if row.development_decision else {}),
         **extra,
     }
 
@@ -283,7 +285,7 @@ def _decidable(db: Session, taxonomy_id: int, by: Actor) -> LabelTaxonomy:
         raise LookupError(taxonomy_id)
     if row.state != "proposed":
         raise ChangeConflict(f"The taxonomy version is already {row.state}")
-    if row.proposed_by_user_id == by.user_id:
+    if own_decision_refused(row.proposed_by_user_id, by.user_id):
         raise NotAllowed(
             "A version must be approved or rejected by someone other than its proposer"
         )
@@ -296,6 +298,7 @@ def approve(db: Session, taxonomy_id: int, by: Actor, note: str | None) -> Label
     row.state = "approved"
     row.decided_by = by.actor
     row.decided_by_user_id = by.user_id
+    row.development_decision = row.decided_by_user_id == row.proposed_by_user_id
     row.decided_at = func.now()
     row.decision_note = (note or "").strip() or None
     db.flush()
@@ -320,6 +323,7 @@ def reject(db: Session, taxonomy_id: int, by: Actor, note: str) -> LabelTaxonomy
     row.state = "rejected"
     row.decided_by = by.actor
     row.decided_by_user_id = by.user_id
+    row.development_decision = row.decided_by_user_id == row.proposed_by_user_id
     row.decided_at = func.now()
     row.decision_note = note
     db.flush()

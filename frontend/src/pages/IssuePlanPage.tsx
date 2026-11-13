@@ -18,7 +18,7 @@ import {
 import { CAN_APPROVE, CAN_PLAN, MAX_NOTE } from "../api/labels";
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
-import type { CurrentUser } from "../auth/session";
+import { leavesOwnToOthers, type CurrentUser } from "../auth/session";
 import { useAsOfState } from "../asof/context";
 import { pastReadOnly } from "../asof/format";
 import { ErrorMessage } from "../components/ErrorMessage";
@@ -159,6 +159,7 @@ function Actions({
   const [sending, setSending] = useState<Action | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const creator = plan.created_by.user_id === user.user_id;
+  const ownDecision = leavesOwnToOthers(user, plan.created_by.user_id);
   const canPlan = hasPermission(user, CAN_PLAN);
   const canApprove = hasPermission(user, CAN_APPROVE);
   const past = chosen !== null;
@@ -227,7 +228,7 @@ function Actions({
         </div>
       )}
       {mayDecide &&
-        (creator ? (
+        (ownDecision ? (
           <p className="mt-2 text-sm">
             You created this plan. Someone else must approve or reject it.
           </p>

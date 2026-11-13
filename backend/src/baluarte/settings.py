@@ -41,6 +41,16 @@ def development_mode() -> bool:
     raise ConfigurationError(f"{DEVELOPMENT_MODE} must be true or false")
 
 
+def own_decision_refused(proposer_user_id: int | None, decider_user_id: int) -> bool:
+    """Whether a decision must be refused because the decider proposed the item.
+
+    Outside development mode an item waiting for review is decided by someone other than its
+    proposer. In development mode the proposer may decide it; the item then records
+    ``development_decision``, and its audit event says so.
+    """
+    return proposer_user_id == decider_user_id and not development_mode()
+
+
 def read_secret(name: str, *, required: bool = False) -> str | None:
     """Read the secret ``name`` from the file named by ``<name>_FILE``.
 
