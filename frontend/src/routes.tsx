@@ -62,7 +62,7 @@ function OldEditorLink() {
 
 /** Pages already on Tabler; the rest render in the light legacy panel until moved. */
 const TABLER = { tabler: true } as const;
-const onTabler: ReadonlySet<string> = new Set(["/", "/reviews", "/remediation", "/exceptions"]);
+const onTabler: ReadonlySet<string> = new Set(["/", "/reviews", "/remediation", "/exceptions", "/findings"]);
 
 /** Sections that are implemented; the rest render a placeholder. */
 const pages: Partial<Record<string, ReactNode>> = {
@@ -114,6 +114,7 @@ export const routes: RouteObject[] = [
           },
           {
             path: "/findings/:findingId",
+            handle: TABLER,
             element: page(() => import("./pages/FindingDetailPage"), "FindingDetailPage"),
           },
           {

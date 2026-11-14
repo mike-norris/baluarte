@@ -66,3 +66,8 @@
     bottom: calc(3.75rem + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* Notes and justifications keep the line breaks people typed. */
+.text-prewrap {
+  white-space: pre-wrap;
+}
