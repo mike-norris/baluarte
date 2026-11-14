@@ -54,3 +54,15 @@
   border-radius: var(--tblr-border-radius-lg);
   padding: 1.5rem;
 }
+
+/* The decision bar stays in view at the bottom while a plan's steps scroll; above the phone bar on phones. */
+.app-decision-bar {
+  position: sticky;
+  bottom: 0.5rem;
+  z-index: 1010;
+}
+@media (max-width: 767.98px) {
+  .app-decision-bar {
+    bottom: calc(3.75rem + env(safe-area-inset-bottom, 0px));
+  }
+}
