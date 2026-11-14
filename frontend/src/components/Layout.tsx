@@ -107,7 +107,7 @@ function BottomNav({ items }: { items: readonly NavItem[] }) {
   };
   const bar = items.filter((item) => item.phoneBar);
   const fallback = items.find((item) => item.path === "/inventory");
-  const shown = bar.length < 3 && fallback ? [...bar, fallback] : bar;
+  const shown = bar.length < 4 && fallback ? [...bar, fallback] : bar;
   return (
     <>
       <nav

@@ -106,6 +106,7 @@ describe("devices", () => {
     const nav = await screen.findByRole("navigation", { name: "Primary" });
     expect(within(nav).getAllByRole("link").map((link) => link.textContent)).toEqual([
       "Dashboard",
+      "Review queue",
       "Findings",
       "Inventory",
     ]);
