@@ -154,6 +154,7 @@ export const routes: RouteObject[] = [
           },
           {
             path: "/labels/plans/:planId",
+            handle: TABLER,
             element: page(() => import("./pages/LabelPlanPage"), "LabelPlanPage"),
           },
           {
@@ -162,6 +163,7 @@ export const routes: RouteObject[] = [
           },
           {
             path: "/time/issue-plans/:planId",
+            handle: TABLER,
             element: page(() => import("./pages/IssuePlanPage"), "IssuePlanPage"),
           },
           {
