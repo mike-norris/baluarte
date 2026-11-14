@@ -60,9 +60,14 @@ function OldEditorLink() {
   return <Navigate to={`${GOVERNANCE}/baselines/new${search}`} replace />;
 }
 
+/** Pages already on Tabler; the rest render in the light legacy panel until moved. */
+const TABLER = { tabler: true } as const;
+const onTabler: ReadonlySet<string> = new Set(["/", "/reviews"]);
+
 /** Sections that are implemented; the rest render a placeholder. */
 const pages: Partial<Record<string, ReactNode>> = {
   "/": <DashboardPage />,
+  "/reviews": page(() => import("./pages/ReviewsPage"), "ReviewsPage"),
   "/inventory": page(() => import("./pages/InventoryPage"), "InventoryPage"),
   "/findings": page(() => import("./pages/FindingsPage"), "FindingsPage"),
   "/changes": page(() => import("./pages/ChangesPage"), "ChangesPage"),
@@ -94,6 +99,7 @@ export const routes: RouteObject[] = [
         children: [
           ...sectionItems.map((item): RouteObject => ({
             path: item.path,
+            ...(onTabler.has(item.path) ? { handle: TABLER } : {}),
             element: pages[item.path] ?? (
               <PlaceholderPage title={navTitle(item)} description={item.description} />
             ),

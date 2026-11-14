@@ -7,6 +7,7 @@ import {
   IconFileExport,
   IconGitMerge,
   IconHistoryToggle,
+  IconInbox,
   IconLayoutDashboard,
   IconScale,
   IconSettings,
@@ -65,6 +66,14 @@ export const navItems: readonly NavItem[] = [
     description: "Compliance posture across groups and projects.",
     group: "Overview",
     icon: IconLayoutDashboard,
+    phoneBar: true,
+  },
+  {
+    path: "/reviews",
+    label: "Review queue",
+    description: "Changes, plans and exceptions waiting for a second person's decision.",
+    group: "Overview",
+    icon: IconInbox,
     phoneBar: true,
   },
   {

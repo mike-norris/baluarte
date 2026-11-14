@@ -10,11 +10,7 @@ export function PopulationNote({ population }: { population?: Population | null 
   return (
     <p
       aria-label="Inventory coverage"
-      className={
-        limited
-          ? "mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
-          : "mt-3 text-sm text-slate-700"
-      }
+      className={limited ? "alert alert-warning text-body" : "text-secondary mb-3"}
     >
       {shown.statement}
     </p>
