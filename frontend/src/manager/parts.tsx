@@ -55,13 +55,13 @@ export function TagChip({
   return (
     <span
       title={title}
-      className="inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-1.5 py-0.5 font-mono text-xs font-normal text-slate-800"
+      className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle font-monospace fw-normal d-inline-flex align-items-center gap-1"
     >
       {color && isHexColor(color) && (
         <span
           aria-hidden="true"
-          className="inline-block h-2.5 w-2.5 rounded-sm border border-slate-400"
-          style={{ backgroundColor: color }}
+          className="d-inline-block rounded-1 border"
+          style={{ backgroundColor: color, width: "0.625rem", height: "0.625rem" }}
         />
       )}
       {tagText(tag)}
@@ -73,14 +73,14 @@ export function TagChip({
 export function ItemTags({ tags }: { tags: ItemTag[] | undefined }) {
   if (!tags || tags.length === 0) return null;
   return (
-    <ul aria-label="Tags" className="mt-1 flex flex-wrap gap-1">
+    <ul aria-label="Tags" className="list-unstyled mt-1 mb-0 d-flex flex-wrap gap-1">
       {tags.map((tag) => (
         <li key={`${tag.key}=${tag.value}`}>
           <TagChip
             tag={tag}
             title={tag.via === "group" ? `From group ${tag.from_path ?? ""}` : "On the project"}
           />
-          {tag.via === "group" && <span className="sr-only"> (from group {tag.from_path})</span>}
+          {tag.via === "group" && <span className="visually-hidden"> (from group {tag.from_path})</span>}
         </li>
       ))}
     </ul>

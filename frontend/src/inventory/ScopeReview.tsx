@@ -7,7 +7,6 @@ import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import { leavesOwnToOthers, type CurrentUser } from "../auth/session";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, secondaryClass } from "../components/styles";
 import { changePerson } from "../controls/format";
 import { canWritePolicies } from "../policies/format";
 import { formatTime } from "../time";
@@ -82,37 +81,37 @@ function PendingBatch({
 
   if (!first) return null;
   return (
-    <li className="space-y-3 rounded border border-slate-200 bg-white p-4">
+    <li className="card card-body mb-3">
       <div>
-        <h3 className="font-medium">{summary}</h3>
-        <p className="text-sm text-slate-600">
+        <h3 className="fw-medium">{summary}</h3>
+        <p className="text-secondary">
           {`Proposed by ${changePerson(first.proposed_by)} on ${formatTime(first.proposed_at)}.`}
         </p>
       </div>
-      <ul aria-label="Targets" className="max-h-40 list-disc overflow-y-auto pl-5 text-sm">
+      <ul aria-label="Targets" className="ps-3 overflow-auto" style={{ maxHeight: "10rem" }}>
         {batch.items.map((item) => (
           <li key={item.id}>{targetText(item)}</li>
         ))}
       </ul>
-      <dl className="space-y-1 text-sm">
+      <dl>
         <div>
-          <dt className="font-medium">Justification</dt>
-          <dd className="whitespace-pre-wrap">{first.justification}</dd>
+          <dt className="fw-medium">Justification</dt>
+          <dd className="text-prewrap">{first.justification}</dd>
         </div>
       </dl>
       {failure && (
-        <p role="alert" className="text-sm text-red-900">
+        <p role="alert" className="text-danger-emphasis">
           {failure}
         </p>
       )}
       {canDecide &&
         (own ? (
-          <p className="text-sm text-slate-700">
+          <p className="text-secondary">
             You proposed these exclusions, so someone else must approve or reject them.
           </p>
         ) : (
           <div>
-            <label htmlFor={`${id}-note`} className="text-sm font-medium">
+            <label htmlFor={`${id}-note`} className="fw-medium">
               Note (required to reject)
             </label>
             <textarea
@@ -123,18 +122,18 @@ function PendingBatch({
               onChange={(event) => {
                 setNote(event.target.value);
               }}
-              className={fieldClass}
+              className="form-control mt-1"
             />
           </div>
         ))}
       {canDecide && (
-        <div className="flex flex-wrap gap-2">
+        <div className="d-flex flex-wrap gap-2">
           <button
             type="button"
             disabled={own || sending !== null}
             onClick={() => void decide("approve")}
             aria-describedby={own ? `${id}-own` : undefined}
-            className={buttonClass}
+            className="btn btn-primary"
           >
             {sending === "approve" ? "Approving…" : "Approve"}
           </button>
@@ -143,12 +142,12 @@ function PendingBatch({
             disabled={own || sending !== null}
             onClick={() => void decide("reject")}
             aria-describedby={own ? `${id}-own` : undefined}
-            className={secondaryClass}
+            className="btn"
           >
             {sending === "reject" ? "Rejecting…" : "Reject"}
           </button>
           {own && (
-            <span id={`${id}-own`} className="sr-only">
+            <span id={`${id}-own`} className="visually-hidden">
               You cannot decide your own change.
             </span>
           )}
@@ -175,15 +174,15 @@ export function ScopeReview({
   if (pending.error) body = <ErrorMessage error={pending.error} retry={pending.retry} />;
   else if (!pending.data) {
     body = (
-      <p role="status" className="text-slate-600">
+      <p role="status" className="text-secondary">
         Loading proposed exclusions…
       </p>
     );
   } else if (pending.data.items.length === 0) {
-    body = <p className="text-sm text-slate-600">No exclusion from monitoring is waiting.</p>;
+    body = <p className="text-secondary">No exclusion from monitoring is waiting.</p>;
   } else {
     body = (
-      <ul className="space-y-3" aria-label="Exclusions from monitoring waiting for review">
+      <ul aria-label="Exclusions from monitoring waiting for review">
         {batches(pending.data.items).map((batch) => (
           <PendingBatch key={batch.id} batch={batch} user={user} onDecided={onDecided} />
         ))}
@@ -191,8 +190,8 @@ export function ScopeReview({
     );
   }
   return (
-    <section aria-labelledby="scope-pending-title" className="space-y-3">
-      <h2 id="scope-pending-title" className="text-lg font-semibold">
+    <section aria-labelledby="scope-pending-title">
+      <h2 id="scope-pending-title" className="card-title">
         Exclusions from monitoring waiting for review
       </h2>
       {body}

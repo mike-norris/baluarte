@@ -10,7 +10,6 @@ import {
   type ExclusionTarget,
 } from "../api/scope";
 import { useAuth } from "../auth/context";
-import { buttonClass, fieldClass, secondaryClass } from "../components/styles";
 
 /** What the form changes: targets to exclude, or exclusions to end. */
 export type ScopeIntent =
@@ -101,21 +100,21 @@ export function ScopeForm({
     <form
       aria-label={title}
       onSubmit={(event) => void submit(event)}
-      className="space-y-3 rounded border border-slate-300 bg-white p-4"
+      className="rounded border p-3"
     >
-      <h2 className="text-lg font-semibold">{title}</h2>
-      <p className="text-sm text-slate-700">
+      <h2 className="card-title">{title}</h2>
+      <p className="text-secondary">
         {exclude
           ? "Excluded projects stay in the inventory but are not evaluated, read in detail or counted. Their open findings are resolved. You can include them again at any time."
           : "Included projects are evaluated again from the next evaluation; findings reopen if the rules still fail."}
       </p>
-      <ul aria-label="Selected" className="max-h-40 list-disc overflow-y-auto pl-5 text-sm">
+      <ul aria-label="Selected" className="ps-3 overflow-auto" style={{ maxHeight: "10rem" }}>
         {intent.labels.map((label) => (
           <li key={label}>{label}</li>
         ))}
       </ul>
       <div>
-        <label htmlFor={`${id}-why`} className="text-sm font-medium">
+        <label htmlFor={`${id}-why`} className="fw-medium">
           Justification
         </label>
         <textarea
@@ -127,24 +126,24 @@ export function ScopeForm({
           onChange={(event) => {
             setJustification(event.target.value);
           }}
-          className={fieldClass}
+          className="form-control mt-1"
         />
-        <p id={`${id}-help`} className="mt-1 text-xs text-slate-600">
+        <p id={`${id}-help`} className="mt-1 small text-secondary">
           {exclude
             ? "Why these are out of scope, for example research or personal work. 20 to 2000 characters; kept as evidence."
             : "Why they are monitored again. 20 to 2000 characters; kept as evidence."}
         </p>
       </div>
       {problem && (
-        <p role="alert" className="text-sm text-red-900">
+        <p role="alert" className="text-danger-emphasis">
           {problem}
         </p>
       )}
-      <div className="flex flex-wrap gap-2">
-        <button type="submit" disabled={sending} className={buttonClass}>
+      <div className="d-flex flex-wrap gap-2">
+        <button type="submit" disabled={sending} className="btn btn-primary">
           {sending ? "Sending…" : exclude ? "Exclude" : "Include again"}
         </button>
-        <button type="button" onClick={onCancel} className={secondaryClass}>
+        <button type="button" onClick={onCancel} className="btn">
           Cancel
         </button>
       </div>

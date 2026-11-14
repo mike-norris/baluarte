@@ -70,6 +70,7 @@ const onTabler: ReadonlySet<string> = new Set([
   "/findings",
   "/changes",
   "/controls",
+  "/inventory",
 ]);
 
 /** Sections that are implemented; the rest render a placeholder. */
@@ -114,10 +115,12 @@ export const routes: RouteObject[] = [
           })),
           {
             path: "/inventory/projects/:gitlabId",
+            handle: TABLER,
             element: page(() => import("./pages/InventoryItemPage"), "ProjectPage"),
           },
           {
             path: "/inventory/groups/:gitlabId",
+            handle: TABLER,
             element: page(() => import("./pages/InventoryItemPage"), "GroupPage"),
           },
           {
