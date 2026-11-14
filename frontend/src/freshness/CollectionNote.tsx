@@ -11,17 +11,17 @@ export function CollectionNote() {
   const evaluation = freshness?.signals.find((signal) => signal.source === "evaluation");
   if (!freshness || !collection || !evaluation) return null;
   return (
-    <aside aria-label="Data freshness" className="mt-6 space-y-1 text-sm text-slate-700">
+    <aside aria-label="Data freshness" className="mt-4 text-secondary">
       <p>
         GitLab collection status:{" "}
-        <span className="font-medium">{statusLabel("collection", collection.status)}</span>
+        <span className="fw-medium">{statusLabel("collection", collection.status)}</span>
       </p>
       {collection.lastSuccessAt && (
         <p>Oldest successful collection: {formatTime(collection.lastSuccessAt)}</p>
       )}
       <p>
         Policy evaluation status:{" "}
-        <span className="font-medium">{statusLabel("evaluation", evaluation.status)}</span>
+        <span className="fw-medium">{statusLabel("evaluation", evaluation.status)}</span>
       </p>
       {evaluation.lastSuccessAt && (
         <p>Last successful evaluation: {formatTime(evaluation.lastSuccessAt)}</p>
@@ -33,11 +33,11 @@ export function CollectionNote() {
         </p>
       )}
       <p>
-        <Link to="/inventory" className="text-sky-800 underline">
+        <Link to="/inventory">
           Collection details
         </Link>
         {" · "}
-        <Link to="/" className="text-sky-800 underline">
+        <Link to="/">
           Compliance overview
         </Link>
       </p>

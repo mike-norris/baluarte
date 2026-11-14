@@ -10,7 +10,6 @@ import { errorReasons } from "../api/send";
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, secondaryClass } from "../components/styles";
 import { formatTime } from "../time";
 import { asApiError, cardClass, noteClass, Problems, SecretKeyNotice, Values } from "./parts";
 
@@ -104,10 +103,10 @@ function TokenForm({
   }
 
   return (
-    <div className="space-y-4">
+    <div >
       <Problems messages={problems} />
-      <form onSubmit={(event) => void save(event)} aria-label="Label write token" noValidate className="space-y-3">
-        <label className="block text-sm font-medium">
+      <form onSubmit={(event) => void save(event)} aria-label="Label write token" noValidate >
+        <label className="d-block fw-medium">
           {status.set ? "Replace the write token" : "Write token"}
           <input
             name="token"
@@ -119,18 +118,18 @@ function TokenForm({
             autoComplete="new-password"
             disabled={!canStore}
             aria-describedby={`${id}-help`}
-            className={fieldClass}
+            className="form-control mt-1"
           />
         </label>
-        <p id={`${id}-help`} className="text-xs text-slate-600">
+        <p id={`${id}-help`} className="small text-secondary">
           Never shown again once saved. Use a group access token with the Maintainer role and the{" "}
           <code>api</code> scope, limited to the groups whose labels Baluarte should fix, with an
           expiry date. It is used only to apply approved label plans; every other read keeps using
           the read-only token.
         </p>
         {!canStore && <SecretKeyNotice />}
-        <div className="flex flex-wrap gap-2">
-          <button type="submit" disabled={!canStore || sending !== null} className={buttonClass}>
+        <div className="d-flex flex-wrap gap-2">
+          <button type="submit" disabled={!canStore || sending !== null} className="btn btn-primary">
             {sending === "save" ? "Checking and saving…" : status.set ? "Replace token" : "Save token"}
           </button>
           {status.set && !confirmRemove && (
@@ -139,7 +138,7 @@ function TokenForm({
               onClick={() => {
                 setConfirmRemove(true);
               }}
-              className={secondaryClass}
+              className="btn"
             >
               Remove token
             </button>
@@ -149,12 +148,12 @@ function TokenForm({
       {confirmRemove && (
         <div className={noteClass}>
           <p>Remove the write token? Approved label plans cannot be applied without one.</p>
-          <div className="mt-2 flex flex-wrap gap-2">
+          <div className="mt-2 d-flex flex-wrap gap-2">
             <button
               type="button"
               disabled={sending !== null}
               onClick={() => void remove()}
-              className={buttonClass}
+              className="btn btn-primary"
             >
               {sending === "remove" ? "Removing…" : "Remove the token"}
             </button>
@@ -163,7 +162,7 @@ function TokenForm({
               onClick={() => {
                 setConfirmRemove(false);
               }}
-              className={secondaryClass}
+              className="btn"
             >
               Keep it
             </button>
@@ -190,10 +189,10 @@ export function LabelWriteTokenCard({
 
   return (
     <section aria-labelledby="label-token-title" className={cardClass}>
-      <h2 id="label-token-title" className="text-lg font-semibold">
+      <h2 id="label-token-title" className="card-title">
         Label write token
       </h2>
-      <p className="text-sm text-slate-600">
+      <p className="text-secondary">
         The only credential Baluarte writes to GitLab with, and only to create, rename or update
         labels from an approved plan. It never deletes. Setting, replacing and removing it are
         recorded in the audit log.
@@ -225,11 +224,11 @@ export function LabelWriteTokenCard({
           />
         </>
       ) : (
-        <p role="status" className="text-sm text-slate-600">
+        <p role="status" className="text-secondary">
           Loading the label write token…
         </p>
       )}
-      <p role="status" className="text-sm text-emerald-800">
+      <p role="status" className="text-success-emphasis">
         {message ?? ""}
       </p>
     </section>

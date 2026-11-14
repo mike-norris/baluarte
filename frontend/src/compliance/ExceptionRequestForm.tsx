@@ -2,7 +2,7 @@ import { useId, useState, type FormEvent } from "react";
 
 import { ApiError } from "../api/client";
 import { requestControlException, type ControlException } from "../api/compliance";
-import { buttonClass, fieldClass, secondaryClass } from "../components/styles";
+import { fieldClass } from "../components/styles";
 import { asApiError, cardClass, Problems } from "../settings/parts";
 import { isoDate } from "./format";
 
@@ -79,14 +79,14 @@ export function ExceptionRequestForm({
       aria-label="Request an exception"
       className={cardClass}
     >
-      <h3 className="font-semibold">Request an exception</h3>
-      <p className="text-sm text-slate-700">
+      <h3 className="fw-semibold">Request an exception</h3>
+      <p className="text-secondary">
         An exception lets Baluarte run below one control&apos;s requirement until it expires. It is
         audited and appears in evidence exports. While change review is required, another
         administrator must approve it.
       </p>
       <Problems messages={problems} />
-      <label className="block text-sm font-medium">
+      <label className="d-block fw-medium">
         Control
         <select
           value={control}
@@ -94,7 +94,7 @@ export function ExceptionRequestForm({
           onChange={(event) => {
             setControl(event.target.value);
           }}
-          className={fieldClass}
+          className="form-control mt-1"
         >
           {controls.map((item) => (
             <option key={item.id} value={item.id}>
@@ -104,7 +104,7 @@ export function ExceptionRequestForm({
         </select>
       </label>
       <div>
-        <label htmlFor={`${id}-justification`} className="block text-sm font-medium">
+        <label htmlFor={`${id}-justification`} className="d-block fw-medium">
           Justification
         </label>
         <textarea
@@ -116,14 +116,14 @@ export function ExceptionRequestForm({
           }}
           rows={3}
           maxLength={2000}
-          className={fieldClass}
+          className="form-control mt-1"
         />
-        <p id={`${id}-justification-hint`} className="text-xs text-slate-600">
+        <p id={`${id}-justification-hint`} className="small text-secondary">
           Why the requirement cannot be met now, and what reduces the risk meanwhile.
         </p>
       </div>
       <div>
-        <label htmlFor={`${id}-expires`} className="block text-sm font-medium">
+        <label htmlFor={`${id}-expires`} className="d-block fw-medium">
           Expires on
         </label>
         <input
@@ -138,15 +138,15 @@ export function ExceptionRequestForm({
           }}
           className={`${fieldClass} max-w-48`}
         />
-        <p id={`${id}-expires-hint`} className="text-xs text-slate-600">
+        <p id={`${id}-expires-hint`} className="small text-secondary">
           At most {MAX_EXCEPTION_DAYS} days from today.
         </p>
       </div>
-      <div className="flex flex-wrap gap-2">
-        <button type="submit" disabled={sending} className={buttonClass}>
+      <div className="d-flex flex-wrap gap-2">
+        <button type="submit" disabled={sending} className="btn btn-primary">
           {sending ? "Requesting…" : "Request exception"}
         </button>
-        <button type="button" onClick={onCancel} className={secondaryClass}>
+        <button type="button" onClick={onCancel} className="btn">
           Cancel
         </button>
       </div>

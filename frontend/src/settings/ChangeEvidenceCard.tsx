@@ -9,7 +9,6 @@ import { errorReasons } from "../api/send";
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass } from "../components/styles";
 import { changeEvidenceProblems, parseGroups, type ChangeEvidenceFields } from "./format";
 import { asApiError, cardClass, Problems } from "./parts";
 
@@ -71,12 +70,12 @@ function ChangeEvidenceForm({
       onSubmit={(event) => void submit(event)}
       aria-label="Change evidence settings"
       noValidate
-      className="space-y-4"
+
     >
       <Problems messages={problems} />
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
-          <label className="block text-sm font-medium">
+          <label className="d-block fw-medium">
             Lookback (days)
             <input
               name="lookback_days"
@@ -87,16 +86,16 @@ function ChangeEvidenceForm({
               value={fields.lookback_days}
               onChange={change}
               aria-describedby="lookback-help"
-              className={fieldClass}
+              className="form-control mt-1"
             />
           </label>
-          <p id="lookback-help" className="mt-1 text-xs text-slate-600">
+          <p id="lookback-help" className="mt-1 small text-secondary">
             How far back the first read of a project goes, 1 to 730 days. Changes from before then
             are never recorded.
           </p>
         </div>
         <div>
-          <label className="block text-sm font-medium">
+          <label className="d-block fw-medium">
             Read again for (days)
             <input
               name="redeploy_days"
@@ -107,17 +106,17 @@ function ChangeEvidenceForm({
               value={fields.redeploy_days}
               onChange={change}
               aria-describedby="redeploy-help"
-              className={fieldClass}
+              className="form-control mt-1"
             />
           </label>
-          <p id="redeploy-help" className="mt-1 text-xs text-slate-600">
+          <p id="redeploy-help" className="mt-1 small text-secondary">
             Merged changes are read again for this long, 1 to 30 days, so a later deployment is
             recorded.
           </p>
         </div>
       </div>
       <div>
-        <label className="block text-sm font-medium">
+        <label className="d-block fw-medium">
           Production environments
           <textarea
             name="production_environments"
@@ -125,15 +124,15 @@ function ChangeEvidenceForm({
             value={fields.production_environments}
             onChange={change}
             aria-describedby="environments-help"
-            className={fieldClass}
+            className="form-control mt-1"
           />
         </label>
-        <p id="environments-help" className="mt-1 text-xs text-slate-600">
+        <p id="environments-help" className="mt-1 small text-secondary">
           One per line or separated by commas, at most 20. Only successful deployments to these
           GitLab environments are recorded.
         </p>
       </div>
-      <button type="submit" disabled={saving} className={buttonClass}>
+      <button type="submit" disabled={saving} className="btn btn-primary">
         {saving ? "Saving…" : "Save change evidence settings"}
       </button>
     </form>
@@ -150,10 +149,10 @@ export function ChangeEvidenceCard({ csrf }: { csrf: string }) {
 
   return (
     <section aria-labelledby="change-evidence-title" className={cardClass}>
-      <h2 id="change-evidence-title" className="text-lg font-semibold">
+      <h2 id="change-evidence-title" className="card-title">
         Change evidence
       </h2>
-      <p className="text-sm text-slate-600">
+      <p className="text-secondary">
         Which merge requests, direct pushes and deployments are read for each monitored project.
         Every change to these settings is recorded in the audit log.
       </p>
@@ -170,11 +169,11 @@ export function ChangeEvidenceCard({ csrf }: { csrf: string }) {
           }}
         />
       ) : (
-        <p role="status" className="text-sm text-slate-600">
+        <p role="status" className="text-secondary">
           Loading change evidence settings…
         </p>
       )}
-      <p role="status" className="text-sm text-emerald-800">
+      <p role="status" className="text-success-emphasis">
         {message ?? ""}
       </p>
     </section>

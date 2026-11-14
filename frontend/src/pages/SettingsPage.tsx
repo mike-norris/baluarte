@@ -16,7 +16,6 @@ import { AuditShippingCard } from "../compliance/AuditShippingCard";
 import { ComplianceCard } from "../compliance/ComplianceCard";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, secondaryClass } from "../components/styles";
 import { ChangeEvidenceCard } from "../settings/ChangeEvidenceCard";
 import { LabelWriteTokenCard } from "../settings/LabelWriteTokenCard";
 import { ManagerScopesCard } from "../settings/ManagerScopesCard";
@@ -33,10 +32,13 @@ import {
   secretLabel,
   Values,
 } from "../settings/parts";
+import { PageHeader } from "../ui/PageHeader";
+import { useDeviceClass } from "../ui/device";
+import { EmptyState } from "../ui/EmptyState";
 
 function Loading({ what }: { what: string }) {
   return (
-    <p role="status" className="text-sm text-slate-600">
+    <p role="status" className="text-secondary">
       Loading {what}…
     </p>
   );
@@ -45,7 +47,7 @@ function Loading({ what }: { what: string }) {
 function Card({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
     <section aria-labelledby={id} className={cardClass}>
-      <h2 id={id} className="text-lg font-semibold">
+      <h2 id={id} className="card-title">
         {title}
       </h2>
       {children}
@@ -55,7 +57,7 @@ function Card({ id, title, children }: { id: string; title: string; children: Re
 
 function Saved({ message }: { message: string | null }) {
   return (
-    <p role="status" className="text-sm text-emerald-800">
+    <p role="status" className="text-success-emphasis">
       {message ?? ""}
     </p>
   );
@@ -128,7 +130,7 @@ function GitLabCard({ csrf, secretKey }: { csrf: string; secretKey: boolean | nu
               ]}
             />
           ) : (
-            <p className="text-sm text-slate-700">
+            <p className="text-secondary">
               GitLab is not connected, so nothing is collected or evaluated.
             </p>
           )}
@@ -138,14 +140,14 @@ function GitLabCard({ csrf, secretKey }: { csrf: string; secretKey: boolean | nu
             </p>
           )}
           {!deployment && (
-            <div className="flex flex-wrap gap-2">
+            <div className="d-flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => {
                   setSaved(null);
                   setEditing(true);
                 }}
-                className={buttonClass}
+                className="btn btn-primary"
               >
                 {config ? "Edit connection" : "Connect GitLab"}
               </button>
@@ -155,7 +157,7 @@ function GitLabCard({ csrf, secretKey }: { csrf: string; secretKey: boolean | nu
                   onClick={() => {
                     setConfirming(true);
                   }}
-                  className={secondaryClass}
+                  className="btn"
                 >
                   Disconnect
                 </button>
@@ -166,14 +168,14 @@ function GitLabCard({ csrf, secretKey }: { csrf: string; secretKey: boolean | nu
             <div
               role="group"
               aria-label="Confirm disconnect"
-              className="space-y-2 rounded border border-red-200 p-3"
+              className="border border-danger-subtle rounded p-3"
             >
-              <p className="text-sm">
+              <p>
                 Disconnect GitLab? The stored token is deleted and collection stops. Collected
                 inventory, evidence and findings are kept.
               </p>
-              <div className="flex gap-2">
-                <button type="button" onClick={() => void disconnect()} className={buttonClass}>
+              <div className="d-flex gap-2">
+                <button type="button" onClick={() => void disconnect()} className="btn btn-primary">
                   Disconnect GitLab
                 </button>
                 <button
@@ -181,7 +183,7 @@ function GitLabCard({ csrf, secretKey }: { csrf: string; secretKey: boolean | nu
                   onClick={() => {
                     setConfirming(false);
                   }}
-                  className={secondaryClass}
+                  className="btn"
                 >
                   Cancel
                 </button>
@@ -269,7 +271,7 @@ function OidcCard({ csrf, secretKey }: { csrf: string; secretKey: boolean | null
                 setSaved(null);
                 setEditing(true);
               }}
-              className={buttonClass}
+              className="btn btn-primary"
             >
               Edit identity provider
             </button>
@@ -317,9 +319,7 @@ function SystemCard({ info }: { info: SettingsInfo }) {
           ],
         ]}
       />
-      <p className="text-xs text-slate-600">
-        These come from the deployment and change only there.
-      </p>
+      <p className="small text-secondary">These come from the deployment and change only there.</p>
     </Card>
   );
 }
@@ -328,20 +328,20 @@ export function SettingsPage() {
   const { session } = useAuth();
   const allowed =
     session.status === "signed_in" && session.user.permissions.includes("settings:manage");
+  const phone = useDeviceClass() === "phone";
 
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
+    <section aria-labelledby="page-title">
       <div>
-        <h1 id="page-title" className="text-2xl font-semibold">
-          Settings
-        </h1>
-        <p className="mt-2 text-slate-600">
-          The identity provider, the GitLab connection, the compliance profile, audit log shipping
-          and system information. Every change is audited; secrets can be replaced but are never
-          shown.
-        </p>
+        <PageHeader
+          pretitle="Admin"
+          title="Settings"
+          subtitle="The identity provider, the GitLab connection, the compliance profile, audit log shipping and system information. Every change is audited; secrets can be replaced but are never shown."
+        />
       </div>
-      {allowed ? (
+      {allowed && phone ? (
+        <EmptyState title="Settings are changed on a larger screen." />
+      ) : allowed ? (
         <SettingsContent csrf={session.user.csrf_token} />
       ) : (
         <p role="alert" className={errorClass}>
@@ -386,7 +386,7 @@ function ReviewCard({ csrf }: { csrf: string }) {
 
   return (
     <Card id="governance-title" title="Baseline change review">
-      <p className="mt-1 text-sm text-slate-600">
+      <p className="mt-1 text-secondary">
         When required, a new baseline version, or a change to where a baseline applies, takes effect
         only after someone other than the person who proposed it approves it under Governance →
         Changes. Every change is recorded either way, with whether it was reviewed. Turn this on
@@ -395,7 +395,7 @@ function ReviewCard({ csrf }: { csrf: string }) {
       {loaded.error ? (
         <ErrorMessage error={loaded.error} retry={loaded.retry} />
       ) : loaded.data ? (
-        <label className="mt-3 flex items-center gap-2 text-sm font-medium">
+        <label className="mt-3 d-flex align-items-center gap-2 fw-medium">
           <input
             type="checkbox"
             checked={loaded.data.require_review}

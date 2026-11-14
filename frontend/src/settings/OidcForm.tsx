@@ -8,7 +8,6 @@ import {
   type OidcConfig,
   type OidcTestResult,
 } from "../api/setup";
-import { buttonClass, fieldClass, secondaryClass } from "../components/styles";
 import {
   DEFAULT_ROLES_CLAIM,
   DEFAULT_SCOPES,
@@ -39,7 +38,7 @@ export function OidcTestResultView({ result }: { result: OidcTestResult }) {
   if (!result.ok) {
     return (
       <div className={errorClass}>
-        <p className="font-medium">Discovery failed</p>
+        <p className="fw-medium">Discovery failed</p>
         <p className="mt-1">
           {result.error ?? "The issuer's discovery document could not be read."}
         </p>
@@ -48,9 +47,9 @@ export function OidcTestResultView({ result }: { result: OidcTestResult }) {
   }
   const openid = result.scopes_supported.includes("openid");
   return (
-    <div className="rounded border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-950">
-      <p className="font-medium">Discovery succeeded</p>
-      <ul className="mt-1 list-disc pl-5">
+    <div className="alert alert-success text-body">
+      <p className="fw-medium">Discovery succeeded</p>
+      <ul className="mt-1 ps-3">
         <li>Issuer: {result.issuer}</li>
         <li>Sign-in page: {result.authorization_endpoint}</li>
         {result.scopes_supported.length > 0 && (
@@ -58,7 +57,7 @@ export function OidcTestResultView({ result }: { result: OidcTestResult }) {
         )}
       </ul>
       {result.scopes_supported.length > 0 && !openid && (
-        <p className="mt-2 font-medium">The provider does not list the openid scope.</p>
+        <p className="mt-2 fw-medium">The provider does not list the openid scope.</p>
       )}
     </div>
   );
@@ -67,11 +66,11 @@ export function OidcTestResultView({ result }: { result: OidcTestResult }) {
 /** Hints for using GitLab itself as the identity provider, the common case for Baluarte. */
 function ProviderHints() {
   return (
-    <details className="rounded border border-slate-200 p-3 text-sm">
-      <summary className="cursor-pointer font-medium">
+    <details className="rounded border p-3">
+      <summary className="fw-medium">
         Using GitLab as the identity provider
       </summary>
-      <ul className="mt-2 list-disc space-y-1 pl-5 text-slate-700">
+      <ul className="mt-2 ps-3 text-secondary">
         <li>
           In GitLab, add an application under <em>User settings → Applications</em> or a
           group&apos;s <em>Settings → Applications</em>, with the redirect URI below and the scopes{" "}
@@ -191,7 +190,7 @@ export function OidcForm({
       onSubmit={(event) => void submit(event)}
       aria-label="Identity provider"
       noValidate
-      className="space-y-4"
+
     >
       <Problems messages={failure ? [failure] : problems} />
       {lockoutWarning && (
@@ -203,7 +202,7 @@ export function OidcForm({
       )}
       <ProviderHints />
 
-      <label className="block text-sm font-medium">
+      <label className="d-block fw-medium">
         Baluarte address
         <input
           name="public_url"
@@ -211,16 +210,16 @@ export function OidcForm({
           value={fields.public_url}
           onChange={change}
           aria-describedby={`${id}-public-help`}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <p id={`${id}-public-help`} className="text-xs text-slate-600">
+      <p id={`${id}-public-help`} className="small text-secondary">
         The address people use to open Baluarte, with no path. Plain http works only for localhost.
       </p>
       {redirect && <CopyValue label="Redirect URI to register" value={redirect} />}
 
-      <div className="space-y-2">
-        <label className="block text-sm font-medium">
+      <div >
+        <label className="d-block fw-medium">
           Issuer
           <input
             name="issuer"
@@ -229,40 +228,40 @@ export function OidcForm({
             onChange={change}
             placeholder="https://gitlab.example.com"
             aria-describedby={`${id}-issuer-help`}
-            className={fieldClass}
+            className="form-control mt-1"
           />
         </label>
-        <p id={`${id}-issuer-help`} className="text-xs text-slate-600">
+        <p id={`${id}-issuer-help`} className="small text-secondary">
           Baluarte reads <code>/.well-known/openid-configuration</code> from this https URL.
         </p>
         <button
           type="button"
           onClick={() => void runTest()}
           disabled={testing}
-          className={secondaryClass}
+          className="btn"
         >
           {testing ? "Testing…" : "Test discovery"}
         </button>
-        <div aria-live="polite" className="space-y-2">
+        <div aria-live="polite" >
           {testFailure && <p className={errorClass}>{testFailure}</p>}
           {test && <OidcTestResultView result={test} />}
         </div>
       </div>
 
-      <label className="block text-sm font-medium">
+      <label className="d-block fw-medium">
         Client ID
         <input
           name="client_id"
           value={fields.client_id}
           onChange={change}
           autoComplete="off"
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
 
       {canStoreSecret ? (
-        <div className="space-y-2">
-          <label className="block text-sm font-medium">
+        <div >
+          <label className="d-block fw-medium">
             Client secret
             <input
               name="client_secret"
@@ -272,16 +271,16 @@ export function OidcForm({
               autoComplete="new-password"
               disabled={fields.clear_client_secret}
               aria-describedby={`${id}-secret-help`}
-              className={fieldClass}
+              className="form-control mt-1"
             />
           </label>
-          <p id={`${id}-secret-help`} className="text-xs text-slate-600">
+          <p id={`${id}-secret-help`} className="small text-secondary">
             {secretStored
               ? "A secret is stored and is never shown. Leave this blank to keep it, or enter a new one to replace it."
               : "Leave blank for a public client, which signs in with PKCE only."}
           </p>
           {secretStored && (
-            <label className="flex items-center gap-2 text-sm">
+            <label className="d-flex align-items-center gap-2">
               <input
                 name="clear_client_secret"
                 type="checkbox"
@@ -296,43 +295,43 @@ export function OidcForm({
         <SecretKeyNotice />
       )}
 
-      <fieldset className="space-y-3 rounded border border-slate-200 p-3">
-        <legend className="px-1 text-sm font-medium">Roles from identity provider groups</legend>
-        <p className="text-xs text-slate-600">
+      <fieldset className="rounded border p-3">
+        <legend className="px-1 fw-medium">Roles from identity provider groups</legend>
+        <p className="small text-secondary">
           One group per line. A user gets every role whose groups they belong to; users in none of
           these groups cannot sign in.
         </p>
-        <label className="block text-sm font-medium">
+        <label className="d-block fw-medium">
           Admin groups
           <textarea
             name="admin_groups"
             rows={2}
             value={fields.admin_groups}
             onChange={change}
-            className={fieldClass}
+            className="form-control mt-1"
           />
         </label>
-        <label className="block text-sm font-medium">
+        <label className="d-block fw-medium">
           Analyst groups
           <textarea
             name="analyst_groups"
             rows={2}
             value={fields.analyst_groups}
             onChange={change}
-            className={fieldClass}
+            className="form-control mt-1"
           />
         </label>
-        <label className="block text-sm font-medium">
+        <label className="d-block fw-medium">
           Auditor groups
           <textarea
             name="auditor_groups"
             rows={2}
             value={fields.auditor_groups}
             onChange={change}
-            className={fieldClass}
+            className="form-control mt-1"
           />
         </label>
-        <label className="block text-sm font-medium">
+        <label className="d-block fw-medium">
           Manager groups
           <textarea
             name="manager_groups"
@@ -340,44 +339,44 @@ export function OidcForm({
             value={fields.manager_groups}
             onChange={change}
             aria-describedby="manager-groups-help"
-            className={fieldClass}
+            className="form-control mt-1"
           />
         </label>
-        <p id="manager-groups-help" className="text-xs text-slate-600">
+        <p id="manager-groups-help" className="small text-secondary">
           Managers see the manager space and time tracking, and tag projects. They cannot change
           baselines or settings.
         </p>
       </fieldset>
 
-      <details className="rounded border border-slate-200 p-3">
-        <summary className="cursor-pointer text-sm font-medium">Advanced</summary>
-        <div className="mt-3 space-y-3">
-          <label className="block text-sm font-medium">
+      <details className="rounded border p-3">
+        <summary className="fw-medium">Advanced</summary>
+        <div className="mt-3">
+          <label className="d-block fw-medium">
             Scopes
-            <input name="scopes" value={fields.scopes} onChange={change} className={fieldClass} />
+            <input name="scopes" value={fields.scopes} onChange={change} className="form-control mt-1" />
           </label>
-          <label className="block text-sm font-medium">
+          <label className="d-block fw-medium">
             Roles claim
             <input
               name="roles_claim"
               value={fields.roles_claim}
               onChange={change}
-              className={fieldClass}
+              className="form-control mt-1"
             />
           </label>
-          <p className="text-xs text-slate-600">
+          <p className="small text-secondary">
             The claim listing the user&apos;s groups, read from the ID token or userinfo. Add the
             scope your provider needs to release it.
           </p>
         </div>
       </details>
 
-      <div className="flex gap-2">
-        <button type="submit" disabled={saving} className={buttonClass}>
+      <div className="d-flex gap-2">
+        <button type="submit" disabled={saving} className="btn btn-primary">
           {saving ? "Saving…" : submitLabel}
         </button>
         {onCancel && (
-          <button type="button" onClick={onCancel} className={secondaryClass}>
+          <button type="button" onClick={onCancel} className="btn">
             Cancel
           </button>
         )}

@@ -187,9 +187,7 @@ describe("baseline changes", () => {
       await screen.findByText("Baseline changes take effect without review."),
     ).toBeInTheDocument();
     expect(await screen.findByText("Nothing is waiting for review.")).toBeInTheDocument();
-    expect(
-      await screen.findByText("No control mapping change is waiting."),
-    ).toBeInTheDocument();
+    expect(await screen.findByText("No control mapping change is waiting.")).toBeInTheDocument();
   });
 });
 
@@ -221,16 +219,13 @@ describe("control mapping changes in the review queue", () => {
       "Project approval settings are how acme enforces peer review.",
     );
     expect(items[0]).toHaveTextContent("Proposed by Ada Lovelace");
-    expect(within(items[0] as HTMLElement).getByRole("link", { name: "View CC8.1" })).toHaveAttribute(
-      "href",
-      "/controls/soc2/CC8.1",
-    );
+    expect(
+      within(items[0] as HTMLElement).getByRole("link", { name: "View CC8.1" }),
+    ).toHaveAttribute("href", "/controls/soc2/CC8.1");
     expect(items[1]).toHaveTextContent("Record SOC 2 CC6.1 as met outside GitLab");
     expect(items[1]).toHaveTextContent("Access review records");
     expect(items[1]).toHaveTextContent("2027-06-30");
-    expect(
-      screen.getByRole("list", { name: "Changes waiting for review" }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Changes waiting for review" })).toBeInTheDocument();
   });
 
   it("does not let the proposer decide their own mapping change", async () => {

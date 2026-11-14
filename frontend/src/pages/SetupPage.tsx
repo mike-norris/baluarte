@@ -16,7 +16,7 @@ import {
 import { useAuth } from "../auth/context";
 import { signInHref } from "../auth/session";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
+import { buttonClass, fieldClass } from "../components/styles";
 import { ComplianceForm } from "../compliance/ComplianceForm";
 import { frameworkList, settingInfo, settingOrder } from "../compliance/format";
 import { describeInterval } from "../settings/format";
@@ -33,6 +33,9 @@ import {
   SecretKeyNotice,
   Values,
 } from "../settings/parts";
+import { PageHeader } from "../ui/PageHeader";
+import { useDeviceClass } from "../ui/device";
+import { EmptyState } from "../ui/EmptyState";
 
 type Step = "oidc" | "gitlab" | "compliance" | "review";
 
@@ -115,7 +118,7 @@ function CodeStep({
   }
 
   return (
-    <div className="space-y-6">
+    <div>
       {notice && (
         <p role="status" className={noteClass}>
           {notice}
@@ -123,8 +126,8 @@ function CodeStep({
       )}
       {awaiting && (
         <div className={cardClass}>
-          <h2 className="text-lg font-semibold">Finish setup by signing in</h2>
-          <p className="text-sm text-slate-700">
+          <h2 className="card-title">Finish setup by signing in</h2>
+          <p className="text-secondary">
             The identity provider is configured. Setup finishes, and this page locks, when someone
             in an admin group signs in. To change settings before then, enter the setup code below.
           </p>
@@ -137,15 +140,15 @@ function CodeStep({
         noValidate
         className={cardClass}
       >
-        <h2 id="setup-code-heading" className="text-lg font-semibold">
+        <h2 id="setup-code-heading" className="card-title">
           Enter the setup code
         </h2>
-        <p className="text-sm text-slate-700">
+        <p className="text-secondary">
           Baluarte prints a one-time setup code in the API&apos;s log each time it starts until
           setup is complete. Only someone who can read the server&apos;s logs can install it.
         </p>
         <Problems messages={problems} />
-        <label className="block text-sm font-medium">
+        <label className="d-block fw-medium">
           Setup code
           <input
             name="code"
@@ -158,29 +161,29 @@ function CodeStep({
             className={`${fieldClass} font-mono`}
           />
         </label>
-        <details className="text-sm">
-          <summary className="cursor-pointer font-medium">Where to find the code</summary>
-          <div className="mt-2 space-y-2 text-slate-700">
+        <details>
+          <summary className="fw-medium">Where to find the code</summary>
+          <div className="mt-2 text-secondary">
             <p>Docker Compose:</p>
-            <pre className="overflow-x-auto rounded bg-slate-100 p-2 text-xs">
+            <pre className="alert alert-secondary text-body">
               {
                 "docker compose logs api | grep -i 'setup code'\n# or print a new code (the old one stops working):\ndocker compose exec api baluarte-setup-code"
               }
             </pre>
             <p>Kubernetes (Helm):</p>
-            <pre className="overflow-x-auto rounded bg-slate-100 p-2 text-xs">
+            <pre className="alert alert-secondary text-body">
               {
                 "kubectl -n <ns> logs deploy/<release>-baluarte-api | grep -i 'setup code'\nkubectl -n <ns> exec deploy/<release>-baluarte-api -- baluarte-setup-code"
               }
             </pre>
-            <p className="text-xs">
+            <p className="small">
               If the release name already contains &quot;baluarte&quot;, the deployment is{" "}
               <code>&lt;release&gt;-api</code>; a <code>fullnameOverride</code> replaces the prefix
               too. <code>kubectl -n &lt;ns&gt; get deploy</code> lists the names.
             </p>
           </div>
         </details>
-        <button type="submit" disabled={sending} className={buttonClass}>
+        <button type="submit" disabled={sending} className="btn btn-primary">
           {sending ? "Checking…" : "Continue"}
         </button>
       </form>
@@ -237,7 +240,7 @@ function useSetupResource<T>(
 
 function Loading({ what }: { what: string }) {
   return (
-    <p role="status" className="text-slate-600">
+    <p role="status" className="text-secondary">
       Loading {what}…
     </p>
   );
@@ -255,14 +258,14 @@ function StepNav({
   extra?: ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-4">
+    <div className="d-flex flex-wrap gap-2 border-t pt-4">
       {back && (
-        <button type="button" onClick={back} className={secondaryClass}>
+        <button type="button" onClick={back} className="btn">
           Back
         </button>
       )}
       {next && (
-        <button type="button" onClick={next} className={secondaryClass}>
+        <button type="button" onClick={next} className="btn">
           {nextLabel}
         </button>
       )}
@@ -313,7 +316,7 @@ function OidcStep({ status, csrf, onError, onChanged, go }: StepProps) {
 
   if (deployment) {
     return (
-      <div className="space-y-4">
+      <div>
         <DeploymentNotice what="Sign-in" />
         {config.data && <Values rows={oidcRows(config.data)} />}
         <StepNav
@@ -326,8 +329,8 @@ function OidcStep({ status, csrf, onError, onChanged, go }: StepProps) {
   }
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-slate-700">
+    <div>
+      <p className="text-secondary">
         Baluarte signs people in with your OpenID Connect provider and gives them roles from their
         groups. Register Baluarte as an application with the provider first, then enter its details
         here.
@@ -371,7 +374,7 @@ function GitLabStep({ status, csrf, onError, onChanged, go }: StepProps) {
 
   if (deployment) {
     return (
-      <div className="space-y-4">
+      <div>
         <DeploymentNotice what="The GitLab connection" />
         {config.data && <Values rows={gitlabRows(config.data)} />}
         <StepNav back={back} next={next} />
@@ -380,8 +383,8 @@ function GitLabStep({ status, csrf, onError, onChanged, go }: StepProps) {
   }
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-slate-700">
+    <div>
+      <p className="text-secondary">
         Connect the self-managed GitLab instance Baluarte governs. This step is optional: you can
         connect GitLab later from Settings.
       </p>
@@ -430,8 +433,8 @@ function ComplianceStep({ csrf, onError, onChanged, go }: StepProps) {
   const configured = profile.data.configured;
 
   return (
-    <div className="space-y-4">
-      <p className="text-sm text-slate-700">
+    <div>
+      <p className="text-secondary">
         Should Baluarte itself meet SOC 2, ISO 27001 or NIST audit requirements? Your choice sets
         how long Baluarte keeps its audit log and evidence, how long sessions last and whether
         baseline changes need a second person. An administrator can change it later in Settings, and
@@ -496,15 +499,15 @@ function ReviewStep({ status, onError, go }: StepProps) {
   const complianceMissing = compliance.data !== null && !compliance.data.configured;
 
   return (
-    <div className="space-y-6">
+    <div>
       <section aria-labelledby="review-oidc" className={cardClass}>
-        <h3 id="review-oidc" className="font-semibold">
+        <h3 id="review-oidc" className="fw-semibold">
           Identity provider
         </h3>
         {oidc.data ? (
           <Values rows={oidcRows(oidc.data)} />
         ) : (
-          <p role="alert" className="text-sm text-red-800">
+          <p role="alert" className="text-danger-emphasis">
             Not configured. Nobody can sign in until it is.
           </p>
         )}
@@ -513,19 +516,19 @@ function ReviewStep({ status, onError, go }: StepProps) {
           onClick={() => {
             go("oidc");
           }}
-          className={secondaryClass}
+          className="btn"
         >
           Change identity provider
         </button>
       </section>
       <section aria-labelledby="review-gitlab" className={cardClass}>
-        <h3 id="review-gitlab" className="font-semibold">
+        <h3 id="review-gitlab" className="fw-semibold">
           GitLab
         </h3>
         {gitlab.data ? (
           <Values rows={gitlabRows(gitlab.data)} />
         ) : (
-          <p className="text-sm text-slate-700">
+          <p className="text-secondary">
             Not connected. An administrator can connect it from Settings after signing in.
           </p>
         )}
@@ -534,18 +537,18 @@ function ReviewStep({ status, onError, go }: StepProps) {
           onClick={() => {
             go("gitlab");
           }}
-          className={secondaryClass}
+          className="btn"
         >
           Change GitLab connection
         </button>
       </section>
       {compliance.data && (
         <section aria-labelledby="review-compliance" className={cardClass}>
-          <h3 id="review-compliance" className="font-semibold">
+          <h3 id="review-compliance" className="fw-semibold">
             Compliance profile
           </h3>
           {complianceMissing ? (
-            <p role="alert" className="text-sm text-red-800">
+            <p role="alert" className="text-danger-emphasis">
               Not chosen. Choose the frameworks Baluarte must meet, or None of these, before
               finishing.
             </p>
@@ -557,7 +560,7 @@ function ReviewStep({ status, onError, go }: StepProps) {
             onClick={() => {
               go("compliance");
             }}
-            className={secondaryClass}
+            className="btn"
           >
             Change compliance profile
           </button>
@@ -565,10 +568,10 @@ function ReviewStep({ status, onError, go }: StepProps) {
       )}
       {oidc.data && status.oidc?.configured !== false && !complianceMissing && (
         <section aria-labelledby="review-finish" className={cardClass}>
-          <h3 id="review-finish" className="font-semibold">
+          <h3 id="review-finish" className="fw-semibold">
             Finish
           </h3>
-          <p className="text-sm text-slate-700">
+          <p className="text-secondary">
             Sign in with an account in one of the admin groups. That first admin sign-in completes
             setup: the setup code stops working and further changes are made from Settings. If
             sign-in fails, come back here with the setup code and check the identity provider.
@@ -599,20 +602,14 @@ function Wizard({ status, csrf, onError, onChanged }: Omit<StepProps, "go">) {
   const props = { status, csrf, onError, onChanged, go };
 
   return (
-    <div className="space-y-6">
+    <div>
       <nav aria-label="Setup steps">
-        <ol className="flex flex-wrap gap-2 text-sm">
+        <ol className="steps steps-counter mb-4">
           {steps.map((item, index) => (
             <li
               key={item.step}
               aria-current={item.step === step ? "step" : undefined}
-              className={`rounded px-3 py-1.5 ${
-                item.step === step
-                  ? "bg-slate-900 text-white"
-                  : index < current
-                    ? "bg-slate-200 text-slate-800"
-                    : "border border-slate-200 text-slate-600"
-              }`}
+              className={`step-item ${item.step === step ? "active" : ""}`}
             >
               {`${String(index + 1)}. ${item.label}`}
             </li>
@@ -621,7 +618,7 @@ function Wizard({ status, csrf, onError, onChanged }: Omit<StepProps, "go">) {
       </nav>
       {status.secret_key_configured === false && <SecretKeyNotice />}
       <section aria-labelledby="step-heading" className={cardClass}>
-        <h2 id="step-heading" ref={heading} tabIndex={-1} className="text-lg font-semibold">
+        <h2 id="step-heading" ref={heading} tabIndex={-1} className="card-title">
           {`Step ${String(current + 1)} of ${String(steps.length)}: ${steps[current]?.label ?? ""}`}
         </h2>
         {step === "oidc" && <OidcStep {...props} />}
@@ -641,19 +638,14 @@ function Complete() {
     <div className={cardClass}>
       <p>Setup is complete.</p>
       {session.status === "signed_in" ? (
-        <p className="text-sm text-slate-700">
+        <p className="text-secondary">
           {admin ? (
             <>
               Change the identity provider or GitLab connection on the{" "}
-              <Link to="/settings" className={linkClass}>
-                Settings
-              </Link>{" "}
-              page.
+              <Link to="/settings">Settings</Link> page.
             </>
           ) : (
-            <Link to="/" className={linkClass}>
-              Go to the dashboard
-            </Link>
+            <Link to="/">Go to the dashboard</Link>
           )}
         </p>
       ) : (
@@ -667,6 +659,7 @@ function Complete() {
 
 /** The first-run installation wizard. Outside the signed-in shell by design. */
 export function SetupPage() {
+  const phone = useDeviceClass() === "phone";
   const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState<{
     attempt: number;
@@ -726,11 +719,13 @@ export function SetupPage() {
   const error = result?.attempt === attempt ? result.error : undefined;
 
   let body: ReactNode;
-  if (error) {
+  if (phone && status?.state !== "complete") {
+    body = <EmptyState title="Baluarte is set up on a larger screen." />;
+  } else if (error) {
     body = <ErrorMessage error={error} retry={reload} />;
   } else if (!status) {
     body = (
-      <p role="status" className="text-slate-600">
+      <p role="status" className="text-secondary">
         Checking setup status…
       </p>
     );
@@ -758,16 +753,12 @@ export function SetupPage() {
   }
 
   return (
-    <section aria-labelledby="page-title" className="mx-auto max-w-3xl space-y-6">
+    <section aria-labelledby="page-title" className="mx-auto" style={{ maxWidth: "48rem" }}>
       <div>
-        <h1 id="page-title" className="text-2xl font-semibold">
-          Set up Baluarte
-        </h1>
-        <p className="mt-2 text-slate-600">
-          Connect your identity provider for sign-in and, optionally, the GitLab instance to govern,
-          then choose the compliance frameworks Baluarte itself must meet. Secrets are stored
-          encrypted and are never shown again.
-        </p>
+        <PageHeader
+          title="Set up Baluarte"
+          subtitle="Connect your identity provider for sign-in and, optionally, the GitLab instance to govern, then choose the compliance frameworks Baluarte itself must meet. Secrets are stored encrypted and are never shown again."
+        />
       </div>
       {body}
     </section>

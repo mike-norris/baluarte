@@ -23,24 +23,29 @@ import {
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
+import { secondaryClass } from "../components/styles";
 import { canWriteTags, MANAGER, MANAGER_TAGS, writeFocus } from "../manager/format";
 import { ManagerTabs, TagChip } from "../manager/parts";
 import { TargetPicker, type Picked } from "../policies/TargetPicker";
 import { asApiError, Problems } from "../settings/parts";
 import { formatTime } from "../time";
+import { PageHeader } from "../ui/PageHeader";
+import { useDeviceClass } from "../ui/device";
 
 function Header({ title }: { title: string }) {
   return (
-    <div className="space-y-3">
+    <div>
       <div>
-        <h1 id="page-title" className="text-2xl font-semibold">
-          {title}
-        </h1>
-        <p className="mt-2 text-slate-600">
-          Baluarte&apos;s own tags group projects across the GitLab hierarchy, for example by team
-          or cost centre. They never change GitLab and are not evidence of compliance.
-        </p>
+        <PageHeader
+          pretitle="Manager"
+          title={title}
+          subtitle={
+            <>
+              Baluarte&apos;s own tags group projects across the GitLab hierarchy, for example by
+              team or cost centre. They never change GitLab and are not evidence of compliance.
+            </>
+          }
+        />
       </div>
       <ManagerTabs />
     </div>
@@ -90,45 +95,51 @@ function NewTagForm({ onCreated }: { onCreated: (message: string) => void }) {
       onSubmit={(event) => void submit(event)}
       aria-label="New tag"
       noValidate
-      className="space-y-3 rounded border border-slate-200 bg-white p-4"
+      className="card card-body mb-3"
     >
-      <h2 className="font-semibold">New tag</h2>
+      <h2 className="fw-semibold">New tag</h2>
       <Problems messages={problems} />
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="text-sm font-medium">
+        <label className="fw-medium">
           Key
-          <input name="key" required maxLength={63} placeholder="team" className={fieldClass} />
+          <input
+            name="key"
+            required
+            maxLength={63}
+            placeholder="team"
+            className="form-control mt-1"
+          />
         </label>
-        <label className="text-sm font-medium">
+        <label className="fw-medium">
           Value
           <input
             name="value"
             required
             maxLength={63}
             placeholder="payments"
-            className={fieldClass}
+            className="form-control mt-1"
           />
         </label>
-        <label className="text-sm font-medium sm:col-span-2">
+        <label className="fw-medium sm:col-span-2">
           Description (optional)
-          <input name="description" maxLength={MAX_TAG_DESCRIPTION} className={fieldClass} />
+          <input name="description" maxLength={MAX_TAG_DESCRIPTION} className="form-control mt-1" />
         </label>
-        <div className="flex items-end gap-3">
-          <label className="flex items-center gap-2 text-sm font-medium">
+        <div className="d-flex align-items-end gap-3">
+          <label className="d-flex align-items-center gap-2 fw-medium">
             <input name="use_color" type="checkbox" />
             Colour
           </label>
-          <label className="text-sm font-medium">
-            <span className="sr-only">Colour value</span>
+          <label className="fw-medium">
+            <span className="visually-hidden">Colour value</span>
             <input name="color" type="color" defaultValue="#1f6feb" className="h-9 w-14" />
           </label>
         </div>
       </div>
-      <p className="text-xs text-slate-600">
+      <p className="small text-secondary">
         Keys and values use lowercase letters, digits, dots, dashes or underscores. A project has
         one value per key.
       </p>
-      <button type="submit" disabled={saving} className={buttonClass}>
+      <button type="submit" disabled={saving} className="btn btn-primary">
         {saving ? "Creating…" : "Create tag"}
       </button>
     </form>
@@ -138,16 +149,19 @@ function NewTagForm({ onCreated }: { onCreated: (message: string) => void }) {
 /** Every tag, with how many groups and projects it covers. */
 export function TagsPage() {
   const { session } = useAuth();
-  const canWrite = canWriteTags(session.status === "signed_in" ? session.user : null);
+  const device = useDeviceClass();
+  // Phones read tags; creating, editing and assigning them needs a larger screen.
+  const canWrite =
+    canWriteTags(session.status === "signed_in" ? session.user : null) && device !== "phone";
   const [version, setVersion] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const tags = useLoad(`tags#${String(version)}`, (signal) => listTags(signal));
 
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
+    <section aria-labelledby="page-title">
       <Header title="Tags" />
       {message && (
-        <p role="status" className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm">
+        <p role="status" className="alert alert-success text-body">
           {message}
         </p>
       )}
@@ -163,36 +177,30 @@ export function TagsPage() {
         <ErrorMessage error={tags.error} retry={tags.retry} />
       ) : tags.data ? (
         tags.data.items.length === 0 ? (
-          <p className="rounded border border-dashed border-slate-300 p-4 text-sm text-slate-600">
-            No tags yet.
-          </p>
+          <p className="text-secondary border border-dashed rounded p-3">No tags yet.</p>
         ) : (
-          <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-            <table className="w-full text-left text-sm">
-              <caption className="sr-only">Tags</caption>
-              <thead className="border-b border-slate-200 bg-slate-50">
+          <div className="card table-responsive">
+            <table className="table table-vcenter card-table mb-0">
+              <caption className="visually-hidden">Tags</caption>
+              <thead>
                 <tr>
                   {["Tag", "Description", "Groups", "Projects covered", "Roll-up"].map((title) => (
-                    <th key={title} scope="col" className="px-3 py-2 font-medium">
+                    <th key={title} scope="col" className="px-3 py-2 fw-medium">
                       {title}
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody>
                 {tags.data.items.map((tag) => (
                   <tr key={tag.id}>
-                    <th scope="row" className="px-3 py-2 font-medium">
-                      <Link
-                        to={`${MANAGER_TAGS}/${String(tag.id)}`}
-                        aria-label={tagText(tag)}
-                        className="hover:underline"
-                      >
+                    <th scope="row" className="px-3 py-2 fw-medium">
+                      <Link to={`${MANAGER_TAGS}/${String(tag.id)}`} aria-label={tagText(tag)}>
                         <TagChip tag={tag} color={tag.color} />
                       </Link>
                     </th>
                     <td className="px-3 py-2">
-                      {tag.description ?? <span className="text-slate-500">None</span>}
+                      {tag.description ?? <span className="text-secondary">None</span>}
                     </td>
                     <td className="px-3 py-2">{tag.groups}</td>
                     <td className="px-3 py-2">{tag.projects}</td>
@@ -200,7 +208,6 @@ export function TagsPage() {
                       <Link
                         to={`${MANAGER}?${writeFocus({ tag: tagParam(tag) }).toString()}`}
                         aria-label={`Overview for ${tagText(tag)}`}
-                        className={linkClass}
                       >
                         Overview
                       </Link>
@@ -212,7 +219,7 @@ export function TagsPage() {
           </div>
         )
       ) : (
-        <p role="status" className="text-slate-600">
+        <p role="status" className="text-secondary">
           Loading tags…
         </p>
       )}
@@ -257,26 +264,26 @@ function EditTag({ tag, onSaved }: { tag: TagDetail; onSaved: (message: string) 
       onSubmit={(event) => void submit(event)}
       aria-label="Edit tag"
       noValidate
-      className="space-y-3 rounded border border-slate-200 bg-white p-4"
+      className="card card-body mb-3"
     >
-      <h2 className="font-semibold">Description and colour</h2>
+      <h2 className="fw-semibold">Description and colour</h2>
       <Problems messages={problems} />
-      <label className="block text-sm font-medium">
+      <label className="d-block fw-medium">
         Description
         <input
           name="description"
           defaultValue={tag.description ?? ""}
           maxLength={MAX_TAG_DESCRIPTION}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <div className="flex items-end gap-3">
-        <label className="flex items-center gap-2 text-sm font-medium">
+      <div className="d-flex align-items-end gap-3">
+        <label className="d-flex align-items-center gap-2 fw-medium">
           <input name="use_color" type="checkbox" defaultChecked={tag.color !== null} />
           Colour
         </label>
-        <label className="text-sm font-medium">
-          <span className="sr-only">Colour value</span>
+        <label className="fw-medium">
+          <span className="visually-hidden">Colour value</span>
           <input
             name="color"
             type="color"
@@ -285,7 +292,7 @@ function EditTag({ tag, onSaved }: { tag: TagDetail; onSaved: (message: string) 
           />
         </label>
       </div>
-      <button type="submit" disabled={saving} className={buttonClass}>
+      <button type="submit" disabled={saving} className="btn btn-primary">
         {saving ? "Saving…" : "Save tag"}
       </button>
     </form>
@@ -316,17 +323,17 @@ function AssignForm({ tag, onDone }: { tag: TagDetail; onDone: (message: string)
   }
 
   return (
-    <div className="space-y-3 rounded border border-slate-200 bg-white p-4">
-      <h2 className="font-semibold">Assign</h2>
-      <p className="text-sm text-slate-600">
+    <div className="card card-body mb-3">
+      <h2 className="fw-semibold">Assign</h2>
+      <p className="text-secondary">
         A group&apos;s tag applies to its subgroups and projects. A value assigned to a project
         itself wins over one it inherits.
       </p>
       <Problems messages={problems} />
-      <fieldset className="flex gap-4 text-sm">
-        <legend className="sr-only">Assign to</legend>
+      <fieldset className="d-flex gap-3">
+        <legend className="visually-hidden">Assign to</legend>
         {(["group", "project"] as const).map((option) => (
-          <label key={option} className="flex items-center gap-2">
+          <label key={option} className="d-flex align-items-center gap-2">
             <input
               type="radio"
               name="assign-type"
@@ -345,7 +352,7 @@ function AssignForm({ tag, onDone }: { tag: TagDetail; onDone: (message: string)
         type="button"
         disabled={picked === null || saving}
         onClick={() => void assign()}
-        className={buttonClass}
+        className="btn btn-primary"
       >
         {saving ? "Assigning…" : `Assign ${tagText(tag)}`}
       </button>
@@ -386,18 +393,18 @@ function Assignments({
   }
 
   return (
-    <section aria-labelledby="assignments-title" className="space-y-3">
-      <h2 id="assignments-title" className="text-lg font-semibold">
+    <section aria-labelledby="assignments-title">
+      <h2 id="assignments-title" className="card-title">
         Assigned to
       </h2>
       <Problems messages={problems} />
       {tag.assignments.length === 0 ? (
-        <p className="text-sm text-slate-600">Not assigned to any group or project yet.</p>
+        <p className="text-secondary">Not assigned to any group or project yet.</p>
       ) : (
-        <ul className="divide-y divide-slate-100 rounded border border-slate-200 bg-white">
+        <ul className="list-group">
           {tag.assignments.map((assignment) => (
-            <li key={assignment.id} className="flex flex-wrap items-center gap-3 px-3 py-2 text-sm">
-              <span className="font-medium">
+            <li key={assignment.id} className="d-flex flex-wrap align-items-center gap-3 px-3 py-2">
+              <span className="fw-medium">
                 {assignment.target_type === "group" ? "Group " : "Project "}
                 <Link
                   to={
@@ -405,12 +412,11 @@ function Assignments({
                       ? groupHref(assignment.target_gitlab_id)
                       : projectHref(assignment.target_gitlab_id)
                   }
-                  className={linkClass}
                 >
                   {assignment.target_path}
                 </Link>
               </span>
-              <span className="text-slate-600">
+              <span className="text-secondary">
                 {`by ${personName(assignment.assigned_by)}, ${formatTime(assignment.assigned_at)}`}
               </span>
               {canWrite && (
@@ -436,7 +442,10 @@ export function TagPage() {
   const { tagId = "" } = useParams();
   const id = Number(tagId);
   const { session } = useAuth();
-  const canWrite = canWriteTags(session.status === "signed_in" ? session.user : null);
+  const device = useDeviceClass();
+  // Phones read tags; creating, editing and assigning them needs a larger screen.
+  const canWrite =
+    canWriteTags(session.status === "signed_in" ? session.user : null) && device !== "phone";
   const [version, setVersion] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const tag = useLoad(`tag-${tagId}#${String(version)}`, (signal) => getTag(id, signal));
@@ -447,15 +456,13 @@ export function TagPage() {
   }
 
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
+    <section aria-labelledby="page-title">
       <Header title={tag.data ? `Tag ${tagText(tag.data)}` : "Tag"} />
-      <p className="text-sm">
-        <Link to={MANAGER_TAGS} className={linkClass}>
-          All tags
-        </Link>
+      <p>
+        <Link to={MANAGER_TAGS}>All tags</Link>
       </p>
       {message && (
-        <p role="status" className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm">
+        <p role="status" className="alert alert-success text-body">
           {message}
         </p>
       )}
@@ -463,23 +470,20 @@ export function TagPage() {
         <ErrorMessage error={tag.error} retry={tag.retry} />
       ) : tag.data ? (
         <>
-          <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[max-content_1fr]">
-            <dt className="font-medium text-slate-700">Tag</dt>
+          <dl className="grid column-gap-3 gap-y-2 sm:grid-cols-[max-content_1fr]">
+            <dt className="col-md-4 fw-medium text-secondary">Tag</dt>
             <dd>
               <TagChip tag={tag.data} color={tag.data.color} />
             </dd>
-            <dt className="font-medium text-slate-700">Description</dt>
+            <dt className="col-md-4 fw-medium text-secondary">Description</dt>
             <dd>{tag.data.description ?? "None"}</dd>
-            <dt className="font-medium text-slate-700">Covers</dt>
+            <dt className="col-md-4 fw-medium text-secondary">Covers</dt>
             <dd>{`${String(tag.data.projects)} projects, through ${String(tag.data.groups)} groups and direct assignments`}</dd>
-            <dt className="font-medium text-slate-700">Created</dt>
+            <dt className="col-md-4 fw-medium text-secondary">Created</dt>
             <dd>{`${personName(tag.data.created_by)}, ${formatTime(tag.data.created_at)}`}</dd>
           </dl>
-          <p className="text-sm">
-            <Link
-              to={`${MANAGER}?${writeFocus({ tag: tagParam(tag.data) }).toString()}`}
-              className={linkClass}
-            >
+          <p>
+            <Link to={`${MANAGER}?${writeFocus({ tag: tagParam(tag.data) }).toString()}`}>
               Overview for this tag
             </Link>
           </p>
@@ -488,7 +492,7 @@ export function TagPage() {
           {canWrite && <EditTag key={String(version)} tag={tag.data} onSaved={done} />}
         </>
       ) : (
-        <p role="status" className="text-slate-600">
+        <p role="status" className="text-secondary">
           Loading the tag…
         </p>
       )}

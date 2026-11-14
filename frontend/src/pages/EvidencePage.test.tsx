@@ -96,6 +96,22 @@ describe("evidence export page", () => {
     expect(screen.getByRole("complementary", { name: "Data freshness" })).toBeInTheDocument();
   });
 
+  it("keeps exports off phones, even for users who may export", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("max-width: 767.98px"),
+      media: query,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+    api({});
+    renderAt("/evidence");
+
+    expect(
+      await screen.findByText("Evidence exports are made on a larger screen."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Export" })).not.toBeInTheDocument();
+  });
+
   it("requires a scope or an explicit 'everything', and sends nothing otherwise", async () => {
     const user = userEvent.setup();
     const calls = api({ [EXPORT]: () => exported() });

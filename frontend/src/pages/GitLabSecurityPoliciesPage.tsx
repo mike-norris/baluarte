@@ -111,7 +111,7 @@ function Filters({ filters }: { filters: PolicyFilters }) {
     >
       <label className="fw-medium">
         Type
-        <select name="type" defaultValue={filters.policyType} className="form-control mt-1">
+        <select name="type" defaultValue={filters.policyType} className="form-select mt-1">
           <option value="">Any</option>
           {policyTypes.map((type) => (
             <option key={type} value={type}>

@@ -114,9 +114,7 @@ describe("controls page", () => {
       [CONTROLS_SOC2]: () => json(list),
       "GET /api/v1/controls?framework=iso27001": () =>
         json(
-          controlList([
-            control("A.8.32", { framework: "iso27001", title: "Changes are managed" }),
-          ]),
+          controlList([control("A.8.32", { framework: "iso27001", title: "Changes are managed" })]),
         ),
     });
     const router = renderAt("/controls");
@@ -444,7 +442,9 @@ describe("control detail", () => {
     renderAt("/controls/soc2/CC6.6");
 
     const list = await screen.findByRole("list", { name: "Removed rule types" });
-    expect(list).toHaveTextContent("Visibility is governed by the network boundary review instead.");
+    expect(list).toHaveTextContent(
+      "Visibility is governed by the network boundary review instead.",
+    );
     await user.click(within(list).getByRole("button", { name: /^Restore / }));
     const form = screen.getByRole("form", { name: "Withdraw a change: SOC 2 CC6.6" });
     expect(form).toHaveTextContent(/Withdraws change 21: removed .* from the control\./);

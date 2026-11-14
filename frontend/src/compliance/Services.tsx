@@ -3,7 +3,6 @@ import { Link } from "react-router";
 
 import type { BackupRun, Backups, Service, ServiceConfigFile } from "../api/compliance";
 import { saveDownload } from "../api/exports";
-import { linkClass, secondaryClass } from "../components/styles";
 import { cardClass, CopyValue } from "../settings/parts";
 import { formatTime } from "../time";
 import { Markdown } from "./Markdown";
@@ -26,9 +25,9 @@ const platforms: { id: Platform; label: string }[] = [
 
 function Badge({ tone, children }: { tone: "good" | "bad" | "neutral"; children: ReactNode }) {
   const tones = {
-    good: "bg-emerald-100 text-emerald-900",
-    bad: "bg-red-100 text-red-900",
-    neutral: "bg-slate-100 text-slate-700",
+    good: "bg-success-subtle text-success-emphasis border border-success-subtle",
+    bad: "bg-danger-subtle text-danger-emphasis border border-danger-subtle",
+    neutral: "bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle",
   };
   return (
     <span
@@ -73,8 +72,8 @@ function HowTo({ service }: { service: Service }) {
 
   const file = service.config?.[active];
   return (
-    <div className="space-y-3">
-      <div role="tablist" aria-label={`How to run ${service.name}`} className="flex gap-1">
+    <div >
+      <div role="tablist" aria-label={`How to run ${service.name}`} className="d-flex gap-1">
         {platforms.map((platform, index) => {
           const selected = platform.id === active;
           return (
@@ -95,11 +94,7 @@ function HowTo({ service }: { service: Service }) {
               onKeyDown={(event) => {
                 onKeyDown(event, index);
               }}
-              className={`rounded-t border-b-2 px-3 py-1.5 text-sm font-medium ${
-                selected
-                  ? "border-sky-700 text-sky-900"
-                  : "border-transparent text-slate-600 hover:text-slate-900"
-              }`}
+              className={`nav-link ${selected ? "active" : ""}`}
             >
               {platform.label}
             </button>
@@ -110,7 +105,7 @@ function HowTo({ service }: { service: Service }) {
         role="tabpanel"
         id={`${id}-${active}-panel`}
         aria-labelledby={`${id}-${active}-tab`}
-        className="space-y-3"
+
       >
         <Markdown
           source={service.how_to[active]}
@@ -122,7 +117,7 @@ function HowTo({ service }: { service: Service }) {
             onClick={() => {
               download(file);
             }}
-            className={secondaryClass}
+            className="btn"
           >
             Download {file.file_name}
           </button>
@@ -135,31 +130,31 @@ function HowTo({ service }: { service: Service }) {
 function ServiceItem({ service }: { service: Service }) {
   const state = serviceState(service);
   return (
-    <li className="space-y-2 border-b border-slate-200 py-3 last:border-b-0">
-      <div className="flex flex-wrap items-baseline gap-2">
+    <li className="border-b py-3 last:border-b-0">
+      <div className="d-flex flex-wrap align-items-baseline gap-2">
         <Badge tone={state.tone}>{state.label}</Badge>
-        <h3 className="font-medium">{service.name}</h3>
-        <span className="text-xs text-slate-600">
+        <h3 className="fw-medium">{service.name}</h3>
+        <span className="small text-secondary">
           {service.required ? "Required by the profile" : "Optional"}
         </span>
       </div>
-      <p className="text-sm text-slate-700">{service.purpose}</p>
-      {service.detail && <p className="text-sm text-slate-700">{service.detail}</p>}
+      <p className="text-secondary">{service.purpose}</p>
+      {service.detail && <p className="text-secondary">{service.detail}</p>}
       {service.id === "audit-shipping" && (
-        <p className="text-sm">
+        <p >
           Runs inside Baluarte; nothing to start.{" "}
-          <Link to="/settings#audit-shipping" className={linkClass}>
+          <Link to="/settings#audit-shipping">
             Configure audit log shipping in Settings
           </Link>
         </p>
       )}
       <details
-        className="text-sm"
+
         open={service.required && !(service.detected && service.healthy)}
       >
-        <summary className="cursor-pointer font-medium text-sky-800">
+        <summary className="fw-medium text-primary">
           How to set it up
-          <span className="sr-only">: {service.name}</span>
+          <span className="visually-hidden">: {service.name}</span>
         </summary>
         <div className="mt-2">
           <HowTo service={service} />
@@ -173,16 +168,16 @@ function ServiceItem({ service }: { service: Service }) {
 export function ServicesSection({ services }: { services: Service[] }) {
   return (
     <section aria-labelledby="services-heading" className={cardClass}>
-      <h2 id="services-heading" className="text-lg font-semibold">
+      <h2 id="services-heading" className="card-title">
         Services
       </h2>
-      <p className="text-sm text-slate-600">
+      <p className="text-secondary">
         Some controls need a service running beside Baluarte. Baluarte cannot start containers
         itself, since that would need control of the host; it checks whether each service is working
         and shows how to start it.
       </p>
       {services.length === 0 ? (
-        <p className="text-sm text-slate-700">No services are needed.</p>
+        <p className="text-secondary">No services are needed.</p>
       ) : (
         <ul aria-label="Services" className="space-y-0">
           {services.map((service) => (
@@ -225,19 +220,19 @@ function Sha({ value }: { value: string }) {
   }
 
   return (
-    <span className="inline-flex flex-wrap items-center gap-2">
-      <code title={value} className="font-mono text-xs">
+    <span className="d-inline-flex flex-wrap align-items-center gap-2">
+      <code title={value} className="font-monospace small">
         {value.slice(0, 12)}…
       </code>
       <button
         type="button"
         onClick={copy}
         aria-label={`Copy SHA-256 ${value}`}
-        className="text-xs text-sky-800 underline"
+        className="small"
       >
         Copy
       </button>
-      <span aria-live="polite" className="text-xs text-slate-600">
+      <span aria-live="polite" className="small text-secondary">
         {copied === "yes" ? "Copied." : copied === "no" ? "Copy failed." : ""}
       </span>
     </span>
@@ -249,10 +244,10 @@ export function BackupsPanel({ backups }: { backups: Backups }) {
   const last = backups.last_success;
   return (
     <section aria-labelledby="backups-heading" className={cardClass}>
-      <h2 id="backups-heading" className="text-lg font-semibold">
+      <h2 id="backups-heading" className="card-title">
         Backups
       </h2>
-      <p className="text-sm text-slate-700">
+      <p className="text-secondary">
         {`Expected at least every ${String(backups.interval_hours)} hours. `}
         {last
           ? `Last successful backup: ${formatTime(last.finished_at)}${last.size_bytes === null ? "" : `, ${formatBytes(last.size_bytes)}`}${last.encrypted ? ", encrypted" : ""}.`
@@ -262,12 +257,12 @@ export function BackupsPanel({ backups }: { backups: Backups }) {
         <CopyValue label="Encrypted for (age recipient)" value={last.recipient} />
       )}
       {backups.runs.length === 0 ? (
-        <p className="text-sm text-slate-700">The backup service has not reported any runs.</p>
+        <p className="text-secondary">The backup service has not reported any runs.</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <caption className="sr-only">Recent backups</caption>
-            <thead className="border-b border-slate-200 text-xs text-slate-600 uppercase">
+          <table className="table table-vcenter card-table mb-0">
+            <caption className="visually-hidden">Recent backups</caption>
+            <thead className="border-b small text-secondary text-uppercase">
               <tr>
                 <th scope="col" className={cell}>
                   Started
@@ -289,7 +284,7 @@ export function BackupsPanel({ backups }: { backups: Backups }) {
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody >
               {backups.runs.map((run) => (
                 <tr key={run.id}>
                   <td className={`${cell} whitespace-nowrap`}>{formatTime(run.started_at)}</td>
@@ -303,7 +298,7 @@ export function BackupsPanel({ backups }: { backups: Backups }) {
                     {run.size_bytes === null ? "" : formatBytes(run.size_bytes)}
                   </td>
                   <td className={cell}>{run.sha256 && <Sha value={run.sha256} />}</td>
-                  <td className={`${cell} text-red-900`}>{run.error ?? ""}</td>
+                  <td className={`${cell} text-danger-emphasis`}>{run.error ?? ""}</td>
                 </tr>
               ))}
             </tbody>

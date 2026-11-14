@@ -24,10 +24,10 @@ import { usePaged } from "../api/usePaged";
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
 import { canReadPeople, MANAGER_TIME, readFocus } from "../manager/format";
 import { ManagerTabs } from "../manager/parts";
 import { formatTime } from "../time";
+import { PageHeader } from "../ui/PageHeader";
 
 const DEFAULT_DAYS = 30;
 const LABEL_LIMIT = 255;
@@ -120,34 +120,34 @@ function Filters({ filters, by }: { filters: TimeFilters; by: TimeGrouping }) {
       onSubmit={apply}
       aria-label="Filter time"
       noValidate
-      className="grid gap-3 rounded border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4 lg:items-end"
+      className="grid gap-3 rounded border p-3 sm:grid-cols-2 lg:grid-cols-4 lg:items-end"
     >
       {problem && (
-        <p role="alert" className="text-sm text-red-900 sm:col-span-2 lg:col-span-4">
+        <p role="alert" className="text-danger-emphasis sm:col-span-2 lg:col-span-4">
           {problem}
         </p>
       )}
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         From
-        <input name="from" type="date" defaultValue={filters.from} className={fieldClass} />
+        <input name="from" type="date" defaultValue={filters.from} className="form-control mt-1" />
       </label>
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         To
-        <input name="to" type="date" defaultValue={filters.to} className={fieldClass} />
+        <input name="to" type="date" defaultValue={filters.to} className="form-control mt-1" />
       </label>
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         Group path
         <input
           name="group"
           defaultValue={filters.group ?? ""}
           maxLength={LABEL_LIMIT}
           placeholder="group/subgroup"
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         Tag
-        <select name="tag" defaultValue={filters.tag ?? ""} className={fieldClass}>
+        <select name="tag" defaultValue={filters.tag ?? ""} className="form-select mt-1">
           <option value="">Any</option>
           {(tags.data?.items ?? []).map((tag) => (
             <option key={tag.id} value={tagParam(tag)}>
@@ -156,27 +156,27 @@ function Filters({ filters, by }: { filters: TimeFilters; by: TimeGrouping }) {
           ))}
         </select>
       </label>
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         Label
         <input
           name="label"
           defaultValue={filters.label ?? ""}
           maxLength={LABEL_LIMIT}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         Milestone
         <input
           name="milestone"
           defaultValue={filters.milestone ?? ""}
           maxLength={LABEL_LIMIT}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         Group by
-        <select name="by" defaultValue={by} className={fieldClass}>
+        <select name="by" defaultValue={by} className="form-select mt-1">
           {groupings.map((item) => (
             <option key={item.value} value={item.value}>
               {item.label}
@@ -189,7 +189,7 @@ function Filters({ filters, by }: { filters: TimeFilters; by: TimeGrouping }) {
           ))}
         </select>
       </label>
-      <button type="submit" className={buttonClass}>
+      <button type="submit" className="btn btn-primary">
         Apply
       </button>
     </form>
@@ -205,30 +205,30 @@ function SummaryTable({ summary }: { summary: TimeSummary }) {
   const heading = groupingLabel(summary.by);
   if (summary.rows.length === 0) {
     return (
-      <p className="rounded border border-dashed border-slate-300 p-4 text-sm text-slate-600">
+      <p className="text-secondary border border-dashed rounded p-3">
         No time was logged in this period.
       </p>
     );
   }
   return (
-    <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-      <table className="w-full text-left text-sm">
-        <caption className="sr-only">{`Time by ${heading.toLowerCase()}`}</caption>
-        <thead className="border-b border-slate-200 bg-slate-50">
+    <div className="card table-responsive">
+      <table className="table table-vcenter card-table mb-0">
+        <caption className="visually-hidden">{`Time by ${heading.toLowerCase()}`}</caption>
+        <thead>
           <tr>
             {[heading, "Spent", "Estimated", "Against estimate", "Issues", "Entries"].map(
               (title) => (
-                <th key={title} scope="col" className="px-3 py-2 font-medium">
+                <th key={title} scope="col" className="px-3 py-2 fw-medium">
                   {title}
                 </th>
               ),
             )}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody>
           {summary.rows.map((row) => (
             <tr key={row.key}>
-              <th scope="row" className="px-3 py-2 font-medium">
+              <th scope="row" className="px-3 py-2 fw-medium">
                 {row.label}
               </th>
               <td className="px-3 py-2">{formatDuration(row.spent_seconds)}</td>
@@ -241,14 +241,12 @@ function SummaryTable({ summary }: { summary: TimeSummary }) {
             </tr>
           ))}
         </tbody>
-        <tfoot className="border-t border-slate-200 bg-slate-50">
+        <tfoot className="alert alert-secondary text-body">
           <tr>
-            <th scope="row" className="px-3 py-2 font-medium">
+            <th scope="row" className="px-3 py-2 fw-medium">
               Total
             </th>
-            <td className="px-3 py-2 font-medium">
-              {formatDuration(summary.totals.spent_seconds)}
-            </td>
+            <td className="px-3 py-2 fw-medium">{formatDuration(summary.totals.spent_seconds)}</td>
             <td className="px-3 py-2">{formatDuration(summary.totals.estimate_seconds)}</td>
             <td className="px-3 py-2">
               {againstEstimate(summary.totals.spent_seconds, summary.totals.estimate_seconds)}
@@ -264,7 +262,7 @@ function SummaryTable({ summary }: { summary: TimeSummary }) {
 
 function AuditedNote() {
   return (
-    <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+    <p className="alert alert-warning text-body">
       Time per person is personal data. Every view of it is recorded in Baluarte&apos;s audit log
       with the filters used, and it is shown only for the groups assigned to you.
     </p>
@@ -274,10 +272,7 @@ function AuditedNote() {
 function Refusal({ error, retry }: { error: ApiError; retry: () => void }) {
   if (error instanceof PeopleRefused) {
     return (
-      <p
-        role="alert"
-        className="rounded border border-slate-300 bg-slate-50 p-3 text-sm text-slate-800"
-      >
+      <p role="alert" className="alert alert-secondary text-body">
         {error.message}
       </p>
     );
@@ -295,29 +290,26 @@ function PeopleTable({
   by: string;
 }) {
   if (people.rows.length === 0) {
-    return <p className="text-sm text-slate-600">No one logged time in this period.</p>;
+    return <p className="text-secondary">No one logged time in this period.</p>;
   }
   return (
-    <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-      <table className="w-full text-left text-sm">
-        <caption className="sr-only">Time per person</caption>
-        <thead className="border-b border-slate-200 bg-slate-50">
+    <div className="card table-responsive">
+      <table className="table table-vcenter card-table mb-0">
+        <caption className="visually-hidden">Time per person</caption>
+        <thead>
           <tr>
             {["Person", "Spent", "Issues", "Entries"].map((title) => (
-              <th key={title} scope="col" className="px-3 py-2 font-medium">
+              <th key={title} scope="col" className="px-3 py-2 fw-medium">
                 {title}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody>
           {people.rows.map((row) => (
             <tr key={row.username}>
-              <th scope="row" className="px-3 py-2 font-medium">
-                <Link
-                  to={`${MANAGER_TIME}?${writeTimeView(filters, by, row.username).toString()}`}
-                  className={linkClass}
-                >
+              <th scope="row" className="px-3 py-2 fw-medium">
+                <Link to={`${MANAGER_TIME}?${writeTimeView(filters, by, row.username).toString()}`}>
                   {row.username}
                 </Link>
               </th>
@@ -338,14 +330,14 @@ function People({ filters, by }: { filters: TimeFilters; by: TimeGrouping }) {
   const key = writeTimeView(filters, by).toString();
   if (shown !== key) {
     return (
-      <div className="space-y-2">
+      <div>
         <AuditedNote />
         <button
           type="button"
           onClick={() => {
             setShown(key);
           }}
-          className={secondaryClass}
+          className="btn"
         >
           Show time per person
         </button>
@@ -360,14 +352,14 @@ function PeopleLoaded({ filters, by }: { filters: TimeFilters; by: TimeGrouping 
     getPeople(filters, signal),
   );
   return (
-    <div className="space-y-2">
+    <div>
       <AuditedNote />
       {people.error ? (
         <Refusal error={people.error} retry={people.retry} />
       ) : people.data ? (
         <PeopleTable people={people.data} filters={filters} by={by} />
       ) : (
-        <p role="status" className="text-sm text-slate-600">
+        <p role="status" className="text-secondary">
           Loading time per person…
         </p>
       )}
@@ -394,12 +386,12 @@ function PersonEntries({
     (after) => getPersonEntries(username, range, after),
   );
   return (
-    <section aria-labelledby="person-title" className="space-y-3">
-      <h2 id="person-title" className="text-lg font-semibold">
+    <section aria-labelledby="person-title">
+      <h2 id="person-title" className="card-title">
         {`Time logged by ${username}`}
       </h2>
-      <p className="text-sm">
-        <Link to={`${MANAGER_TIME}?${writeTimeView(filters, by).toString()}`} className={linkClass}>
+      <p>
+        <Link to={`${MANAGER_TIME}?${writeTimeView(filters, by).toString()}`}>
           Back to the summary
         </Link>
       </p>
@@ -407,31 +399,31 @@ function PersonEntries({
       {first.error ? (
         <Refusal error={first.error} retry={first.retry} />
       ) : first.loading ? (
-        <p role="status" className="text-sm text-slate-600">
+        <p role="status" className="text-secondary">
           Loading entries…
         </p>
       ) : paged.items.length === 0 ? (
-        <p className="text-sm text-slate-600">No time logged in this period.</p>
+        <p className="text-secondary">No time logged in this period.</p>
       ) : (
-        <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-          <table className="w-full text-left text-sm">
-            <caption className="sr-only">{`Time entries of ${username}`}</caption>
-            <thead className="border-b border-slate-200 bg-slate-50">
+        <div className="card table-responsive">
+          <table className="table table-vcenter card-table mb-0">
+            <caption className="visually-hidden">{`Time entries of ${username}`}</caption>
+            <thead>
               <tr>
                 {["Spent at", "Time", "Project", "Item", "Labels", "Milestone"].map((title) => (
-                  <th key={title} scope="col" className="px-3 py-2 font-medium">
+                  <th key={title} scope="col" className="px-3 py-2 fw-medium">
                     {title}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {paged.items.map((entry) => (
                 <tr key={entry.id}>
-                  <td className="px-3 py-2 whitespace-nowrap">
+                  <td className="px-3 py-2 text-nowrap">
                     {formatTime(entry.spent_at)}
                     {entry.removed_at && (
-                      <span className="block text-xs text-slate-600">
+                      <span className="d-block small text-secondary">
                         {`Removed in GitLab, noticed ${formatTime(entry.removed_at)}`}
                       </span>
                     )}
@@ -463,7 +455,7 @@ function PersonEntries({
           type="button"
           onClick={() => void paged.loadMore()}
           disabled={paged.pending}
-          className={secondaryClass}
+          className="btn"
         >
           {paged.pending ? "Loading…" : "Load more entries"}
         </button>
@@ -484,16 +476,14 @@ export function TimePage() {
   const peopleAllowed = canReadPeople(user) && summary.data?.per_person_enabled === true;
 
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
-      <div className="space-y-3">
+    <section aria-labelledby="page-title">
+      <div>
         <div>
-          <h1 id="page-title" className="text-2xl font-semibold">
-            Time
-          </h1>
-          <p className="mt-2 text-slate-600">
-            Time logged and estimated on GitLab issues and merge requests. Time is never a finding
-            or evidence of a control.
-          </p>
+          <PageHeader
+            pretitle="Manager"
+            title="Time"
+            subtitle="Time logged and estimated on GitLab issues and merge requests. Time is never a finding or evidence of a control."
+          />
         </div>
         <ManagerTabs />
       </div>
@@ -502,7 +492,7 @@ export function TimePage() {
         <ErrorMessage error={summary.error} retry={summary.retry} />
       ) : summary.data ? (
         <>
-          <p className="text-sm text-slate-600">
+          <p className="text-secondary">
             {summary.data.collected_at
               ? `Time logs last read ${formatTime(summary.data.collected_at)}.`
               : "Time logs have not been read yet."}
@@ -513,19 +503,19 @@ export function TimePage() {
             <SummaryTable summary={summary.data} />
           )}
           {!person && peopleAllowed && (
-            <section aria-labelledby="people-title" className="space-y-3">
-              <h2 id="people-title" className="text-lg font-semibold">
+            <section aria-labelledby="people-title">
+              <h2 id="people-title" className="card-title">
                 Time per person
               </h2>
               <People filters={filters} by={by} />
             </section>
           )}
           {canReadPeople(user) && !summary.data.per_person_enabled && (
-            <p className="text-sm text-slate-600">This deployment does not show time per person.</p>
+            <p className="text-secondary">This deployment does not show time per person.</p>
           )}
         </>
       ) : (
-        <p role="status" className="text-slate-600">
+        <p role="status" className="text-secondary">
           Loading time…
         </p>
       )}

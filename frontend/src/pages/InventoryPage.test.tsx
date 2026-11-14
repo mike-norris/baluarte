@@ -112,13 +112,17 @@ describe("inventory", () => {
     expect(within(table).getByRole("rowheader", { name: "platform/api" })).not.toHaveTextContent(
       "Personal",
     );
-    const legacy = within(table).getByRole("rowheader", { name: /platform\/legacy/ }).closest("tr");
+    const legacy = within(table)
+      .getByRole("rowheader", { name: /platform\/legacy/ })
+      .closest("tr");
     expect(legacy).toHaveTextContent("Archived");
     expect(legacy).toHaveTextContent("Unknown");
     const empty = within(table).getByRole("rowheader", { name: "platform/empty" }).closest("tr");
     expect(empty).toHaveTextContent("None (empty)");
     expect(empty).toHaveTextContent("Missing: Deleted, or hidden from the GitLab token.");
-    const billing = within(table).getByRole("rowheader", { name: "platform/billing" }).closest("tr");
+    const billing = within(table)
+      .getByRole("rowheader", { name: "platform/billing" })
+      .closest("tr");
     expect(billing).toHaveTextContent("GitLab returned 500 for /projects/104");
     expect(billing).toHaveTextContent("29 Oct 2026, 06:30 UTC");
     expect(screen.getByText("Collection status: Up to date")).toBeInTheDocument();
@@ -285,9 +289,7 @@ describe("inventory", () => {
 
     renderAt("/inventory");
 
-    expect(
-      await screen.findByRole("heading", { name: "Sign in to Baluarte" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Sign in to Baluarte" })).toBeInTheDocument();
   });
 });
 
@@ -334,8 +336,9 @@ describe("inventory: monitoring scope", () => {
     });
     const router = renderAt("/inventory");
 
-    expect(await screen.findByText("3 excluded projects hidden. Select Show excluded to see them."))
-      .toBeInTheDocument();
+    expect(
+      await screen.findByText("3 excluded projects hidden. Select Show excluded to see them."),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("rowheader", { name: /prototype/ })).not.toBeInTheDocument();
     const toggle = screen.getByRole("button", { name: "Show excluded" });
     expect(toggle).toHaveAttribute("aria-pressed", "false");
@@ -379,8 +382,9 @@ describe("inventory: monitoring scope", () => {
     await user.click(screen.getByRole("button", { name: "Apply filters" }));
 
     expect(router.state.location.search).toBe("?search=acme&excluded=show");
-    expect(await screen.findByRole("rowheader", { name: /acme\/research\/prototype/ }))
-      .toBeInTheDocument();
+    expect(
+      await screen.findByRole("rowheader", { name: /acme\/research\/prototype/ }),
+    ).toBeInTheDocument();
   });
 
   it("selects projects, announces the count and excludes them with a justification", async () => {
@@ -425,8 +429,9 @@ describe("inventory: monitoring scope", () => {
     await user.type(within(form).getByLabelText("Justification"), why);
     await user.click(within(form).getByRole("button", { name: "Exclude" }));
 
-    expect(await screen.findByText("Excluded from monitoring: 2 exclusions, in force now."))
-      .toBeInTheDocument();
+    expect(
+      await screen.findByText("Excluded from monitoring: 2 exclusions, in force now."),
+    ).toBeInTheDocument();
     const [post] = posts(calls);
     expect(post?.url).toBe("/api/v1/scope/exclusions");
     expect(post?.init?.body).toBe(
@@ -515,7 +520,10 @@ describe("inventory: monitoring scope", () => {
       "acme/research/prototype",
     );
     expect(within(form).getByRole("list", { name: "Selected" })).not.toHaveTextContent("demo");
-    await user.type(within(form).getByLabelText("Justification"), "The prototype became a product.");
+    await user.type(
+      within(form).getByLabelText("Justification"),
+      "The prototype became a product.",
+    );
     await user.click(within(form).getByRole("button", { name: "Include again" }));
 
     expect(
@@ -563,7 +571,13 @@ describe("inventory: monitoring scope", () => {
           exclusions([
             exclusion(31),
             ...(personalExcluded
-              ? [exclusion(33, { target_type: "personal_namespaces", target_id: null, target_path: null })]
+              ? [
+                  exclusion(33, {
+                    target_type: "personal_namespaces",
+                    target_id: null,
+                    target_path: null,
+                  }),
+                ]
               : []),
           ]),
         ),
@@ -595,11 +609,15 @@ describe("inventory: monitoring scope", () => {
     );
     const form = within(scope).getByRole("form", { name: "Exclude from monitoring" });
     expect(form).toHaveTextContent("including ones discovered later");
-    await user.type(within(form).getByLabelText("Justification"), "Personal projects are not company work.");
+    await user.type(
+      within(form).getByLabelText("Justification"),
+      "Personal projects are not company work.",
+    );
     await user.click(within(form).getByRole("button", { name: "Exclude" }));
 
-    expect(await screen.findByText("Excluded from monitoring: 1 exclusion, in force now."))
-      .toBeInTheDocument();
+    expect(
+      await screen.findByText("Excluded from monitoring: 1 exclusion, in force now."),
+    ).toBeInTheDocument();
     const [post] = posts(calls);
     expect(post?.init?.body).toBe(
       JSON.stringify({
@@ -629,7 +647,9 @@ describe("inventory: monitoring scope", () => {
       await screen.findByRole("rowheader", { name: /prototype\s*Excluded directly$/ }),
     ).toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: /^Select/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Exclude from monitoring" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Exclude from monitoring" }),
+    ).not.toBeInTheDocument();
     const scope = screen.getByRole("region", { name: "Monitoring scope" });
     expect(await within(scope).findByText(why)).toBeInTheDocument();
     expect(within(scope).queryByRole("button", { name: /Include again/ })).not.toBeInTheDocument();

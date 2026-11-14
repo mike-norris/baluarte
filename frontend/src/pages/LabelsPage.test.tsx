@@ -70,13 +70,13 @@ describe("labels page", () => {
     expect(rows[2]).toHaveTextContent("type::bug#1f75cbNone");
     expect(screen.getByText("acme-labels v1 (In force)")).toBeInTheDocument();
     expect(screen.getByText("Approved by Grace Hopper", { exact: false })).toBeInTheDocument();
-    expect(
-      screen.getByRole("link", { name: "Propose a change to the taxonomy" }),
-    ).toHaveAttribute("href", "/labels/taxonomy/new");
-    expect(within(screen.getByRole("main")).getByRole("link", { name: "Label plans" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Propose a change to the taxonomy" })).toHaveAttribute(
       "href",
-      "/labels/plans",
+      "/labels/taxonomy/new",
     );
+    expect(
+      within(screen.getByRole("main")).getByRole("link", { name: "Label plans" }),
+    ).toHaveAttribute("href", "/labels/plans");
     expect(screen.getByRole("link", { name: "Label consistency findings" })).toHaveAttribute(
       "href",
       "/findings?rule_type=gitlab.labels.consistent",
@@ -120,7 +120,9 @@ describe("labels page", () => {
     );
     // Without the baseline writing permission there is nothing to propose or plan.
     expect(screen.queryByRole("link", { name: /Propose a change/ })).not.toBeInTheDocument();
-    expect(within(screen.getByRole("main")).queryByRole("link", { name: "Label plans" })).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole("main")).queryByRole("link", { name: "Label plans" }),
+    ).not.toBeInTheDocument();
   });
 
   it("filters drift through the URL and loads more pages after the last item", async () => {
@@ -130,7 +132,10 @@ describe("labels page", () => {
       "GET /api/v1/labels/drift?group=acme&kind=missing&limit=50": () =>
         json(driftPage([drift("missing")], { next_after: "project:105:missing:priority::high" })),
       [`GET /api/v1/labels/drift?group=acme&kind=missing&after=${encodeURIComponent("project:105:missing:priority::high")}&limit=50`]:
-        () => json(driftPage([drift("missing", { id: "group:10:missing:type::bug", label: "type::bug" })])),
+        () =>
+          json(
+            driftPage([drift("missing", { id: "group:10:missing:type::bug", label: "type::bug" })]),
+          ),
     });
     const user = userEvent.setup();
     const router = renderAt("/labels");
@@ -163,7 +168,9 @@ describe("labels page", () => {
     expect(await screen.findByText(/from evaluation run 12/)).toBeInTheDocument();
     expect(screen.getAllByText(/You are viewing the past/).length).toBeGreaterThan(0);
     expect(screen.queryByRole("link", { name: /Propose a change/ })).not.toBeInTheDocument();
-    expect(calls.every((call) => !call.url.startsWith("/api/v1/labels") || call.url.includes("as_of="))).toBe(true);
+    expect(
+      calls.every((call) => !call.url.startsWith("/api/v1/labels") || call.url.includes("as_of=")),
+    ).toBe(true);
   });
 
   it("says when no taxonomy is in force", async () => {
@@ -176,7 +183,9 @@ describe("labels page", () => {
     expect(await screen.findByText(/No label taxonomy is in force/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Define the taxonomy" })).toBeInTheDocument();
     expect(
-      await screen.findByText("No taxonomy was in force, so there is nothing to measure drift against."),
+      await screen.findByText(
+        "No taxonomy was in force, so there is nothing to measure drift against.",
+      ),
     ).toBeInTheDocument();
   });
 });
@@ -193,10 +202,9 @@ describe("label owner page", () => {
     expect(await screen.findByRole("heading", { name: "Project acme/api" })).toBeInTheDocument();
     const labels = screen.getByRole("table", { name: "Labels available here" });
     const rows = within(labels).getAllByRole("row");
-    expect(within(rows[1] as HTMLElement).getByRole("link", { name: "Group acme" })).toHaveAttribute(
-      "href",
-      "/labels/owners/group/10",
-    );
+    expect(
+      within(rows[1] as HTMLElement).getByRole("link", { name: "Group acme" }),
+    ).toHaveAttribute("href", "/labels/owners/group/10");
     expect(rows[2]).toHaveTextContent("local#00aa00Project onlyHere");
     expect(screen.getByRole("table", { name: "Drift on acme/api" })).toHaveTextContent(
       "Colour differs",

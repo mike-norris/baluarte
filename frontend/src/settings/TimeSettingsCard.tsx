@@ -5,7 +5,6 @@ import { getTimeSettings, saveTimeSettings, TIME_LIMITS, type TimeSettings } fro
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass } from "../components/styles";
 import { asApiError, cardClass, Problems } from "./parts";
 
 interface Fields {
@@ -97,7 +96,7 @@ function TimeForm({
     help: string,
   ) => (
     <div>
-      <label className="block text-sm font-medium">
+      <label className="d-block fw-medium">
         {label}
         <input
           name={name}
@@ -108,10 +107,10 @@ function TimeForm({
           value={fields[name]}
           onChange={change}
           aria-describedby={`${name}-help`}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <p id={`${name}-help`} className="mt-1 text-xs text-slate-600">
+      <p id={`${name}-help`} className="mt-1 small text-secondary">
         {help}
       </p>
     </div>
@@ -122,7 +121,7 @@ function TimeForm({
       onSubmit={(event) => void submit(event)}
       aria-label="Time tracking settings"
       noValidate
-      className="space-y-4"
+
     >
       <Problems messages={problems} />
       <div className="grid gap-3 sm:grid-cols-3">
@@ -145,7 +144,7 @@ function TimeForm({
           "30 to 3650 days. Leave empty to keep time logs as long as other evidence.",
         )}
       </div>
-      <button type="submit" disabled={saving} className={buttonClass}>
+      <button type="submit" disabled={saving} className="btn btn-primary">
         {saving ? "Saving…" : "Save time tracking settings"}
       </button>
     </form>
@@ -160,10 +159,10 @@ export function TimeSettingsCard({ csrf }: { csrf: string }) {
 
   return (
     <section aria-labelledby="time-settings-title" className={cardClass}>
-      <h2 id="time-settings-title" className="text-lg font-semibold">
+      <h2 id="time-settings-title" className="card-title">
         Time tracking
       </h2>
-      <p className="text-sm text-slate-600">
+      <p className="text-secondary">
         Time logs and estimates are read from GitLab with the read-only token. The text of a time
         log&apos;s summary is never stored. Every change to these settings is audited.
       </p>
@@ -171,7 +170,7 @@ export function TimeSettingsCard({ csrf }: { csrf: string }) {
         <ErrorMessage error={loaded.error} retry={loaded.retry} />
       ) : loaded.data ? (
         <>
-          <p className="text-sm">
+          <p >
             {loaded.data.per_person_enabled
               ? "Time per person is shown to managers for their groups, and to administrators. Turn it off with BALUARTE_TIME_PER_PERSON=false in the deployment."
               : "Time per person is turned off for this deployment (BALUARTE_TIME_PER_PERSON=false). Only totals are shown."}
@@ -187,11 +186,11 @@ export function TimeSettingsCard({ csrf }: { csrf: string }) {
           />
         </>
       ) : (
-        <p role="status" className="text-sm text-slate-600">
+        <p role="status" className="text-secondary">
           Loading time tracking settings…
         </p>
       )}
-      <p role="status" className="text-sm text-emerald-800">
+      <p role="status" className="text-success-emphasis">
         {message ?? ""}
       </p>
     </section>

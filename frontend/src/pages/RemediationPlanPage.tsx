@@ -405,46 +405,46 @@ function Detail({ initial, created }: { initial: Plan; created: boolean }) {
           </h2>
         </div>
         <div className="card-body">
-        <dl className="mb-0">
-          <Field term="State">{`${planStateLabels[plan.state]}: ${planStateMeaning[plan.state]}`}</Field>
-          <Field term="Steps">
-            {`${String(plan.steps)} to change, ${String(plan.skipped)} skipped`}
-          </Field>
-          <Field term="Created">
-            {`${formatTime(plan.created_at)} by ${userLabel(plan.created_by_user_id, user)}`}
-          </Field>
-          <Field term="Expires">{formatTime(plan.expires_at)}</Field>
-          {plan.submitted_at && <Field term="Submitted">{formatTime(plan.submitted_at)}</Field>}
-          {plan.decided_at && (
-            <Field term={plan.state === "rejected" ? "Rejected" : "Decided"}>
-              {`${formatTime(plan.decided_at)} by ${userLabel(plan.decided_by_user_id, user)}`}
-              {plan.decision_note && (
-                <span className="d-block text-secondary" style={{ whiteSpace: "pre-wrap" }}>
-                  {plan.decision_note}
-                </span>
-              )}
+          <dl className="mb-0">
+            <Field term="State">{`${planStateLabels[plan.state]}: ${planStateMeaning[plan.state]}`}</Field>
+            <Field term="Steps">
+              {`${String(plan.steps)} to change, ${String(plan.skipped)} skipped`}
             </Field>
-          )}
-          <Field term="Plan digest">
-            <code className="text-break bg-transparent p-0">{plan.plan_digest}</code>
-            <span className="d-block text-secondary">
-              {plan.digest_valid
-                ? "Recomputed by the API on this read: it matches."
-                : "Recomputed by the API on this read: it does not match."}
-            </span>
-          </Field>
-          {plan.approved_digest && (
-            <Field term="Approved digest">
-              <code className="text-break bg-transparent p-0">{plan.approved_digest}</code>
+            <Field term="Created">
+              {`${formatTime(plan.created_at)} by ${userLabel(plan.created_by_user_id, user)}`}
             </Field>
-          )}
-          <Field term="Instance">{doc.instance}</Field>
-          <Field term="Execution">{doc.execution}</Field>
-        </dl>
-        <h3 className="mt-3 h4">Changes at a glance</h3>
-        <pre aria-label="Plan summary" className={codeClass}>
-          {plan.summary.join("\n")}
-        </pre>
+            <Field term="Expires">{formatTime(plan.expires_at)}</Field>
+            {plan.submitted_at && <Field term="Submitted">{formatTime(plan.submitted_at)}</Field>}
+            {plan.decided_at && (
+              <Field term={plan.state === "rejected" ? "Rejected" : "Decided"}>
+                {`${formatTime(plan.decided_at)} by ${userLabel(plan.decided_by_user_id, user)}`}
+                {plan.decision_note && (
+                  <span className="d-block text-secondary" style={{ whiteSpace: "pre-wrap" }}>
+                    {plan.decision_note}
+                  </span>
+                )}
+              </Field>
+            )}
+            <Field term="Plan digest">
+              <code className="text-break bg-transparent p-0">{plan.plan_digest}</code>
+              <span className="d-block text-secondary">
+                {plan.digest_valid
+                  ? "Recomputed by the API on this read: it matches."
+                  : "Recomputed by the API on this read: it does not match."}
+              </span>
+            </Field>
+            {plan.approved_digest && (
+              <Field term="Approved digest">
+                <code className="text-break bg-transparent p-0">{plan.approved_digest}</code>
+              </Field>
+            )}
+            <Field term="Instance">{doc.instance}</Field>
+            <Field term="Execution">{doc.execution}</Field>
+          </dl>
+          <h3 className="mt-3 h4">Changes at a glance</h3>
+          <pre aria-label="Plan summary" className={codeClass}>
+            {plan.summary.join("\n")}
+          </pre>
         </div>
       </section>
       <section aria-labelledby="steps" className="mb-3">

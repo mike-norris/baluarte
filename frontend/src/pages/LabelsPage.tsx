@@ -289,7 +289,7 @@ function Filters({ filters }: { filters: DriftFilters }) {
       </label>
       <label className="fw-medium">
         Kind
-        <select name="kind" defaultValue={filters.kind ?? ""} className="form-control mt-1">
+        <select name="kind" defaultValue={filters.kind ?? ""} className="form-select mt-1">
           <option value="">Any</option>
           {driftKinds.map((kind) => (
             <option key={kind} value={kind}>

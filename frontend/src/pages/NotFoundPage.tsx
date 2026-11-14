@@ -1,16 +1,22 @@
+import { IconMapOff } from "@tabler/icons-react";
 import { Link } from "react-router";
+
+import { PageHeader } from "../ui/PageHeader";
+import { EmptyState } from "../ui/EmptyState";
 
 export function NotFoundPage() {
   return (
     <section aria-labelledby="page-title">
-      <h1 id="page-title" className="text-2xl font-semibold">
-        Page not found
-      </h1>
-      <p className="mt-2 text-slate-600">
-        <Link to="/" className="underline">
-          Return to the dashboard
-        </Link>
-      </p>
+      <PageHeader title="Page not found" />
+      <EmptyState
+        title="There is no page at this address."
+        icon={IconMapOff}
+        action={
+          <Link to="/" className="btn btn-primary">
+            Return to the dashboard
+          </Link>
+        }
+      />
     </section>
   );
 }

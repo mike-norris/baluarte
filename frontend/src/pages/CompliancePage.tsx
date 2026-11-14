@@ -19,7 +19,6 @@ import {
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
 import { ExceptionRequestForm, requestedMessage } from "../compliance/ExceptionRequestForm";
 import { BackupsPanel, ServicesSection } from "../compliance/Services";
 import {
@@ -32,6 +31,8 @@ import {
 } from "../compliance/format";
 import { asApiError, cardClass, errorClass, Problems, Values } from "../settings/parts";
 import { formatTime } from "../time";
+import { PageHeader } from "../ui/PageHeader";
+import { useDeviceClass } from "../ui/device";
 
 const cell = "px-3 py-2 align-top";
 
@@ -108,10 +109,10 @@ function AttestForm({
         onClick={() => {
           setOpen(true);
         }}
-        className={secondaryClass}
+        className="btn"
       >
         Attest
-        <span className="sr-only"> {control.title}</span>
+        <span className="visually-hidden"> {control.title}</span>
       </button>
     );
   }
@@ -120,10 +121,9 @@ function AttestForm({
       onSubmit={(event) => void submit(event)}
       noValidate
       aria-label={`Attest ${control.title}`}
-      className="space-y-2"
     >
       <Problems messages={problems} />
-      <label htmlFor={`${id}-statement`} className="block text-sm font-medium">
+      <label htmlFor={`${id}-statement`} className="d-block fw-medium">
         Statement
       </label>
       <textarea
@@ -135,16 +135,16 @@ function AttestForm({
         }}
         rows={3}
         maxLength={2000}
-        className={fieldClass}
+        className="form-control mt-1"
       />
-      <p id={`${id}-statement-hint`} className="text-xs text-slate-600">
+      <p id={`${id}-statement-hint`} className="small text-secondary">
         What is in place and where the evidence is kept. Recorded under your name
         {control.attestation_days
           ? ` and valid for ${String(control.attestation_days)} days.`
           : "."}
       </p>
-      <div className="flex gap-2">
-        <button type="submit" disabled={sending} className={buttonClass}>
+      <div className="d-flex gap-2">
+        <button type="submit" disabled={sending} className="btn btn-primary">
           {sending ? "Recording…" : "Record attestation"}
         </button>
         <button
@@ -152,7 +152,7 @@ function AttestForm({
           onClick={() => {
             setOpen(false);
           }}
-          className={secondaryClass}
+          className="btn"
         >
           Cancel
         </button>
@@ -177,29 +177,29 @@ function ControlItem({
 }) {
   const refs = references(control, selected);
   return (
-    <li className="space-y-2 border-b border-slate-200 py-3 last:border-b-0">
-      <div className="flex flex-wrap items-baseline gap-2">
+    <li className="border-b py-3 last:border-b-0">
+      <div className="d-flex flex-wrap align-items-baseline gap-2">
         <StatusBadge status={posture.status} />
-        <h3 className="font-medium">{posture.title}</h3>
-        {refs && <span className="text-xs text-slate-600">{refs}</span>}
+        <h3 className="fw-medium">{posture.title}</h3>
+        {refs && <span className="small text-secondary">{refs}</span>}
       </div>
-      <p className="text-sm text-slate-700">{posture.detail}</p>
-      <details className="text-sm">
-        <summary className="cursor-pointer font-medium text-sky-800">
+      <p className="text-secondary">{posture.detail}</p>
+      <details>
+        <summary className="fw-medium text-primary">
           Details and how to fix
-          <span className="sr-only">: {posture.title}</span>
+          <span className="visually-hidden">: {posture.title}</span>
         </summary>
-        <div className="mt-2 space-y-3">
-          {control?.description && <p className="text-slate-700">{control.description}</p>}
+        <div className="mt-2">
+          {control?.description && <p className="text-secondary">{control.description}</p>}
           {control?.how_to && (
             <div>
-              <p className="font-medium">How to meet it</p>
-              <p className="whitespace-pre-line text-slate-700">{control.how_to}</p>
+              <p className="fw-medium">How to meet it</p>
+              <p className="whitespace-pre-line text-secondary">{control.how_to}</p>
             </div>
           )}
           {Object.keys(posture.evidence).length > 0 && (
             <div>
-              <p className="font-medium">Evidence</p>
+              <p className="fw-medium">Evidence</p>
               <Values rows={evidenceRows(posture.evidence)} />
             </div>
           )}
@@ -274,11 +274,11 @@ function ExceptionRow({
   let actions: ReactNode = null;
   if (csrf && exception.state === "proposed") {
     actions = own ? (
-      <span className="text-xs text-slate-600">Another administrator must decide.</span>
+      <span className="small text-secondary">Another administrator must decide.</span>
     ) : (
-      <div className="flex flex-wrap items-end gap-2">
+      <div className="d-flex flex-wrap align-items-end gap-2">
         <div className="min-w-64 flex-1">
-          <label htmlFor={noteId} className="text-sm font-medium">
+          <label htmlFor={noteId} className="fw-medium">
             Note (required to reject)
           </label>
           <textarea
@@ -289,21 +289,21 @@ function ExceptionRow({
             onChange={(event) => {
               setNote(event.target.value);
             }}
-            className={fieldClass}
+            className="form-control mt-1"
           />
         </div>
-        <button type="button" onClick={() => void decide("approve")} className={secondaryClass}>
-          Approve<span className="sr-only"> exception {exception.id}</span>
+        <button type="button" onClick={() => void decide("approve")} className="btn">
+          Approve<span className="visually-hidden"> exception {exception.id}</span>
         </button>
-        <button type="button" onClick={() => void decide("reject")} className={secondaryClass}>
-          Reject<span className="sr-only"> exception {exception.id}</span>
+        <button type="button" onClick={() => void decide("reject")} className="btn">
+          Reject<span className="visually-hidden"> exception {exception.id}</span>
         </button>
       </div>
     );
   } else if (csrf && exception.in_force) {
     actions = confirmRevoke ? (
-      <div className="flex flex-wrap gap-2">
-        <button type="button" onClick={() => void decide("revoke")} className={buttonClass}>
+      <div className="d-flex flex-wrap gap-2">
+        <button type="button" onClick={() => void decide("revoke")} className="btn btn-primary">
           Confirm revoke
         </button>
         <button
@@ -311,7 +311,7 @@ function ExceptionRow({
           onClick={() => {
             setConfirmRevoke(false);
           }}
-          className={secondaryClass}
+          className="btn"
         >
           Cancel
         </button>
@@ -322,9 +322,9 @@ function ExceptionRow({
         onClick={() => {
           setConfirmRevoke(true);
         }}
-        className={secondaryClass}
+        className="btn"
       >
-        Revoke<span className="sr-only"> exception {exception.id}</span>
+        Revoke<span className="visually-hidden"> exception {exception.id}</span>
       </button>
     );
   }
@@ -347,7 +347,7 @@ function ExceptionRow({
       <td className={cell}>
         {actions}
         {failure && (
-          <p role="alert" className="mt-1 text-xs text-red-800">
+          <p role="alert" className="mt-1 small text-danger-emphasis">
             {failure}
           </p>
         )}
@@ -374,10 +374,10 @@ function Exceptions({
 
   return (
     <section aria-labelledby="exceptions-heading" className={cardClass}>
-      <h2 id="exceptions-heading" className="text-lg font-semibold">
+      <h2 id="exceptions-heading" className="card-title">
         Exceptions
       </h2>
-      <p className="text-sm text-slate-600">
+      <p className="text-secondary">
         Time-limited permission to run below one control&apos;s requirement. Requests, decisions and
         revocations are audited.
       </p>
@@ -403,18 +403,18 @@ function Exceptions({
             onClick={() => {
               setRequesting(true);
             }}
-            className={secondaryClass}
+            className="btn"
           >
             Request an exception
           </button>
         ))}
       {exceptions.length === 0 ? (
-        <p className="text-sm text-slate-700">No exceptions have been requested.</p>
+        <p className="text-secondary">No exceptions have been requested.</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <caption className="sr-only">Exceptions to the compliance profile</caption>
-            <thead className="border-b border-slate-200 text-xs text-slate-600 uppercase">
+          <table className="table table-vcenter card-table mb-0">
+            <caption className="visually-hidden">Exceptions to the compliance profile</caption>
+            <thead className="border-b small text-secondary text-uppercase">
               <tr>
                 <th scope="col" className={cell}>
                   Control
@@ -432,11 +432,11 @@ function Exceptions({
                   Requested
                 </th>
                 <th scope="col" className={cell}>
-                  <span className="sr-only">Actions</span>
+                  <span className="visually-hidden">Actions</span>
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {exceptions.map((exception) => (
                 <ExceptionRow
                   key={exception.id}
@@ -457,11 +457,11 @@ function Exceptions({
 
 function Summary({ posture }: { posture: Posture }) {
   return (
-    <dl aria-label="Controls by status" className="flex flex-wrap gap-3">
+    <dl aria-label="Controls by status" className="d-flex flex-wrap gap-3">
       {statusOrder.map((status) => (
-        <div key={status} className="rounded border border-slate-200 bg-white px-3 py-2">
-          <dt className="text-xs text-slate-600">{statusLabel[status]}</dt>
-          <dd className="text-xl font-semibold">{posture.summary[status]}</dd>
+        <div key={status} className="rounded border px-3 py-2">
+          <dt className="small text-secondary">{statusLabel[status]}</dt>
+          <dd className="fs-2 fw-semibold">{posture.summary[status]}</dd>
         </div>
       ))}
     </dl>
@@ -482,7 +482,9 @@ export function CompliancePage() {
   const { session } = useAuth();
   const user = session.status === "signed_in" ? session.user : null;
   const allowed = user?.permissions.includes("compliance:read") ?? false;
-  const admin = user?.permissions.includes("settings:manage") ?? false;
+  const phone = useDeviceClass() === "phone";
+  // Phones read the posture; choosing a profile or recording attestations needs a larger screen.
+  const admin = (user?.permissions.includes("settings:manage") ?? false) && !phone;
   const [version, setVersion] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const key = `#${String(version)}`;
@@ -518,7 +520,7 @@ export function CompliancePage() {
     );
   } else if (!posture.data || !catalogue.data || !exceptions.data) {
     body = (
-      <p role="status" className="text-slate-600">
+      <p role="status" className="text-secondary">
         Loading the compliance posture…
       </p>
     );
@@ -529,16 +531,14 @@ export function CompliancePage() {
     body = (
       <>
         {!data.configured && (
-          <div role="alert" className="rounded border border-amber-300 bg-amber-50 p-3 text-sm">
-            <p className="font-medium text-amber-950">No compliance profile has been chosen.</p>
-            <p className="text-amber-950">
+          <div role="alert" className="alert alert-warning text-body">
+            <p className="fw-medium">No compliance profile has been chosen.</p>
+            <p className="mb-0">
               {admin ? (
                 <>
                   Choose the frameworks Baluarte must meet in{" "}
-                  <Link to="/settings#compliance" className={linkClass}>
-                    Settings
-                  </Link>
-                  . Until then nothing is enforced, and the controls below are shown for reference.
+                  <Link to="/settings#compliance">Settings</Link>. Until then nothing is enforced,
+                  and the controls below are shown for reference.
                 </>
               ) : (
                 "Ask a Baluarte administrator to choose one. Until then nothing is enforced."
@@ -546,18 +546,16 @@ export function CompliancePage() {
             </p>
           </div>
         )}
-        <section aria-labelledby="posture-heading" className="space-y-3">
-          <h2 id="posture-heading" className="text-lg font-semibold">
+        <section aria-labelledby="posture-heading">
+          <h2 id="posture-heading" className="card-title">
             Posture
           </h2>
-          <p className="text-sm text-slate-600">
+          <p className="text-secondary">
             {`Frameworks: ${frameworkList(data.frameworks)}. Evaluated ${formatTime(data.evaluated_at)}.`}
             {admin && data.configured && (
               <>
                 {" "}
-                <Link to="/settings#compliance" className={linkClass}>
-                  Change the profile
-                </Link>
+                <Link to="/settings#compliance">Change the profile</Link>
               </>
             )}
           </p>
@@ -580,7 +578,7 @@ export function CompliancePage() {
         ) : services.data ? (
           <ServicesSection services={services.data} />
         ) : (
-          <p role="status" className="text-sm text-slate-600">
+          <p role="status" className="text-secondary">
             Loading services…
           </p>
         )}
@@ -589,7 +587,7 @@ export function CompliancePage() {
         ) : backups.data ? (
           <BackupsPanel backups={backups.data} />
         ) : (
-          <p role="status" className="text-sm text-slate-600">
+          <p role="status" className="text-secondary">
             Loading backups…
           </p>
         )}
@@ -606,18 +604,15 @@ export function CompliancePage() {
   }
 
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
+    <section aria-labelledby="page-title">
       <div>
-        <h1 id="page-title" className="text-2xl font-semibold">
-          Compliance
-        </h1>
-        <p className="mt-2 text-slate-600">
-          How Baluarte itself meets the frameworks in its operating profile: retention, sessions,
-          change review, encryption and the attestations an administrator records. Findings, by
-          contrast, check your GitLab projects.
-        </p>
+        <PageHeader
+          pretitle="Evidence"
+          title="Compliance"
+          subtitle="How Baluarte itself meets the frameworks in its operating profile: retention, sessions, change review, encryption and the attestations an administrator records. Findings, by contrast, check your GitLab projects."
+        />
       </div>
-      <p role="status" className="text-sm text-emerald-800">
+      <p role="status" className="text-success-emphasis">
         {message ?? ""}
       </p>
       {body}

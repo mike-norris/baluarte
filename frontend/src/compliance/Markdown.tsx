@@ -1,6 +1,5 @@
 import { useState, type ReactNode } from "react";
 
-import { linkClass, secondaryClass } from "../components/styles";
 
 /**
  * A small markdown subset for the how-to text the API sends: paragraphs, headings, bullet and
@@ -87,7 +86,7 @@ export function Inline({ text }: { text: string }) {
     const key = `${String(match.index)}`;
     if (match[1] !== undefined) {
       parts.push(
-        <code key={key} className="rounded bg-slate-100 px-1 text-[0.9em]">
+        <code key={key} className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">
           {match[1]}
         </code>,
       );
@@ -97,7 +96,7 @@ export function Inline({ text }: { text: string }) {
       const href = safeHref(match[4] ?? "");
       parts.push(
         href ? (
-          <a key={key} href={href} className={linkClass}>
+          <a key={key} href={href}>
             {match[3]}
           </a>
         ) : (
@@ -131,20 +130,20 @@ export function CodeBlock({ code, label }: { code: string; label: string }) {
   }
 
   return (
-    <div className="space-y-1">
-      <pre className="overflow-x-auto rounded bg-slate-900 p-3 text-xs text-slate-100">
+    <div >
+      <pre className="small">
         <code>{code}</code>
       </pre>
-      <div className="flex items-center gap-2">
+      <div className="d-flex align-items-center gap-2">
         <button
           type="button"
           onClick={copy}
           aria-label={`Copy ${label}`}
-          className={secondaryClass}
+          className="btn"
         >
           Copy
         </button>
-        <span aria-live="polite" className="text-xs text-slate-600">
+        <span aria-live="polite" className="small text-secondary">
           {copied === "yes"
             ? "Copied."
             : copied === "no"
@@ -163,7 +162,7 @@ export function Markdown({ source, label }: { source: string; label: string }) {
     (_, index) => blocks.slice(0, index + 1).filter((block) => block.kind === "code").length,
   );
   return (
-    <div className="space-y-3 text-sm text-slate-800">
+    <div >
       {blocks.map((block, index) => {
         const key = String(index);
         switch (block.kind) {
@@ -177,7 +176,7 @@ export function Markdown({ source, label }: { source: string; label: string }) {
             );
           case "heading":
             return (
-              <p key={key} className="font-semibold">
+              <p key={key} className="fw-semibold">
                 <Inline text={block.text} />
               </p>
             );
@@ -188,11 +187,11 @@ export function Markdown({ source, label }: { source: string; label: string }) {
               </li>
             ));
             return block.ordered ? (
-              <ol key={key} className="list-decimal space-y-1 pl-5">
+              <ol key={key} className="ps-3">
                 {items}
               </ol>
             ) : (
-              <ul key={key} className="list-disc space-y-1 pl-5">
+              <ul key={key} className="ps-3">
                 {items}
               </ul>
             );

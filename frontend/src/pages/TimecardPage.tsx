@@ -21,10 +21,12 @@ import {
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
 import { canReadPeople, readFocus } from "../manager/format";
 import { ManagerTabs } from "../manager/parts";
 import { formatTime } from "../time";
+import { PageHeader } from "../ui/PageHeader";
+import { useDeviceClass } from "../ui/device";
+import { EmptyState } from "../ui/EmptyState";
 
 const DEFAULT_DAYS = 30;
 const TEXT_LIMIT = 255;
@@ -253,19 +255,31 @@ function Filters({ query, card }: { query: TimecardQuery; card: Timecard | null 
       key={writeTimecardQuery(query).toString()}
       onSubmit={apply}
       aria-label="Timecard filters"
-      className="grid gap-3 rounded border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4"
+      className="grid gap-3 rounded border p-3 sm:grid-cols-2 lg:grid-cols-4"
     >
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         From
-        <input name="from" type="date" required defaultValue={query.from} className={fieldClass} />
+        <input
+          name="from"
+          type="date"
+          required
+          defaultValue={query.from}
+          className="form-control mt-1"
+        />
       </label>
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         To
-        <input name="to" type="date" required defaultValue={query.to} className={fieldClass} />
+        <input
+          name="to"
+          type="date"
+          required
+          defaultValue={query.to}
+          className="form-control mt-1"
+        />
       </label>
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         Developer
-        <select name="person" defaultValue={query.person ?? ""} className={fieldClass}>
+        <select name="person" defaultValue={query.person ?? ""} className="form-select mt-1">
           <option value="">All developers</option>
           {[...people.entries()]
             .sort((a, b) => a[1].localeCompare(b[1]))
@@ -277,9 +291,13 @@ function Filters({ query, card }: { query: TimecardQuery; card: Timecard | null 
         </select>
       </label>
       {choices.map((choice) => (
-        <label key={choice.key} className="text-sm font-medium">
+        <label key={choice.key} className="fw-medium">
           {choice.label}
-          <select name={choice.key} defaultValue={query[choice.key] ?? ""} className={fieldClass}>
+          <select
+            name={choice.key}
+            defaultValue={query[choice.key] ?? ""}
+            className="form-select mt-1"
+          >
             <option value="">All</option>
             {choice.values.map((value) => (
               <option key={value} value={value}>
@@ -289,22 +307,22 @@ function Filters({ query, card }: { query: TimecardQuery; card: Timecard | null 
           </select>
         </label>
       ))}
-      <label className="flex items-center gap-2 self-end text-sm">
+      <label className="d-flex align-items-center gap-2 self-end">
         <input name="removed" type="checkbox" defaultChecked={query.removed} />
         Include time removed in GitLab
       </label>
       {problem && (
-        <p role="alert" className="text-sm text-red-800 sm:col-span-2 lg:col-span-4">
+        <p role="alert" className="text-danger-emphasis sm:col-span-2 lg:col-span-4">
           {problem}
         </p>
       )}
-      <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-4">
-        <button type="submit" className={buttonClass}>
+      <div className="d-flex align-items-end gap-2 sm:col-span-2 lg:col-span-4">
+        <button type="submit" className="btn btn-primary">
           Show timecard
         </button>
         <button
           type="button"
-          className={secondaryClass}
+          className="btn"
           onClick={() => {
             const reset: TimecardQuery = {
               from: query.from,
@@ -327,14 +345,14 @@ function Filters({ query, card }: { query: TimecardQuery; card: Timecard | null 
 function Cell({ row, column }: { row: TimecardRow; column: (typeof TIMECARD_COLUMNS)[number] }) {
   if (column === "minutes") {
     return (
-      <td className={`px-3 py-2 text-right tabular-nums ${row.minutes < 0 ? "text-red-800" : ""}`}>
+      <td className={`text-end tabular-nums ${row.minutes < 0 ? "text-danger-emphasis" : ""}`}>
         {formatMinutes(row.minutes)}
       </td>
     );
   }
   if (column === "estimate_minutes") {
     return (
-      <td className="px-3 py-2 text-right tabular-nums">
+      <td className="px-3 py-2 text-end tabular-nums">
         {row.estimate_minutes === null ? "" : formatMinutes(row.estimate_minutes)}
       </td>
     );
@@ -344,13 +362,13 @@ function Cell({ row, column }: { row: TimecardRow; column: (typeof TIMECARD_COLU
     return (
       <td className="px-3 py-2">
         {row.url ? (
-          <a href={row.url} className={linkClass} rel="noreferrer" target="_blank">
+          <a href={row.url} rel="noreferrer" target="_blank">
             {label}
           </a>
         ) : (
           label
         )}
-        {row.title && <span className="block text-xs text-slate-600">{row.title}</span>}
+        {row.title && <span className="d-block small text-secondary">{row.title}</span>}
       </td>
     );
   }
@@ -374,13 +392,13 @@ function TimecardTable({ card, query }: { card: Timecard; query: TimecardQuery }
   const rows = sortRows(card.rows, query.sort);
   const first = query.sort[0] ?? "";
   if (rows.length === 0) {
-    return <p className="text-sm text-slate-600">No time logged with these filters.</p>;
+    return <p className="text-secondary">No time logged with these filters.</p>;
   }
   return (
-    <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-      <table className="w-full text-left text-sm">
-        <caption className="sr-only">Timecard rows, sortable by column</caption>
-        <thead className="border-b border-slate-200 bg-slate-50">
+    <div className="card table-responsive">
+      <table className="table table-vcenter card-table mb-0">
+        <caption className="visually-hidden">Timecard rows, sortable by column</caption>
+        <thead>
           <tr>
             {TIMECARD_COLUMNS.map((column) => {
               const sorted =
@@ -394,7 +412,7 @@ function TimecardTable({ card, query }: { card: Timecard; query: TimecardQuery }
                 >
                   <button
                     type="button"
-                    className="inline-flex items-center gap-1 underline-offset-2 hover:underline"
+                    className="d-inline-flex align-items-center gap-1"
                     onClick={() =>
                       setParams(
                         writeTimecardQuery({
@@ -414,11 +432,11 @@ function TimecardTable({ card, query }: { card: Timecard; query: TimecardQuery }
             })}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody>
           {rows.map((row) => (
             <tr
               key={`${String(row.entry_id)}-${row.kind}`}
-              className={row.kind === "removed" ? "bg-red-50" : undefined}
+              className={row.kind === "removed" ? "table-danger" : undefined}
             >
               {TIMECARD_COLUMNS.map((column) => (
                 <Cell key={column} row={row} column={column} />
@@ -434,7 +452,7 @@ function TimecardTable({ card, query }: { card: Timecard; query: TimecardQuery }
 function Totals({ card }: { card: Timecard }) {
   const { totals } = card;
   return (
-    <div className="space-y-3">
+    <div>
       <dl className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {[
           ["Total", `${formatMinutes(totals.minutes)} min (${hours(totals.minutes)})`],
@@ -443,22 +461,22 @@ function Totals({ card }: { card: Timecard }) {
           ["Rows", String(totals.rows)],
           ["Developers", String(totals.people)],
         ].map(([term, value]) => (
-          <div key={term} className="rounded border border-slate-200 bg-white p-3">
-            <dt className="text-xs text-slate-600">{term}</dt>
-            <dd className="text-lg font-semibold tabular-nums">{value}</dd>
+          <div key={term} className="rounded border p-3">
+            <dt className="small text-secondary">{term}</dt>
+            <dd className="fs-3 fw-semibold tabular-nums">{value}</dd>
           </div>
         ))}
       </dl>
       {Object.keys(card.per_person).length > 1 && (
-        <table className="text-left text-sm">
-          <caption className="text-left font-medium">Minutes per developer</caption>
+        <table className="text-start">
+          <caption className="text-start fw-medium">Minutes per developer</caption>
           <tbody>
             {Object.entries(card.per_person).map(([name, minutes]) => (
               <tr key={name}>
-                <th scope="row" className="pr-4 font-normal">
+                <th scope="row" className="pr-4 fw-normal">
                   {name}
                 </th>
-                <td className="text-right tabular-nums">{formatMinutes(minutes)}</td>
+                <td className="text-end tabular-nums">{formatMinutes(minutes)}</td>
               </tr>
             ))}
           </tbody>
@@ -471,10 +489,7 @@ function Totals({ card }: { card: Timecard }) {
 function Refusal({ error, retry }: { error: ApiError; retry: () => void }) {
   if (error instanceof PeopleRefused) {
     return (
-      <p
-        role="alert"
-        className="rounded border border-slate-300 bg-slate-50 p-3 text-sm text-slate-800"
-      >
+      <p role="alert" className="alert alert-secondary text-body">
         {error.message}
       </p>
     );
@@ -489,16 +504,16 @@ function TimecardBody({ query }: { query: TimecardQuery }) {
   const card = useLoad(`timecard?${key}`, (signal) => getTimecard(fetched, signal));
   return (
     <>
-      <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+      <p className="alert alert-warning text-body">
         Timecards are personal data. Every view and download is recorded in Baluarte&apos;s audit
         log with the filters used, and they cover only the groups assigned to you.
       </p>
       <Filters query={query} card={card.data ?? null} />
-      <div className="flex flex-wrap gap-2">
-        <a href={timecardUrl(query, "csv")} download className={secondaryClass}>
+      <div className="d-flex flex-wrap gap-2">
+        <a href={timecardUrl(query, "csv")} download className="btn">
           Download CSV
         </a>
-        <a href={timecardUrl(query, "html")} download className={secondaryClass}>
+        <a href={timecardUrl(query, "html")} download className="btn">
           Download HTML
         </a>
       </div>
@@ -506,7 +521,7 @@ function TimecardBody({ query }: { query: TimecardQuery }) {
         <Refusal error={card.error} retry={card.retry} />
       ) : card.data ? (
         <>
-          <p className="text-sm text-slate-600">
+          <p className="text-secondary">
             {card.data.collected_at
               ? `Time logs last read ${formatTime(card.data.collected_at)}.`
               : "Time logs have not been read yet."}
@@ -515,7 +530,7 @@ function TimecardBody({ query }: { query: TimecardQuery }) {
           <TimecardTable card={card.data} query={query} />
         </>
       ) : (
-        <p role="status" className="text-sm text-slate-600">
+        <p role="status" className="text-secondary">
           Loading the timecard…
         </p>
       )}
@@ -529,26 +544,32 @@ export function TimecardPage() {
   const { session } = useAuth();
   const user = session.status === "signed_in" ? session.user : null;
   const query = readTimecardQuery(params);
+  const phone = useDeviceClass() === "phone";
 
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
-      <div className="space-y-3">
+    <section aria-labelledby="page-title">
+      <div>
         <div>
-          <h1 id="page-title" className="text-2xl font-semibold">
-            Timecard
-          </h1>
-          <p className="mt-2 text-slate-600">
-            Each time log of the period with its developer and the issue&apos;s milestone,
-            iteration, parent and top-level epic. Time removed in GitLab shows as a negative row on
-            the same date, so the totals balance.
-          </p>
+          <PageHeader
+            pretitle="Manager"
+            title="Timecard"
+            subtitle={
+              <>
+                Each time log of the period with its developer and the issue&apos;s milestone,
+                iteration, parent and top-level epic. Time removed in GitLab shows as a negative row
+                on the same date, so the totals balance.
+              </>
+            }
+          />
         </div>
         <ManagerTabs />
       </div>
-      {canReadPeople(user) ? (
+      {phone ? (
+        <EmptyState title="The timecard is available on a larger screen." />
+      ) : canReadPeople(user) ? (
         <TimecardBody query={query} />
       ) : (
-        <p role="alert" className="text-sm text-slate-700">
+        <p role="alert" className="text-secondary">
           You do not have permission to see time per person.
         </p>
       )}

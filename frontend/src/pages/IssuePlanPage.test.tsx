@@ -218,7 +218,9 @@ describe("issue plans", () => {
     const decision = await screen.findByRole("region", { name: "Decision" });
     expect(within(decision).getByRole("button", { name: "Approve this digest" })).toBeEnabled();
     expect(within(decision).getByRole("button", { name: "Reject" })).toBeEnabled();
-    expect(within(decision).queryByRole("button", { name: "Apply in GitLab" })).not.toBeInTheDocument();
+    expect(
+      within(decision).queryByRole("button", { name: "Apply in GitLab" }),
+    ).not.toBeInTheDocument();
     expect(decision).toHaveTextContent("Apply: Available on a larger screen.");
   });
 

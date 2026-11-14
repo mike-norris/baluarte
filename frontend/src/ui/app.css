@@ -47,14 +47,6 @@
   z-index: 1020;
 }
 
-/* Pages not yet moved to Tabler keep their light look inside the dark shell. Removed with Tailwind. */
-.legacy-page {
-  background: var(--tblr-body-bg);
-  color: var(--tblr-body-color);
-  border-radius: var(--tblr-border-radius-lg);
-  padding: 1.5rem;
-}
-
 /* The decision bar stays in view at the bottom while a plan's steps scroll; above the phone bar on phones. */
 .app-decision-bar {
   position: sticky;
