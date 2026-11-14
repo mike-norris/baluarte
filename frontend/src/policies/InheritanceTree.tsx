@@ -14,10 +14,10 @@ import {
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
 import { appliedMessage } from "./AssignForm";
 import { baselineHref, canWritePolicies, editorHref, proposedMessage } from "./format";
 import { buildTree, matches, type Effect, type GroupNode } from "./inheritance";
+import { useDeviceClass } from "../ui/device";
 
 const EXPAND_ALL_UP_TO = 50;
 
@@ -25,24 +25,22 @@ function EffectLine({ effect }: { effect: Effect }) {
   const label = `${effect.name} v${String(effect.version)}`;
   return (
     <li>
-      <Link to={baselineHref(effect.name, effect.version)} className={linkClass}>
-        {label}
-      </Link>
+      <Link to={baselineHref(effect.name, effect.version)}>{label}</Link>
       {effect.kind === "set_here" && (
-        <span className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-medium text-sky-900">
+        <span className="ms-2 badge bg-info-subtle text-info-emphasis border border-info-subtle">
           set here
         </span>
       )}
       {effect.kind === "inherited" && (
-        <span className="ml-2 text-slate-600">{`inherited from ${effect.from}`}</span>
+        <span className="ms-2 text-secondary">{`inherited from ${effect.from}`}</span>
       )}
       {effect.kind === "out_of_scope" && (
-        <span className="ml-2 text-slate-600">
+        <span className="ms-2 text-secondary">
           {`not applied here (outside the baseline's groups; from ${effect.from})`}
         </span>
       )}
       {effect.kind === "set_here" && effect.replaces && (
-        <span className="ml-2 text-slate-600">{`replaces ${effect.replaces}`}</span>
+        <span className="ms-2 text-secondary">{`replaces ${effect.replaces}`}</span>
       )}
     </li>
   );
@@ -92,12 +90,9 @@ function ApplyHere({
 
   if (policies.length === 0) {
     return (
-      <p className="mt-2 text-sm">
+      <p className="mt-2">
         {"There are no baselines yet. "}
-        <Link to={editorHref("recommended")} className={linkClass}>
-          Start with the recommended baseline
-        </Link>
-        .
+        <Link to={editorHref("recommended")}>Start with the recommended baseline</Link>.
       </p>
     );
   }
@@ -105,9 +100,9 @@ function ApplyHere({
     <form
       onSubmit={(event) => void submit(event)}
       aria-label={`Apply a baseline to ${node.group.full_path}`}
-      className="mt-2 flex flex-wrap items-end gap-2 rounded border border-slate-200 bg-slate-50 p-3"
+      className="mt-2 d-flex flex-wrap align-items-end gap-2 rounded border p-3"
     >
-      <label className="text-sm font-medium" htmlFor={`${id}-name`}>
+      <label className="fw-medium" htmlFor={`${id}-name`}>
         Baseline
         <select
           id={`${id}-name`}
@@ -116,7 +111,7 @@ function ApplyHere({
             setName(event.target.value);
             setChosen(null);
           }}
-          className={fieldClass}
+          className="form-control mt-1"
         >
           {policies.map((policy) => (
             <option key={policy.name} value={policy.name}>
@@ -125,7 +120,7 @@ function ApplyHere({
           ))}
         </select>
       </label>
-      <label className="text-sm font-medium" htmlFor={`${id}-version`}>
+      <label className="fw-medium" htmlFor={`${id}-version`}>
         Version
         <select
           id={`${id}-version`}
@@ -134,7 +129,7 @@ function ApplyHere({
           onChange={(event) => {
             setChosen(Number(event.target.value));
           }}
-          className={fieldClass}
+          className="form-control mt-1"
         >
           {!versions.data && <option value="">Loading…</option>}
           {versions.data?.map((item, index) => (
@@ -144,14 +139,14 @@ function ApplyHere({
           ))}
         </select>
       </label>
-      <button type="submit" disabled={sending || version === null} className={buttonClass}>
+      <button type="submit" disabled={sending || version === null} className="btn btn-primary">
         {sending ? "Applying…" : "Apply here"}
       </button>
-      <button type="button" onClick={onCancel} className={secondaryClass}>
+      <button type="button" onClick={onCancel} className="btn">
         Cancel
       </button>
       {failure && (
-        <p role="alert" className="w-full text-sm text-red-900">
+        <p role="alert" className="w-100 text-danger-emphasis">
           {failure}
         </p>
       )}
@@ -202,8 +197,8 @@ function Row({
 
   return (
     <li className="py-1">
-      <div className="flex flex-wrap items-start gap-x-3 gap-y-1 rounded px-2 py-1.5 hover:bg-slate-50">
-        <span className="flex min-w-48 items-center gap-1 font-medium">
+      <div className="d-flex flex-wrap align-items-start column-gap-3 row-gap-1 rounded px-2 py-1">
+        <span className="d-flex min-w-48 align-items-center gap-1 fw-medium">
           {node.children.length > 0 ? (
             <button
               type="button"
@@ -212,50 +207,45 @@ function Row({
               }}
               aria-expanded={expanded}
               aria-label={`Subgroups of ${node.group.full_path}`}
-              className="w-5 text-slate-600"
+              className="w-5 text-secondary"
             >
               {expanded ? "▾" : "▸"}
             </button>
           ) : (
             <span className="w-5" aria-hidden="true" />
           )}
-          <Link to={groupHref(node.group.gitlab_id)} className={linkClass}>
-            {node.group.full_path}
-          </Link>
+          <Link to={groupHref(node.group.gitlab_id)}>{node.group.full_path}</Link>
         </span>
-        <div className="grow text-sm">
+        <div className="grow">
           {node.effects.length === 0 ? (
-            <p className="text-slate-600">Nothing checked</p>
+            <p className="text-secondary">Nothing checked</p>
           ) : (
-            <ul className="space-y-0.5">
+            <ul>
               {node.effects.map((effect) => (
                 <EffectLine key={effect.name} effect={effect} />
               ))}
             </ul>
           )}
           {node.unknown && (
-            <p className="text-amber-900">{`⚠ Partly unknown: ${node.unknown}, so baselines applied above it may be missing.`}</p>
+            <p className="text-warning-emphasis">{`⚠ Partly unknown: ${node.unknown}, so baselines applied above it may be missing.`}</p>
           )}
           {node.group.state !== "active" && (
-            <p className="text-amber-900">
+            <p className="text-warning-emphasis">
               {`⚠ This group is ${node.group.state === "missing" ? "no longer found in GitLab" : "not readable with Baluarte's token"}.`}
             </p>
           )}
           {node.projectAssignments.length > 0 && (
-            <ul className="mt-1 space-y-0.5 border-l-2 border-slate-200 pl-3">
+            <ul className="mt-1 border-start border-2 ps-3">
               {node.projectAssignments.map((item) => (
                 <li key={item.assignmentId}>
-                  <Link
-                    to={projectHref(item.projectGitlabId)}
-                    className={`${linkClass} font-medium`}
-                  >
+                  <Link to={projectHref(item.projectGitlabId)} className="fw-medium">
                     {item.path}
                   </Link>
                   {" (project): "}
-                  <Link to={baselineHref(item.name, item.version)} className={linkClass}>
+                  <Link to={baselineHref(item.name, item.version)}>
                     {`${item.name} v${String(item.version)}`}
                   </Link>
-                  <span className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-medium text-sky-900">
+                  <span className="ms-2 badge bg-info-subtle text-info-emphasis border border-info-subtle">
                     set here
                   </span>
                 </li>
@@ -264,14 +254,14 @@ function Row({
           )}
         </div>
         {canWrite && node.group.state === "active" && (
-          <div className="flex flex-wrap gap-2">
+          <div className="d-flex flex-wrap gap-2">
             <button
               type="button"
               onClick={() => {
                 setAction(action === "apply" ? null : "apply");
               }}
               aria-label={`Apply a baseline to ${node.group.full_path}`}
-              className={secondaryClass}
+              className="btn"
             >
               Apply here…
             </button>
@@ -283,7 +273,7 @@ function Row({
                   setAction(effect.assignmentId);
                 }}
                 aria-label={`Remove ${effect.name} from ${node.group.full_path}`}
-                className={secondaryClass}
+                className="btn"
               >
                 {`Remove ${effect.name}`}
               </button>
@@ -308,18 +298,15 @@ function Row({
         setHere
           .filter((effect) => effect.assignmentId === action)
           .map((effect) => (
-            <div
-              key={effect.assignmentId}
-              className="mt-2 space-y-2 rounded border border-slate-200 bg-slate-50 p-3 text-sm"
-            >
+            <div key={effect.assignmentId} className="mt-2 rounded border p-3">
               <p>
                 {`Stop checking ${effect.name} on group ${node.group.full_path}? It falls back to ${effect.replaces ?? "nothing for this baseline"}.`}
               </p>
-              <div className="flex gap-2">
+              <div className="d-flex gap-2">
                 <button
                   type="button"
                   onClick={() => void remove(effect)}
-                  className="rounded bg-red-800 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
+                  className="btn btn-danger"
                 >
                   Remove
                 </button>
@@ -328,23 +315,20 @@ function Row({
                   onClick={() => {
                     setAction(null);
                   }}
-                  className={secondaryClass}
+                  className="btn"
                 >
                   Cancel
                 </button>
               </div>
               {failure && (
-                <p role="alert" className="text-red-900">
+                <p role="alert" className="text-danger-emphasis">
                   {failure}
                 </p>
               )}
             </div>
           ))}
       {expanded && children.length > 0 && (
-        <ul
-          aria-label={`Subgroups of ${node.group.full_path}`}
-          className="ml-5 border-l border-slate-200 pl-2"
-        >
+        <ul aria-label={`Subgroups of ${node.group.full_path}`} className="ml-5 border-l pl-2">
           {children.map((child) => (
             <Row
               key={child.group.gitlab_id}
@@ -371,7 +355,10 @@ export function InheritanceTree({
   onChanged: (message: string) => void;
 }) {
   const { session } = useAuth();
-  const canWrite = canWritePolicies(session.status === "signed_in" ? session.user : null);
+  const device = useDeviceClass();
+  // Phones read where baselines apply; assigning needs a larger screen.
+  const canWrite =
+    canWritePolicies(session.status === "signed_in" ? session.user : null) && device !== "phone";
   const id = useId();
   const [search, setSearch] = useState("");
   const data = useLoad(`baseline-tree#${String(version)}`, getAssignmentTree);
@@ -381,7 +368,7 @@ export function InheritanceTree({
   if (data.error) return <ErrorMessage error={data.error} retry={data.retry} />;
   if (!data.data || !tree) {
     return (
-      <p role="status" className="text-slate-600">
+      <p role="status" className="text-secondary">
         Loading groups and baselines…
       </p>
     );
@@ -391,11 +378,11 @@ export function InheritanceTree({
   const instanceNames = tree.instance;
 
   return (
-    <section aria-labelledby={`${id}-title`} className="space-y-3">
-      <h2 id={`${id}-title`} className="sr-only">
+    <section aria-labelledby={`${id}-title`}>
+      <h2 id={`${id}-title`} className="visually-hidden">
         Inheritance
       </h2>
-      <label className="block max-w-md text-sm font-medium" htmlFor={`${id}-search`}>
+      <label className="d-block max-w-md fw-medium" htmlFor={`${id}-search`}>
         Find a group
         <input
           id={`${id}-search`}
@@ -406,25 +393,25 @@ export function InheritanceTree({
           onChange={(event) => {
             setSearch(event.target.value);
           }}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <div className="rounded border border-slate-200 bg-white p-2">
-        <ul aria-label="Where baselines apply" className="text-sm">
+      <div className="rounded border p-2">
+        <ul aria-label="Where baselines apply">
           <li className="py-1">
-            <div className="flex flex-wrap items-start gap-x-3 gap-y-1 rounded px-2 py-1.5">
-              <span className="min-w-48 font-semibold">This instance</span>
+            <div className="d-flex flex-wrap align-items-start column-gap-3 row-gap-1 rounded px-2 py-1.5">
+              <span className="min-w-48 fw-semibold">This instance</span>
               <div className="grow">
                 {instanceNames.length === 0 ? (
-                  <p className="text-slate-600">Nothing applied to the whole instance</p>
+                  <p className="text-secondary">Nothing applied to the whole instance</p>
                 ) : (
-                  <ul className="space-y-0.5">
+                  <ul>
                     {instanceNames.map((item) => (
                       <li key={item.assignmentId}>
-                        <Link to={baselineHref(item.name, item.version)} className={linkClass}>
+                        <Link to={baselineHref(item.name, item.version)}>
                           {`${item.name} v${String(item.version)}`}
                         </Link>
-                        <span className="ml-2 rounded bg-sky-100 px-1.5 py-0.5 text-xs font-medium text-sky-900">
+                        <span className="ms-2 badge bg-info-subtle text-info-emphasis border border-info-subtle">
                           set here
                         </span>
                       </li>
@@ -434,11 +421,11 @@ export function InheritanceTree({
               </div>
             </div>
             {roots.length === 0 ? (
-              <p className="ml-7 py-2 text-slate-600">
+              <p className="ml-7 py-2 text-secondary">
                 {search.trim() ? "No group matches." : "No groups have been collected yet."}
               </p>
             ) : (
-              <ul aria-label="Top-level groups" className="ml-5 border-l border-slate-200 pl-2">
+              <ul aria-label="Top-level groups" className="ml-5 border-l pl-2">
                 {roots.map((node) => (
                   <Row
                     key={node.group.gitlab_id}

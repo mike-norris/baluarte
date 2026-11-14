@@ -1,6 +1,5 @@
 import { useId, type ReactNode } from "react";
 
-import { fieldClass, secondaryClass } from "../components/styles";
 import {
   MAX_GRACE_HOURS,
   MAX_PRIVILEGED,
@@ -20,7 +19,7 @@ import {
   type Severity,
 } from "./yaml";
 
-const ruleCard = "space-y-3 rounded border border-slate-200 p-3";
+const ruleCard = "border rounded p-3 mb-3";
 
 export function SeveritySelect({
   value,
@@ -31,14 +30,14 @@ export function SeveritySelect({
 }) {
   return (
     <div className="max-w-xs">
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         Severity
         <select
           value={value}
           onChange={(event) => {
             onChange(event.target.value as Severity);
           }}
-          className={fieldClass}
+          className="form-control mt-1"
         >
           {severities.map((severity) => (
             <option key={severity} value={severity}>
@@ -69,7 +68,7 @@ export function WholeNumber({
 }) {
   const id = useId();
   return (
-    <label className="block max-w-xs text-sm font-medium" htmlFor={id}>
+    <label className="d-block max-w-xs fw-medium" htmlFor={id}>
       {label}
       <input
         id={id}
@@ -81,7 +80,7 @@ export function WholeNumber({
         onChange={(event) => {
           onChange(optional && event.target.value === "" ? null : event.target.valueAsNumber);
         }}
-        className={fieldClass}
+        className="form-control mt-1"
       />
     </label>
   );
@@ -97,7 +96,7 @@ export function Check({
   children: ReactNode;
 }) {
   return (
-    <label className="flex items-center gap-2 text-sm">
+    <label className="d-flex align-items-center gap-2">
       <input
         type="checkbox"
         checked={checked}
@@ -123,18 +122,18 @@ export function Card({
 }) {
   return (
     <section aria-label={label} className={ruleCard}>
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm font-medium">{title}</p>
-        <button type="button" onClick={onRemove} className={`${secondaryClass} text-xs`}>
+      <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <p className="fw-medium">{title}</p>
+        <button type="button" onClick={onRemove} className="btn btn-sm">
           Remove rule
         </button>
       </div>
-      <div className="space-y-3 pl-6">{children}</div>
+      <div className="pl-6">{children}</div>
     </section>
   );
 }
 
-export const help = "text-sm text-slate-600";
+export const help = "form-hint";
 
 /**
  * The access-control and project merge request approval rules: off unless added, each with its
@@ -376,15 +375,10 @@ export function AccessRules({
       )}
 
       {add.length > 0 && (
-        <div className="space-y-2">
-          <div className="flex flex-wrap gap-2">
+        <div>
+          <div className="d-flex flex-wrap gap-2">
             {add.map((button) => (
-              <button
-                key={button.label}
-                type="button"
-                onClick={button.on}
-                className={secondaryClass}
-              >
+              <button key={button.label} type="button" onClick={button.on} className="btn">
                 {button.label}
               </button>
             ))}

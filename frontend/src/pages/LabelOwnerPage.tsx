@@ -5,14 +5,14 @@ import { useLoad } from "../api/useLoad";
 import { useAsOf } from "../asof/context";
 import { AsOfResult } from "../asof/AsOfResult";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { linkClass } from "../components/styles";
 import { DriftTable } from "../labels/DriftTable";
 import { inventoryHref, LABELS, ownerHref, ownerText } from "../labels/format";
 import { Swatch } from "../labels/Swatch";
 import { NotFoundPage } from "./NotFoundPage";
 import { formatTime } from "../time";
+import { PageHeader } from "../ui/PageHeader";
 
-const cell = "px-3 py-2 align-top";
+const cell = "align-top";
 
 function sameOwner(a: LabelOwner, b: LabelOwner): boolean {
   return a.type === b.type && a.gitlab_id === b.gitlab_id;
@@ -21,19 +21,19 @@ function sameOwner(a: LabelOwner, b: LabelOwner): boolean {
 function Labels({ data }: { data: OwnerLabels }) {
   if (data.status === "unknown") {
     return (
-      <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+      <p className="alert alert-warning text-body">
         {`Unknown: the labels here could not be read${data.reason ? ` (${data.reason})` : ""}. They are not counted as missing or as matching the taxonomy.`}
       </p>
     );
   }
   if (data.labels.length === 0) {
-    return <p className="text-sm text-slate-600">No labels are defined here or on any group above.</p>;
+    return <p className="text-secondary">No labels are defined here or on any group above.</p>;
   }
   return (
-    <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-      <table className="w-full text-left text-sm">
-        <caption className="sr-only">Labels available here</caption>
-        <thead className="border-b border-slate-200 bg-slate-50">
+    <div className="card table-responsive">
+      <table className="table table-vcenter card-table mb-0">
+        <caption className="visually-hidden">Labels available here</caption>
+        <thead>
           <tr>
             {["Label", "Colour", "Description", "Defined on"].map((header) => (
               <th key={header} scope="col" className={`${cell} font-medium`}>
@@ -42,7 +42,7 @@ function Labels({ data }: { data: OwnerLabels }) {
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">
+        <tbody>
           {data.labels.map((label) => (
             <tr key={`${String(label.id)}:${label.defined_at.path}`}>
               <th scope="row" className={`${cell} font-medium`}>
@@ -56,9 +56,7 @@ function Labels({ data }: { data: OwnerLabels }) {
                 {sameOwner(label.defined_at, data.owner) ? (
                   "Here"
                 ) : (
-                  <Link to={ownerHref(label.defined_at)} className={linkClass}>
-                    {ownerText(label.defined_at)}
-                  </Link>
+                  <Link to={ownerHref(label.defined_at)}>{ownerText(label.defined_at)}</Link>
                 )}
               </td>
             </tr>
@@ -80,50 +78,41 @@ function OwnerView({ type, gitlabId }: { type: LabelOwner["type"]; gitlabId: num
   }
   if (!loaded.data) {
     return (
-      <p role="status" className="text-slate-600">
+      <p role="status" className="text-secondary">
         Loading labels…
       </p>
     );
   }
   const data = loaded.data;
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
+    <section aria-labelledby="page-title">
       <div>
-        <p className="text-sm">
-          <Link to={LABELS} className={linkClass}>
-            Labels
-          </Link>
-        </p>
-        <h1 id="page-title" className="text-2xl font-semibold">
-          {ownerText(data.owner)}
-        </h1>
-        <p className="mt-2 text-sm text-slate-600">
+        <PageHeader pretitle={<Link to={LABELS}>Labels</Link>} title={ownerText(data.owner)} />
+        <p className="text-secondary">
           {data.observation
             ? `Labels read ${formatTime(data.observation.collected_at)} (observation ${String(data.observation.id)}).`
             : "No label read has been recorded here."}{" "}
-          <Link to={inventoryHref(data.owner)} className={linkClass}>
-            Open in the inventory
-          </Link>
+          <Link to={inventoryHref(data.owner)}>Open in the inventory</Link>
         </p>
         {data.observation?.payload_digest && (
-          <p className="break-all font-mono text-xs text-slate-600">
+          <p className="text-break font-monospace small text-secondary">
             {`SHA-256 ${data.observation.payload_digest}`}
           </p>
         )}
       </div>
       <AsOfResult answer={data} />
-      <section aria-labelledby="labels-title" className="space-y-3">
-        <h2 id="labels-title" className="text-lg font-semibold">
+      <section aria-labelledby="labels-title">
+        <h2 id="labels-title" className="card-title">
           Labels available here
         </h2>
         <Labels data={data} />
       </section>
-      <section aria-labelledby="owner-drift-title" className="space-y-3">
-        <h2 id="owner-drift-title" className="text-lg font-semibold">
+      <section aria-labelledby="owner-drift-title">
+        <h2 id="owner-drift-title" className="card-title">
           Drift from the taxonomy
         </h2>
         {data.drift.length === 0 ? (
-          <p className="text-sm text-slate-600">
+          <p className="text-secondary">
             {data.status === "unknown"
               ? "Not known: the labels could not be read."
               : "None: the labels here match the taxonomy."}

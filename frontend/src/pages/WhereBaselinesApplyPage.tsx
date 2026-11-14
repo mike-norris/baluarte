@@ -20,10 +20,10 @@ export function WhereBaselinesApplyPage() {
   }
 
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
+    <section aria-labelledby="page-title">
       <GovernanceHeader intro="Closer settings replace broader ones: a project's own setting, then its group, then that group's parents, then the whole instance. Each row shows what is set there and what it inherits." />
       {message && (
-        <p ref={status} role="status" tabIndex={-1} className="text-sm font-medium">
+        <p ref={status} role="status" tabIndex={-1} className="fw-medium">
           {message}
         </p>
       )}

@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -283,6 +283,27 @@ describe("governance: baselines", () => {
 describe("governance: the baseline editor", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("keeps editing off phones and hides creating from the list there", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("max-width: 767.98px"),
+      media: query,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+    api(analyst);
+    const router = renderAt("/governance/baselines/new?start=recommended");
+
+    expect(
+      await screen.findByText("Editing a baseline is available on a larger screen."),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Save/ })).not.toBeInTheDocument();
+    await act(async () => {
+      await router.navigate("/governance");
+    });
+    await screen.findByRole("link", { name: "starter-baseline" });
+    expect(screen.queryByRole("link", { name: "Create a baseline" })).not.toBeInTheDocument();
   });
 
   it("saves the recommended baseline and applies it to the whole instance in one step", async () => {

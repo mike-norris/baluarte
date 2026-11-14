@@ -4,7 +4,6 @@ import { Link } from "react-router";
 import { ApiError } from "../api/client";
 import { removeAssignment, type Assignment } from "../api/policies";
 import { useAuth } from "../auth/context";
-import { linkClass, secondaryClass } from "../components/styles";
 import { formatTime } from "../time";
 import {
   baselineHref,
@@ -15,9 +14,8 @@ import {
   targetTypeLabels,
 } from "./format";
 
-const cell = "px-3 py-2";
-const dangerClass =
-  "rounded bg-red-800 px-3 py-2 text-sm font-medium text-white hover:bg-red-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 disabled:opacity-50";
+const cell = "align-top";
+const dangerClass = "btn btn-danger btn-sm";
 
 const stateNotes: Record<string, string> = {
   missing: "no longer found in GitLab",
@@ -69,23 +67,23 @@ export function AppliedToList({
 
   if (assignments.length === 0) {
     return (
-      <p className="rounded border border-dashed border-slate-300 p-4 text-sm text-slate-600">
+      <p className="text-secondary border border-dashed rounded p-3">
         Not applied anywhere yet, so nothing is checked against it.
       </p>
     );
   }
 
   return (
-    <div className="space-y-2">
+    <div>
       {failure && (
-        <p role="alert" className="text-sm text-red-900">
+        <p role="alert" className="text-danger-emphasis">
           {failure}
         </p>
       )}
-      <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-        <table className="w-full text-left text-sm">
-          <caption className="sr-only">Where this baseline is applied</caption>
-          <thead className="border-b border-slate-200 bg-slate-50">
+      <div className="card table-responsive">
+        <table className="table table-vcenter card-table mb-0">
+          <caption className="visually-hidden">Where this baseline is applied</caption>
+          <thead>
             <tr>
               {["Applied to", "Kind", "Version", "Since"].map((header) => (
                 <th key={header} scope="col" className={`${cell} font-medium`}>
@@ -94,12 +92,12 @@ export function AppliedToList({
               ))}
               {canWrite && (
                 <th scope="col" className={`${cell} font-medium`}>
-                  <span className="sr-only">Actions</span>
+                  <span className="visually-hidden">Actions</span>
                 </th>
               )}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody>
             {assignments.map((assignment) => {
               const where =
                 assignment.target_type === "instance"
@@ -113,35 +111,32 @@ export function AppliedToList({
                   <th scope="row" className={`${cell} font-medium`}>
                     {where}
                     {note && (
-                      <span className="block text-xs font-normal text-amber-900">{note}</span>
+                      <span className="d-block small fw-normal text-warning-emphasis">{note}</span>
                     )}
                   </th>
                   <td className={cell}>{targetTypeLabels[assignment.target_type]}</td>
                   <td className={cell}>
-                    <Link
-                      to={baselineHref(assignment.policy_name, assignment.version)}
-                      className={linkClass}
-                    >
+                    <Link to={baselineHref(assignment.policy_name, assignment.version)}>
                       {`v${String(assignment.version)}`}
                     </Link>
                     {assignment.version < latest && (
-                      <span className="ml-2 text-xs text-slate-600">{`(v${String(latest)} is newer)`}</span>
+                      <span className="ms-2 small text-secondary">{`(v${String(latest)} is newer)`}</span>
                     )}
                   </td>
                   <td className={cell}>
-                    <span className="whitespace-nowrap">{formatTime(assignment.created_at)}</span>
-                    <span className="block text-xs text-slate-600">
+                    <span className="text-nowrap">{formatTime(assignment.created_at)}</span>
+                    <span className="d-block small text-secondary">
                       {reviewText(assignment.review)}
                     </span>
                   </td>
                   {canWrite && (
                     <td className={cell}>
                       {confirming === assignment.id ? (
-                        <div className="space-y-2">
-                          <p className="text-sm">
+                        <div>
+                          <p>
                             {`Stop checking ${assignment.policy_name} on ${targetText(assignment)}? Projects there fall back to whatever is applied above it, or to nothing.`}
                           </p>
-                          <div className="flex gap-2">
+                          <div className="d-flex gap-2">
                             <button
                               type="button"
                               disabled={removing}
@@ -155,7 +150,7 @@ export function AppliedToList({
                               onClick={() => {
                                 setConfirming(null);
                               }}
-                              className={secondaryClass}
+                              className="btn"
                             >
                               Cancel
                             </button>
@@ -169,7 +164,7 @@ export function AppliedToList({
                             setFailure(null);
                           }}
                           aria-label={`Remove from ${where}`}
-                          className={secondaryClass}
+                          className="btn"
                         >
                           Remove from here
                         </button>

@@ -13,7 +13,6 @@ import {
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, linkClass, secondaryClass } from "../components/styles";
 import {
   appliedMessage,
   DestinationPicker,
@@ -37,9 +36,12 @@ import {
   toYaml,
   type BaselineForm,
 } from "../policies/yaml";
+import { PageHeader } from "../ui/PageHeader";
+import { useDeviceClass } from "../ui/device";
+import { EmptyState } from "../ui/EmptyState";
 
-const errorClass = "rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900";
-const okClass = "rounded border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900";
+const errorClass = "alert alert-danger text-body";
+const okClass = "alert alert-success text-body";
 
 /** Shown on the baseline page after saving, via router state. */
 export interface SavedState {
@@ -57,8 +59,8 @@ function FeedbackBox({ feedback }: { feedback: Feedback }) {
     case "problems":
       return (
         <div className={errorClass}>
-          <p className="font-medium">Fix these before saving:</p>
-          <ul className="mt-1 list-disc space-y-1 pl-5">
+          <p className="fw-medium">Fix these before saving:</p>
+          <ul className="mt-1 ps-3">
             {feedback.problems.map((problem) => (
               <li key={problem}>{problem}</li>
             ))}
@@ -68,13 +70,13 @@ function FeedbackBox({ feedback }: { feedback: Feedback }) {
     case "errors":
       return (
         <div className={errorClass}>
-          <p className="font-medium">
+          <p className="fw-medium">
             {`Not valid: ${String(feedback.errors.length)} ${feedback.errors.length === 1 ? "problem" : "problems"}.`}
           </p>
-          <ul className="mt-1 list-disc space-y-1 pl-5">
+          <ul className="mt-1 ps-3">
             {feedback.errors.map((error, index) => (
               <li key={`${error.path}-${String(index)}`}>
-                <code className="font-mono">{error.path}</code>
+                <code className="font-monospace">{error.path}</code>
                 {`: ${error.message}`}
               </li>
             ))}
@@ -94,68 +96,68 @@ function FeedbackBox({ feedback }: { feedback: Feedback }) {
 
 function YamlHelp() {
   return (
-    <details className="text-sm text-slate-700">
-      <summary className="cursor-pointer font-medium">Field reference</summary>
-      <ul className="mt-2 list-disc space-y-1 pl-5">
+    <details className="text-secondary">
+      <summary className="fw-medium">Field reference</summary>
+      <ul className="mt-2 ps-3">
         <li>
-          <code className="font-mono">metadata.name</code> identifies the baseline: a new name
+          <code className="font-monospace">metadata.name</code> identifies the baseline: a new name
           creates a baseline, an existing name adds its next version.
         </li>
         <li>
-          <code className="font-mono">spec.scope.groups</code> is{" "}
-          <code className="font-mono">[&quot;*&quot;]</code> for everywhere it is applied, or group
-          paths; a group also covers its subgroups.
+          <code className="font-monospace">spec.scope.groups</code> is{" "}
+          <code className="font-monospace">[&quot;*&quot;]</code> for everywhere it is applied, or
+          group paths; a group also covers its subgroups.
         </li>
         <li>
-          Rule <code className="font-mono">gitlab.project.visibility</code> with{" "}
-          <code className="font-mono">allowed</code>: any of private, internal, public.
+          Rule <code className="font-monospace">gitlab.project.visibility</code> with{" "}
+          <code className="font-monospace">allowed</code>: any of private, internal, public.
         </li>
         <li>
-          Rule <code className="font-mono">gitlab.branch.default_protected</code> with{" "}
-          <code className="font-mono">required: true</code>.
+          Rule <code className="font-monospace">gitlab.branch.default_protected</code> with{" "}
+          <code className="font-monospace">required: true</code>.
         </li>
         <li>
-          Rule <code className="font-mono">gitlab.project.merge_request_approvals</code> with{" "}
-          <code className="font-mono">min_approvals</code> (0 to 20) and optional{" "}
-          <code className="font-mono">forbid_author_approval</code>,{" "}
-          <code className="font-mono">forbid_committer_approval</code>,{" "}
-          <code className="font-mono">reset_approvals_on_push</code> and{" "}
-          <code className="font-mono">forbid_override</code> (true or false).
+          Rule <code className="font-monospace">gitlab.project.merge_request_approvals</code> with{" "}
+          <code className="font-monospace">min_approvals</code> (0 to 20) and optional{" "}
+          <code className="font-monospace">forbid_author_approval</code>,{" "}
+          <code className="font-monospace">forbid_committer_approval</code>,{" "}
+          <code className="font-monospace">reset_approvals_on_push</code> and{" "}
+          <code className="font-monospace">forbid_override</code> (true or false).
         </li>
         <li>
-          Rule <code className="font-mono">gitlab.project.privileged_members</code> with{" "}
-          <code className="font-mono">max_privileged</code> (1 to 1000) and optional{" "}
-          <code className="font-mono">forbid_inactive_accounts</code>.
+          Rule <code className="font-monospace">gitlab.project.privileged_members</code> with{" "}
+          <code className="font-monospace">max_privileged</code> (1 to 1000) and optional{" "}
+          <code className="font-monospace">forbid_inactive_accounts</code>.
         </li>
         <li>
-          Rule <code className="font-mono">gitlab.group.two_factor_required</code> with optional{" "}
-          <code className="font-mono">max_grace_hours</code> (0 to 720).
+          Rule <code className="font-monospace">gitlab.group.two_factor_required</code> with
+          optional <code className="font-monospace">max_grace_hours</code> (0 to 720).
         </li>
         <li>
-          Rule <code className="font-mono">gitlab.project.access_tokens</code> with{" "}
-          <code className="font-mono">max_lifetime_days</code> and optional{" "}
-          <code className="font-mono">max_unused_days</code> (1 to 365 each).
+          Rule <code className="font-monospace">gitlab.project.access_tokens</code> with{" "}
+          <code className="font-monospace">max_lifetime_days</code> and optional{" "}
+          <code className="font-monospace">max_unused_days</code> (1 to 365 each).
         </li>
         <li>
-          Rule <code className="font-mono">gitlab.change.reviewed</code> with optional{" "}
-          <code className="font-mono">window_days</code> (1 to 365, default 90),{" "}
-          <code className="font-mono">min_approvals</code> (1 to 20, default 1),{" "}
-          <code className="font-mono">forbid_self_approval</code> (default true) and{" "}
-          <code className="font-mono">allow_direct_push</code> (default false).
+          Rule <code className="font-monospace">gitlab.change.reviewed</code> with optional{" "}
+          <code className="font-monospace">window_days</code> (1 to 365, default 90),{" "}
+          <code className="font-monospace">min_approvals</code> (1 to 20, default 1),{" "}
+          <code className="font-monospace">forbid_self_approval</code> (default true) and{" "}
+          <code className="font-monospace">allow_direct_push</code> (default false).
         </li>
         <li>
-          Rule <code className="font-mono">gitlab.change.pipeline_passed</code> with optional{" "}
-          <code className="font-mono">window_days</code> and{" "}
-          <code className="font-mono">require_tests</code> (default false).
+          Rule <code className="font-monospace">gitlab.change.pipeline_passed</code> with optional{" "}
+          <code className="font-monospace">window_days</code> and{" "}
+          <code className="font-monospace">require_tests</code> (default false).
         </li>
         <li>
-          Rule <code className="font-mono">gitlab.change.deployed_after_review</code> with optional{" "}
-          <code className="font-mono">window_days</code>.
+          Rule <code className="font-monospace">gitlab.change.deployed_after_review</code> with
+          optional <code className="font-monospace">window_days</code>.
         </li>
         <li>
-          Each rule has a unique <code className="font-mono">id</code> and an optional{" "}
-          <code className="font-mono">severity</code> (low, medium, high or critical) and{" "}
-          <code className="font-mono">description</code>.
+          Each rule has a unique <code className="font-monospace">id</code> and an optional{" "}
+          <code className="font-monospace">severity</code> (low, medium, high or critical) and{" "}
+          <code className="font-monospace">description</code>.
         </li>
       </ul>
     </details>
@@ -275,8 +277,8 @@ function Editor({
   const disabled = busy !== null || !source.trim() || tooLarge;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Editing mode">
+    <div>
+      <div className="d-flex flex-wrap gap-2" role="group" aria-label="Editing mode">
         <button
           type="button"
           aria-pressed={yaml === null}
@@ -285,7 +287,7 @@ function Editor({
             setYaml(null);
             setFeedback(null);
           }}
-          className={secondaryClass}
+          className="btn"
         >
           Form
         </button>
@@ -297,16 +299,16 @@ function Editor({
             setYaml(toYaml(form));
             setFeedback(null);
           }}
-          className={secondaryClass}
+          className="btn"
         >
           Edit as YAML (advanced)
         </button>
       </div>
       {yaml !== null && initialForm !== null && (
-        <p className="text-sm text-slate-600">Going back to the form discards changes made here.</p>
+        <p className="text-secondary">Going back to the form discards changes made here.</p>
       )}
       {yaml !== null && initialForm === null && existing && (
-        <p className="text-sm text-slate-600">
+        <p className="text-secondary">
           This version uses settings the form can&apos;t show, so it opens as YAML.
         </p>
       )}
@@ -314,8 +316,8 @@ function Editor({
       {yaml === null ? (
         <RuleForm form={form} onChange={setForm} nameLocked={existing !== null} />
       ) : (
-        <div className="space-y-2">
-          <label className="block text-sm font-medium" htmlFor={`${id}-source`}>
+        <div>
+          <label className="d-block fw-medium" htmlFor={`${id}-source`}>
             Baseline YAML
           </label>
           <YamlHelp />
@@ -329,23 +331,17 @@ function Editor({
             }}
             rows={22}
             spellCheck={false}
-            className="block w-full rounded border border-slate-300 bg-white p-2 font-mono text-sm focus-visible:outline-2 focus-visible:outline-sky-600"
+            className="form-control font-monospace"
           />
-          <p
-            id={`${id}-size`}
-            className={`text-sm ${tooLarge ? "text-red-900" : "text-slate-600"}`}
-          >
+          <p id={`${id}-size`} className={tooLarge ? "text-danger-emphasis" : "text-secondary"}>
             {`${String(bytes)} of ${String(MAX_SOURCE_BYTES)} bytes${tooLarge ? ": too large to save" : ""}.`}
           </p>
         </div>
       )}
 
       {!existing && (
-        <section
-          aria-labelledby={`${id}-apply`}
-          className="space-y-3 rounded border border-slate-200 bg-white p-4"
-        >
-          <h2 id={`${id}-apply`} className="text-base font-semibold">
+        <section aria-labelledby={`${id}-apply`} className="card card-body mb-3">
+          <h2 id={`${id}-apply`} className="fw-semibold">
             Where to check it
           </h2>
           <DestinationPicker value={destination} onChange={setDestination} />
@@ -356,13 +352,13 @@ function Editor({
         {feedback && <FeedbackBox feedback={feedback} />}
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      <div className="d-flex flex-wrap gap-2">
         {existing ? (
           <button
             type="button"
             onClick={() => void save(false)}
             disabled={disabled}
-            className={buttonClass}
+            className="btn btn-primary"
           >
             {busy === "save" ? "Saving…" : "Save new version"}
           </button>
@@ -372,7 +368,7 @@ function Editor({
               type="button"
               onClick={() => void save(true)}
               disabled={disabled}
-              className={buttonClass}
+              className="btn btn-primary"
             >
               {busy === "apply" ? "Saving and applying…" : "Save and apply"}
             </button>
@@ -380,26 +376,18 @@ function Editor({
               type="button"
               onClick={() => void save(false)}
               disabled={disabled}
-              className={secondaryClass}
+              className="btn"
             >
               {busy === "save" ? "Saving…" : "Save without applying"}
             </button>
           </>
         )}
         {yaml !== null && (
-          <button
-            type="button"
-            onClick={() => void validate()}
-            disabled={disabled}
-            className={secondaryClass}
-          >
+          <button type="button" onClick={() => void validate()} disabled={disabled} className="btn">
             {busy === "validate" ? "Checking…" : "Check YAML"}
           </button>
         )}
-        <Link
-          to={existing ? baselineHref(existing.name) : GOVERNANCE}
-          className={`${secondaryClass} inline-block`}
-        >
+        <Link to={existing ? baselineHref(existing.name) : GOVERNANCE} className="btn">
           Cancel
         </Link>
       </div>
@@ -414,7 +402,7 @@ function FromVersion({ name, version }: { name: string; version: number }) {
   if (loaded.error) return <ErrorMessage error={loaded.error} retry={loaded.retry} />;
   if (!loaded.data) {
     return (
-      <p role="status" className="text-slate-600">
+      <p role="status" className="text-secondary">
         Loading version…
       </p>
     );
@@ -430,6 +418,7 @@ function FromVersion({ name, version }: { name: string; version: number }) {
 }
 
 export function BaselineEditorPage() {
+  const device = useDeviceClass();
   const { session } = useAuth();
   const [params] = useSearchParams();
   const canWrite = canWritePolicies(session.status === "signed_in" ? session.user : null);
@@ -451,7 +440,9 @@ export function BaselineEditorPage() {
     : "Choose the rules and where to check them. Nothing is saved until you save, and saving is audited.";
 
   let body;
-  if (!canWrite) {
+  if (device === "phone") {
+    body = <EmptyState title="Editing a baseline is available on a larger screen." />;
+  } else if (!canWrite) {
     body = (
       <p role="alert" className={errorClass}>
         You do not have permission to change baselines. Analysts and administrators can.
@@ -472,26 +463,22 @@ export function BaselineEditorPage() {
   }
 
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
-      <div>
-        <p className="text-sm">
-          <Link to={GOVERNANCE} className={linkClass}>
-            Governance
-          </Link>
-          {editing && (
-            <>
-              {" › "}
-              <Link to={baselineHref(from)} className={linkClass}>
-                {from}
-              </Link>
-            </>
-          )}
-        </p>
-        <h1 id="page-title" className="mt-1 text-2xl font-semibold">
-          {title}
-        </h1>
-        <p className="mt-2 max-w-3xl text-slate-600">{intro}</p>
-      </div>
+    <section aria-labelledby="page-title">
+      <PageHeader
+        pretitle={
+          <>
+            <Link to={GOVERNANCE}>Governance</Link>
+            {editing && (
+              <>
+                {" › "}
+                <Link to={baselineHref(from)}>{from}</Link>
+              </>
+            )}
+          </>
+        }
+        title={title}
+        subtitle={intro}
+      />
       {body}
     </section>
   );

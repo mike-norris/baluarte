@@ -71,6 +71,8 @@ const onTabler: ReadonlySet<string> = new Set([
   "/changes",
   "/controls",
   "/inventory",
+  "/labels",
+  GOVERNANCE,
 ]);
 
 /** Sections that are implemented; the rest render a placeholder. */
@@ -155,10 +157,12 @@ export const routes: RouteObject[] = [
           },
           {
             path: "/labels/owners/:ownerType/:gitlabId",
+            handle: TABLER,
             element: page(() => import("./pages/LabelOwnerPage"), "LabelOwnerPage"),
           },
           {
             path: "/labels/taxonomy/new",
+            handle: TABLER,
             element: page(() => import("./pages/TaxonomyEditorPage"), "TaxonomyEditorPage"),
           },
           {
@@ -203,6 +207,7 @@ export const routes: RouteObject[] = [
           },
           {
             path: APPLY_VIEW,
+            handle: TABLER,
             element: page(
               () => import("./pages/WhereBaselinesApplyPage"),
               "WhereBaselinesApplyPage",
@@ -210,6 +215,7 @@ export const routes: RouteObject[] = [
           },
           {
             path: SECURITY_POLICIES_VIEW,
+            handle: TABLER,
             element: page(
               () => import("./pages/GitLabSecurityPoliciesPage"),
               "GitLabSecurityPoliciesPage",
@@ -217,6 +223,7 @@ export const routes: RouteObject[] = [
           },
           {
             path: `${SECURITY_POLICIES_VIEW}/coverage`,
+            handle: TABLER,
             element: page(
               () => import("./pages/SecurityPolicyCoveragePage"),
               "SecurityPolicyCoveragePage",
@@ -224,18 +231,22 @@ export const routes: RouteObject[] = [
           },
           {
             path: `${SECURITY_POLICIES_VIEW}/:policyId`,
+            handle: TABLER,
             element: page(() => import("./pages/SecurityPolicyPage"), "SecurityPolicyPage"),
           },
           {
             path: CHANGES_VIEW,
+            handle: TABLER,
             element: page(() => import("./pages/PolicyChangesPage"), "PolicyChangesPage"),
           },
           {
             path: `${GOVERNANCE}/baselines/new`,
+            handle: TABLER,
             element: page(() => import("./pages/BaselineEditorPage"), "BaselineEditorPage"),
           },
           {
             path: `${GOVERNANCE}/baselines/:name`,
+            handle: TABLER,
             element: page(() => import("./pages/BaselinePage"), "BaselinePage"),
           },
           { path: "/policies", element: <Navigate to={GOVERNANCE} replace /> },

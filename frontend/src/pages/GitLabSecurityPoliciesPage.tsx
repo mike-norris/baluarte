@@ -12,11 +12,10 @@ import {
 import { useLoad } from "../api/useLoad";
 import { usePaged } from "../api/usePaged";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
 import { COVERAGE_VIEW, securityPolicyHref, typeLabels } from "../security-policies/format";
 import { EnabledCell, SecurityPoliciesHeader } from "../security-policies/parts";
 
-const cell = "px-3 py-2";
+const cell = "align-top";
 
 function readFilters(params: URLSearchParams): PolicyFilters {
   const type = params.get("type") ?? "";
@@ -41,10 +40,10 @@ function reachText(policy: SecurityPolicySummary): string {
 
 function PolicyTable({ policies }: { policies: SecurityPolicySummary[] }) {
   return (
-    <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-      <table className="w-full text-left text-sm">
-        <caption className="sr-only">GitLab security policies</caption>
-        <thead className="border-b border-slate-200 bg-slate-50">
+    <div className="card table-responsive">
+      <table className="table table-vcenter card-table mb-0">
+        <caption className="visually-hidden">GitLab security policies</caption>
+        <thead>
           <tr>
             {["GitLab security policy", "Type", "State", "Policy source project", "Reaches"].map(
               (header) => (
@@ -55,15 +54,13 @@ function PolicyTable({ policies }: { policies: SecurityPolicySummary[] }) {
             )}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100 align-top">
+        <tbody className="align-top">
           {policies.map((policy) => (
             <tr key={policy.id}>
               <th scope="row" className={`${cell} font-medium`}>
-                <Link to={securityPolicyHref(policy.id)} className={linkClass}>
-                  {policy.name}
-                </Link>
+                <Link to={securityPolicyHref(policy.id)}>{policy.name}</Link>
                 {policy.state === "missing" && (
-                  <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-xs font-normal">
+                  <span className="ms-2 badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle fw-normal">
                     No longer found in GitLab
                   </span>
                 )}
@@ -75,7 +72,7 @@ function PolicyTable({ policies }: { policies: SecurityPolicySummary[] }) {
               <td className={cell}>
                 {policy.origin_path}
                 {policy.linked_from.length > 0 && (
-                  <span className="block text-xs text-slate-600">
+                  <span className="d-block small text-secondary">
                     {`Linked to ${policy.linked_from.map((link) => link.path).join(", ")}`}
                   </span>
                 )}
@@ -110,11 +107,11 @@ function Filters({ filters }: { filters: PolicyFilters }) {
       key={writeFilters(filters).toString()}
       onSubmit={apply}
       aria-label="Filter GitLab security policies"
-      className="flex flex-wrap items-end gap-3 rounded border border-slate-200 bg-white p-4"
+      className="d-flex flex-wrap align-items-end gap-3 rounded border p-3"
     >
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         Type
-        <select name="type" defaultValue={filters.policyType} className={fieldClass}>
+        <select name="type" defaultValue={filters.policyType} className="form-control mt-1">
           <option value="">Any</option>
           {policyTypes.map((type) => (
             <option key={type} value={type}>
@@ -123,11 +120,11 @@ function Filters({ filters }: { filters: PolicyFilters }) {
           ))}
         </select>
       </label>
-      <label className="flex items-center gap-2 text-sm font-medium">
+      <label className="d-flex align-items-center gap-2 fw-medium">
         <input name="missing" type="checkbox" defaultChecked={filters.includeMissing} />
         Include policies no longer found in GitLab
       </label>
-      <button type="submit" className={buttonClass}>
+      <button type="submit" className="btn btn-primary">
         Apply filters
       </button>
     </form>
@@ -150,23 +147,20 @@ export function GitLabSecurityPoliciesPage() {
   if (first.error) body = <ErrorMessage error={first.error} retry={first.retry} />;
   else if (!first.data) {
     body = (
-      <p role="status" className="text-slate-600">
+      <p role="status" className="text-secondary">
         Loading GitLab security policies…
       </p>
     );
   } else if (paged.items.length === 0) {
     const filtered = filters.policyType !== "" || filters.includeMissing;
     body = (
-      <p className="rounded border border-dashed border-slate-300 p-4 text-sm text-slate-600">
+      <p className="text-secondary border border-dashed rounded p-3">
         {filtered ? (
           "No GitLab security policies match these filters."
         ) : first.data.readable && first.data.collection.status !== "never" ? (
           <>
             {"No GitLab security policies were found. Groups without one are listed under "}
-            <Link to={COVERAGE_VIEW} className={linkClass}>
-              Coverage
-            </Link>
-            .
+            <Link to={COVERAGE_VIEW}>Coverage</Link>.
           </>
         ) : (
           "None are listed because they couldn't be read; this doesn't mean there are none."
@@ -175,9 +169,9 @@ export function GitLabSecurityPoliciesPage() {
     );
   } else {
     body = (
-      <div className="space-y-3">
+      <div>
         <PolicyTable policies={paged.items} />
-        <p className="text-sm text-slate-600" aria-live="polite">
+        <p className="text-secondary" aria-live="polite">
           {`Showing ${String(paged.items.length)} GitLab security ${paged.items.length === 1 ? "policy" : "policies"}${
             paged.next !== null ? " (more available)" : ""
           }.`}
@@ -190,7 +184,7 @@ export function GitLabSecurityPoliciesPage() {
             type="button"
             onClick={() => void paged.loadMore()}
             disabled={paged.pending}
-            className={secondaryClass}
+            className="btn"
           >
             {paged.pending ? "Loading…" : "Load more"}
           </button>
@@ -200,7 +194,7 @@ export function GitLabSecurityPoliciesPage() {
   }
 
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
+    <section aria-labelledby="page-title">
       <SecurityPoliciesHeader context={first.data} />
       <Filters filters={filters} />
       {body}

@@ -16,7 +16,6 @@ import {
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
 import {
   emptyTaxonomy,
   formFromSpec,
@@ -30,6 +29,10 @@ import {
 import { Swatch } from "../labels/Swatch";
 import { CHANGES_VIEW } from "../policies/format";
 import { hasPermission } from "../remediation/format";
+import { PageHeader } from "../ui/PageHeader";
+import { useDeviceClass } from "../ui/device";
+import { EmptyState } from "../ui/EmptyState";
+import { Loading } from "../ui/Loading";
 
 const DEFAULT_COLOR = "#1f75cb";
 
@@ -67,10 +70,10 @@ function LabelRow({
     onChange({ ...row, label: { ...label, ...change } });
   }
   return (
-    <fieldset className="space-y-2 rounded border border-slate-200 bg-white p-3">
-      <legend className="px-1 text-sm font-medium">{title}</legend>
+    <fieldset className="rounded border p-3">
+      <legend className="px-1 fw-medium">{title}</legend>
       <div className="grid gap-3 md:grid-cols-2">
-        <label className="text-sm font-medium" htmlFor={`${id}-name`}>
+        <label className="fw-medium" htmlFor={`${id}-name`}>
           Name
           <input
             id={`${id}-name`}
@@ -78,12 +81,12 @@ function LabelRow({
             onChange={(event) => {
               set({ name: event.target.value });
             }}
-            className={fieldClass}
+            className="form-control mt-1"
           />
         </label>
-        <div className="text-sm font-medium">
+        <div className="fw-medium">
           <label htmlFor={`${id}-hex`}>Colour (#rrggbb)</label>
-          <div className="mt-1 flex items-center gap-2">
+          <div className="mt-1 d-flex align-items-center gap-2">
             <input
               type="color"
               aria-label={`Pick the colour of ${title}`}
@@ -91,7 +94,7 @@ function LabelRow({
               onChange={(event) => {
                 set({ color: event.target.value });
               }}
-              className="h-8 w-10 rounded border border-slate-300 bg-white"
+              className="h-8 w-10 rounded border"
             />
             <input
               id={`${id}-hex`}
@@ -100,14 +103,14 @@ function LabelRow({
                 set({ color: event.target.value });
               }}
               aria-invalid={!isHexColor(color)}
-              className={`${fieldClass} mt-0 font-mono`}
+              className="form-control font-monospace"
             />
           </div>
-          <p className="mt-1 font-normal">
+          <p className="mt-1 fw-normal">
             <Swatch color={isHexColor(color) ? color : null} />
           </p>
         </div>
-        <label className="text-sm font-medium" htmlFor={`${id}-description`}>
+        <label className="fw-medium" htmlFor={`${id}-description`}>
           Description
           <input
             id={`${id}-description`}
@@ -115,10 +118,10 @@ function LabelRow({
             onChange={(event) => {
               set({ description: event.target.value || null });
             }}
-            className={fieldClass}
+            className="form-control mt-1"
           />
         </label>
-        <label className="text-sm font-medium" htmlFor={`${id}-aliases`}>
+        <label className="fw-medium" htmlFor={`${id}-aliases`}>
           Rename from (aliases, comma-separated)
           <input
             id={`${id}-aliases`}
@@ -130,11 +133,11 @@ function LabelRow({
                 label: { ...label, aliases: parseAliases(event.target.value) },
               });
             }}
-            className={fieldClass}
+            className="form-control mt-1"
           />
         </label>
       </div>
-      <button type="button" onClick={onRemove} className={secondaryClass}>
+      <button type="button" onClick={onRemove} className="btn">
         {`Remove ${title}`}
       </button>
     </fieldset>
@@ -143,7 +146,7 @@ function LabelRow({
 
 function Issues({ issues }: { issues: TaxonomyIssue[] }) {
   return (
-    <ul className="list-disc space-y-1 pl-5">
+    <ul className="ps-3">
       {issues.map((issue) => (
         <li key={`${issue.path}:${issue.message}`}>
           {issue.path ? `${issue.path}: ${issue.message}` : issue.message}
@@ -271,23 +274,18 @@ function Editor({ view }: { view: TaxonomyView }) {
     const { version } = outcome;
     const inForce = version.state === "approved";
     return (
-      <div className="space-y-3">
-        <p
-          ref={status}
-          tabIndex={-1}
-          role="status"
-          className="rounded border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-950"
-        >
+      <div>
+        <p ref={status} tabIndex={-1} role="status" className="alert alert-success text-body">
           {inForce
             ? `Saved ${version.name} v${String(version.version)}. Review is off, so it is in force now and was recorded as self-approved.`
             : `Proposed ${version.name} v${String(version.version)}. It takes effect once someone other than you approves it.`}
         </p>
-        <p className="flex flex-wrap gap-3">
-          <Link to={LABELS} className={buttonClass}>
+        <p className="d-flex flex-wrap gap-3">
+          <Link to={LABELS} className="btn btn-primary">
             Back to labels
           </Link>
           {!inForce && (
-            <Link to={CHANGES_VIEW} className={secondaryClass}>
+            <Link to={CHANGES_VIEW} className="btn">
               Open the review queue
             </Link>
           )}
@@ -297,24 +295,24 @@ function Editor({ view }: { view: TaxonomyView }) {
   }
 
   return (
-    <form onSubmit={(event) => void propose(event)} className="space-y-6" noValidate>
+    <form onSubmit={(event) => void propose(event)} noValidate>
       {(problems.length > 0 || issues.length > 0 || failure || checked) && (
         <div
           role={checked && !failure ? "status" : "alert"}
-          className={`rounded border p-3 text-sm ${
+          className={`alert text-body ${
             checked && !failure && problems.length === 0 && issues.length === 0
-              ? "border-emerald-300 bg-emerald-50 text-emerald-950"
-              : "border-red-200 bg-red-50 text-red-900"
+              ? "alert-success"
+              : "alert-danger"
           }`}
         >
-          <p ref={status} tabIndex={-1} className="font-medium">
+          <p ref={status} tabIndex={-1} className="fw-medium">
             {failure ??
               (problems.length > 0 || issues.length > 0
                 ? "Fix these before proposing the taxonomy:"
                 : checked)}
           </p>
           {problems.length > 0 && (
-            <ul className="mt-1 list-disc space-y-1 pl-5">
+            <ul className="mt-1 ps-3">
               {problems.map((problem) => (
                 <li key={problem}>{problem}</li>
               ))}
@@ -323,13 +321,13 @@ function Editor({ view }: { view: TaxonomyView }) {
           {issues.length > 0 && <Issues issues={issues} />}
         </div>
       )}
-      <div className="flex gap-2" role="group" aria-label="Edit as">
+      <div className="d-flex gap-2" role="group" aria-label="Edit as">
         <button
           type="button"
           aria-pressed={mode === "form"}
           onClick={() => void backToForm()}
           disabled={mode === "form"}
-          className={secondaryClass}
+          className="btn"
         >
           Form
         </button>
@@ -338,15 +336,15 @@ function Editor({ view }: { view: TaxonomyView }) {
           aria-pressed={mode === "yaml"}
           onClick={showYaml}
           disabled={mode === "yaml"}
-          className={secondaryClass}
+          className="btn"
         >
           YAML
         </button>
       </div>
       {mode === "form" ? (
-        <div className="space-y-4">
+        <div>
           <div className="grid gap-3 md:grid-cols-2">
-            <label className="text-sm font-medium" htmlFor={`${id}-name`}>
+            <label className="fw-medium" htmlFor={`${id}-name`}>
               Taxonomy name
               <input
                 id={`${id}-name`}
@@ -354,10 +352,10 @@ function Editor({ view }: { view: TaxonomyView }) {
                 onChange={(event) => {
                   setName(event.target.value);
                 }}
-                className={fieldClass}
+                className="form-control mt-1"
               />
             </label>
-            <label className="text-sm font-medium" htmlFor={`${id}-groups`}>
+            <label className="fw-medium" htmlFor={`${id}-groups`}>
               Groups (paths or patterns, comma-separated; * for all)
               <input
                 id={`${id}-groups`}
@@ -365,14 +363,14 @@ function Editor({ view }: { view: TaxonomyView }) {
                 onChange={(event) => {
                   setGroupText(event.target.value);
                 }}
-                className={fieldClass}
+                className="form-control mt-1"
               />
             </label>
           </div>
-          <p className="text-sm text-slate-600">
+          <p className="text-secondary">
             Labels are expected on each top-level group, so every project below inherits them.
           </p>
-          <label className="flex items-start gap-2 text-sm">
+          <label className="d-flex align-items-start gap-2">
             <input
               type="checkbox"
               checked={strict}
@@ -382,12 +380,11 @@ function Editor({ view }: { view: TaxonomyView }) {
               className="mt-1"
             />
             <span>
-              <span className="font-medium">Strict</span>: labels not in the taxonomy count as
-              drift.
+              <span className="fw-medium">Strict</span>: labels not in the taxonomy count as drift.
             </span>
           </label>
-          <div className="space-y-3">
-            <h2 className="text-lg font-semibold">{`Labels (${String(rows.length)})`}</h2>
+          <div>
+            <h2 className="card-title">{`Labels (${String(rows.length)})`}</h2>
             {rows.map((row, index) => (
               <LabelRow
                 key={row.key}
@@ -414,15 +411,15 @@ function Editor({ view }: { view: TaxonomyView }) {
                 ]);
                 setNextKey(nextKey + 1);
               }}
-              className={secondaryClass}
+              className="btn"
             >
               Add a label
             </button>
           </div>
         </div>
       ) : (
-        <div className="space-y-2">
-          <label className="text-sm font-medium" htmlFor={`${id}-yaml`}>
+        <div>
+          <label className="fw-medium" htmlFor={`${id}-yaml`}>
             Taxonomy YAML
           </label>
           <textarea
@@ -434,14 +431,14 @@ function Editor({ view }: { view: TaxonomyView }) {
               setYaml(event.target.value);
               setChecked(null);
             }}
-            className={`${fieldClass} font-mono text-xs`}
+            className="form-control mt-1 font-monospace small"
           />
-          <button type="button" onClick={() => void onCheck()} className={secondaryClass}>
+          <button type="button" onClick={() => void onCheck()} className="btn">
             Check the YAML
           </button>
         </div>
       )}
-      <label className="block text-sm font-medium" htmlFor={`${id}-why`}>
+      <label className="d-block fw-medium" htmlFor={`${id}-why`}>
         Justification (optional)
         <textarea
           id={`${id}-why`}
@@ -451,19 +448,19 @@ function Editor({ view }: { view: TaxonomyView }) {
           onChange={(event) => {
             setJustification(event.target.value);
           }}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <p className="text-sm text-slate-600">
+      <p className="text-secondary">
         {view.review_required
           ? "Review is required: someone other than you must approve this before it takes effect."
           : "Review is off: this takes effect at once and is recorded as self-approved."}
       </p>
-      <div className="flex flex-wrap gap-3">
-        <button type="submit" disabled={sending} className={buttonClass}>
+      <div className="d-flex flex-wrap gap-3">
+        <button type="submit" disabled={sending} className="btn btn-primary">
           {sending ? "Proposing…" : "Propose the taxonomy"}
         </button>
-        <Link to={LABELS} className={secondaryClass}>
+        <Link to={LABELS} className="btn">
           Cancel
         </Link>
       </div>
@@ -475,41 +472,30 @@ export function TaxonomyEditorPage() {
   const { session } = useAuth();
   const user = session.status === "signed_in" ? session.user : null;
   const canPropose = user !== null && hasPermission(user, CAN_PROPOSE);
+  const device = useDeviceClass();
   const view = useLoad("labels:taxonomy:edit", (signal) => getTaxonomy(null, signal));
 
   let body;
-  if (!canPropose) {
+  if (device === "phone") {
+    body = <EmptyState title="Proposing a taxonomy is available on a larger screen." />;
+  } else if (!canPropose) {
     body = (
-      <p className="text-sm text-slate-600">
+      <p className="text-secondary">
         Proposing a taxonomy needs the baseline writing permission, which admins and analysts have.
       </p>
     );
   } else if (view.error) body = <ErrorMessage error={view.error} retry={view.retry} />;
   else if (!view.data) {
-    body = (
-      <p role="status" className="text-slate-600">
-        Loading the taxonomy in force…
-      </p>
-    );
+    body = <Loading label="Loading the taxonomy in force…" />;
   } else body = <Editor view={view.data} />;
 
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
-      <div>
-        <p className="text-sm">
-          <Link to={LABELS} className={linkClass}>
-            Labels
-          </Link>
-        </p>
-        <h1 id="page-title" className="text-2xl font-semibold">
-          Propose a label taxonomy
-        </h1>
-        <p className="mt-2 max-w-3xl text-slate-600">
-          The labels every group should have: name, colour, description, and the old names to
-          rename from. Names match exactly; an alias, or the same name in another case or spacing,
-          counts as misnamed.
-        </p>
-      </div>
+    <section aria-labelledby="page-title">
+      <PageHeader
+        pretitle={<Link to={LABELS}>Labels</Link>}
+        title="Propose a label taxonomy"
+        subtitle="The labels every group should have: name, colour, description, and the old names to rename from. Names match exactly; an alias, or the same name in another case or spacing, counts as misnamed."
+      />
       {body}
     </section>
   );

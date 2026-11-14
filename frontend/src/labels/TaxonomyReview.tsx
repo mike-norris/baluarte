@@ -6,35 +6,33 @@ import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import { leavesOwnToOthers, type CurrentUser } from "../auth/session";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, secondaryClass } from "../components/styles";
 import { lineDiff } from "../policies/diff";
 import { canWritePolicies, personText } from "../policies/format";
 import { formatTime } from "../time";
 
 function versionText(version: TaxonomyVersion): string {
   const count = version.spec?.labels.length;
-  const labels = count === undefined ? "" : `, ${String(count)} ${count === 1 ? "label" : "labels"}`;
+  const labels =
+    count === undefined ? "" : `, ${String(count)} ${count === 1 ? "label" : "labels"}`;
   return `Label taxonomy ${version.name} v${String(version.version)}${labels}`;
 }
 
 function YamlDiff({ base, proposed }: { base: string | undefined; proposed: string | undefined }) {
   if (proposed === undefined) return null;
-  const caption = base === undefined ? "The proposed taxonomy" : "Changes from the taxonomy in force";
+  const caption =
+    base === undefined ? "The proposed taxonomy" : "Changes from the taxonomy in force";
   return (
-    <figure className="space-y-1">
-      <figcaption className="text-sm font-medium">{caption}</figcaption>
-      <pre
-        aria-label={caption}
-        className="max-h-80 overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100"
-      >
+    <figure>
+      <figcaption className="fw-medium">{caption}</figcaption>
+      <pre aria-label={caption} className="small mb-0 overflow-auto" style={{ maxHeight: "20rem" }}>
         {lineDiff(base ?? "", proposed).map((line, index) => (
           <span
             key={index}
-            className={`block ${
+            className={`d-block ${
               line.kind === "added"
-                ? "bg-emerald-900 text-emerald-100"
+                ? "bg-success-subtle text-success-emphasis"
                 : line.kind === "removed"
-                  ? "bg-red-900 text-red-100"
+                  ? "bg-danger-subtle text-danger-emphasis"
                   : ""
             }`}
           >
@@ -92,33 +90,33 @@ function PendingVersion({
   }
 
   return (
-    <li className="space-y-3 rounded border border-slate-200 bg-white p-4">
+    <li className="card card-body mb-3">
       <div>
-        <h3 className="font-medium">{summary}</h3>
-        <p className="text-sm text-slate-600">
+        <h3 className="fw-medium">{summary}</h3>
+        <p className="text-secondary">
           {`Proposed by ${personText(version.proposed_by)} on ${formatTime(version.proposed_at)}.`}
         </p>
       </div>
       {version.justification && (
-        <dl className="text-sm">
-          <dt className="font-medium">Justification</dt>
-          <dd className="whitespace-pre-wrap">{version.justification}</dd>
+        <dl>
+          <dt className="fw-medium">Justification</dt>
+          <dd className="text-prewrap">{version.justification}</dd>
         </dl>
       )}
       <YamlDiff base={current?.source_yaml} proposed={version.source_yaml} />
       {failure && (
-        <p role="alert" className="text-sm text-red-900">
+        <p role="alert" className="text-danger-emphasis">
           {failure}
         </p>
       )}
       {canDecide &&
         (own ? (
-          <p className="text-sm text-slate-700">
+          <p className="text-secondary">
             You proposed this taxonomy, so someone else must approve or reject it.
           </p>
         ) : (
           <div>
-            <label htmlFor={`${id}-note`} className="text-sm font-medium">
+            <label htmlFor={`${id}-note`} className="fw-medium">
               Note (required to reject)
             </label>
             <textarea
@@ -129,17 +127,17 @@ function PendingVersion({
               onChange={(event) => {
                 setNote(event.target.value);
               }}
-              className={fieldClass}
+              className="form-control mt-1"
             />
           </div>
         ))}
       {canDecide && !own && (
-        <div className="flex flex-wrap gap-2">
+        <div className="d-flex flex-wrap gap-2">
           <button
             type="button"
             disabled={sending !== null}
             onClick={() => void decide("approve")}
-            className={buttonClass}
+            className="btn btn-primary"
           >
             {sending === "approve" ? "Approving…" : "Approve"}
           </button>
@@ -147,7 +145,7 @@ function PendingVersion({
             type="button"
             disabled={sending !== null}
             onClick={() => void decide("reject")}
-            className={secondaryClass}
+            className="btn"
           >
             {sending === "reject" ? "Rejecting…" : "Reject"}
           </button>
@@ -174,7 +172,7 @@ export function TaxonomyReview({
   if (taxonomy.error) body = <ErrorMessage error={taxonomy.error} retry={taxonomy.retry} />;
   else if (!taxonomy.data) {
     body = (
-      <p role="status" className="text-slate-600">
+      <p role="status" className="text-secondary">
         Loading proposed label taxonomies…
       </p>
     );
@@ -183,9 +181,9 @@ export function TaxonomyReview({
     const pending = versions.filter((version) => version.state === "proposed");
     body =
       pending.length === 0 ? (
-        <p className="text-sm text-slate-600">No label taxonomy is waiting.</p>
+        <p className="text-secondary">No label taxonomy is waiting.</p>
       ) : (
-        <ul className="space-y-3" aria-label="Label taxonomies waiting for review">
+        <ul aria-label="Label taxonomies waiting for review">
           {pending.map((version) => (
             <PendingVersion
               key={version.id}
@@ -199,8 +197,8 @@ export function TaxonomyReview({
       );
   }
   return (
-    <section aria-labelledby="taxonomy-pending-title" className="space-y-3">
-      <h2 id="taxonomy-pending-title" className="text-lg font-semibold">
+    <section aria-labelledby="taxonomy-pending-title">
+      <h2 id="taxonomy-pending-title" className="card-title">
         Label taxonomies waiting for review
       </h2>
       {body}
