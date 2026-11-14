@@ -1,3 +1,4 @@
+import { IconCircleCheck, IconCircleX, IconHelpCircle } from "@tabler/icons-react";
 import type { FormEvent } from "react";
 import { Link, useSearchParams } from "react-router";
 
@@ -33,16 +34,21 @@ import {
 } from "../changes/format";
 import { PartText } from "../changes/PartText";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
 import { formatTime } from "../time";
+import { Badge, type Tone } from "../ui/Badge";
+import { EmptyState } from "../ui/EmptyState";
+import { ListFooter } from "../ui/ListFooter";
+import { Loading } from "../ui/Loading";
+import { PageHeader } from "../ui/PageHeader";
+import { ResponsiveTable, type Column } from "../ui/ResponsiveTable";
 
-const cell = "px-3 py-2 align-top";
-
-const outcomeClass: Record<ChangeOutcome, string> = {
-  pass: "bg-emerald-100 text-emerald-900",
-  fail: "bg-red-100 text-red-900",
-  unknown: "bg-amber-100 text-amber-900",
+const outcomeTone: Record<ChangeOutcome, Tone> = {
+  pass: "success",
+  fail: "danger",
+  unknown: "secondary",
 };
+
+const outcomeIcon = { pass: IconCircleCheck, fail: IconCircleX, unknown: IconHelpCircle } as const;
 
 function text(form: FormData, name: string): string {
   const value = form.get(name);
@@ -74,9 +80,9 @@ function Filters({ filters }: { filters: ChangeFilters }) {
       key={writeChangeFilters(filters).toString()}
       onSubmit={apply}
       aria-label="Filter changes"
-      className="grid gap-3 rounded border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-5 lg:items-end"
+      className="card-body border-bottom row g-2 align-items-end mx-0"
     >
-      <label className="text-sm font-medium">
+      <label className="form-label col-6 col-md-4 col-xl mb-0">
         Project GitLab ID
         <input
           name="project"
@@ -84,12 +90,12 @@ function Filters({ filters }: { filters: ChangeFilters }) {
           min={1}
           step={1}
           defaultValue={filters.project ?? ""}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <label className="text-sm font-medium">
+      <label className="form-label col-6 col-md-4 col-xl mb-0">
         Kind
-        <select name="kind" defaultValue={filters.kind ?? ""} className={fieldClass}>
+        <select name="kind" defaultValue={filters.kind ?? ""} className="form-select mt-1">
           <option value="">Any</option>
           {changeKinds.map((kind: ChangeKind) => (
             <option key={kind} value={kind}>
@@ -98,27 +104,27 @@ function Filters({ filters }: { filters: ChangeFilters }) {
           ))}
         </select>
       </label>
-      <label className="text-sm font-medium">
+      <label className="form-label col-6 col-md-4 col-xl mb-0">
         From (UTC)
         <input
           name="from"
           type="datetime-local"
           defaultValue={filters.from ? toLocal(filters.from) : ""}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <label className="text-sm font-medium">
+      <label className="form-label col-6 col-md-4 col-xl mb-0">
         Before (UTC)
         <input
           name="to"
           type="datetime-local"
           defaultValue={filters.to ? toLocal(filters.to) : ""}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <label className="text-sm font-medium">
+      <label className="form-label col-6 col-md-4 col-xl mb-0">
         Status
-        <select name="outcome" defaultValue={filters.outcome ?? ""} className={fieldClass}>
+        <select name="outcome" defaultValue={filters.outcome ?? ""} className="form-select mt-1">
           <option value="">Any</option>
           {changeOutcomes.map((outcome) => (
             <option key={outcome} value={outcome}>
@@ -127,12 +133,12 @@ function Filters({ filters }: { filters: ChangeFilters }) {
           ))}
         </select>
       </label>
-      <div className="flex gap-2 sm:col-span-2 lg:col-span-5">
-        <button type="submit" className={buttonClass}>
+      <div className="col-12 btn-list">
+        <button type="submit" className="btn">
           Apply filters
         </button>
         {hasChangeFilters(filters) && (
-          <Link to={CHANGES} className={secondaryClass}>
+          <Link to={CHANGES} className="btn btn-ghost-secondary">
             Clear
           </Link>
         )}
@@ -141,59 +147,76 @@ function Filters({ filters }: { filters: ChangeFilters }) {
   );
 }
 
-function ChangeRow({ change }: { change: Change }) {
-  return (
-    <tr>
-      <td className={cell}>
-        <Link to={projectHref(change.project.gitlab_id)} className={linkClass}>
-          {change.project.path}
-        </Link>
-      </td>
-      <th scope="row" className={`${cell} font-normal`}>
-        <Link to={changeHref(change.id)} className={`${linkClass} font-medium`}>
+const columns: readonly Column<Change>[] = [
+  {
+    key: "project",
+    header: "Project",
+    render: (change) => (
+      <Link to={projectHref(change.project.gitlab_id)} className="text-break">
+        {change.project.path}
+      </Link>
+    ),
+    priority: 2,
+  },
+  {
+    key: "change",
+    header: "Change",
+    rowHeader: true,
+    render: (change) => (
+      <>
+        <Link to={changeHref(change.id)} className="fw-medium">
           {changeName(change)}
         </Link>
-        <span className="block text-xs text-slate-600">{kindLabels[change.kind]}</span>
+        <span className="d-block small text-secondary">{kindLabels[change.kind]}</span>
         {change.complete === false && (
-          <span className="block text-xs text-amber-900">Partly read; it will be read again</span>
+          <span className="d-block small text-warning-emphasis">
+            Partly read; it will be read again
+          </span>
         )}
-      </th>
-      <td className={cell}>{change.author ?? "Unknown"}</td>
-      <td className={`${cell} whitespace-nowrap`}>{formatTime(change.changed_at)}</td>
-      <td className={cell}>
-        <PartText part={approvalsPart(change.approvals)} />
-      </td>
-      <td className={cell}>
-        <PartText part={pipelinePart(change.pipeline)} />
-      </td>
-      <td className={cell}>
-        <PartText part={deploymentPart(change.deployments)} />
-      </td>
-      <td className={cell}>
-        <span
-          className={`rounded px-2 py-0.5 text-xs font-medium ${outcomeClass[change.outcome] ?? ""}`}
-        >
+      </>
+    ),
+  },
+  { key: "author", header: "Author", render: (change) => change.author ?? "Unknown", priority: 3 },
+  {
+    key: "when",
+    header: "Merged or pushed",
+    render: (change) => <span className="text-nowrap">{formatTime(change.changed_at)}</span>,
+    priority: 2,
+  },
+  {
+    key: "approvals",
+    header: "Approvals",
+    render: (change) => <PartText part={approvalsPart(change.approvals)} />,
+    priority: 3,
+  },
+  {
+    key: "pipeline",
+    header: "Pipeline and tests",
+    render: (change) => <PartText part={pipelinePart(change.pipeline)} />,
+    priority: 3,
+  },
+  {
+    key: "deployment",
+    header: "Deployment",
+    render: (change) => <PartText part={deploymentPart(change.deployments)} />,
+    priority: 3,
+  },
+  {
+    key: "status",
+    header: "Status",
+    render: (change) => (
+      <>
+        <Badge tone={outcomeTone[change.outcome] ?? "secondary"} icon={outcomeIcon[change.outcome]}>
           {changeOutcomeLabels[change.outcome] ?? change.outcome}
-        </span>
+        </Badge>
         {change.reasons.map((reason) => (
-          <span key={reason} className="mt-1 block text-xs text-slate-700">
+          <span key={reason} className="d-block small text-secondary mt-1">
             {reason}
           </span>
         ))}
-      </td>
-    </tr>
-  );
-}
-
-const headers = [
-  "Project",
-  "Change",
-  "Author",
-  "Merged or pushed",
-  "Approvals",
-  "Pipeline and tests",
-  "Deployment",
-  "Status",
+      </>
+    ),
+  },
 ];
 
 function Listing({ filters }: { filters: ChangeFilters }) {
@@ -207,64 +230,53 @@ function Listing({ filters }: { filters: ChangeFilters }) {
     (before) => listChanges(filters, before, asOf),
   );
 
-  if (first.error) return <ErrorMessage error={first.error} retry={first.retry} />;
-  if (first.loading) {
+  if (first.error) {
     return (
-      <p role="status" className="text-slate-600">
-        Loading changes…
-      </p>
+      <div className="card-body">
+        <ErrorMessage error={first.error} retry={first.retry} />
+      </div>
     );
   }
-  const more = paged.next !== null ? " (more available)" : "";
+  if (first.loading) {
+    return (
+      <div className="card-body">
+        <Loading label="Loading changes…" />
+      </div>
+    );
+  }
   return (
-    <div className="space-y-3">
-      <AsOfResult answer={first.data} />
+    <>
+      <div className="card-body pb-0">
+        <AsOfResult answer={first.data} />
+      </div>
       {paged.items.length === 0 ? (
-        <p className="rounded border border-dashed border-slate-300 p-4 text-sm text-slate-600">
-          {hasChangeFilters(filters)
-            ? "No changes match these filters."
-            : "No changes recorded yet. Changes are read from each monitored project's default branch, from the first collection back over the configured lookback."}
-        </p>
+        <EmptyState
+          title={
+            hasChangeFilters(filters)
+              ? "No changes match these filters."
+              : "No changes recorded yet. Changes are read from each monitored project's default branch, from the first collection back over the configured lookback."
+          }
+        />
       ) : (
-        <>
-          <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-            <table className="w-full text-left text-sm">
-              <caption className="sr-only">Changes, newest first</caption>
-              <thead className="border-b border-slate-200 bg-slate-50">
-                <tr>
-                  {headers.map((header) => (
-                    <th key={header} scope="col" className={`${cell} font-medium`}>
-                      {header}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {paged.items.map((change) => (
-                  <ChangeRow key={change.id} change={change} />
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="text-sm text-slate-600" aria-live="polite">
-            {`Showing ${String(paged.items.length)} changes${more}.`}
-          </p>
-        </>
+        <ResponsiveTable
+          caption="Changes, newest first"
+          columns={columns}
+          rows={paged.items}
+          rowKey={(change) => change.id}
+        />
       )}
-      {paged.moreError && (
-        <ErrorMessage error={paged.moreError} retry={() => void paged.loadMore()} />
-      )}
-      {paged.next !== null && (
-        <button
-          type="button"
-          onClick={() => void paged.loadMore()}
-          disabled={paged.pending}
-          className={secondaryClass}
-        >
-          {paged.pending ? "Loading…" : "Load older changes"}
-        </button>
-      )}
-    </div>
+      {paged.items.length > 0 || paged.next !== null ? (
+        <ListFooter
+          noun="changes"
+          shown={paged.items.length}
+          hasMore={paged.next !== null}
+          pending={paged.pending}
+          error={paged.moreError}
+          onMore={() => void paged.loadMore()}
+          moreLabel="Load older changes"
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -272,19 +284,16 @@ export function ChangesPage() {
   const [params] = useSearchParams();
   const filters = readChangeFilters(params);
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
-      <div>
-        <h1 id="page-title" className="text-2xl font-semibold">
-          Changes
-        </h1>
-        <p className="mt-2 max-w-3xl text-slate-600">
-          Merge requests merged into each monitored project’s default branch, and commits pushed to
-          it directly, with who approved them, their pipeline and tests, and where they were
-          deployed. Anything that could not be read is unknown, never counted as reviewed or passed.
-        </p>
+    <section aria-labelledby="page-title">
+      <PageHeader
+        pretitle="Observe"
+        title="Changes"
+        subtitle="Merge requests merged into each monitored project’s default branch, and commits pushed to it directly, with who approved them, their pipeline and tests, and where they were deployed. Anything that could not be read is unknown, never counted as reviewed or passed."
+      />
+      <div className="card">
+        <Filters filters={filters} />
+        <Listing filters={filters} />
       </div>
-      <Filters filters={filters} />
-      <Listing filters={filters} />
     </section>
   );
 }
