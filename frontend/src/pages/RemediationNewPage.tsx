@@ -13,12 +13,13 @@ import {
   type SkippedFinding,
 } from "../api/remediation";
 import { useAuth } from "../auth/context";
-import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
+import { PastReadOnly } from "../asof/PastReadOnly";
 import { DryRunNotice } from "../remediation/DryRunNotice";
 import { SkippedTable } from "../remediation/SkippedTable";
 import { hasPermission, parseFindingIds, readPlanScope } from "../remediation/format";
+import { CapabilityGate } from "../ui/CapabilityGate";
+import { PageHeader } from "../ui/PageHeader";
 
-const errorClass = "rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900";
 const MAX_NAME = 63;
 
 interface Failure {
@@ -112,90 +113,94 @@ function PlanForm({ csrfToken }: { csrfToken: string }) {
       onSubmit={(event) => void submit(event)}
       aria-labelledby="plan-form"
       noValidate
-      className="space-y-4 rounded border border-slate-200 bg-white p-4"
+      className="card"
     >
-      <h2 id="plan-form" className="text-lg font-semibold">
-        Scope
-      </h2>
-      <p className="text-sm text-slate-600">
-        {`Give finding IDs, or filters that select every open finding they match. A plan covers at most ${String(MAX_PLAN_STEPS)} findings; a larger scope is refused. Only open findings whose latest result is a failure backed by current evidence become steps; the rest are listed as skipped with the reason.`}
-      </p>
-      {failure && (
-        <div ref={alert} role="alert" tabIndex={-1} className={errorClass}>
-          <ul className="list-disc space-y-1 pl-5">
-            {failure.messages.map((message) => (
-              <li key={message}>{message}</li>
-            ))}
-          </ul>
-          {failure.skipped.length > 0 && (
-            <div className="mt-3">
-              <p>Why each finding in scope was skipped:</p>
-              <SkippedTable skipped={failure.skipped} caption="Findings that cannot be planned" />
-            </div>
-          )}
-        </div>
-      )}
-      <label className="block text-sm font-medium">
-        Finding IDs
-        <input
-          name="findings"
-          defaultValue={(initial.finding_ids ?? []).join(", ")}
-          aria-describedby="findings-help"
-          className={fieldClass}
-        />
-        <span id="findings-help" className="mt-1 block font-normal text-slate-600">
-          Separated by commas or spaces. Leave empty to use the filters below.
-        </span>
-      </label>
-      <fieldset className="grid gap-3 sm:grid-cols-3">
-        <legend className="mb-2 text-sm font-medium">Or filters</legend>
-        <label className="text-sm font-medium">
-          Project GitLab ID
+      <div className="card-header">
+        <h2 id="plan-form" className="card-title">
+          Scope
+        </h2>
+      </div>
+      <div className="card-body">
+        <p className="text-secondary">
+          {`Give finding IDs, or filters that select every open finding they match. A plan covers at most ${String(MAX_PLAN_STEPS)} findings; a larger scope is refused. Only open findings whose latest result is a failure backed by current evidence become steps; the rest are listed as skipped with the reason.`}
+        </p>
+        {failure && (
+          <div ref={alert} role="alert" tabIndex={-1} className="alert alert-danger text-body">
+            <ul className="mb-0 ps-3">
+              {failure.messages.map((message) => (
+                <li key={message}>{message}</li>
+              ))}
+            </ul>
+            {failure.skipped.length > 0 && (
+              <div className="mt-3">
+                <p className="mb-2">Why each finding in scope was skipped:</p>
+                <SkippedTable skipped={failure.skipped} caption="Findings that cannot be planned" />
+              </div>
+            )}
+          </div>
+        )}
+        <label className="form-label w-100 mb-3">
+          Finding IDs
           <input
-            name="project"
-            inputMode="numeric"
-            defaultValue={initial.project_gitlab_id ?? ""}
-            className={fieldClass}
+            name="findings"
+            defaultValue={(initial.finding_ids ?? []).join(", ")}
+            aria-describedby="findings-help"
+            className="form-control mt-1"
+          />
+          <span id="findings-help" className="form-hint fw-normal">
+            Separated by commas or spaces. Leave empty to use the filters below.
+          </span>
+        </label>
+        <fieldset className="row g-2 mb-3">
+          <legend className="form-label col-12 mb-0">Or filters</legend>
+          <label className="form-label col-sm-4 mb-0">
+            Project GitLab ID
+            <input
+              name="project"
+              inputMode="numeric"
+              defaultValue={initial.project_gitlab_id ?? ""}
+              className="form-control mt-1"
+            />
+          </label>
+          <label className="form-label col-sm-4 mb-0">
+            Policy name
+            <input
+              name="policy"
+              defaultValue={initial.policy ?? ""}
+              maxLength={MAX_NAME}
+              className="form-control mt-1"
+            />
+          </label>
+          <label className="form-label col-sm-4 mb-0">
+            Rule ID
+            <input
+              name="rule"
+              defaultValue={initial.rule ?? ""}
+              maxLength={MAX_NAME}
+              className="form-control mt-1"
+            />
+          </label>
+        </fieldset>
+        <label className="form-label d-block col-sm-4 mb-0">
+          Expires after (hours)
+          <input
+            name="hours"
+            type="number"
+            min={1}
+            max={MAX_PLAN_HOURS}
+            step={1}
+            defaultValue={DEFAULT_PLAN_HOURS}
+            className="form-control mt-1"
           />
         </label>
-        <label className="text-sm font-medium">
-          Policy name
-          <input
-            name="policy"
-            defaultValue={initial.policy ?? ""}
-            maxLength={MAX_NAME}
-            className={fieldClass}
-          />
-        </label>
-        <label className="text-sm font-medium">
-          Rule ID
-          <input
-            name="rule"
-            defaultValue={initial.rule ?? ""}
-            maxLength={MAX_NAME}
-            className={fieldClass}
-          />
-        </label>
-      </fieldset>
-      <label className="block text-sm font-medium sm:w-1/3">
-        Expires after (hours)
-        <input
-          name="hours"
-          type="number"
-          min={1}
-          max={MAX_PLAN_HOURS}
-          step={1}
-          defaultValue={DEFAULT_PLAN_HOURS}
-          className={fieldClass}
-        />
-      </label>
-      <div className="flex gap-2">
-        <button type="submit" disabled={sending} className={buttonClass}>
-          {sending ? "Building…" : "Build dry-run plan"}
-        </button>
-        <Link to="/remediation" className={secondaryClass}>
+      </div>
+      <div className="card-footer btn-list justify-content-end">
+        <Link to="/remediation" className="btn">
           Cancel
         </Link>
+        <button type="submit" disabled={sending} className="btn btn-primary">
+          {sending ? "Building…" : "Build dry-run plan"}
+        </button>
       </div>
     </form>
   );
@@ -206,27 +211,19 @@ export function RemediationNewPage() {
   const user = session.status === "signed_in" ? session.user : null;
 
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
-      <div>
-        <p className="text-sm">
-          <Link to="/remediation" className={linkClass}>
-            All remediation plans
-          </Link>
-        </p>
-        <h1 id="page-title" className="mt-2 text-2xl font-semibold">
-          Create a dry-run plan
-        </h1>
-        <p className="mt-2 text-slate-600">
-          The plan is built from stored evidence and starts as a draft. You submit it, and someone
-          else approves or rejects it. Plans are built only while the projects collection is
-          current.
-        </p>
-      </div>
+    <section aria-labelledby="page-title">
+      <PageHeader
+        pretitle={<Link to="/remediation">All remediation plans</Link>}
+        title="Create a dry-run plan"
+        subtitle="The plan is built from stored evidence and starts as a draft. You submit it, and someone else approves or rejects it. Plans are built only while the projects collection is current."
+      />
       <DryRunNotice />
       {user && hasPermission(user, CAN_PLAN) ? (
-        <PlanForm csrfToken={user.csrf_token} />
+        <CapabilityGate capability="write" fallback={<PastReadOnly />}>
+          <PlanForm csrfToken={user.csrf_token} />
+        </CapabilityGate>
       ) : (
-        <p className="rounded border border-slate-200 bg-white p-4 text-sm">
+        <p className="text-secondary">
           Creating plans needs the remediation planning permission, which admins and analysts have.
           You can still read existing plans.
         </p>

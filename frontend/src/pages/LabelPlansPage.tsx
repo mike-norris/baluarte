@@ -17,7 +17,6 @@ import { useAuth } from "../auth/context";
 import { useAsOfState } from "../asof/context";
 import { PastReadOnly } from "../asof/PastReadOnly";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
 import {
   isPlanState,
   LABEL_PLANS,
@@ -28,15 +27,60 @@ import {
 } from "../labels/format";
 import { personText } from "../policies/format";
 import { hasPermission } from "../remediation/format";
+import { planStateTone } from "../plans/format";
 import { formatTime } from "../time";
+import { Badge } from "../ui/Badge";
+import { LARGER_SCREEN } from "../ui/CapabilityGate";
+import { useDeviceClass } from "../ui/device";
+import { EmptyState } from "../ui/EmptyState";
+import { Loading } from "../ui/Loading";
+import { PageHeader } from "../ui/PageHeader";
+import { ResponsiveTable, type Column } from "../ui/ResponsiveTable";
 
-const cell = "px-3 py-2";
-const headers = ["Plan", "State", "Scope", "Steps", "By hand", "Created by", "Created", "Expires"];
+const columns: readonly Column<LabelPlanSummary>[] = [
+  {
+    key: "plan",
+    header: "Plan",
+    rowHeader: true,
+    render: (plan) => (
+      <Link to={labelPlanHref(plan.id)} className="fw-medium">
+        {`Plan ${String(plan.id)}`}
+      </Link>
+    ),
+  },
+  {
+    key: "state",
+    header: "State",
+    render: (plan) => <Badge tone={planStateTone[plan.state]}>{planStateLabels[plan.state]}</Badge>,
+  },
+  {
+    key: "scope",
+    header: "Scope",
+    render: (plan) =>
+      plan.scope.groups.length > 0 ? plan.scope.groups.join(", ") : "Whole taxonomy",
+    priority: 2,
+  },
+  { key: "steps", header: "Steps", render: (plan) => plan.steps, numeric: true },
+  { key: "manual", header: "By hand", render: (plan) => plan.manual, numeric: true, priority: 2 },
+  { key: "by", header: "Created by", render: (plan) => personText(plan.created_by), priority: 3 },
+  {
+    key: "created",
+    header: "Created",
+    render: (plan) => <span className="text-nowrap">{formatTime(plan.created_at)}</span>,
+    priority: 3,
+  },
+  {
+    key: "expires",
+    header: "Expires",
+    render: (plan) => <span className="text-nowrap">{formatTime(plan.expires_at)}</span>,
+  },
+];
 
 /** Build a plan: Baluarte reads the scope's labels again first, so the plan starts current. */
 function CreatePlan() {
   const { session, refresh } = useAuth();
   const { chosen } = useAsOfState();
+  const device = useDeviceClass();
   const navigate = useNavigate();
   const id = useId();
   const [groups, setGroups] = useState("");
@@ -45,12 +89,15 @@ function CreatePlan() {
   const user = session.status === "signed_in" ? session.user : null;
   if (!user || !hasPermission(user, CAN_PLAN)) {
     return (
-      <p className="text-sm text-slate-600">
+      <p className="text-secondary">
         Creating plans needs the remediation planning permission, which admins and analysts have.
       </p>
     );
   }
   if (chosen !== null) return <PastReadOnly />;
+  if (device === "phone") {
+    return <p className="text-secondary">{`Creating a plan: ${LARGER_SCREEN}`}</p>;
+  }
   const csrf = user.csrf_token;
 
   async function create(event: FormEvent<HTMLFormElement>) {
@@ -74,36 +121,42 @@ function CreatePlan() {
     <form
       onSubmit={(event) => void create(event)}
       aria-labelledby={`${id}-title`}
-      className="space-y-3 rounded border border-slate-200 bg-white p-4"
+      className="card mb-3"
     >
-      <h2 id={`${id}-title`} className="text-lg font-semibold">
-        Create a plan
-      </h2>
-      <p className="text-sm text-slate-600">
-        Baluarte reads the labels of the groups and projects in scope from GitLab now (read only),
-        then lists the creates, renames and updates that would fix the drift. Duplicates, misplaced
-        labels and labels not in the taxonomy are listed for you to fix by hand; nothing is ever
-        deleted.
-      </p>
-      <label className="block text-sm font-medium" htmlFor={`${id}-groups`}>
-        Top-level groups (comma-separated; leave empty for the taxonomy's whole scope)
-        <input
-          id={`${id}-groups`}
-          value={groups}
-          onChange={(event) => {
-            setGroups(event.target.value);
-          }}
-          className={fieldClass}
-        />
-      </label>
-      {failure && (
-        <p role="alert" className="text-sm text-red-900">
-          {failure}
+      <div className="card-header">
+        <h2 id={`${id}-title`} className="card-title">
+          Create a plan
+        </h2>
+      </div>
+      <div className="card-body">
+        <p className="text-secondary">
+          Baluarte reads the labels of the groups and projects in scope from GitLab now (read only),
+          then lists the creates, renames and updates that would fix the drift. Duplicates,
+          misplaced labels and labels not in the taxonomy are listed for you to fix by hand; nothing
+          is ever deleted.
         </p>
-      )}
-      <button type="submit" disabled={sending} className={buttonClass}>
-        {sending ? "Reading labels and building the plan…" : "Create a plan"}
-      </button>
+        <label className="form-label" htmlFor={`${id}-groups`}>
+          Top-level groups (comma-separated; leave empty for the taxonomy's whole scope)
+          <input
+            id={`${id}-groups`}
+            value={groups}
+            onChange={(event) => {
+              setGroups(event.target.value);
+            }}
+            className="form-control mt-1"
+          />
+        </label>
+        {failure && (
+          <p role="alert" className="alert alert-danger text-body">
+            {failure}
+          </p>
+        )}
+      </div>
+      <div className="card-footer text-end">
+        <button type="submit" disabled={sending} className="btn btn-primary">
+          {sending ? "Reading labels and building the plan…" : "Create a plan"}
+        </button>
+      </div>
     </form>
   );
 }
@@ -122,11 +175,11 @@ function Filters({ state }: { state: LabelPlanState | undefined }) {
       key={state ?? ""}
       onSubmit={apply}
       aria-label="Filter label plans"
-      className="flex flex-wrap items-end gap-3 rounded border border-slate-200 bg-white p-4"
+      className="card-body border-bottom d-flex flex-wrap align-items-end gap-2"
     >
-      <label className="text-sm font-medium">
+      <label className="form-label mb-0">
         State
-        <select name="state" defaultValue={state ?? ""} className={fieldClass}>
+        <select name="state" defaultValue={state ?? ""} className="form-select mt-1">
           <option value="">Any</option>
           {labelPlanStates.map((item) => (
             <option key={item} value={item}>
@@ -135,11 +188,11 @@ function Filters({ state }: { state: LabelPlanState | undefined }) {
           ))}
         </select>
       </label>
-      <button type="submit" className={buttonClass}>
+      <button type="submit" className="btn">
         Apply filter
       </button>
       {state && (
-        <Link to={LABEL_PLANS} className={secondaryClass}>
+        <Link to={LABEL_PLANS} className="btn btn-ghost-secondary">
           Clear
         </Link>
       )}
@@ -157,75 +210,57 @@ function Listing({ state }: { state: LabelPlanState | undefined }) {
     (after) => listLabelPlans(state, after),
   );
 
-  if (first.error) return <ErrorMessage error={first.error} retry={first.retry} />;
+  if (first.error) {
+    return (
+      <div className="card-body">
+        <ErrorMessage error={first.error} retry={first.retry} />
+      </div>
+    );
+  }
   if (!first.data) {
     return (
-      <p role="status" className="text-slate-600">
-        Loading label plans…
-      </p>
+      <div className="card-body">
+        <Loading label="Loading label plans…" />
+      </div>
     );
   }
   if (paged.items.length === 0) {
     return (
-      <p className="rounded border border-dashed border-slate-300 p-4 text-sm text-slate-600">
-        {state ? "No plans are in this state." : "No label plans have been created."}
-      </p>
+      <EmptyState
+        title={state ? "No plans are in this state." : "No label plans have been created."}
+      />
     );
   }
   const more = paged.next !== null ? " (more available)" : "";
   return (
-    <div className="space-y-3">
-      <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-        <table className="w-full text-left text-sm">
-          <caption className="sr-only">Label plans</caption>
-          <thead className="border-b border-slate-200 bg-slate-50">
-            <tr>
-              {headers.map((header) => (
-                <th key={header} scope="col" className={`${cell} font-medium`}>
-                  {header}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {paged.items.map((plan) => (
-              <tr key={plan.id}>
-                <th scope="row" className={`${cell} font-medium`}>
-                  <Link to={labelPlanHref(plan.id)} className={linkClass}>
-                    {`Plan ${String(plan.id)}`}
-                  </Link>
-                </th>
-                <td className={cell}>{planStateLabels[plan.state]}</td>
-                <td className={cell}>
-                  {plan.scope.groups.length > 0 ? plan.scope.groups.join(", ") : "Whole taxonomy"}
-                </td>
-                <td className={cell}>{plan.steps}</td>
-                <td className={cell}>{plan.manual}</td>
-                <td className={cell}>{personText(plan.created_by)}</td>
-                <td className={`${cell} whitespace-nowrap`}>{formatTime(plan.created_at)}</td>
-                <td className={`${cell} whitespace-nowrap`}>{formatTime(plan.expires_at)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <>
+      <ResponsiveTable
+        caption="Label plans"
+        columns={columns}
+        rows={paged.items}
+        rowKey={(plan) => plan.id}
+      />
+      <div className="card-footer d-flex flex-wrap align-items-center gap-2">
+        <p className="text-secondary mb-0 me-auto" aria-live="polite">
+          {`Showing ${String(paged.items.length)} plans${more}.`}
+        </p>
+        {paged.next !== null && (
+          <button
+            type="button"
+            onClick={() => void paged.loadMore()}
+            disabled={paged.pending}
+            className="btn"
+          >
+            {paged.pending ? "Loading…" : "Load more plans"}
+          </button>
+        )}
       </div>
-      <p className="text-sm text-slate-600" aria-live="polite">
-        {`Showing ${String(paged.items.length)} plans${more}.`}
-      </p>
       {paged.moreError && (
-        <ErrorMessage error={paged.moreError} retry={() => void paged.loadMore()} />
+        <div className="card-body">
+          <ErrorMessage error={paged.moreError} retry={() => void paged.loadMore()} />
+        </div>
       )}
-      {paged.next !== null && (
-        <button
-          type="button"
-          onClick={() => void paged.loadMore()}
-          disabled={paged.pending}
-          className={secondaryClass}
-        >
-          {paged.pending ? "Loading…" : "Load more plans"}
-        </button>
-      )}
-    </div>
+    </>
   );
 }
 
@@ -234,25 +269,17 @@ export function LabelPlansPage() {
   const raw = params.get("state");
   const state = isPlanState(raw) ? raw : undefined;
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
-      <div>
-        <p className="text-sm">
-          <Link to={LABELS} className={linkClass}>
-            Labels
-          </Link>
-        </p>
-        <h1 id="page-title" className="text-2xl font-semibold">
-          Label plans
-        </h1>
-        <p className="mt-2 max-w-3xl text-slate-600">
-          Plans of the label changes that would bring groups and projects in line with the taxonomy.
-          A plan is applied only after approval, with a separate write token, one step at a time,
-          each read back to verify it. Labels are created, renamed or updated, never deleted.
-        </p>
-      </div>
+    <section aria-labelledby="page-title">
+      <PageHeader
+        pretitle={<Link to={LABELS}>Labels</Link>}
+        title="Label plans"
+        subtitle="Plans of the label changes that would bring groups and projects in line with the taxonomy. A plan is applied only after approval, with a separate write token, one step at a time, each read back to verify it. Labels are created, renamed or updated, never deleted."
+      />
       <CreatePlan />
-      <Filters state={state} />
-      <Listing state={state} />
+      <div className="card">
+        <Filters state={state} />
+        <Listing state={state} />
+      </div>
     </section>
   );
 }
