@@ -62,7 +62,12 @@ function IssueLink({ step }: { step: IssuePlanStep }) {
 }
 
 const stepColumns: readonly Column<IssuePlanStep>[] = [
-  { key: "step", header: "Step", render: (step) => <span className="fw-medium">{step.step}</span> },
+  {
+    key: "step",
+    header: "Step",
+    rowHeader: true,
+    render: (step) => <span className="fw-medium">{step.step}</span>,
+  },
   {
     key: "issue",
     header: "Issue",
@@ -120,7 +125,8 @@ const done: Record<PlanAction, string> = {
 
 function send(plan: IssuePlan, user: CurrentUser) {
   return (action: PlanAction, note: string): Promise<IssuePlan> => {
-    if (action === "approve") return approveIssuePlan(plan.id, plan.plan_digest, note, user.csrf_token);
+    if (action === "approve")
+      return approveIssuePlan(plan.id, plan.plan_digest, note, user.csrf_token);
     if (action === "reject") return rejectIssuePlan(plan.id, note, user.csrf_token);
     return issuePlanAction(plan.id, action, user.csrf_token);
   };
@@ -137,7 +143,11 @@ function Detail({
 }) {
   const { session } = useAuth();
   const user = session.status === "signed_in" ? session.user : null;
-  const [changed, setChanged] = useState<{ plan: IssuePlan; action: PlanAction; base: IssuePlan }>();
+  const [changed, setChanged] = useState<{
+    plan: IssuePlan;
+    action: PlanAction;
+    base: IssuePlan;
+  }>();
   const status = useRef<HTMLParagraphElement>(null);
   // An action's response is shown until the next read of the plan arrives.
   const plan = changed && changed.base === initial ? changed.plan : initial;
@@ -166,10 +176,14 @@ function Detail({
 
   const lifecycle = planLifecycle(plan.state);
   const facts: KeyValueItem[] = [
-    { term: "State", value: `${planStateLabels[plan.state]}: ${planStateMeaning[plan.state]}` },
+    {
+      term: "State",
+      value: `${planStateLabels[plan.state]}: ${planStateMeaning[plan.state]}`,
+    },
     {
       term: "Scope",
-      value: plan.scope.groups.length > 0 ? plan.scope.groups.join(", ") : "Every monitored project",
+      value:
+        plan.scope.groups.length > 0 ? plan.scope.groups.join(", ") : "Every monitored project",
     },
     {
       term: "Rules",
@@ -188,7 +202,10 @@ function Detail({
         </>
       ),
     },
-    { term: "Created", value: `${formatTime(plan.created_at)} by ${personText(plan.created_by)}` },
+    {
+      term: "Created",
+      value: `${formatTime(plan.created_at)} by ${personText(plan.created_by)}`,
+    },
     { term: "Expires", value: formatTime(plan.expires_at) },
   ];
   if (plan.submitted_at) facts.push({ term: "Submitted", value: formatTime(plan.submitted_at) });
@@ -210,7 +227,10 @@ function Detail({
     });
   }
   if (plan.apply_started_at) {
-    facts.push({ term: "Applying since", value: formatTime(plan.apply_started_at) });
+    facts.push({
+      term: "Applying since",
+      value: formatTime(plan.apply_started_at),
+    });
   }
   if (plan.finished_at) facts.push({ term: "Finished", value: formatTime(plan.finished_at) });
 
@@ -341,9 +361,7 @@ export function IssuePlanPage() {
         pretitle={<Link to={ISSUE_PLANS}>Closed issue time</Link>}
         title={valid ? `Issue plan ${planId}` : "Issue plan"}
         status={
-          data && (
-            <Badge tone={planStateTone[data.state]}>{planStateLabels[data.state]}</Badge>
-          )
+          data && <Badge tone={planStateTone[data.state]}>{planStateLabels[data.state]}</Badge>
         }
       />
       {body}

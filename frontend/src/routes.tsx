@@ -62,7 +62,7 @@ function OldEditorLink() {
 
 /** Pages already on Tabler; the rest render in the light legacy panel until moved. */
 const TABLER = { tabler: true } as const;
-const onTabler: ReadonlySet<string> = new Set(["/", "/reviews"]);
+const onTabler: ReadonlySet<string> = new Set(["/", "/reviews", "/remediation", "/exceptions"]);
 
 /** Sections that are implemented; the rest render a placeholder. */
 const pages: Partial<Record<string, ReactNode>> = {

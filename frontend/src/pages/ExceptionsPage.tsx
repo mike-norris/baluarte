@@ -6,12 +6,12 @@ import {
   listExceptions,
   type ExceptionFilters,
   type ExceptionPage,
+  type ExceptionState,
   type PolicyException,
 } from "../api/exceptions";
 import { usePaged } from "../api/usePaged";
 import { useLoad } from "../api/useLoad";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
 import {
   exceptionStateLabels,
   readExceptionFilters,
@@ -19,8 +19,19 @@ import {
   writeExceptionFilters,
 } from "../exceptions/format";
 import { formatTime } from "../time";
+import { Badge, type Tone } from "../ui/Badge";
+import { EmptyState } from "../ui/EmptyState";
+import { Loading } from "../ui/Loading";
+import { PageHeader } from "../ui/PageHeader";
+import { ResponsiveTable, type Column } from "../ui/ResponsiveTable";
 
-const cell = "px-3 py-2";
+const stateTone: Record<ExceptionState, Tone> = {
+  requested: "info",
+  approved: "success",
+  rejected: "danger",
+  revoked: "secondary",
+  expired: "secondary",
+};
 
 function Filters({ filters }: { filters: ExceptionFilters }) {
   const [, setParams] = useSearchParams();
@@ -42,11 +53,11 @@ function Filters({ filters }: { filters: ExceptionFilters }) {
       key={writeExceptionFilters(filters).toString()}
       onSubmit={apply}
       aria-label="Filter exceptions"
-      className="grid gap-3 rounded border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4 lg:items-end"
+      className="card-body border-bottom row g-2 align-items-end mx-0"
     >
-      <label className="text-sm font-medium">
+      <label className="form-label col-sm-6 col-lg-3 mb-0">
         State
-        <select name="state" defaultValue={filters.state ?? ""} className={fieldClass}>
+        <select name="state" defaultValue={filters.state ?? ""} className="form-select mt-1">
           <option value="">Any</option>
           {exceptionStates.map((state) => (
             <option key={state} value={state}>
@@ -55,7 +66,7 @@ function Filters({ filters }: { filters: ExceptionFilters }) {
           ))}
         </select>
       </label>
-      <label className="text-sm font-medium">
+      <label className="form-label col-sm-6 col-lg-3 mb-0">
         Project GitLab ID
         <input
           name="project"
@@ -63,33 +74,33 @@ function Filters({ filters }: { filters: ExceptionFilters }) {
           min={1}
           step={1}
           defaultValue={filters.project ?? ""}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <label className="text-sm font-medium">
+      <label className="form-label col-sm-6 col-lg-3 mb-0">
         Policy name
         <input
           name="policy"
           defaultValue={filters.policy ?? ""}
           maxLength={63}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <label className="text-sm font-medium">
+      <label className="form-label col-sm-6 col-lg-3 mb-0">
         Rule ID
         <input
           name="rule"
           defaultValue={filters.rule ?? ""}
           maxLength={63}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <div className="flex gap-2 sm:col-span-2 lg:col-span-4">
-        <button type="submit" className={buttonClass}>
+      <div className="col-12 btn-list">
+        <button type="submit" className="btn">
           Apply filters
         </button>
         {active && (
-          <Link to="/exceptions" className={secondaryClass}>
+          <Link to="/exceptions" className="btn btn-ghost-secondary">
             Clear
           </Link>
         )}
@@ -98,16 +109,45 @@ function Filters({ filters }: { filters: ExceptionFilters }) {
   );
 }
 
-function StateCell({ exception }: { exception: PolicyException }) {
-  return (
-    <td className={cell}>
-      {exceptionStateLabels[exception.state]}
-      {exception.in_force && <span className="ml-1 text-slate-600">(in force)</span>}
-    </td>
-  );
-}
-
-const headers = ["Exception", "Project", "Policy and rule", "State", "Requested by", "Expires"];
+const columns: readonly Column<PolicyException>[] = [
+  {
+    key: "exception",
+    header: "Exception",
+    rowHeader: true,
+    render: (exception) => (
+      <Link to={`/exceptions/${String(exception.id)}`} className="fw-medium">
+        {`Exception ${String(exception.id)}`}
+      </Link>
+    ),
+  },
+  {
+    key: "project",
+    header: "Project",
+    render: (exception) => exception.project.path,
+  },
+  {
+    key: "rule",
+    header: "Policy and rule",
+    render: (exception) => `${exception.policy_name} / ${exception.rule_id}`,
+  },
+  {
+    key: "state",
+    header: "State",
+    render: (exception) => (
+      <>
+        <Badge tone={stateTone[exception.state]}>{exceptionStateLabels[exception.state]}</Badge>
+        {exception.in_force && <span className="ms-1 text-secondary">(in force)</span>}
+      </>
+    ),
+  },
+  { key: "by", header: "Requested by", render: requesterName, priority: 2 },
+  {
+    key: "expires",
+    header: "Expires",
+    render: (exception) => <span className="text-nowrap">{formatTime(exception.expires_at)}</span>,
+    priority: 2,
+  },
+];
 
 function Listing({ filters }: { filters: ExceptionFilters }) {
   const key = writeExceptionFilters(filters).toString();
@@ -119,71 +159,57 @@ function Listing({ filters }: { filters: ExceptionFilters }) {
     (after) => listExceptions(filters, after),
   );
 
-  if (first.error) return <ErrorMessage error={first.error} retry={first.retry} />;
+  if (first.error) {
+    return (
+      <div className="card-body">
+        <ErrorMessage error={first.error} retry={first.retry} />
+      </div>
+    );
+  }
   if (first.loading) {
     return (
-      <p role="status" className="text-slate-600">
-        Loading exceptions…
-      </p>
+      <div className="card-body">
+        <Loading label="Loading exceptions…" />
+      </div>
     );
   }
   if (paged.items.length === 0) {
     return (
-      <p className="rounded border border-dashed border-slate-300 p-4 text-sm text-slate-600">
-        {key ? "No exceptions match these filters." : "No exceptions have been requested."}
-      </p>
+      <EmptyState
+        title={key ? "No exceptions match these filters." : "No exceptions have been requested."}
+      />
     );
   }
   const more = paged.next !== null ? " (more available)" : "";
   return (
-    <div className="space-y-3">
-      <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-        <table className="w-full text-left text-sm">
-          <caption className="sr-only">Policy exceptions</caption>
-          <thead className="border-b border-slate-200 bg-slate-50">
-            <tr>
-              {headers.map((header) => (
-                <th key={header} scope="col" className={`${cell} font-medium`}>
-                  {header}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {paged.items.map((exception) => (
-              <tr key={exception.id}>
-                <th scope="row" className={`${cell} font-medium`}>
-                  <Link to={`/exceptions/${String(exception.id)}`} className={linkClass}>
-                    {`Exception ${String(exception.id)}`}
-                  </Link>
-                </th>
-                <td className={cell}>{exception.project.path}</td>
-                <td className={cell}>{`${exception.policy_name} / ${exception.rule_id}`}</td>
-                <StateCell exception={exception} />
-                <td className={cell}>{requesterName(exception)}</td>
-                <td className={`${cell} whitespace-nowrap`}>{formatTime(exception.expires_at)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <>
+      <ResponsiveTable
+        caption="Policy exceptions"
+        columns={columns}
+        rows={paged.items}
+        rowKey={(exception) => exception.id}
+      />
+      <div className="card-footer d-flex flex-wrap align-items-center gap-2">
+        <p className="text-secondary mb-0 me-auto" aria-live="polite">
+          {`Showing ${String(paged.items.length)} exceptions${more}.`}
+        </p>
+        {paged.next !== null && (
+          <button
+            type="button"
+            onClick={() => void paged.loadMore()}
+            disabled={paged.pending}
+            className="btn"
+          >
+            {paged.pending ? "Loading…" : "Load more exceptions"}
+          </button>
+        )}
       </div>
-      <p className="text-sm text-slate-600" aria-live="polite">
-        {`Showing ${String(paged.items.length)} exceptions${more}.`}
-      </p>
       {paged.moreError && (
-        <ErrorMessage error={paged.moreError} retry={() => void paged.loadMore()} />
+        <div className="card-body">
+          <ErrorMessage error={paged.moreError} retry={() => void paged.loadMore()} />
+        </div>
       )}
-      {paged.next !== null && (
-        <button
-          type="button"
-          onClick={() => void paged.loadMore()}
-          disabled={paged.pending}
-          className={secondaryClass}
-        >
-          {paged.pending ? "Loading…" : "Load more exceptions"}
-        </button>
-      )}
-    </div>
+    </>
   );
 }
 
@@ -192,20 +218,16 @@ export function ExceptionsPage() {
   const filters = readExceptionFilters(params);
 
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
-      <div>
-        <h1 id="page-title" className="text-2xl font-semibold">
-          Exceptions
-        </h1>
-        <p className="mt-2 text-slate-600">
-          Time-limited waivers of one rule for one project. An approved exception records a known
-          failure as excepted, never as passing, and never covers unknown or unsupported results.
-          Someone other than the requester must approve it, and every step is audited. "Expired"
-          includes any exception past its expiry, even before the next evaluation records it.
-        </p>
+    <section aria-labelledby="page-title">
+      <PageHeader
+        pretitle="Act"
+        title="Exceptions"
+        subtitle={`Time-limited waivers of one rule for one project. An approved exception records a known failure as excepted, never as passing, and never covers unknown or unsupported results. Someone other than the requester must approve it, and every step is audited. "Expired" includes any exception past its expiry, even before the next evaluation records it.`}
+      />
+      <div className="card">
+        <Filters filters={filters} />
+        <Listing filters={filters} />
       </div>
-      <Filters filters={filters} />
-      <Listing filters={filters} />
     </section>
   );
 }

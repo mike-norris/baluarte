@@ -65,15 +65,34 @@ function verifiedText(step: LabelPlanStep): string {
 }
 
 const stepColumns: readonly Column<LabelPlanStep>[] = [
-  { key: "step", header: "Step", render: (step) => <span className="fw-medium">{step.step}</span> },
+  {
+    key: "step",
+    header: "Step",
+    rowHeader: true,
+    render: (step) => <span className="fw-medium">{step.step}</span>,
+  },
   {
     key: "where",
     header: "Where",
     render: (step) => <Link to={ownerHref(step.owner)}>{ownerText(step.owner)}</Link>,
   },
-  { key: "change", header: "Change", render: (step) => `${actionLabels[step.action]} ${step.label}` },
-  { key: "before", header: "Before", render: (step) => <Lines lines={valuesText(step.prior)} />, priority: 2 },
-  { key: "after", header: "After", render: (step) => <Lines lines={valuesText(step.intended)} />, priority: 2 },
+  {
+    key: "change",
+    header: "Change",
+    render: (step) => `${actionLabels[step.action]} ${step.label}`,
+  },
+  {
+    key: "before",
+    header: "Before",
+    render: (step) => <Lines lines={valuesText(step.prior)} />,
+    priority: 2,
+  },
+  {
+    key: "after",
+    header: "After",
+    render: (step) => <Lines lines={valuesText(step.intended)} />,
+    priority: 2,
+  },
   {
     key: "result",
     header: "Result",
@@ -118,7 +137,8 @@ const done: Record<PlanAction, string> = {
 
 function send(plan: LabelPlan, user: CurrentUser) {
   return (action: PlanAction, note: string): Promise<LabelPlan> => {
-    if (action === "approve") return approveLabelPlan(plan.id, plan.plan_digest, note, user.csrf_token);
+    if (action === "approve")
+      return approveLabelPlan(plan.id, plan.plan_digest, note, user.csrf_token);
     if (action === "reject") return rejectLabelPlan(plan.id, note, user.csrf_token);
     return planAction(plan.id, action, user.csrf_token);
   };
@@ -135,7 +155,11 @@ function Detail({
 }) {
   const { session } = useAuth();
   const user = session.status === "signed_in" ? session.user : null;
-  const [changed, setChanged] = useState<{ plan: LabelPlan; action: PlanAction; base: LabelPlan }>();
+  const [changed, setChanged] = useState<{
+    plan: LabelPlan;
+    action: PlanAction;
+    base: LabelPlan;
+  }>();
   const status = useRef<HTMLParagraphElement>(null);
   // An action's response is shown until the next read of the plan arrives.
   const plan = changed && changed.base === initial ? changed.plan : initial;
@@ -163,7 +187,10 @@ function Detail({
   const lifecycle = planLifecycle(plan.state);
 
   const facts: KeyValueItem[] = [
-    { term: "State", value: `${planStateLabels[plan.state]}: ${planStateMeaning[plan.state]}` },
+    {
+      term: "State",
+      value: `${planStateLabels[plan.state]}: ${planStateMeaning[plan.state]}`,
+    },
     {
       term: "Scope",
       value:
@@ -186,7 +213,10 @@ function Detail({
         </>
       ),
     },
-    { term: "Created", value: `${formatTime(plan.created_at)} by ${personText(plan.created_by)}` },
+    {
+      term: "Created",
+      value: `${formatTime(plan.created_at)} by ${personText(plan.created_by)}`,
+    },
     { term: "Expires", value: formatTime(plan.expires_at) },
   ];
   if (plan.submitted_at) facts.push({ term: "Submitted", value: formatTime(plan.submitted_at) });
@@ -208,7 +238,10 @@ function Detail({
     });
   }
   if (plan.apply_started_at) {
-    facts.push({ term: "Applying since", value: formatTime(plan.apply_started_at) });
+    facts.push({
+      term: "Applying since",
+      value: formatTime(plan.apply_started_at),
+    });
   }
   if (plan.finished_at) facts.push({ term: "Finished", value: formatTime(plan.finished_at) });
 
@@ -259,9 +292,9 @@ function Detail({
                 Steps
               </h2>
               <p className="text-secondary small mb-0 mt-1">
-                Applied in order. Each step is read back first and skipped when already as
-                intended, and read back again after the write to verify it. The first unexpected
-                result stops the plan.
+                Applied in order. Each step is read back first and skipped when already as intended,
+                and read back again after the write to verify it. The first unexpected result stops
+                the plan.
               </p>
             </div>
             {plan.steps.length === 0 ? (
@@ -339,9 +372,7 @@ export function LabelPlanPage() {
         pretitle={<Link to={LABEL_PLANS}>All label plans</Link>}
         title={valid ? `Label plan ${planId}` : "Label plan"}
         status={
-          data && (
-            <Badge tone={planStateTone[data.state]}>{planStateLabels[data.state]}</Badge>
-          )
+          data && <Badge tone={planStateTone[data.state]}>{planStateLabels[data.state]}</Badge>
         }
       />
       {body}

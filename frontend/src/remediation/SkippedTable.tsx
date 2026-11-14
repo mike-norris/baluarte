@@ -8,13 +8,18 @@ const columns: readonly Column<SkippedFinding>[] = [
   {
     key: "finding",
     header: "Finding",
+    rowHeader: true,
     render: (item) => (
       <Link to={`/findings/${String(item.finding_id)}`} className="fw-medium">
         {`Finding ${String(item.finding_id)}`}
       </Link>
     ),
   },
-  { key: "project", header: "Project", render: (item) => item.project_path ?? "Unknown" },
+  {
+    key: "project",
+    header: "Project",
+    render: (item) => item.project_path ?? "Unknown",
+  },
   {
     key: "rule",
     header: "Policy and rule",

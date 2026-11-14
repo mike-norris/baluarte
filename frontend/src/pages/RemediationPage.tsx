@@ -12,14 +12,75 @@ import {
 import { usePaged } from "../api/usePaged";
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
+import type { CurrentUser } from "../auth/session";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
 import { DryRunNotice } from "../remediation/DryRunNotice";
 import { hasPermission, isPlanState, planStateLabels, userLabel } from "../remediation/format";
 import { formatTime } from "../time";
+import { Badge, type Tone } from "../ui/Badge";
+import { CapabilityGate } from "../ui/CapabilityGate";
+import { EmptyState } from "../ui/EmptyState";
+import { Loading } from "../ui/Loading";
+import { PageHeader } from "../ui/PageHeader";
+import { ResponsiveTable, type Column } from "../ui/ResponsiveTable";
 
-const cell = "px-3 py-2";
-const headers = ["Plan", "State", "Steps", "Skipped", "Created by", "Created", "Expires"];
+const stateTone: Record<PlanState, Tone> = {
+  draft: "secondary",
+  submitted: "info",
+  approved: "primary",
+  rejected: "danger",
+  expired: "secondary",
+};
+
+function columns(user: CurrentUser | null): readonly Column<PlanSummary>[] {
+  return [
+    {
+      key: "plan",
+      header: "Plan",
+      rowHeader: true,
+      render: (plan) => (
+        <Link to={`/remediation/${String(plan.id)}`} className="fw-medium">
+          {`Plan ${String(plan.id)}`}
+        </Link>
+      ),
+    },
+    {
+      key: "state",
+      header: "State",
+      render: (plan) => <Badge tone={stateTone[plan.state]}>{planStateLabels[plan.state]}</Badge>,
+    },
+    {
+      key: "steps",
+      header: "Steps",
+      render: (plan) => plan.steps,
+      numeric: true,
+    },
+    {
+      key: "skipped",
+      header: "Skipped",
+      render: (plan) => plan.skipped,
+      numeric: true,
+      priority: 2,
+    },
+    {
+      key: "by",
+      header: "Created by",
+      render: (plan) => userLabel(plan.created_by_user_id, user),
+      priority: 2,
+    },
+    {
+      key: "created",
+      header: "Created",
+      render: (plan) => <span className="text-nowrap">{formatTime(plan.created_at)}</span>,
+      priority: 3,
+    },
+    {
+      key: "expires",
+      header: "Expires",
+      render: (plan) => <span className="text-nowrap">{formatTime(plan.expires_at)}</span>,
+    },
+  ];
+}
 
 function Filters({ state }: { state: PlanState | undefined }) {
   const [, setParams] = useSearchParams();
@@ -35,11 +96,11 @@ function Filters({ state }: { state: PlanState | undefined }) {
       key={state ?? ""}
       onSubmit={apply}
       aria-label="Filter remediation plans"
-      className="flex flex-wrap items-end gap-3 rounded border border-slate-200 bg-white p-4"
+      className="card-body border-bottom d-flex flex-wrap align-items-end gap-2"
     >
-      <label className="text-sm font-medium">
+      <label className="form-label mb-0">
         State
-        <select name="state" defaultValue={state ?? ""} className={fieldClass}>
+        <select name="state" defaultValue={state ?? ""} className="form-select mt-1">
           <option value="">Any</option>
           {planStates.map((item) => (
             <option key={item} value={item}>
@@ -48,11 +109,11 @@ function Filters({ state }: { state: PlanState | undefined }) {
           ))}
         </select>
       </label>
-      <button type="submit" className={buttonClass}>
+      <button type="submit" className="btn">
         Apply filter
       </button>
       {state && (
-        <Link to="/remediation" className={secondaryClass}>
+        <Link to="/remediation" className="btn btn-ghost-secondary">
           Clear
         </Link>
       )}
@@ -72,72 +133,57 @@ function Listing({ state }: { state: PlanState | undefined }) {
     (after) => listPlans(state, after),
   );
 
-  if (first.error) return <ErrorMessage error={first.error} retry={first.retry} />;
+  if (first.error) {
+    return (
+      <div className="card-body">
+        <ErrorMessage error={first.error} retry={first.retry} />
+      </div>
+    );
+  }
   if (first.loading) {
     return (
-      <p role="status" className="text-slate-600">
-        Loading remediation plans…
-      </p>
+      <div className="card-body">
+        <Loading label="Loading remediation plans…" />
+      </div>
     );
   }
   if (paged.items.length === 0) {
     return (
-      <p className="rounded border border-dashed border-slate-300 p-4 text-sm text-slate-600">
-        {state ? "No plans are in this state." : "No remediation plans have been created."}
-      </p>
+      <EmptyState
+        title={state ? "No plans are in this state." : "No remediation plans have been created."}
+      />
     );
   }
   const more = paged.next !== null ? " (more available)" : "";
   return (
-    <div className="space-y-3">
-      <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-        <table className="w-full text-left text-sm">
-          <caption className="sr-only">Remediation plans</caption>
-          <thead className="border-b border-slate-200 bg-slate-50">
-            <tr>
-              {headers.map((header) => (
-                <th key={header} scope="col" className={`${cell} font-medium`}>
-                  {header}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {paged.items.map((plan) => (
-              <tr key={plan.id}>
-                <th scope="row" className={`${cell} font-medium`}>
-                  <Link to={`/remediation/${String(plan.id)}`} className={linkClass}>
-                    {`Plan ${String(plan.id)}`}
-                  </Link>
-                </th>
-                <td className={cell}>{planStateLabels[plan.state]}</td>
-                <td className={cell}>{plan.steps}</td>
-                <td className={cell}>{plan.skipped}</td>
-                <td className={cell}>{userLabel(plan.created_by_user_id, user)}</td>
-                <td className={`${cell} whitespace-nowrap`}>{formatTime(plan.created_at)}</td>
-                <td className={`${cell} whitespace-nowrap`}>{formatTime(plan.expires_at)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <>
+      <ResponsiveTable
+        caption="Remediation plans"
+        columns={columns(user)}
+        rows={paged.items}
+        rowKey={(plan) => plan.id}
+      />
+      <div className="card-footer d-flex flex-wrap align-items-center gap-2">
+        <p className="text-secondary mb-0 me-auto" aria-live="polite">
+          {`Showing ${String(paged.items.length)} plans${more}.`}
+        </p>
+        {paged.next !== null && (
+          <button
+            type="button"
+            onClick={() => void paged.loadMore()}
+            disabled={paged.pending}
+            className="btn"
+          >
+            {paged.pending ? "Loading…" : "Load more plans"}
+          </button>
+        )}
       </div>
-      <p className="text-sm text-slate-600" aria-live="polite">
-        {`Showing ${String(paged.items.length)} plans${more}.`}
-      </p>
       {paged.moreError && (
-        <ErrorMessage error={paged.moreError} retry={() => void paged.loadMore()} />
+        <div className="card-body">
+          <ErrorMessage error={paged.moreError} retry={() => void paged.loadMore()} />
+        </div>
       )}
-      {paged.next !== null && (
-        <button
-          type="button"
-          onClick={() => void paged.loadMore()}
-          disabled={paged.pending}
-          className={secondaryClass}
-        >
-          {paged.pending ? "Loading…" : "Load more plans"}
-        </button>
-      )}
-    </div>
+    </>
   );
 }
 
@@ -149,31 +195,31 @@ export function RemediationPage() {
   const canPlan = session.status === "signed_in" && hasPermission(session.user, CAN_PLAN);
 
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
-      <div>
-        <h1 id="page-title" className="text-2xl font-semibold">
-          Remediation
-        </h1>
-        <p className="mt-2 text-slate-600">
-          Plans of the GitLab changes that would fix open, failing findings, built from stored
-          evidence. Someone other than a plan's creator must approve it, and every step is audited.
-          "Expired" includes any plan past its expiry.
-        </p>
-      </div>
+    <section aria-labelledby="page-title">
+      <PageHeader
+        pretitle="Act"
+        title="Remediation"
+        subtitle={`Plans of the GitLab changes that would fix open, failing findings, built from stored evidence. Someone other than a plan's creator must approve it, and every step is audited. "Expired" includes any plan past its expiry.`}
+        actions={
+          canPlan && (
+            <CapabilityGate capability="write">
+              <Link to="/remediation/new" className="btn btn-primary">
+                Create a dry-run plan
+              </Link>
+            </CapabilityGate>
+          )
+        }
+      />
       <DryRunNotice />
-      {canPlan ? (
-        <p>
-          <Link to="/remediation/new" className={buttonClass}>
-            Create a dry-run plan
-          </Link>
-        </p>
-      ) : (
-        <p className="text-sm text-slate-600">
+      {!canPlan && (
+        <p className="text-secondary">
           Creating plans needs the remediation planning permission, which admins and analysts have.
         </p>
       )}
-      <Filters state={state} />
-      <Listing state={state} />
+      <div className="card">
+        <Filters state={state} />
+        <Listing state={state} />
+      </div>
     </section>
   );
 }
