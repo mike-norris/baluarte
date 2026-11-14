@@ -1,13 +1,6 @@
-import {
-  IconDots,
-  IconMenu2,
-  IconMoon,
-  IconShieldLock,
-  IconSun,
-  IconX,
-} from "@tabler/icons-react";
+import { IconDots, IconMenu2, IconMoon, IconShieldLock, IconSun, IconX } from "@tabler/icons-react";
 import { useId, useState } from "react";
-import { NavLink, Outlet, useMatches } from "react-router";
+import { NavLink, Outlet } from "react-router";
 
 import { AsOfBanner } from "../asof/AsOfBanner";
 import { AsOfPicker } from "../asof/AsOfPicker";
@@ -74,7 +67,11 @@ function Sidebar({ items }: { items: readonly NavItem[] }) {
             setOpen((value) => !value);
           }}
         >
-          {open ? <IconX size={20} aria-hidden="true" /> : <IconMenu2 size={20} aria-hidden="true" />}
+          {open ? (
+            <IconX size={20} aria-hidden="true" />
+          ) : (
+            <IconMenu2 size={20} aria-hidden="true" />
+          )}
         </button>
         <span className="navbar-brand navbar-brand-autodark">
           <IconShieldLock size={24} className="me-2" aria-hidden="true" />
@@ -208,7 +205,11 @@ function ThemeToggle() {
         setTheme(next);
       }}
     >
-      {theme === "dark" ? <IconSun size={18} aria-hidden="true" /> : <IconMoon size={18} aria-hidden="true" />}
+      {theme === "dark" ? (
+        <IconSun size={18} aria-hidden="true" />
+      ) : (
+        <IconMoon size={18} aria-hidden="true" />
+      )}
     </button>
   );
 }
@@ -227,9 +228,6 @@ function Shell() {
   const user = session.status === "signed_in" ? session.user : null;
   const items = user ? visibleNavItems(user.permissions) : [];
   const phone = device === "phone";
-  const onTabler = useMatches().some(
-    (match) => (match.handle as { tabler?: boolean } | undefined)?.tabler === true,
-  );
 
   return (
     <FreshnessProvider enabled={user !== null}>
@@ -262,14 +260,7 @@ function Shell() {
             {user?.permissions.includes("compliance:read") === true && <ComplianceAlertBanner />}
             <main id="main" tabIndex={-1} className="page-body">
               <div className="container-xl">
-                {onTabler ? (
-                  <Outlet />
-                ) : (
-                  // Pages not yet moved to Tabler keep their light look. Removed with Tailwind.
-                  <div data-bs-theme="light" className="legacy-page">
-                    <Outlet />
-                  </div>
-                )}
+                <Outlet />
               </div>
             </main>
           </div>

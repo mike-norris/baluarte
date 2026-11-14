@@ -4,13 +4,7 @@ import { Link, useSearchParams } from "react-router";
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
-import {
-  canDecide,
-  isMine,
-  kindLabels,
-  loadReviewQueue,
-  type ReviewItem,
-} from "../reviews/queue";
+import { canDecide, isMine, kindLabels, loadReviewQueue, type ReviewItem } from "../reviews/queue";
 import { formatTime } from "../time";
 import { Badge } from "../ui/Badge";
 import { EmptyState } from "../ui/EmptyState";
@@ -63,7 +57,9 @@ export function ReviewsPage() {
   const [params] = useSearchParams();
   const view: View = params.get("view") === "mine" ? "mine" : "waiting";
   const queue = useLoad(`reviews@${String(user?.user_id)}`, (signal) =>
-    user ? loadReviewQueue(user, signal) : Promise.resolve({ items: [], unreadable: [], partial: [] }),
+    user
+      ? loadReviewQueue(user, signal)
+      : Promise.resolve({ items: [], unreadable: [], partial: [] }),
   );
 
   const items =

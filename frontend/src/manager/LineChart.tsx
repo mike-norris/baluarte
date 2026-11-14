@@ -95,16 +95,16 @@ export function LineChart({
   return (
     <figure
       aria-labelledby={`${id}-title`}
-      className="space-y-2 rounded border border-slate-200 bg-white p-3"
+      className="rounded border p-3"
     >
-      <figcaption id={`${id}-title`} className="font-medium">
+      <figcaption id={`${id}-title`} className="fw-medium">
         {title}
       </figcaption>
       <svg
         role="img"
         aria-label={summary}
         viewBox={`0 0 ${String(WIDTH)} ${String(HEIGHT)}`}
-        className="h-auto w-full text-slate-500"
+        className="h-auto w-100 text-secondary"
       >
         {ticks.map((tick) => (
           <g key={tick}>
@@ -174,11 +174,11 @@ export function LineChart({
         })}
       </svg>
       {series.length > 1 && (
-        <ul aria-hidden="true" className="flex flex-wrap gap-4 text-xs text-slate-700">
+        <ul aria-hidden="true" className="d-flex flex-wrap gap-3 small text-secondary">
           {series.map((item, index) => {
             const style = styles[index % styles.length] ?? styles[0];
             return (
-              <li key={item.name} className="flex items-center gap-1.5">
+              <li key={item.name} className="d-flex align-items-center gap-1.5">
                 <svg width="28" height="10" viewBox="0 0 28 10">
                   <line
                     x1={0}
@@ -197,27 +197,27 @@ export function LineChart({
           })}
         </ul>
       )}
-      <details className="text-sm">
-        <summary className="cursor-pointer text-sky-800 underline">{`${title} as a table`}</summary>
+      <details >
+        <summary className="text-primary">{`${title} as a table`}</summary>
         <div className="mt-2 overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <caption className="sr-only">{title}</caption>
-            <thead className="border-b border-slate-200">
+          <table className="table table-vcenter card-table mb-0">
+            <caption className="visually-hidden">{title}</caption>
+            <thead className="border-b">
               <tr>
-                <th scope="col" className="px-2 py-1 font-medium">
+                <th scope="col" className="px-2 py-1 fw-medium">
                   Period ending
                 </th>
                 {series.map((item) => (
-                  <th key={item.name} scope="col" className="px-2 py-1 font-medium">
+                  <th key={item.name} scope="col" className="px-2 py-1 fw-medium">
                     {item.name}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody >
               {labels.map((label, at) => (
                 <tr key={label}>
-                  <th scope="row" className="px-2 py-1 font-normal whitespace-nowrap">
+                  <th scope="row" className="px-2 py-1 fw-normal text-nowrap">
                     {label}
                   </th>
                   {series.map((item) => {

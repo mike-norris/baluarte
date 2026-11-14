@@ -32,7 +32,7 @@ function page<Name extends string>(
   return (
     <Suspense
       fallback={
-        <p role="status" className="text-slate-600">
+        <p role="status" className="text-secondary">
           Loading…
         </p>
       }
@@ -59,21 +59,6 @@ function OldEditorLink() {
   const { search } = useLocation();
   return <Navigate to={`${GOVERNANCE}/baselines/new${search}`} replace />;
 }
-
-/** Pages already on Tabler; the rest render in the light legacy panel until moved. */
-const TABLER = { tabler: true } as const;
-const onTabler: ReadonlySet<string> = new Set([
-  "/",
-  "/reviews",
-  "/remediation",
-  "/exceptions",
-  "/findings",
-  "/changes",
-  "/controls",
-  "/inventory",
-  "/labels",
-  GOVERNANCE,
-]);
 
 /** Sections that are implemented; the rest render a placeholder. */
 const pages: Partial<Record<string, ReactNode>> = {
@@ -110,29 +95,24 @@ export const routes: RouteObject[] = [
         children: [
           ...sectionItems.map((item): RouteObject => ({
             path: item.path,
-            ...(onTabler.has(item.path) ? { handle: TABLER } : {}),
             element: pages[item.path] ?? (
               <PlaceholderPage title={navTitle(item)} description={item.description} />
             ),
           })),
           {
             path: "/inventory/projects/:gitlabId",
-            handle: TABLER,
             element: page(() => import("./pages/InventoryItemPage"), "ProjectPage"),
           },
           {
             path: "/inventory/groups/:gitlabId",
-            handle: TABLER,
             element: page(() => import("./pages/InventoryItemPage"), "GroupPage"),
           },
           {
             path: "/findings/:findingId",
-            handle: TABLER,
             element: page(() => import("./pages/FindingDetailPage"), "FindingDetailPage"),
           },
           {
             path: "/changes/:changeId",
-            handle: TABLER,
             element: page(() => import("./pages/ChangeDetailPage"), "ChangeDetailPage"),
           },
           {
@@ -157,57 +137,46 @@ export const routes: RouteObject[] = [
           },
           {
             path: "/labels/owners/:ownerType/:gitlabId",
-            handle: TABLER,
             element: page(() => import("./pages/LabelOwnerPage"), "LabelOwnerPage"),
           },
           {
             path: "/labels/taxonomy/new",
-            handle: TABLER,
             element: page(() => import("./pages/TaxonomyEditorPage"), "TaxonomyEditorPage"),
           },
           {
             path: "/labels/plans",
-            handle: TABLER,
             element: page(() => import("./pages/LabelPlansPage"), "LabelPlansPage"),
           },
           {
             path: "/labels/plans/:planId",
-            handle: TABLER,
             element: page(() => import("./pages/LabelPlanPage"), "LabelPlanPage"),
           },
           {
             path: "/time/issue-plans",
-            handle: TABLER,
             element: page(() => import("./pages/IssuePlansPage"), "IssuePlansPage"),
           },
           {
             path: "/time/issue-plans/:planId",
-            handle: TABLER,
             element: page(() => import("./pages/IssuePlanPage"), "IssuePlanPage"),
           },
           {
             path: "/controls/:framework/:controlId",
-            handle: TABLER,
             element: page(() => import("./pages/ControlDetailPage"), "ControlDetailPage"),
           },
           {
             path: "/exceptions/:exceptionId",
-            handle: TABLER,
             element: page(() => import("./pages/ExceptionDetailPage"), "ExceptionDetailPage"),
           },
           {
             path: "/remediation/new",
-            handle: TABLER,
             element: page(() => import("./pages/RemediationNewPage"), "RemediationNewPage"),
           },
           {
             path: "/remediation/:planId",
-            handle: TABLER,
             element: page(() => import("./pages/RemediationPlanPage"), "RemediationPlanPage"),
           },
           {
             path: APPLY_VIEW,
-            handle: TABLER,
             element: page(
               () => import("./pages/WhereBaselinesApplyPage"),
               "WhereBaselinesApplyPage",
@@ -215,7 +184,6 @@ export const routes: RouteObject[] = [
           },
           {
             path: SECURITY_POLICIES_VIEW,
-            handle: TABLER,
             element: page(
               () => import("./pages/GitLabSecurityPoliciesPage"),
               "GitLabSecurityPoliciesPage",
@@ -223,7 +191,6 @@ export const routes: RouteObject[] = [
           },
           {
             path: `${SECURITY_POLICIES_VIEW}/coverage`,
-            handle: TABLER,
             element: page(
               () => import("./pages/SecurityPolicyCoveragePage"),
               "SecurityPolicyCoveragePage",
@@ -231,22 +198,18 @@ export const routes: RouteObject[] = [
           },
           {
             path: `${SECURITY_POLICIES_VIEW}/:policyId`,
-            handle: TABLER,
             element: page(() => import("./pages/SecurityPolicyPage"), "SecurityPolicyPage"),
           },
           {
             path: CHANGES_VIEW,
-            handle: TABLER,
             element: page(() => import("./pages/PolicyChangesPage"), "PolicyChangesPage"),
           },
           {
             path: `${GOVERNANCE}/baselines/new`,
-            handle: TABLER,
             element: page(() => import("./pages/BaselineEditorPage"), "BaselineEditorPage"),
           },
           {
             path: `${GOVERNANCE}/baselines/:name`,
-            handle: TABLER,
             element: page(() => import("./pages/BaselinePage"), "BaselinePage"),
           },
           { path: "/policies", element: <Navigate to={GOVERNANCE} replace /> },

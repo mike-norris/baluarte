@@ -126,14 +126,14 @@ describe("review queue", () => {
       },
     );
     renderAt("/reviews");
-    expect(
-      await screen.findByRole("link", { name: "Label plan 4: 12 steps" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: "Label plan 4: 12 steps" })).toBeInTheDocument();
   });
 
   it("says which lists could not be read rather than hiding the gap", async () => {
     serve(reviewer, empty, ["/api/v1/exceptions"]);
     renderAt("/reviews");
-    expect(await screen.findByText(/Items of these kinds may be missing: exception\./)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Items of these kinds may be missing: exception\./),
+    ).toBeInTheDocument();
   });
 });

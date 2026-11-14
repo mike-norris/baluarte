@@ -55,10 +55,7 @@ function EvaluationStatus() {
       className={`card card-body mb-3 border-${freshnessColor[signal.status]}`}
     >
       <h2 id="evaluation-status" className="card-title d-flex align-items-center gap-2 mb-1">
-        <span
-          className={`status-dot status-${freshnessColor[signal.status]}`}
-          aria-hidden="true"
-        />
+        <span className={`status-dot status-${freshnessColor[signal.status]}`} aria-hidden="true" />
         {`Evaluation status: ${statusLabel("evaluation", signal.status)}`}
       </h2>
       {freshness.evaluationError ? (
@@ -159,13 +156,9 @@ function RuleResults({ run, newest }: { run: EvaluationRun | null; newest: Evalu
       {total === 0 ? (
         <p className="card-body mb-0">
           {"The run produced no rule results: no baseline applies to any project. "}
-          <Link to={APPLY_VIEW}>
-            See where baselines apply
-          </Link>
+          <Link to={APPLY_VIEW}>See where baselines apply</Link>
           {", or open a project or group from the "}
-          <Link to="/inventory">
-            inventory
-          </Link>
+          <Link to="/inventory">inventory</Link>
           {" to see what reaches it."}
         </p>
       ) : (
@@ -179,15 +172,9 @@ function RuleResults({ run, newest }: { run: EvaluationRun | null; newest: Evalu
         <caption className="visually-hidden">Rule results by outcome</caption>
         <thead>
           <tr>
-            <th scope="col">
-              Outcome
-            </th>
-            <th scope="col">
-              Results
-            </th>
-            <th scope="col">
-              Meaning
-            </th>
+            <th scope="col">Outcome</th>
+            <th scope="col">Results</th>
+            <th scope="col">Meaning</th>
           </tr>
         </thead>
         <tbody>
@@ -248,7 +235,7 @@ function OpenFindings({ items, truncated }: { items: Finding[]; truncated: boole
       {undecided > 0 && (
         <p className="card-body pt-0 mb-0">
           {`${prefix}${String(undecided)} of them could not be re-checked: their latest result is unknown or unsupported, so they stay open. `}
-          <Link to={findingsHref({ state: "open", outcome: "unknown" })} >
+          <Link to={findingsHref({ state: "open", outcome: "unknown" })}>
             Open findings with an unknown latest result
           </Link>
         </p>
@@ -257,12 +244,8 @@ function OpenFindings({ items, truncated }: { items: Finding[]; truncated: boole
         <caption className="visually-hidden">Open findings by severity</caption>
         <thead>
           <tr>
-            <th scope="col">
-              Severity
-            </th>
-            <th scope="col">
-              Open findings
-            </th>
+            <th scope="col">Severity</th>
+            <th scope="col">Open findings</th>
           </tr>
         </thead>
         <tbody>
@@ -282,7 +265,7 @@ function OpenFindings({ items, truncated }: { items: Finding[]; truncated: boole
                       to={findingsHref(
                         isSeverity(severity) ? { state: "open", severity } : { state: "open" },
                       )}
-                      
+
                       aria-label={`${prefix}${String(count)} open ${label.toLowerCase()} findings`}
                     >
                       {`${prefix}${String(count)}`}
@@ -298,15 +281,9 @@ function OpenFindings({ items, truncated }: { items: Finding[]; truncated: boole
         <caption className="visually-hidden">Open findings by rule</caption>
         <thead>
           <tr>
-            <th scope="col">
-              Policy
-            </th>
-            <th scope="col">
-              Rule
-            </th>
-            <th scope="col">
-              Open findings
-            </th>
+            <th scope="col">Policy</th>
+            <th scope="col">Rule</th>
+            <th scope="col">Open findings</th>
           </tr>
         </thead>
         <tbody>
@@ -319,7 +296,7 @@ function OpenFindings({ items, truncated }: { items: Finding[]; truncated: boole
               <td>
                 <Link
                   to={findingsHref({ state: "open", policy, rule })}
-                  
+
                   aria-label={`${prefix}${String(count)} open findings for ${policy} ${rule}`}
                 >
                   {`${prefix}${String(count)}`}
@@ -355,7 +332,9 @@ function Figures({
         <KpiCard
           label="Rule results passed"
           value={run && total > 0 ? percent(passed, total) : "—"}
-          footnote={run && total > 0 ? `${String(passed)} of ${String(total)} results` : "No results yet"}
+          footnote={
+            run && total > 0 ? `${String(passed)} of ${String(total)} results` : "No results yet"
+          }
         />
       </div>
       <div className="col-6 col-lg-3">

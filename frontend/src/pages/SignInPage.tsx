@@ -25,25 +25,26 @@ export function SignInPage() {
   }
 
   return (
-    <section aria-labelledby="page-title">
-      <h1 id="page-title" className="text-2xl font-semibold">
-        Sign in to Baluarte
-      </h1>
-      {code && (
-        <p role="alert" className="mt-4 rounded border border-red-200 bg-red-50 p-4 text-red-800">
-          {signInErrors[code] ?? fallbackError}
-        </p>
-      )}
-      {session.status === "not_configured" ? (
-        <p className="mt-4 text-slate-600">Sign-in is not configured.</p>
-      ) : (
-        <a
-          href={signInHref("/")}
-          className="mt-6 inline-block rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
-        >
-          Sign in
-        </a>
-      )}
+    <section aria-labelledby="page-title" className="container container-tight py-4">
+      <div className="card card-md">
+        <div className="card-body">
+          <h1 id="page-title" className="h2 text-center mb-3">
+            Sign in to Baluarte
+          </h1>
+          {code && (
+            <p role="alert" className="alert alert-danger text-body mt-3">
+              {signInErrors[code] ?? fallbackError}
+            </p>
+          )}
+          {session.status === "not_configured" ? (
+            <p className="mt-3 text-secondary">Sign-in is not configured.</p>
+          ) : (
+            <a href={signInHref("/")} className="btn btn-primary w-100 mt-3">
+              Sign in
+            </a>
+          )}
+        </div>
+      </div>
     </section>
   );
 }

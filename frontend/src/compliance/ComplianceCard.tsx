@@ -5,7 +5,7 @@ import { getProfile, PROFILE, type Profile, type Violation } from "../api/compli
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, linkClass, secondaryClass } from "../components/styles";
+import { linkClass } from "../components/styles";
 import { cardClass, Values } from "../settings/parts";
 import { formatTime } from "../time";
 import { ComplianceForm } from "./ComplianceForm";
@@ -36,7 +36,7 @@ export function ComplianceCard({ csrf }: { csrf: string }) {
     body = <ErrorMessage error={loaded.error} retry={loaded.retry} />;
   } else if (loaded.loading || loaded.data === undefined) {
     body = (
-      <p role="status" className="text-sm text-slate-600">
+      <p role="status" className="text-secondary">
         Loading the compliance profile…
       </p>
     );
@@ -68,10 +68,10 @@ export function ComplianceCard({ csrf }: { csrf: string }) {
                 onClick={() => {
                   setRequesting(violation);
                 }}
-                className={secondaryClass}
+                className="btn"
               >
                 Request an exception
-                <span className="sr-only"> for {settingInfo[violation.setting].label}</span>
+                <span className="visually-hidden"> for {settingInfo[violation.setting].label}</span>
               </button>
             )
           }
@@ -123,19 +123,19 @@ export function ComplianceCard({ csrf }: { csrf: string }) {
             ]}
           />
         ) : (
-          <p role="alert" className="text-sm text-amber-950">
+          <p role="alert" className="text-warning-emphasis">
             No compliance profile has been chosen. Choose the frameworks Baluarte must meet so its
             retention, sessions and change review follow them.
           </p>
         )}
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="d-flex flex-wrap align-items-center gap-3">
           <button
             type="button"
             onClick={() => {
               setMessage(null);
               setEditing(true);
             }}
-            className={buttonClass}
+            className="btn btn-primary"
           >
             {profile.configured ? "Edit profile" : "Choose a profile"}
           </button>
@@ -149,14 +149,14 @@ export function ComplianceCard({ csrf }: { csrf: string }) {
 
   return (
     <section id="compliance" aria-labelledby="compliance-heading" className={cardClass}>
-      <h2 id="compliance-heading" className="text-lg font-semibold">
+      <h2 id="compliance-heading" className="card-title">
         Compliance profile
       </h2>
-      <p className="text-sm text-slate-600">
+      <p className="text-secondary">
         The frameworks Baluarte itself must meet, and the retention, session and review settings
         they require. Every change is audited and appears in evidence exports.
       </p>
-      <p role="status" className="text-sm text-emerald-800">
+      <p role="status" className="text-success-emphasis">
         {message ?? ""}
       </p>
       {body}

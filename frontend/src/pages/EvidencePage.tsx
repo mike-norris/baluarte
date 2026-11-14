@@ -6,7 +6,6 @@ import { frameworkIds } from "../api/controls";
 import { outcomes, type FindingState, type Outcome } from "../api/evaluations";
 import { downloadExport, saveDownload } from "../api/exports";
 import { useAuth } from "../auth/context";
-import { buttonClass, fieldClass, secondaryClass } from "../components/styles";
 import {
   findingStates,
   readExportForm,
@@ -20,6 +19,9 @@ import { findingStateLabels, outcomeLabels } from "../findings/format";
 import { PACKAGE_PERMISSION } from "../api/packages";
 import { PackageForm } from "../evidence/PackageForm";
 import { CollectionNote } from "../freshness/CollectionNote";
+import { PageHeader } from "../ui/PageHeader";
+import { useDeviceClass } from "../ui/device";
+import { EmptyState } from "../ui/EmptyState";
 
 export const EXPORT_PERMISSION = "evidence:export";
 
@@ -30,7 +32,7 @@ type Download =
   | { status: "cancelled" }
   | { status: "failed"; error: ApiError };
 
-const code = "rounded bg-slate-100 px-1 py-0.5 font-mono text-xs";
+const code = "";
 
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${String(bytes)} bytes`;
@@ -64,9 +66,9 @@ function formValues(form: FormData): ExportForm {
 function ScopeFields({ initial, disabled }: { initial: ExportForm; disabled: boolean }) {
   return (
     <fieldset disabled={disabled} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-      <legend className="sr-only">Scope</legend>
+      <legend className="visually-hidden">Scope</legend>
       <div>
-        <label className="text-sm font-medium">
+        <label className="fw-medium">
           Group path
           <input
             name="group"
@@ -74,15 +76,15 @@ function ScopeFields({ initial, disabled }: { initial: ExportForm; disabled: boo
             maxLength={255}
             placeholder="platform/backend"
             aria-describedby="group-help"
-            className={fieldClass}
+            className="form-control mt-1"
           />
         </label>
-        <p id="group-help" className="mt-1 text-xs text-slate-600">
+        <p id="group-help" className="mt-1 small text-secondary">
           Projects in this group and all its subgroups.
         </p>
       </div>
       <div>
-        <label className="text-sm font-medium">
+        <label className="fw-medium">
           Project GitLab IDs
           <input
             name="projects"
@@ -90,24 +92,34 @@ function ScopeFields({ initial, disabled }: { initial: ExportForm; disabled: boo
             inputMode="numeric"
             placeholder="105, 230"
             aria-describedby="projects-help"
-            className={fieldClass}
+            className="form-control mt-1"
           />
         </label>
-        <p id="projects-help" className="mt-1 text-xs text-slate-600">
+        <p id="projects-help" className="mt-1 small text-secondary">
           Separated by commas; at most 500.
         </p>
       </div>
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         Policy name
-        <input name="policy" defaultValue={initial.policy} maxLength={63} className={fieldClass} />
+        <input
+          name="policy"
+          defaultValue={initial.policy}
+          maxLength={63}
+          className="form-control mt-1"
+        />
       </label>
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         Rule ID
-        <input name="rule" defaultValue={initial.rule} maxLength={63} className={fieldClass} />
+        <input
+          name="rule"
+          defaultValue={initial.rule}
+          maxLength={63}
+          className="form-control mt-1"
+        />
       </label>
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         Outcome
-        <select name="outcome" defaultValue={initial.outcome} className={fieldClass}>
+        <select name="outcome" defaultValue={initial.outcome} className="form-select mt-1">
           <option value="">Any</option>
           {outcomes.map((outcome: Outcome) => (
             <option key={outcome} value={outcome}>
@@ -116,9 +128,13 @@ function ScopeFields({ initial, disabled }: { initial: ExportForm; disabled: boo
           ))}
         </select>
       </label>
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         Finding state
-        <select name="finding_state" defaultValue={initial.findingState} className={fieldClass}>
+        <select
+          name="finding_state"
+          defaultValue={initial.findingState}
+          className="form-select mt-1"
+        >
           <option value="">Any</option>
           {findingStates.map((state: FindingState) => (
             <option key={state} value={state}>
@@ -127,27 +143,27 @@ function ScopeFields({ initial, disabled }: { initial: ExportForm; disabled: boo
           ))}
         </select>
       </label>
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         Evaluated from (UTC)
         <input
           name="since"
           type="datetime-local"
           defaultValue={initial.since}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         Evaluated before (UTC)
         <input
           name="until"
           type="datetime-local"
           defaultValue={initial.until}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         Framework
-        <select name="framework" defaultValue={initial.framework} className={fieldClass}>
+        <select name="framework" defaultValue={initial.framework} className="form-select mt-1">
           <option value="">Any</option>
           {frameworkIds.map((framework) => (
             <option key={framework} value={framework}>
@@ -157,7 +173,7 @@ function ScopeFields({ initial, disabled }: { initial: ExportForm; disabled: boo
         </select>
       </label>
       <div>
-        <label className="text-sm font-medium">
+        <label className="fw-medium">
           Control ID
           <input
             name="control"
@@ -165,10 +181,10 @@ function ScopeFields({ initial, disabled }: { initial: ExportForm; disabled: boo
             maxLength={20}
             placeholder="CC8.1"
             aria-describedby="control-help"
-            className={fieldClass}
+            className="form-control mt-1"
           />
         </label>
-        <p id="control-help" className="mt-1 text-xs text-slate-600">
+        <p id="control-help" className="mt-1 small text-secondary">
           With a framework: findings of the rules mapped to that control.
         </p>
       </div>
@@ -193,12 +209,8 @@ function ExportFormFields({
   }
 
   return (
-    <form
-      onSubmit={submit}
-      aria-label="Export evidence"
-      className="space-y-4 rounded border border-slate-200 bg-white p-4"
-    >
-      <label className="flex items-start gap-2 text-sm font-medium">
+    <form onSubmit={submit} aria-label="Export evidence" className="card card-body mb-3">
+      <label className="d-flex align-items-start gap-2 fw-medium">
         <input
           name="all"
           type="checkbox"
@@ -210,22 +222,22 @@ function ExportFormFields({
         />
         <span>
           Export everything
-          <span className="block text-xs font-normal text-slate-600">
+          <span className="d-block small fw-normal text-secondary">
             Every project, policy and rule. Clears the scope below, which is otherwise required.
           </span>
         </span>
       </label>
       <ScopeFields initial={initial} disabled={all} />
-      <fieldset className="text-sm">
-        <legend className="font-medium">Format</legend>
-        <div className="mt-1 flex flex-wrap gap-4">
+      <fieldset>
+        <legend className="fw-medium">Format</legend>
+        <div className="mt-1 d-flex flex-wrap gap-3">
           {(
             [
               ["json", "JSON (one document)"],
               ["csv", "ZIP of CSV files"],
             ] as [ExportFormat, string][]
           ).map(([value, label]) => (
-            <label key={value} className="flex items-center gap-2">
+            <label key={value} className="d-flex align-items-center gap-2">
               <input
                 type="radio"
                 name="format"
@@ -237,7 +249,7 @@ function ExportFormFields({
           ))}
         </div>
       </fieldset>
-      <button type="submit" disabled={busy} className={buttonClass}>
+      <button type="submit" disabled={busy} className="btn btn-primary">
         Export
       </button>
     </form>
@@ -247,8 +259,8 @@ function ExportFormFields({
 function Verification({ done }: { done: Extract<Download, { status: "done" }> | null }) {
   const file = done?.filename ?? "<file>";
   return (
-    <section aria-labelledby="verify-title" className="space-y-2 text-sm text-slate-700">
-      <h2 id="verify-title" className="text-lg font-semibold text-slate-900">
+    <section aria-labelledby="verify-title" className="text-secondary">
+      <h2 id="verify-title" className="fs-3 fw-semibold">
         Verifying an export
       </h2>
       <p>
@@ -276,7 +288,7 @@ function Verification({ done }: { done: Extract<Download, { status: "done" }> | 
         the database.
       </p>
       <p>Then check the package offline, with no database:</p>
-      <pre className="overflow-x-auto rounded bg-slate-900 p-3 font-mono text-xs text-slate-100">
+      <pre className="small mb-0">
         {`baluarte-verify-export ${file} --manifest-sha256 <manifest_sha256>`}
       </pre>
       <p>
@@ -290,10 +302,10 @@ function Verification({ done }: { done: Extract<Download, { status: "done" }> | 
 function Progress({ download, cancel }: { download: Download; cancel: () => void }) {
   if (download.status === "running") {
     return (
-      <div className="space-y-2 rounded border border-slate-200 bg-white p-4 text-sm">
+      <div className="rounded border p-3">
         <p role="status">Exporting… The file is offered once every byte has arrived.</p>
-        <p className="text-slate-600">{`${formatBytes(download.bytes)} received`}</p>
-        <button type="button" onClick={cancel} className={secondaryClass}>
+        <p className="text-secondary">{`${formatBytes(download.bytes)} received`}</p>
+        <button type="button" onClick={cancel} className="btn">
           Cancel export
         </button>
       </div>
@@ -301,24 +313,21 @@ function Progress({ download, cancel }: { download: Download; cancel: () => void
   }
   if (download.status === "done") {
     return (
-      <p
-        role="status"
-        className="rounded border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900"
-      >
+      <p role="status" className="alert alert-success text-body">
         {`Downloaded ${download.filename} (${formatBytes(download.bytes)}). Verify it before relying on it.`}
       </p>
     );
   }
   if (download.status === "cancelled") {
     return (
-      <p role="status" className="text-sm text-slate-700">
+      <p role="status" className="text-secondary">
         Export cancelled. Nothing was saved.
       </p>
     );
   }
   if (download.status === "failed") {
     return (
-      <p role="alert" className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+      <p role="alert" className="alert alert-danger text-body">
         {download.error.message}
       </p>
     );
@@ -377,7 +386,7 @@ function Exporter({ csrfToken }: { csrfToken: string }) {
   }
 
   return (
-    <div className="space-y-6">
+    <div>
       <ExportFormFields
         key={writeExportParams(readExportForm(params)).toString()}
         initial={readExportForm(params)}
@@ -385,12 +394,9 @@ function Exporter({ csrfToken }: { csrfToken: string }) {
         onSubmit={(form) => void start(form)}
       />
       {errors.length > 0 && (
-        <div
-          role="alert"
-          className="rounded border border-red-200 bg-red-50 p-4 text-sm text-red-900"
-        >
-          <p className="font-medium">The export was not started:</p>
-          <ul className="mt-1 list-disc pl-5">
+        <div role="alert" className="alert alert-danger text-body">
+          <p className="fw-medium">The export was not started:</p>
+          <ul className="mt-1 ps-3">
             {errors.map((error) => (
               <li key={error}>{error}</li>
             ))}
@@ -413,29 +419,31 @@ export function EvidencePage() {
   const user = session.status === "signed_in" ? session.user : null;
   const allowed = user?.permissions.includes(EXPORT_PERMISSION) ?? false;
   const packages = user?.permissions.includes(PACKAGE_PERMISSION) ?? false;
+  // Large downloads and file checks are unreliable on phones, so exports need a larger screen.
+  const phone = useDeviceClass() === "phone";
 
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
+    <section aria-labelledby="page-title">
       <div>
-        <h1 id="page-title" className="text-2xl font-semibold">
-          Evidence
-        </h1>
-        <p className="mt-2 text-slate-600">
-          Export findings, evaluations and the GitLab observations they judged, with collection
-          errors and freshness. Unknown and failed collection state is exported, never dropped.
-        </p>
+        <PageHeader
+          pretitle="Evidence"
+          title="Evidence"
+          subtitle="Export findings, evaluations and the GitLab observations they judged, with collection errors and freshness. Unknown and failed collection state is exported, never dropped."
+        />
       </div>
       <CollectionNote />
-      {user && allowed ? (
+      {phone ? (
+        <EmptyState title="Evidence exports are made on a larger screen." />
+      ) : user && allowed ? (
         <Exporter csrfToken={user.csrf_token} />
       ) : (
-        <p className="rounded border border-slate-200 bg-white p-4 text-sm text-slate-700">
+        <p className="rounded border p-3 text-secondary">
           Exporting evidence needs the <code className={code}>{EXPORT_PERMISSION}</code> permission,
           which the admin and auditor roles have. Exports are bulk copies of inventory and evidence,
           so ask an administrator if you need one.
         </p>
       )}
-      {user && packages && <PackageForm csrfToken={user.csrf_token} />}
+      {user && packages && !phone && <PackageForm csrfToken={user.csrf_token} />}
     </section>
   );
 }

@@ -63,7 +63,10 @@ describe("taxonomy editor", () => {
     await user.type(hex, "#00AA00");
     expect(within(added).getByText("#00aa00")).toBeInTheDocument();
     await user.type(within(added).getByLabelText(/aliases/), "platform, plat");
-    await user.type(screen.getByLabelText("Justification (optional)"), "Teams asked for one label.");
+    await user.type(
+      screen.getByLabelText("Justification (optional)"),
+      "Teams asked for one label.",
+    );
     expect(
       screen.getByText(/Review is required: someone other than you must approve this/),
     ).toBeInTheDocument();
@@ -80,7 +83,9 @@ describe("taxonomy editor", () => {
   });
 
   it("lists the form's problems and sends nothing", async () => {
-    const calls = api(analyst, { [TAXONOMY]: () => json(taxonomyView({ current: null, versions: [] })) });
+    const calls = api(analyst, {
+      [TAXONOMY]: () => json(taxonomyView({ current: null, versions: [] })),
+    });
     const user = userEvent.setup();
     renderAt("/labels/taxonomy/new");
 
@@ -107,7 +112,9 @@ describe("taxonomy editor", () => {
     await user.click(await screen.findByRole("button", { name: "YAML" }));
     const yaml = screen.getByLabelText("Taxonomy YAML");
     // The YAML is written from the form, so it is what the form would propose.
-    expect((yaml as HTMLTextAreaElement).value).toContain('    - name: "type::bug"\n      color: "#1f75cb"');
+    expect((yaml as HTMLTextAreaElement).value).toContain(
+      '    - name: "type::bug"\n      color: "#1f75cb"',
+    );
     await user.click(screen.getByRole("button", { name: "Check the YAML" }));
     expect(await screen.findByText("spec.labels[0].color: must be #rrggbb")).toBeInTheDocument();
     // Invalid YAML can't go back to the form.
@@ -126,12 +133,18 @@ describe("taxonomy editor", () => {
 
     await user.click(await screen.findByRole("button", { name: "Propose the taxonomy" }));
     expect(
-      await screen.findByText(/Review is off, so it is in force now and was recorded as self-approved/),
+      await screen.findByText(
+        /Review is off, so it is in force now and was recorded as self-approved/,
+      ),
     ).toBeInTheDocument();
   });
 });
 
-const page: PolicyChangePage = { review_required: true, items: [] as PolicyChange[], next_before_id: null };
+const page: PolicyChangePage = {
+  review_required: true,
+  items: [] as PolicyChange[],
+  next_before_id: null,
+};
 
 describe("taxonomy review", () => {
   afterEach(() => {
@@ -186,7 +199,9 @@ describe("taxonomy review", () => {
     renderAt("/governance/changes");
 
     const list = await screen.findByRole("list", { name: "Label taxonomies waiting for review" });
-    expect(list).toHaveTextContent("You proposed this taxonomy, so someone else must approve or reject it.");
+    expect(list).toHaveTextContent(
+      "You proposed this taxonomy, so someone else must approve or reject it.",
+    );
     expect(within(list).queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
   });
 

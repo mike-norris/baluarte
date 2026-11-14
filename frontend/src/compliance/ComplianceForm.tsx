@@ -11,7 +11,7 @@ import {
   type SettingName,
   type Violation,
 } from "../api/compliance";
-import { buttonClass, fieldClass, secondaryClass } from "../components/styles";
+import { fieldClass } from "../components/styles";
 import { asApiError, noteClass, Problems } from "../settings/parts";
 import {
   applyMinimums,
@@ -55,14 +55,14 @@ export function ViolationList({
   action?: ((violation: Violation) => ReactNode) | undefined;
 }) {
   return (
-    <div role="alert" className="space-y-2 rounded border border-red-300 bg-red-50 p-3 text-sm">
-      <p className="font-medium text-red-900">
+    <div role="alert" className="alert alert-danger text-body">
+      <p className="fw-medium text-danger-emphasis">
         Not saved: these values do not meet the profile, and no exception is in force for them.
       </p>
-      <ul className="space-y-2">
+      <ul >
         {violations.map((violation) => (
-          <li key={violation.control_id} className="space-y-1">
-            <p className="text-red-900">
+          <li key={violation.control_id} >
+            <p className="text-danger-emphasis">
               {`${settingInfo[violation.setting].label}: ${String(violation.value)}. ${describeRequirement(violation.setting, violation.required)} (${violation.frameworks.map(frameworkShort).join(", ")}).`}
             </p>
             {action?.(violation)}
@@ -173,15 +173,15 @@ export function ComplianceForm({
     <form onSubmit={(event) => void submit(event)} noValidate className="space-y-5">
       <Problems messages={problems} />
       {violations.length > 0 && <ViolationList violations={violations} action={violationAction} />}
-      <fieldset className="space-y-2">
-        <legend className="text-sm font-semibold">Frameworks Baluarte must meet</legend>
-        <p className="text-sm text-slate-700">
+      <fieldset >
+        <legend className="fw-semibold">Frameworks Baluarte must meet</legend>
+        <p className="text-secondary">
           This governs how Baluarte itself operates: how long it keeps its audit log and evidence,
           how long sessions last, and whether baseline changes need a second person. It does not
           change the baselines Baluarte checks your GitLab projects against.
         </p>
         {frameworks.map((framework) => (
-          <label key={framework.id} className="flex items-center gap-2 text-sm">
+          <label key={framework.id} className="d-flex align-items-center gap-2">
             <input
               type="checkbox"
               checked={selected.includes(framework.id)}
@@ -197,7 +197,7 @@ export function ComplianceForm({
             {framework.name}
           </label>
         ))}
-        <label className="flex items-center gap-2 text-sm">
+        <label className="d-flex align-items-center gap-2">
           <input
             type="checkbox"
             checked={none}
@@ -210,14 +210,14 @@ export function ComplianceForm({
           None of these (standard defaults; nothing is enforced)
         </label>
         {selected.length > 1 && (
-          <p className="text-xs text-slate-600">
+          <p className="small text-secondary">
             Where frameworks differ, the strictest value applies.
           </p>
         )}
       </fieldset>
 
-      <fieldset className="space-y-4">
-        <legend className="text-sm font-semibold">Operating settings</legend>
+      <fieldset >
+        <legend className="fw-semibold">Operating settings</legend>
         {settingOrder.map((name) => {
           const info = settingInfo[name];
           const value = draft[name];
@@ -229,7 +229,7 @@ export function ComplianceForm({
           const fieldId = `${formId}-${name}`;
           const described = `${fieldId}-hint${below ? ` ${fieldId}-warning` : ""}`;
           const hint = (
-            <p id={`${fieldId}-hint`} className="text-xs text-slate-600">
+            <p id={`${fieldId}-hint`} className="small text-secondary">
               {info.help}
               {requirement &&
                 ` ${describeRequirement(name, requirement)} for ${requirement.frameworks.map(frameworkShort).join(", ")}.`}
@@ -237,7 +237,7 @@ export function ComplianceForm({
             </p>
           );
           const warning = below && (
-            <p id={`${fieldId}-warning`} className="text-xs font-medium text-red-800">
+            <p id={`${fieldId}-warning`} className="small fw-medium text-danger-emphasis">
               {fixed
                 ? "The deployment's value does not meet the profile; the Compliance page shows this control as not met."
                 : enforceMinimums
@@ -247,8 +247,8 @@ export function ComplianceForm({
           );
           if (typeof value === "boolean") {
             return (
-              <div key={name} className="space-y-1">
-                <label className="flex items-start gap-2 text-sm font-medium">
+              <div key={name} >
+                <label className="d-flex align-items-start gap-2 fw-medium">
                   <input
                     type="checkbox"
                     aria-describedby={described}
@@ -277,7 +277,7 @@ export function ComplianceForm({
           }
           return (
             <div key={name}>
-              <label htmlFor={fieldId} className="block text-sm font-medium">
+              <label htmlFor={fieldId} className="d-block fw-medium">
                 {`${info.label} (${info.unit ?? ""})`}
               </label>
               <input
@@ -299,12 +299,12 @@ export function ComplianceForm({
         })}
       </fieldset>
 
-      <div className="flex flex-wrap gap-2">
-        <button type="submit" disabled={saving} className={buttonClass}>
+      <div className="d-flex flex-wrap gap-2">
+        <button type="submit" disabled={saving} className="btn btn-primary">
           {saving ? "Saving…" : submitLabel}
         </button>
         {onCancel && (
-          <button type="button" onClick={onCancel} className={secondaryClass}>
+          <button type="button" onClick={onCancel} className="btn">
             Cancel
           </button>
         )}

@@ -12,7 +12,6 @@ import {
 import { errorReasons } from "../api/send";
 import { useLoad } from "../api/useLoad";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, secondaryClass } from "../components/styles";
 import { TargetPicker, type Picked } from "../policies/TargetPicker";
 import { formatTime } from "../time";
 import { asApiError, cardClass, Problems } from "./parts";
@@ -44,27 +43,27 @@ function ScopeList({
   }
 
   if (scopes.length === 0) {
-    return <p className="text-sm text-slate-600">No groups are assigned to managers yet.</p>;
+    return <p className="text-secondary">No groups are assigned to managers yet.</p>;
   }
   return (
-    <div className="space-y-2">
+    <div >
       <Problems messages={problems} />
-      <div className="overflow-x-auto rounded border border-slate-200">
-        <table className="w-full text-left text-sm">
-          <caption className="sr-only">Groups assigned to managers</caption>
-          <thead className="border-b border-slate-200 bg-slate-50">
+      <div className="overflow-x-auto rounded border">
+        <table className="table table-vcenter card-table mb-0">
+          <caption className="visually-hidden">Groups assigned to managers</caption>
+          <thead >
             <tr>
               {["Manager", "Group", "Assigned", ""].map((title) => (
-                <th key={title || "actions"} scope="col" className="px-3 py-2 font-medium">
-                  {title || <span className="sr-only">Actions</span>}
+                <th key={title || "actions"} scope="col" className="px-3 py-2 fw-medium">
+                  {title || <span className="visually-hidden">Actions</span>}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody >
             {scopes.map((scope) => (
               <tr key={scope.id}>
-                <th scope="row" className="px-3 py-2 font-medium">
+                <th scope="row" className="px-3 py-2 fw-medium">
                   {personName(scope.user)}
                 </th>
                 <td className="px-3 py-2">{scope.group.path}</td>
@@ -77,7 +76,7 @@ function ScopeList({
                     disabled={ending === scope.id}
                     onClick={() => void end(scope)}
                     aria-label={`End ${scope.group.path} for ${personName(scope.user)}`}
-                    className={secondaryClass}
+                    className="btn"
                   >
                     End
                   </button>
@@ -121,24 +120,24 @@ function AssignForm({ csrf, onAssigned }: { csrf: string; onAssigned: (message: 
 
   if (users.error) return <ErrorMessage error={users.error} retry={users.retry} />;
   return (
-    <div className="space-y-3 rounded border border-slate-200 p-3">
-      <h3 className="font-medium">Assign a group</h3>
+    <div className="rounded border p-3">
+      <h3 className="fw-medium">Assign a group</h3>
       <Problems messages={problems} />
       {users.data && managers.length === 0 ? (
-        <p className="text-sm text-slate-600">
+        <p className="text-secondary">
           No one with the manager role has signed in yet. Map a group to the manager role under
           Identity provider, and ask the person to sign in once.
         </p>
       ) : (
         <>
-          <label className="block text-sm font-medium">
+          <label className="d-block fw-medium">
             Manager
             <select
               value={userId}
               onChange={(event) => {
                 setUserId(event.currentTarget.value);
               }}
-              className={fieldClass}
+              className="form-control mt-1"
             >
               <option value="">{users.data ? "Choose a manager" : "Loading users…"}</option>
               {managers.map((user) => (
@@ -153,7 +152,7 @@ function AssignForm({ csrf, onAssigned }: { csrf: string; onAssigned: (message: 
             type="button"
             disabled={saving}
             onClick={() => void assign()}
-            className={buttonClass}
+            className="btn btn-primary"
           >
             {saving ? "Assigning…" : "Assign group"}
           </button>
@@ -178,10 +177,10 @@ export function ManagerScopesCard({ csrf }: { csrf: string }) {
 
   return (
     <section aria-labelledby="manager-scopes-title" className={cardClass}>
-      <h2 id="manager-scopes-title" className="text-lg font-semibold">
+      <h2 id="manager-scopes-title" className="card-title">
         Manager groups
       </h2>
-      <p className="text-sm text-slate-600">
+      <p className="text-secondary">
         A manager sees time per person only for projects under the groups assigned here, subgroups
         included. Every assignment and its end is recorded in the audit log.
       </p>
@@ -190,12 +189,12 @@ export function ManagerScopesCard({ csrf }: { csrf: string }) {
       ) : scopes.data ? (
         <ScopeList scopes={scopes.data.items} csrf={csrf} onEnded={changed} />
       ) : (
-        <p role="status" className="text-sm text-slate-600">
+        <p role="status" className="text-secondary">
           Loading manager groups…
         </p>
       )}
       <AssignForm csrf={csrf} onAssigned={changed} />
-      <p role="status" className="text-sm text-emerald-800">
+      <p role="status" className="text-success-emphasis">
         {message ?? ""}
       </p>
     </section>

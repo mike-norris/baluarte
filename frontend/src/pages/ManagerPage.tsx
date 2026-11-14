@@ -19,7 +19,7 @@ import { useLoad } from "../api/useLoad";
 import { useAsOf } from "../asof/context";
 import { AsOfResult } from "../asof/AsOfResult";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, linkClass } from "../components/styles";
+import { linkClass } from "../components/styles";
 import { frameworkLabels } from "../controls/format";
 import {
   currentOnlyText,
@@ -32,15 +32,13 @@ import {
 } from "../manager/format";
 import { LineChart } from "../manager/LineChart";
 import { FocusPicker, ManagerTabs } from "../manager/parts";
+import { PageHeader } from "../ui/PageHeader";
 
 function Header({ title, intro }: { title: string; intro: string }) {
   return (
-    <div className="space-y-3">
+    <div>
       <div>
-        <h1 id="page-title" className="text-2xl font-semibold">
-          {title}
-        </h1>
-        <p className="mt-2 text-slate-600">{intro}</p>
+        <PageHeader pretitle="Overview" title={title} subtitle={<>{intro}</>} />
       </div>
       <ManagerTabs />
     </div>
@@ -60,7 +58,7 @@ function changeText(window: ChangeWindow): string {
 function Figure({ term, children }: { term: string; children: ReactNode }) {
   return (
     <div className="contents">
-      <dt className="font-medium text-slate-700">{term}</dt>
+      <dt className="col-md-4 fw-medium text-secondary">{term}</dt>
       <dd>{children}</dd>
     </div>
   );
@@ -80,17 +78,11 @@ function RowCard({ row, focusTag }: { row: OverviewRow; focusTag: string | undef
   const topLevel = group?.split("/")[0];
   const time = writeFocus(group ? { group } : tag ? { tag } : {});
   return (
-    <article
-      aria-labelledby={headingId}
-      className="space-y-3 rounded border border-slate-200 bg-white p-4"
-    >
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 id={headingId} className="font-semibold">
+    <article aria-labelledby={headingId} className="card card-body mb-3">
+      <div className="d-flex flex-wrap align-items-baseline justify-content-between gap-2">
+        <h2 id={headingId} className="fw-semibold">
           {row.key.type === "group" && !row.key.direct_only ? (
-            <Link
-              to={`${MANAGER}?${writeFocus({ group: row.key.path }, params).toString()}`}
-              className={linkClass}
-            >
+            <Link to={`${MANAGER}?${writeFocus({ group: row.key.path }, params).toString()}`}>
               {name}
             </Link>
           ) : (
@@ -103,13 +95,13 @@ function RowCard({ row, focusTag }: { row: OverviewRow; focusTag: string | undef
           </Link>
         )}
       </div>
-      <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[max-content_1fr]">
+      <dl className="grid column-gap-3 gap-y-2 sm:grid-cols-[max-content_1fr]">
         <Figure term="Projects">
           {`${String(row.projects.monitored)} monitored`}
           {row.projects.excluded > 0 && `, ${String(row.projects.excluded)} excluded`}
         </Figure>
         <Figure term="Open findings">
-          <Link to={`/findings?${findings.toString()}`} className={linkClass}>
+          <Link to={`/findings?${findings.toString()}`}>
             {`${String(row.findings_open.total)} open`}
           </Link>
           {row.findings_open.total > 0 &&
@@ -119,7 +111,7 @@ function RowCard({ row, focusTag }: { row: OverviewRow; focusTag: string | undef
           {frameworks.length === 0 ? (
             "None"
           ) : (
-            <Link to="/controls" className={linkClass}>
+            <Link to="/controls">
               {frameworks
                 .map(
                   ([framework, count]) =>
@@ -130,19 +122,14 @@ function RowCard({ row, focusTag }: { row: OverviewRow; focusTag: string | undef
           )}
         </Figure>
         <Figure term="Changes, last 30 days">
-          <Link to="/changes" className={linkClass}>
-            {changeText(row.changes.days_30)}
-          </Link>
+          <Link to="/changes">{changeText(row.changes.days_30)}</Link>
         </Figure>
         <Figure term="Changes, last 90 days">{changeText(row.changes.days_90)}</Figure>
         <Figure term="Label drift">
           {row.label_drift === null ? (
             "No label taxonomy in force"
           ) : (
-            <Link
-              to={topLevel ? `/labels?group=${encodeURIComponent(topLevel)}` : "/labels"}
-              className={linkClass}
-            >
+            <Link to={topLevel ? `/labels?group=${encodeURIComponent(topLevel)}` : "/labels"}>
               {`${String(row.label_drift)} items`}
             </Link>
           )}
@@ -151,7 +138,7 @@ function RowCard({ row, focusTag }: { row: OverviewRow; focusTag: string | undef
           {row.time_30d === null ? (
             "Not collected yet"
           ) : (
-            <Link to={`${MANAGER_TIME}?${time.toString()}`} className={linkClass}>
+            <Link to={`${MANAGER_TIME}?${time.toString()}`}>
               {`${formatDuration(row.time_30d.spent_seconds)} spent, ${row.time_30d.estimate_seconds === null ? "no estimate" : `${formatDuration(row.time_30d.estimate_seconds)} estimated`}`}
             </Link>
           )}
@@ -172,50 +159,42 @@ export function ManagerPage() {
   const note = overview.data && asOf ? currentOnlyText(overview.data.current_only) : null;
 
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
+    <section aria-labelledby="page-title">
       <Header
         title="Manager"
         intro="Posture, change review, label consistency and time across the groups and teams you follow. Nothing here changes GitLab."
       />
       <FocusPicker />
       {focus.group && (
-        <p className="text-sm">
-          <Link
-            to={`${MANAGER}?${writeFocus(parent ? { group: parent } : {}, params).toString()}`}
-            className={linkClass}
-          >
+        <p>
+          <Link to={`${MANAGER}?${writeFocus(parent ? { group: parent } : {}, params).toString()}`}>
             {parent ? `Up to ${parent}` : "Back to all top-level groups"}
           </Link>
         </p>
       )}
       <AsOfResult answer={overview.data} />
-      {note && <p className="text-sm text-slate-700">{note}</p>}
+      {note && <p className="text-secondary">{note}</p>}
       {overview.error?.status === 404 && focus.group ? (
-        <p
-          role="alert"
-          className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900"
-        >
+        <p role="alert" className="alert alert-danger text-body">
           {`There is no group ${focus.group} in the inventory. `}
-          <Link to={MANAGER} className={linkClass}>
-            Back to all top-level groups
-          </Link>
+          <Link to={MANAGER}>Back to all top-level groups</Link>
         </p>
       ) : overview.error ? (
         <ErrorMessage error={overview.error} retry={overview.retry} />
       ) : overview.data ? (
         overview.data.rows.length === 0 ? (
-          <p className="rounded border border-dashed border-slate-300 p-4 text-sm text-slate-600">
+          <p className="text-secondary border border-dashed rounded p-3">
             {`Nothing to show for ${focusText(focus)}.`}
           </p>
         ) : (
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-3 lg:grid-cols-2">
             {overview.data.rows.map((row) => (
               <RowCard key={rowName(row.key)} row={row} focusTag={focus.tag} />
             ))}
           </div>
         )
       ) : (
-        <p role="status" className="text-slate-600">
+        <p role="status" className="text-secondary">
           Loading the overview…
         </p>
       )}
@@ -243,19 +222,17 @@ function TrendCharts({ trends }: { trends: Trends }) {
   const at = <T,>(read: (point: Trends["points"][number]) => T) => trends.points.map(read);
   if (trends.points.length === 0) {
     return (
-      <p className="rounded border border-dashed border-slate-300 p-4 text-sm text-slate-600">
-        No data in this period.
-      </p>
+      <p className="text-secondary border border-dashed rounded p-3">No data in this period.</p>
     );
   }
   const note = currentOnlyText(trends.current_only);
   return (
-    <div className="space-y-3">
-      <p className="text-sm text-slate-700">
+    <div>
+      <p className="text-secondary">
         {`${String(trends.projects)} projects. Open findings are left out of periods with no evaluation run.`}
         {note && ` ${note}`}
       </p>
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-3 lg:grid-cols-2">
         <LineChart
           title="Open findings"
           labels={labels}
@@ -352,7 +329,7 @@ export function TrendsPage() {
   }
 
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
+    <section aria-labelledby="page-title">
       <Header
         title="Trends"
         intro="How posture and change review moved over time, from the evaluation runs and change records in force at the end of each period."
@@ -363,43 +340,37 @@ export function TrendsPage() {
         onSubmit={apply}
         aria-label="Trend period"
         noValidate
-        className="grid gap-3 rounded border border-slate-200 bg-white p-4 sm:grid-cols-4 sm:items-end"
+        className="grid gap-3 rounded border p-3 sm:grid-cols-4 sm:items-end"
       >
-        <label className="text-sm font-medium">
+        <label className="fw-medium">
           Period
-          <select name="bucket" defaultValue={bucket} className={fieldClass}>
+          <select name="bucket" defaultValue={bucket} className="form-select mt-1">
             <option value="week">Weekly</option>
             <option value="month">Monthly</option>
           </select>
         </label>
-        <label className="text-sm font-medium">
+        <label className="fw-medium">
           From
-          <input name="from" type="date" defaultValue={from ?? ""} className={fieldClass} />
+          <input name="from" type="date" defaultValue={from ?? ""} className="form-control mt-1" />
         </label>
-        <label className="text-sm font-medium">
+        <label className="fw-medium">
           To
-          <input name="to" type="date" defaultValue={to ?? ""} className={fieldClass} />
+          <input name="to" type="date" defaultValue={to ?? ""} className="form-control mt-1" />
         </label>
-        <button type="submit" className={buttonClass}>
+        <button type="submit" className="btn btn-primary">
           Show
         </button>
-        <p className="text-xs text-slate-600 sm:col-span-4">
+        <p className="small text-secondary sm:col-span-4">
           {`Empty dates show the last 12 periods. At most ${String(MAX_BUCKETS.week)} weeks or ${String(MAX_BUCKETS.month)} months.`}
         </p>
       </form>
       {problem && (
-        <p
-          role="alert"
-          className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900"
-        >
+        <p role="alert" className="alert alert-danger text-body">
           {problem}
         </p>
       )}
       {trends.error?.status === 422 ? (
-        <p
-          role="alert"
-          className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900"
-        >
+        <p role="alert" className="alert alert-danger text-body">
           {`That period is not possible: it must start before it ends and cover at most ${String(MAX_BUCKETS.week)} weeks or ${String(MAX_BUCKETS.month)} months.`}
         </p>
       ) : trends.error ? (
@@ -407,7 +378,7 @@ export function TrendsPage() {
       ) : trends.data ? (
         <TrendCharts trends={trends.data} />
       ) : (
-        <p role="status" className="text-slate-600">
+        <p role="status" className="text-secondary">
           Loading trends…
         </p>
       )}

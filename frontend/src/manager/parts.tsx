@@ -5,13 +5,10 @@ import type { Focus } from "../api/manager";
 import { listTags, tagParam, tagText, type ItemTag } from "../api/tags";
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
-import { buttonClass, fieldClass, secondaryClass } from "../components/styles";
 import { isHexColor } from "../labels/format";
 import { TargetPicker, type Picked } from "../policies/TargetPicker";
 import { focusText, managerTabs, readFocus, writeFocus } from "./format";
 
-const tabBase =
-  "block rounded px-3 py-2 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600";
 
 /** The manager space's sections the user may open; the focus is carried between them. */
 export function ManagerTabs() {
@@ -20,18 +17,16 @@ export function ManagerTabs() {
   const user = session.status === "signed_in" ? session.user : null;
   const focus = writeFocus(readFocus(params)).toString();
   return (
-    <nav aria-label="Manager space">
-      <ul className="flex flex-wrap gap-1">
+    <nav aria-label="Manager space" className="mb-3">
+      <ul className="nav nav-tabs flex-nowrap overflow-auto">
         {managerTabs
           .filter((tab) => tab.visible(user))
           .map((tab) => (
-            <li key={tab.path}>
+            <li key={tab.path} className="nav-item">
               <NavLink
                 to={focus ? `${tab.path}?${focus}` : tab.path}
                 end
-                className={({ isActive }) =>
-                  `${tabBase} ${isActive ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"}`
-                }
+                className="nav-link text-nowrap"
               >
                 {tab.label}
               </NavLink>
@@ -100,12 +95,12 @@ export function FocusPicker() {
   }
 
   return (
-    <details className="rounded border border-slate-200 bg-white p-3 text-sm">
-      <summary className="cursor-pointer font-medium">{`Showing ${focusText(focus)}. Change`}</summary>
-      <div className="mt-3 space-y-3">
-        <fieldset className="flex gap-4">
-          <legend className="sr-only">Roll up by</legend>
-          <label className="flex items-center gap-2">
+    <details className="rounded border p-3">
+      <summary className="fw-medium">{`Showing ${focusText(focus)}. Change`}</summary>
+      <div className="mt-3">
+        <fieldset className="d-flex gap-3">
+          <legend className="visually-hidden">Roll up by</legend>
+          <label className="d-flex align-items-center gap-2">
             <input
               type="radio"
               name="focus-mode"
@@ -116,7 +111,7 @@ export function FocusPicker() {
             />
             Group
           </label>
-          <label className="flex items-center gap-2">
+          <label className="d-flex align-items-center gap-2">
             <input
               type="radio"
               name="focus-mode"
@@ -129,7 +124,7 @@ export function FocusPicker() {
           </label>
         </fieldset>
         {mode === "group" ? (
-          <div className="space-y-2">
+          <div >
             <TargetPicker type="group" value={picked} onChange={setPicked} />
             <button
               type="button"
@@ -137,20 +132,20 @@ export function FocusPicker() {
               onClick={() => {
                 if (picked) apply({ group: picked.path });
               }}
-              className={buttonClass}
+              className="btn btn-primary"
             >
               Show this group
             </button>
           </div>
         ) : (
-          <label className="block font-medium">
+          <label className="d-block fw-medium">
             Tag
             <select
               value={focus.tag ?? ""}
               onChange={(event) => {
                 apply(event.currentTarget.value ? { tag: event.currentTarget.value } : {});
               }}
-              className={fieldClass}
+              className="form-control mt-1"
             >
               <option value="">Choose a tag</option>
               {(tags.data?.items ?? []).map((tag) => (
@@ -167,7 +162,7 @@ export function FocusPicker() {
             onClick={() => {
               apply({});
             }}
-            className={secondaryClass}
+            className="btn"
           >
             Show all top-level groups
           </button>

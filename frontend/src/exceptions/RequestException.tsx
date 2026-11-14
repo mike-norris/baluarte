@@ -12,7 +12,7 @@ import type { FindingDetail } from "../api/evaluations";
 import { useAuth } from "../auth/context";
 import { endOfUtcDay, expiryRange } from "./format";
 
-const errorClass = "rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900";
+const errorClass = "alert alert-danger text-body";
 
 /** Problems with the form, in field order; empty when it may be sent. */
 export function requestProblems(justification: string, expiry: string, now = Date.now()): string[] {

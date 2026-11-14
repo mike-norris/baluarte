@@ -5,8 +5,7 @@ import { getSetupStatus, type SetupState } from "../api/setup";
 import { useAuth } from "./context";
 import { signInHref } from "./session";
 
-const buttonClass =
-  "inline-block rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600";
+const buttonClass = "btn btn-primary";
 
 /**
  * Without a session, whether Baluarte still needs installing. Any failure counts as complete, so
@@ -48,7 +47,7 @@ export function RequireSession() {
   ) {
     if (setup !== "checking") return <Navigate to="/setup" replace />;
     return (
-      <p role="status" className="text-slate-600">
+      <p role="status" className="text-secondary">
         Checking your session…
       </p>
     );
@@ -59,17 +58,17 @@ export function RequireSession() {
       return <Outlet />;
     case "loading":
       return (
-        <p role="status" className="text-slate-600">
+        <p role="status" className="text-secondary">
           Checking your session…
         </p>
       );
     case "signed_out":
       return (
         <section aria-labelledby="page-title">
-          <h1 id="page-title" className="text-2xl font-semibold">
+          <h1 id="page-title" className="page-title">
             Sign in to Baluarte
           </h1>
-          <p className="mt-2 text-slate-600">
+          <p className="mt-2 text-secondary">
             Use your organization&apos;s single sign-on account to continue.
           </p>
           <a
@@ -83,10 +82,10 @@ export function RequireSession() {
     case "not_configured":
       return (
         <section aria-labelledby="page-title">
-          <h1 id="page-title" className="text-2xl font-semibold">
+          <h1 id="page-title" className="page-title">
             Sign-in is not configured
           </h1>
-          <p className="mt-2 text-slate-600">
+          <p className="mt-2 text-secondary">
             An administrator needs to configure the OIDC identity provider before anyone can sign
             in.
           </p>
@@ -95,10 +94,10 @@ export function RequireSession() {
     case "error":
       return (
         <section aria-labelledby="page-title">
-          <h1 id="page-title" className="text-2xl font-semibold">
+          <h1 id="page-title" className="page-title">
             Baluarte is unavailable
           </h1>
-          <p className="mt-2 text-slate-600">The API could not be reached.</p>
+          <p className="mt-2 text-secondary">The API could not be reached.</p>
           <button type="button" onClick={() => void refresh()} className={`mt-6 ${buttonClass}`}>
             Try again
           </button>

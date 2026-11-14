@@ -9,7 +9,6 @@ import {
   type GitLabConfig,
   type GitLabTestResult,
 } from "../api/setup";
-import { buttonClass, fieldClass, secondaryClass } from "../components/styles";
 import { formatTime } from "../time";
 import {
   DEFAULT_SYNC_INTERVAL_MINUTES,
@@ -21,9 +20,9 @@ import { asApiError, errorClass, noteClass, Problems, SecretKeyNotice } from "./
 
 const checkLabels: Record<CheckStatus, string> = { pass: "Pass", warn: "Warning", fail: "Fail" };
 const checkClasses: Record<CheckStatus, string> = {
-  pass: "bg-emerald-100 text-emerald-900",
-  warn: "bg-amber-100 text-amber-950",
-  fail: "bg-red-100 text-red-900",
+  pass: "bg-success-subtle text-success-emphasis border border-success-subtle",
+  warn: "bg-warning-subtle text-warning-emphasis border border-warning-subtle",
+  fail: "bg-danger-subtle text-danger-emphasis border border-danger-subtle",
 };
 
 // Scopes that let a token change GitLab; admin_mode alone only unlocks admin reads with read_api.
@@ -45,15 +44,11 @@ function readOnly(scopes: string[] | null): boolean {
 export function GitLabTestResultView({ result }: { result: GitLabTestResult }) {
   return (
     <div
-      className={`space-y-2 rounded border p-3 text-sm ${
-        result.ok
-          ? "border-emerald-300 bg-emerald-50 text-emerald-950"
-          : "border-red-300 bg-red-50 text-red-900"
-      }`}
+      className={`alert text-body ${result.ok ? "alert-success" : "alert-danger"}`}
     >
-      <p className="font-medium">{result.ok ? "Connection succeeded" : "Connection failed"}</p>
+      <p className="fw-medium">{result.ok ? "Connection succeeded" : "Connection failed"}</p>
       {result.error && <p>{result.error}</p>}
-      <ul className="list-disc pl-5">
+      <ul className="ps-3">
         {result.version && <li>GitLab version: {result.version}</li>}
         {result.user && <li>Token user: {result.user.username}</li>}
         {result.token_scopes && (
@@ -78,15 +73,15 @@ export function GitLabTestResultView({ result }: { result: GitLabTestResult }) {
         </p>
       )}
       {result.checks.length > 0 && (
-        <ul className="space-y-1">
+        <ul >
           {result.checks.map((check) => (
-            <li key={check.name} className="flex flex-wrap items-baseline gap-2">
+            <li key={check.name} className="d-flex flex-wrap align-items-baseline gap-2">
               <span
                 className={`rounded px-1.5 py-0.5 text-xs font-medium ${checkClasses[check.status]}`}
               >
                 {checkLabels[check.status]}
               </span>
-              <span className="font-medium">{check.name}:</span>
+              <span className="fw-medium">{check.name}:</span>
               <span>{check.message}</span>
             </li>
           ))}
@@ -208,10 +203,10 @@ export function GitLabForm({
       onSubmit={(event) => void submit(event)}
       aria-label="GitLab connection"
       noValidate
-      className="space-y-4"
+
     >
       <Problems messages={failure ? [failure] : problems} />
-      <label className="block text-sm font-medium">
+      <label className="d-block fw-medium">
         GitLab address
         <input
           name="url"
@@ -220,15 +215,15 @@ export function GitLabForm({
           onChange={change}
           placeholder="https://gitlab.example.com"
           aria-describedby={`${id}-url-help`}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <p id={`${id}-url-help`} className="text-xs text-slate-600">
+      <p id={`${id}-url-help`} className="small text-secondary">
         The https address of your self-managed GitLab, without <code>/api/v4</code>. Relative-URL
         installs such as <code>https://example.com/gitlab</code> work.
       </p>
 
-      <label className="block text-sm font-medium">
+      <label className="d-block fw-medium">
         Access token
         <input
           name="token"
@@ -238,10 +233,10 @@ export function GitLabForm({
           autoComplete="new-password"
           disabled={!canStoreSecret}
           aria-describedby={`${id}-token-help`}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <p id={`${id}-token-help`} className="text-xs text-slate-600">
+      <p id={`${id}-token-help`} className="small text-secondary">
         {tokenStored
           ? "A token is stored and is never shown. Leave this blank to keep it, or enter a new one to replace it. "
           : ""}
@@ -250,8 +245,8 @@ export function GitLabForm({
       </p>
       {!canStoreSecret && <SecretKeyNotice />}
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <label className="block text-sm font-medium">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <label className="d-block fw-medium">
           Request timeout (seconds)
           <input
             name="timeout_seconds"
@@ -260,10 +255,10 @@ export function GitLabForm({
             max={120}
             value={fields.timeout_seconds}
             onChange={change}
-            className={fieldClass}
+            className="form-control mt-1"
           />
         </label>
-        <label className="block text-sm font-medium">
+        <label className="d-block fw-medium">
           Collect every (minutes)
           <input
             name="sync_interval_minutes"
@@ -273,36 +268,36 @@ export function GitLabForm({
             value={fields.sync_interval_minutes}
             onChange={change}
             aria-describedby={`${id}-interval-help`}
-            className={fieldClass}
+            className="form-control mt-1"
           />
         </label>
       </div>
-      <p id={`${id}-interval-help`} className="text-xs text-slate-600">
+      <p id={`${id}-interval-help`} className="small text-secondary">
         0 turns scheduled collection off; otherwise 15 to 10080 minutes (one week). The default is
         360 (six hours).
       </p>
 
-      <div className="space-y-2">
+      <div >
         <button
           type="button"
           onClick={() => void runTest()}
           disabled={testing}
-          className={secondaryClass}
+          className="btn"
         >
           {testing ? "Testing…" : "Test connection"}
         </button>
-        <div aria-live="polite" className="space-y-2">
+        <div aria-live="polite" >
           {testFailure && <p className={errorClass}>{testFailure}</p>}
           {test && <GitLabTestResultView result={test} />}
         </div>
       </div>
 
-      <div className="flex gap-2">
-        <button type="submit" disabled={saving} className={buttonClass}>
+      <div className="d-flex gap-2">
+        <button type="submit" disabled={saving} className="btn btn-primary">
           {saving ? "Saving…" : submitLabel}
         </button>
         {onCancel && (
-          <button type="button" onClick={onCancel} className={secondaryClass}>
+          <button type="button" onClick={onCancel} className="btn">
             Cancel
           </button>
         )}

@@ -14,7 +14,7 @@ import {
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, secondaryClass } from "../components/styles";
+import { fieldClass } from "../components/styles";
 import {
   asApiError,
   cardClass,
@@ -137,13 +137,13 @@ function Field({
   id: string;
 }) {
   return (
-    <div className="space-y-1">
-      <label htmlFor={id} className="block text-sm font-medium">
+    <div >
+      <label htmlFor={id} className="d-block fw-medium">
         {label}
       </label>
       {children({ id, ...(hint ? { "aria-describedby": `${id}-hint` } : {}) })}
       {hint && (
-        <p id={`${id}-hint`} className="text-xs text-slate-600">
+        <p id={`${id}-hint`} className="small text-secondary">
           {hint}
         </p>
       )}
@@ -154,7 +154,7 @@ function Field({
 function StatusPanel({ status }: { status: ShippingStatus }) {
   if (!status.enabled) {
     return (
-      <p className="text-sm text-slate-700">Shipping is off. Audit events stay only in Baluarte.</p>
+      <p className="text-secondary">Shipping is off. Audit events stay only in Baluarte.</p>
     );
   }
   const behind =
@@ -178,7 +178,7 @@ function StatusPanel({ status }: { status: ShippingStatus }) {
     ]);
   }
   return (
-    <div aria-label="Shipping status" role="group" className="space-y-2">
+    <div aria-label="Shipping status" role="group" >
       <Values rows={rows} />
     </div>
   );
@@ -260,7 +260,7 @@ function ShippingForm({
           onChange={(event) => {
             set(key, event.currentTarget.value);
           }}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       )}
     </Field>
@@ -310,16 +310,16 @@ function ShippingForm({
           onChange={(event) => {
             set(key, event.currentTarget.value);
           }}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       )}
     </Field>
   );
 
   return (
-    <form onSubmit={(event) => void save(event)} noValidate className="space-y-4">
+    <form onSubmit={(event) => void save(event)} noValidate >
       <Problems messages={problems} />
-      <label className="flex items-center gap-2 text-sm font-medium">
+      <label className="d-flex align-items-center gap-2 fw-medium">
         <input
           type="checkbox"
           checked={draft.enabled}
@@ -330,15 +330,15 @@ function ShippingForm({
         />
         Ship audit events to this destination
       </label>
-      <fieldset className="space-y-2">
-        <legend className="text-sm font-medium">Destination</legend>
+      <fieldset >
+        <legend className="fw-medium">Destination</legend>
         {(
           [
             ["syslog_tls", "Syslog over TLS (RFC 5424 and 5425)"],
             ["elasticsearch", "Elasticsearch or OpenSearch"],
           ] as const
         ).map(([value, label]) => (
-          <label key={value} className="flex items-center gap-2 text-sm">
+          <label key={value} className="d-flex align-items-center gap-2">
             <input
               type="radio"
               name={`${id}-type`}
@@ -354,7 +354,7 @@ function ShippingForm({
         ))}
       </fieldset>
       {draft.type === "syslog_tls" ? (
-        <div className="space-y-3">
+        <div >
           {textField("host", "Syslog host")}
           {textField("port", "Port", "6514 is the standard port for syslog over TLS.", "numeric")}
           {textField(
@@ -365,18 +365,18 @@ function ShippingForm({
           {caField("syslogCa")}
         </div>
       ) : (
-        <div className="space-y-3">
+        <div >
           {textField("url", "Address", "For example https://logs.example.internal:9200")}
           {textField("index", "Index")}
-          <fieldset className="space-y-2">
-            <legend className="text-sm font-medium">Authentication</legend>
+          <fieldset >
+            <legend className="fw-medium">Authentication</legend>
             {(
               [
                 ["api_key", "API key"],
                 ["basic", "Username and password"],
               ] as const
             ).map(([value, label]) => (
-              <label key={value} className="flex items-center gap-2 text-sm">
+              <label key={value} className="d-flex align-items-center gap-2">
                 <input
                   type="radio"
                   name={`${id}-auth`}
@@ -407,26 +407,26 @@ function ShippingForm({
           role={test.ok ? "status" : "alert"}
           className={
             test.ok
-              ? "rounded border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900"
+              ? "alert alert-success text-body"
               : errorClass
           }
         >
           {test.ok ? `Test message delivered. ${test.detail}` : `Test failed: ${test.detail}`}
         </p>
       )}
-      <div className="flex flex-wrap gap-2">
-        <button type="submit" disabled={busy !== null} className={buttonClass}>
+      <div className="d-flex flex-wrap gap-2">
+        <button type="submit" disabled={busy !== null} className="btn btn-primary">
           {busy === "save" ? "Saving…" : "Save"}
         </button>
         <button
           type="button"
           disabled={busy !== null}
           onClick={() => void sendTest()}
-          className={secondaryClass}
+          className="btn"
         >
           {busy === "test" ? "Sending…" : "Send test message"}
         </button>
-        <button type="button" onClick={onCancel} className={secondaryClass}>
+        <button type="button" onClick={onCancel} className="btn">
           Cancel
         </button>
       </div>
@@ -470,7 +470,7 @@ export function AuditShippingCard({ csrf }: { csrf: string }) {
     body = <ErrorMessage error={config.error} retry={config.retry} />;
   } else if (!config.data) {
     body = (
-      <p role="status" className="text-sm text-slate-600">
+      <p role="status" className="text-secondary">
         Loading audit log shipping…
       </p>
     );
@@ -511,7 +511,7 @@ export function AuditShippingCard({ csrf }: { csrf: string }) {
             setSaved(null);
             setEditing(true);
           }}
-          className={buttonClass}
+          className="btn btn-primary"
         >
           Edit audit log shipping
         </button>
@@ -521,15 +521,15 @@ export function AuditShippingCard({ csrf }: { csrf: string }) {
 
   return (
     <section id="audit-shipping" aria-labelledby="audit-shipping-heading" className={cardClass}>
-      <h2 id="audit-shipping-heading" className="text-lg font-semibold">
+      <h2 id="audit-shipping-heading" className="card-title">
         Audit log shipping
       </h2>
-      <p className="text-sm text-slate-600">
+      <p className="text-secondary">
         Sends every audit event to a log store outside Baluarte, so a copy exists that
         Baluarte&apos;s own administrators and database cannot change. Delivery resumes where it
         stopped after an outage, and new destinations receive the full retained history.
       </p>
-      <p role="status" className="text-sm text-emerald-800">
+      <p role="status" className="text-success-emphasis">
         {saved ?? ""}
       </p>
       {body}

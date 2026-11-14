@@ -63,7 +63,9 @@ describe("label plans", () => {
     expect(bodyOf(calls, "/api/v1/labels/plans")).toEqual({
       scope: { groups: ["acme", "acme-labs"] },
     });
-    expect(await screen.findByText(/created as a draft from labels read just now/)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/created as a draft from labels read just now/),
+    ).toBeInTheDocument();
   });
 
   it("explains a refused plan", async () => {
@@ -124,7 +126,9 @@ describe("label plans", () => {
     expect(rows[1]).toHaveTextContent("colour: #d9534f");
     expect(rows[1]).toHaveTextContent("Not run yet");
     expect(rows[2]).toHaveTextContent("Rename label type::bug");
-    expect(screen.getByText(/Duplicate \(priority::high\)\. Also defined on the project/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Duplicate \(priority::high\)\. Also defined on the project/),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Submit for approval" })).toBeEnabled();
   });
 
@@ -169,7 +173,10 @@ describe("label plans", () => {
         json(
           labelPlan(4, {
             state: "approved",
-            can_apply: { allowed: false, reasons: ["label_writes_disabled", "write_token_missing"] },
+            can_apply: {
+              allowed: false,
+              reasons: ["label_writes_disabled", "write_token_missing"],
+            },
           }),
         ),
     });
@@ -186,7 +193,11 @@ describe("label plans", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     let reads = 0;
     const approved = labelPlan(4, { state: "approved", can_apply: { allowed: true, reasons: [] } });
-    const applying = { ...approved, state: "applying" as const, apply_started_at: "2026-11-05T10:00:00Z" };
+    const applying = {
+      ...approved,
+      state: "applying" as const,
+      apply_started_at: "2026-11-05T10:00:00Z",
+    };
     const applied: LabelPlan = {
       ...applying,
       state: "applied",
@@ -227,7 +238,8 @@ describe("label plans", () => {
   it("turns applying off while a past date is chosen", async () => {
     const AS_OF = "2026-10-01T00:00:00Z";
     api(approver, {
-      [`${TAXONOMY}?as_of=${encodeURIComponent(AS_OF)}`]: () => json(taxonomyView({ as_of: AS_OF })),
+      [`${TAXONOMY}?as_of=${encodeURIComponent(AS_OF)}`]: () =>
+        json(taxonomyView({ as_of: AS_OF })),
       [`${DRIFT.replace("?", `?as_of=${encodeURIComponent(AS_OF)}&`)}`]: () =>
         json(driftPage([], { as_of: AS_OF })),
       "GET /api/v1/labels/plans/4": () =>
@@ -253,7 +265,11 @@ describe("label plans", () => {
             state: "failed",
             failed_step: 2,
             failure: "GitLab answered 409",
-            steps: [step(1, { status: "applied", verified: true }), step(2, { status: "failed", request_status: 409 }), step(3, { status: "not_run" })],
+            steps: [
+              step(1, { status: "applied", verified: true }),
+              step(2, { status: "failed", request_status: 409 }),
+              step(3, { status: "not_run" }),
+            ],
           }),
         ),
     });

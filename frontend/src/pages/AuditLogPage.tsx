@@ -11,8 +11,8 @@ import {
 import { useLoad } from "../api/useLoad";
 import { usePaged } from "../api/usePaged";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, secondaryClass } from "../components/styles";
 import { formatTime } from "../time";
+import { PageHeader } from "../ui/PageHeader";
 
 const cell = "px-3 py-2 align-top";
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -60,20 +60,20 @@ function EventRow({ event }: { event: AuditEvent }) {
       <td className={cell}>{target}</td>
       <td className={cell}>
         <details>
-          <summary className="cursor-pointer">{summary(event.details)}</summary>
-          <pre className="mt-1 max-w-xl overflow-x-auto rounded bg-slate-100 p-2 text-xs">
+          <summary>{summary(event.details)}</summary>
+          <pre className="alert alert-secondary text-body mt-1">
             {JSON.stringify(event.details, null, 2)}
           </pre>
-          <p className="mt-1 font-mono text-xs break-all text-slate-600">
+          <p className="mt-1 font-monospace small text-break text-secondary">
             {`SHA-256 ${event.details_digest}`}
           </p>
         </details>
       </td>
       <td className={cell}>
         {event.digest_valid ? (
-          <span className="text-emerald-800">Verifies</span>
+          <span className="text-success-emphasis">Verifies</span>
         ) : (
-          <span className="font-medium text-red-800">
+          <span className="fw-medium text-danger-emphasis">
             Does not match: the details changed after they were recorded
           </span>
         )}
@@ -106,11 +106,15 @@ function Filters({
     <form
       onSubmit={submit}
       aria-label="Filter the audit log"
-      className="grid gap-3 rounded border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-5"
+      className="grid gap-3 rounded border p-3 sm:grid-cols-2 lg:grid-cols-5"
     >
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         Action
-        <select name="action" defaultValue={params.get("action") ?? ""} className={fieldClass}>
+        <select
+          name="action"
+          defaultValue={params.get("action") ?? ""}
+          className="form-select mt-1"
+        >
           <option value="">Any</option>
           {(actions.data ?? []).map((action) => (
             <option key={action} value={action}>
@@ -119,31 +123,36 @@ function Filters({
           ))}
         </select>
       </label>
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         Actor
         <input
           name="actor"
           defaultValue={params.get("actor") ?? ""}
           placeholder="user:12"
           maxLength={300}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         From (UTC)
         <input
           name="from"
           type="date"
           defaultValue={params.get("from") ?? ""}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         To (UTC, inclusive)
-        <input name="to" type="date" defaultValue={params.get("to") ?? ""} className={fieldClass} />
+        <input
+          name="to"
+          type="date"
+          defaultValue={params.get("to") ?? ""}
+          className="form-control mt-1"
+        />
       </label>
-      <div className="flex items-end gap-2">
-        <button type="submit" className={buttonClass}>
+      <div className="d-flex align-items-end gap-2">
+        <button type="submit" className="btn btn-primary">
           Apply
         </button>
         <button
@@ -151,7 +160,7 @@ function Filters({
           onClick={() => {
             onApply(new URLSearchParams());
           }}
-          className={secondaryClass}
+          className="btn"
         >
           Clear
         </button>
@@ -177,28 +186,25 @@ export function AuditLogPage() {
   if (first.error) body = <ErrorMessage error={first.error} retry={first.retry} />;
   else if (!first.data) {
     body = (
-      <p role="status" className="text-slate-600">
+      <p role="status" className="text-secondary">
         Loading the audit log…
       </p>
     );
   } else if (paged.items.length === 0) {
-    body = <p className="text-sm text-slate-600">No events match these filters.</p>;
+    body = <p className="text-secondary">No events match these filters.</p>;
   } else {
     const invalid = paged.items.filter((event) => !event.digest_valid).length;
     body = (
-      <div className="space-y-2">
+      <div>
         {invalid > 0 && (
-          <p
-            role="alert"
-            className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900"
-          >
+          <p role="alert" className="alert alert-danger text-body">
             {`${String(invalid)} ${invalid === 1 ? "event's details no longer match its" : "events' details no longer match their"} recorded digest. Compare with the baluarte.audit log stream.`}
           </p>
         )}
-        <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-          <table className="w-full text-left text-sm">
-            <caption className="sr-only">Audit events, newest first</caption>
-            <thead className="border-b border-slate-200 bg-slate-50">
+        <div className="card table-responsive">
+          <table className="table table-vcenter card-table mb-0">
+            <caption className="visually-hidden">Audit events, newest first</caption>
+            <thead>
               <tr>
                 {["Time", "Actor", "Action", "Target", "Details", "Digest"].map((header) => (
                   <th key={header} scope="col" className={`${cell} font-medium`}>
@@ -207,20 +213,20 @@ export function AuditLogPage() {
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {paged.items.map((event) => (
                 <EventRow key={event.id} event={event} />
               ))}
             </tbody>
           </table>
         </div>
-        {paged.moreError && <p className="text-sm text-red-900">{paged.moreError.message}</p>}
+        {paged.moreError && <p className="text-danger-emphasis">{paged.moreError.message}</p>}
         {paged.next !== null && (
           <button
             type="button"
             disabled={paged.pending}
             onClick={() => void paged.loadMore()}
-            className={secondaryClass}
+            className="btn"
           >
             {paged.pending ? "Loading…" : "Load older events"}
           </button>
@@ -230,22 +236,25 @@ export function AuditLogPage() {
   }
 
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
+    <section aria-labelledby="page-title">
       <div>
-        <h1 id="page-title" className="text-2xl font-semibold">
-          Audit log
-        </h1>
-        <p className="mt-2 max-w-3xl text-slate-600">
-          Every sign-in, setting change, baseline change, exception decision and export, with who
-          did it. Times are UTC. Each event&apos;s details carry a SHA-256 digest, checked again
-          here.
-        </p>
+        <PageHeader
+          pretitle="Evidence"
+          title="Audit log"
+          subtitle={
+            <>
+              Every sign-in, setting change, baseline change, exception decision and export, with
+              who did it. Times are UTC. Each event&apos;s details carry a SHA-256 digest, checked
+              again here.
+            </>
+          }
+        />
       </div>
-      <p className="rounded border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">
+      <p className="alert alert-info text-body">
         This view reads Baluarte&apos;s database, which its database administrators can alter. Each
-        event is also written to the <code className="font-mono">baluarte.audit</code> log stream
-        when it is committed; that stream, shipped to a store they cannot change, is the independent
-        copy to compare with.
+        event is also written to the <code className="font-monospace">baluarte.audit</code> log
+        stream when it is committed; that stream, shipped to a store they cannot change, is the
+        independent copy to compare with.
       </p>
       <Filters
         key={params.toString()}
