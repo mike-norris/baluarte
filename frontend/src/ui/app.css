@@ -71,3 +71,8 @@
 .text-prewrap {
   white-space: pre-wrap;
 }
+
+/* A fieldset that only groups controls for disabling, without a box of its own. */
+.d-contents {
+  display: contents;
+}
