@@ -1,7 +1,7 @@
 import { Link } from "react-router";
 
 import { useFreshness, type FreshnessSignal } from "./context";
-import { freshnessTone, needsAttention, statusLabel } from "./status";
+import { freshnessColor, needsAttention, statusLabel } from "./status";
 
 function announcement({ source, status }: FreshnessSignal): string {
   if (source === "evaluation") {
@@ -43,15 +43,18 @@ export function FreshnessIndicator() {
   const freshness = useFreshness();
   if (!freshness) return null;
   const { overall, worstSignal } = freshness;
+  const label = `GitLab data: ${statusLabel(worstSignal.source, overall)}`;
   return (
     <>
       <Link
         to={detailsPage[worstSignal.source]}
-        className={`rounded border px-2 py-1 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 ${freshnessTone[overall]}`}
+        aria-label={label}
+        className={`status status-${freshnessColor[overall]} status-lite text-decoration-none`}
       >
-        {`GitLab data: ${statusLabel(worstSignal.source, overall)}`}
+        <span className="status-dot" aria-hidden="true" />
+        <span className="d-none d-md-inline">{label}</span>
       </Link>
-      <p aria-live="polite" className="sr-only">
+      <p aria-live="polite" className="visually-hidden">
         {needsAttention(overall) ? announcement(worstSignal) : ""}
       </p>
     </>

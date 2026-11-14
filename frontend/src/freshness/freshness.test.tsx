@@ -88,7 +88,7 @@ describe("header freshness indicator", () => {
 
     // Another navigation re-checks; the same status leaves the region unchanged, so it is
     // not announced again.
-    await user.click(screen.getByRole("link", { name: "Governance" }));
+    await user.click(screen.getByRole("link", { name: "Baselines" }));
     await indicator("GitLab data: Stale");
     expect(liveRegion()).toBe(region);
     expect(region).toHaveTextContent("GitLab data is stale.");

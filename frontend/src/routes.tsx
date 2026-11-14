@@ -5,7 +5,7 @@ import { AuthProvider } from "./auth/AuthProvider";
 import { withStaleChunkReload } from "./chunkReload";
 import { RequireSession } from "./auth/RequireSession";
 import { Layout } from "./components/Layout";
-import { navItems } from "./navigation";
+import { navTitle, sectionItems } from "./navigation";
 import { DashboardPage } from "./pages/DashboardPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
@@ -92,10 +92,10 @@ export const routes: RouteObject[] = [
       {
         element: <RequireSession />,
         children: [
-          ...navItems.map((item): RouteObject => ({
+          ...sectionItems.map((item): RouteObject => ({
             path: item.path,
             element: pages[item.path] ?? (
-              <PlaceholderPage title={item.label} description={item.description} />
+              <PlaceholderPage title={navTitle(item)} description={item.description} />
             ),
           })),
           {

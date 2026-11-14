@@ -1,1 +1,17 @@
-@import "tailwindcss";
+/*
+ * Tabler first, Tailwind utilities above it while pages move over, then the app's own rules.
+ * Tailwind's preflight is left out: Tabler's reboot replaces it.
+ */
+@layer tabler, compat, theme, utilities, app;
+
+@import "@tabler/core/dist/css/tabler.min.css" layer(tabler);
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "./ui/app.css" layer(app);
+
+/* Tabler's .grid is a 12-column CSS grid; pages not yet moved use Tailwind's .grid. Removed with Tailwind. */
+@layer compat {
+  .grid:not([class*="g-"]) {
+    grid-template-columns: none;
+  }
+}

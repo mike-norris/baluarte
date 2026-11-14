@@ -38,13 +38,13 @@ export function ComplianceAlertBanner() {
     unattested > 0 ? `${String(unattested)} awaiting attestation` : null,
   ].filter(Boolean);
   return (
-    <div role="alert" className="border-b border-amber-300 bg-amber-50 text-sm text-amber-950">
-      <div className="mx-auto max-w-6xl px-4 py-3">
-        <p>
-          <span className="font-semibold">
+    <div role="alert" className="alert alert-warning rounded-0 border-start-0 border-end-0 mb-0">
+      <div className="container-xl">
+        <p className="mb-0">
+          <strong>
             {`Baluarte does not fully meet its compliance profile (${frameworkList(posture.frameworks)}): ${parts.join(", ")}.`}
-          </span>{" "}
-          <Link to={COMPLIANCE} className="underline">
+          </strong>{" "}
+          <Link to={COMPLIANCE}>
             Review compliance
           </Link>
         </p>
