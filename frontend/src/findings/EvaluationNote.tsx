@@ -1,5 +1,5 @@
 import { useFreshness } from "../freshness/context";
-import { freshnessTone, needsAttention, statusLabel } from "../freshness/status";
+import { freshnessColor, needsAttention, statusLabel } from "../freshness/status";
 import { formatTime } from "../time";
 
 /**
@@ -12,14 +12,18 @@ export function EvaluationNote() {
   if (!signal) return null;
   const report = freshness?.evaluation;
   return (
-    <div className={`rounded border p-3 text-sm ${freshnessTone[signal.status]}`}>
-      <p className="font-medium">{`Policy evaluation: ${statusLabel("evaluation", signal.status)}`}</p>
-      <p>{`Last successful evaluation: ${formatTime(signal.lastSuccessAt)}.`}</p>
+    <div className={`alert alert-${freshnessColor[signal.status]} text-body`}>
+      <p className="fw-medium mb-1">{`Policy evaluation: ${statusLabel("evaluation", signal.status)}`}</p>
+      <p className="mb-0">{`Last successful evaluation: ${formatTime(signal.lastSuccessAt)}.`}</p>
       {needsAttention(signal.status) && (
-        <p>These results are not current compliance until an evaluation succeeds again.</p>
+        <p className="mb-0 mt-1">
+          These results are not current compliance until an evaluation succeeds again.
+        </p>
       )}
       {report?.behind_collection && (
-        <p>GitLab data was collected after the last evaluation started; results may lag it.</p>
+        <p className="mb-0 mt-1">
+          GitLab data was collected after the last evaluation started; results may lag it.
+        </p>
       )}
     </div>
   );

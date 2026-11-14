@@ -1,14 +1,45 @@
-import type { ControlStatus } from "../api/controls";
-import { statusClasses, statusLabels, statusMeaning } from "./format";
+import {
+  IconBan,
+  IconCircleCheck,
+  IconCircleDashed,
+  IconCircleX,
+  IconClockExclamation,
+  IconHelpCircle,
+  IconShieldHalf,
+  type Icon,
+} from "@tabler/icons-react";
 
-/** A control's status as text in a coloured border; the text alone carries the meaning. */
+import type { ControlStatus } from "../api/controls";
+import { Badge, type Tone } from "../ui/Badge";
+import { statusLabels, statusMeaning } from "./format";
+
+const tone: Record<ControlStatus, Tone> = {
+  met: "success",
+  not_met: "danger",
+  unknown: "secondary",
+  no_results: "secondary",
+  not_covered: "secondary",
+  not_applicable: "secondary",
+  manual: "indigo",
+  review_overdue: "warning",
+};
+
+const icon: Record<ControlStatus, Icon> = {
+  met: IconCircleCheck,
+  not_met: IconCircleX,
+  unknown: IconHelpCircle,
+  no_results: IconHelpCircle,
+  not_covered: IconCircleDashed,
+  not_applicable: IconBan,
+  manual: IconShieldHalf,
+  review_overdue: IconClockExclamation,
+};
+
+/** A control's status as a word with colour and icon; the word alone carries the meaning. */
 export function StatusBadge({ status }: { status: ControlStatus }) {
   return (
-    <span
-      title={statusMeaning[status]}
-      className={`inline-block rounded border px-2 py-0.5 text-xs font-medium whitespace-nowrap ${statusClasses[status]}`}
-    >
+    <Badge tone={tone[status]} icon={icon[status]} title={statusMeaning[status]}>
       {statusLabels[status]}
-    </span>
+    </Badge>
   );
 }

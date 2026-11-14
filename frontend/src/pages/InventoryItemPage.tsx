@@ -14,15 +14,22 @@ import {
   type Evaluation,
   type ProjectEvaluations,
 } from "../api/evaluations";
-import { getGroup, getProject, groupHref, type Ancestry, type KindFreshness } from "../api/gitlab";
+import {
+  getGroup,
+  getProject,
+  groupHref,
+  type Ancestry,
+  type InventoryState,
+  type KindFreshness,
+} from "../api/gitlab";
 import { effectivePolicies } from "../api/policies";
 import { getCoverage, policyTypes, type CoverageRow } from "../api/securityPolicies";
 import { useLoad } from "../api/useLoad";
 import { useAsOf } from "../asof/context";
 import { AsOfResult } from "../asof/AsOfResult";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { linkClass } from "../components/styles";
-import { outcomeLabels, reasonHelp, severityLabels } from "../findings/format";
+import { OutcomeBadge, SeverityBadge } from "../findings/badges";
+import { reasonHelp } from "../findings/format";
 import { statusLabel } from "../freshness/status";
 import { ExclusionNotice } from "../inventory/ExclusionNotice";
 import { stateHelp, stateLabels, visibilityLabel } from "../inventory/format";
@@ -36,20 +43,21 @@ import {
   securityPolicyHref,
   typeLabels,
 } from "../security-policies/format";
-import { formatTime } from "../time";
 import { ItemTags } from "../manager/parts";
+import { formatTime } from "../time";
+import { badgeClass, type Tone } from "../ui/Badge";
+import { EmptyState } from "../ui/EmptyState";
+import { Loading } from "../ui/Loading";
+import { PageHeader } from "../ui/PageHeader";
 
 type Kind = "group" | "project";
 
-const cell = "px-3 py-2";
-const card = "space-y-3 rounded border border-slate-200 bg-white p-4";
+const card = "card card-body mb-3";
 
-const outcomeClass: Record<string, string> = {
-  pass: "bg-emerald-100 text-emerald-900",
-  fail: "bg-red-100 text-red-900",
-  unknown: "bg-amber-100 text-amber-900",
-  unsupported: "bg-amber-100 text-amber-900",
-  excepted: "bg-slate-200 text-slate-800",
+const stateTone: Record<InventoryState, Tone> = {
+  active: "success",
+  inaccessible: "warning",
+  missing: "danger",
 };
 
 function useGitlabId(): number | null {
@@ -60,33 +68,35 @@ function useGitlabId(): number | null {
 
 function NotFound({ kind }: { kind: Kind }) {
   return (
-    <section aria-labelledby="page-title" className="space-y-3">
-      <h1 id="page-title" className="text-2xl font-semibold">
-        {kind === "group" ? "Group not found" : "Project not found"}
-      </h1>
-      <p className="text-slate-700">
-        {`Baluarte hasn't collected this ${kind}. It may be new since the last collection, or outside what Baluarte's token can see.`}
-      </p>
-      <Link to="/inventory" className={linkClass}>
-        Back to the inventory
-      </Link>
+    <section aria-labelledby="page-title">
+      <PageHeader
+        pretitle={<Link to="/inventory">Inventory</Link>}
+        title={kind === "group" ? "Group not found" : "Project not found"}
+      />
+      <EmptyState title={`Baluarte hasn't collected this ${kind}.`}>
+        <p className="mb-2">
+          It may be new since the last collection, or outside what Baluarte&apos;s token can see.
+        </p>
+        <Link to="/inventory">Back to the inventory</Link>
+      </EmptyState>
     </section>
   );
 }
 
-function Loading({ what }: { what: string }) {
+function Waiting({ what }: { what: string }) {
   return (
-    <p role="status" className="text-sm text-slate-600">
-      {`Loading ${what}…`}
-    </p>
+    <section aria-labelledby="page-title">
+      <PageHeader pretitle={<Link to="/inventory">Inventory</Link>} title={what} />
+      <Loading label={`Loading ${what.toLowerCase()}…`} />
+    </section>
   );
 }
 
 function Fact({ term, children }: { term: string; children: ReactNode }) {
   return (
     <>
-      <dt className="font-medium text-slate-700">{term}</dt>
-      <dd>{children}</dd>
+      <dt className="col-sm-4 col-lg-3 fw-medium text-secondary">{term}</dt>
+      <dd className="col-sm-8 col-lg-9 mb-1 text-break">{children}</dd>
     </>
   );
 }
@@ -95,18 +105,17 @@ function Fact({ term, children }: { term: string; children: ReactNode }) {
 function Breadcrumb({ ancestry, kind }: { ancestry: Ancestry; kind: Kind }) {
   const groups = [...ancestry.groups].reverse();
   return (
-    <nav aria-label={`Groups above this ${kind}`} className="text-sm text-slate-600">
-      <Link to="/inventory" className={linkClass}>
-        Inventory
-      </Link>
-      {groups.map((group) => (
-        <span key={group.gitlab_id}>
-          <span aria-hidden="true">{" / "}</span>
-          <Link to={groupHref(group.gitlab_id)} className={linkClass}>
-            {group.full_path}
-          </Link>
-        </span>
-      ))}
+    <nav aria-label={`Groups above this ${kind}`} className="mb-2">
+      <ol className="breadcrumb">
+        <li className="breadcrumb-item">
+          <Link to="/inventory">Inventory</Link>
+        </li>
+        {groups.map((group) => (
+          <li key={group.gitlab_id} className="breadcrumb-item">
+            <Link to={groupHref(group.gitlab_id)}>{group.full_path}</Link>
+          </li>
+        ))}
+      </ol>
     </nav>
   );
 }
@@ -117,7 +126,7 @@ function AncestryNote({ ancestry, kind }: { ancestry: Ancestry; kind: Kind }) {
     .map((gap) => `group ${String(gap.gitlab_id)} is ${gapReasons[gap.reason] ?? gap.reason}`)
     .join("; ");
   return (
-    <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+    <p className="alert alert-warning text-body">
       {`Baluarte can't follow every group above this ${kind}${gaps ? ` (${gaps})` : ""}. What applies from above may be missing, so dependent results are unknown, not passing.`}
     </p>
   );
@@ -128,11 +137,11 @@ function CollectionFact({ collection }: { collection: KindFreshness }) {
     <Fact term="Collection">
       {statusLabel("collection", collection.status)}
       {collection.last_success_at && (
-        <span className="text-slate-600">
+        <span className="text-secondary">
           {`, last successful ${formatTime(collection.last_success_at)}`}
         </span>
       )}
-      {collection.running && <span className="text-slate-600">, collecting now</span>}
+      {collection.running && <span className="text-secondary">, collecting now</span>}
     </Fact>
   );
 }
@@ -149,18 +158,16 @@ function Header({
   children: ReactNode;
 }) {
   return (
-    <header className="space-y-3">
+    <header>
       <Breadcrumb ancestry={ancestry} kind={kind} />
-      <div>
-        <p className="text-sm font-medium text-slate-600">
-          {kind === "group" ? "GitLab group" : "GitLab project"}
-        </p>
-        <h1 id="page-title" className="text-2xl font-semibold break-all">
-          {path}
-        </h1>
-      </div>
-      <dl className="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[max-content_1fr]">{children}</dl>
+      <PageHeader
+        pretitle={kind === "group" ? "GitLab group" : "GitLab project"}
+        title={<span className="text-break">{path}</span>}
+      />
       <AncestryNote ancestry={ancestry} kind={kind} />
+      <section aria-label="Details" className="card card-body mb-3">
+        <dl className="row mb-0">{children}</dl>
+      </section>
     </header>
   );
 }
@@ -172,7 +179,7 @@ function InEffect({ kind, gitlabId }: { kind: Kind; gitlabId: number }) {
   );
   return (
     <section aria-labelledby="in-effect" className={card}>
-      <h2 id="in-effect" className="text-lg font-semibold">
+      <h2 id="in-effect" className="card-title">
         Baselines in effect
       </h2>
       {loaded.error ? (
@@ -180,7 +187,7 @@ function InEffect({ kind, gitlabId }: { kind: Kind; gitlabId: number }) {
       ) : loaded.data ? (
         <ResolutionView resolution={loaded.data} />
       ) : (
-        <Loading what="baselines" />
+        <Loading label="Loading baselines…" />
       )}
     </section>
   );
@@ -190,30 +197,30 @@ function ResultRow({ item, gitlabId }: { item: Evaluation; gitlabId: number }) {
   const reasons = item.unknown_reasons.map((reason) => reasonHelp[reason] ?? reason);
   return (
     <tr>
-      <th scope="row" className={`${cell} font-medium`}>
-        <code className="font-mono text-xs">{item.rule_id}</code>
-        <span className="block text-xs font-normal text-slate-600">{item.rule_type}</span>
+      <th scope="row" data-label="Rule" className="fw-medium">
+        <code>{item.rule_id}</code>
+        <span className="d-block small fw-normal text-secondary">{item.rule_type}</span>
       </th>
-      <td className={cell}>
-        <span
-          className={`rounded px-2 py-0.5 text-xs font-medium ${outcomeClass[item.outcome] ?? ""}`}
-        >
-          {outcomeLabels[item.outcome]}
-        </span>
+      <td data-label="Result">
+        <OutcomeBadge outcome={item.outcome} brief />
       </td>
-      <td className={cell}>{severityLabels[item.severity] ?? item.severity}</td>
-      <td className={cell}>
+      <td data-label="Severity" className="d-none d-md-table-cell">
+        <SeverityBadge severity={item.severity} />
+      </td>
+      <td data-label="Why">
         {item.reason}
         {reasons.map((reason) => (
-          <span key={reason} className="block text-slate-600">
+          <span key={reason} className="d-block text-secondary">
             {reason}
           </span>
         ))}
       </td>
-      <td className={`${cell} whitespace-nowrap`}>{formatTime(item.evaluated_at)}</td>
-      <td className={cell}>
+      <td data-label="Evaluated" className="text-nowrap d-none d-md-table-cell">
+        {formatTime(item.evaluated_at)}
+      </td>
+      <td data-label="Findings">
         {item.outcome === "pass" ? (
-          <span className="text-slate-500">—</span>
+          <span className="text-secondary">—</span>
         ) : (
           <Link
             to={findingsHref({
@@ -221,7 +228,7 @@ function ResultRow({ item, gitlabId }: { item: Evaluation; gitlabId: number }) {
               policy: item.policy.name,
               rule: item.rule_id,
             })}
-            className={linkClass}
+
             aria-label={`Findings for ${item.rule_id} from ${item.policy.name}`}
           >
             Findings
@@ -245,7 +252,7 @@ function Results({ gitlabId }: { gitlabId: number }) {
   );
   let body: ReactNode;
   if (loaded.error) body = <ErrorMessage error={loaded.error} retry={loaded.retry} />;
-  else if (!loaded.data) body = <Loading what="results" />;
+  else if (!loaded.data) body = <Loading label="Loading results…" />;
   else {
     body = (
       <>
@@ -256,7 +263,7 @@ function Results({ gitlabId }: { gitlabId: number }) {
   }
   return (
     <section aria-labelledby="results" className={card}>
-      <h2 id="results" className="text-lg font-semibold">
+      <h2 id="results" className="card-title">
         Latest results
       </h2>
       {body}
@@ -267,7 +274,7 @@ function Results({ gitlabId }: { gitlabId: number }) {
 function ResultTables({ data, gitlabId }: { data: ProjectEvaluations; gitlabId: number }) {
   if (data.items.length === 0) {
     return (
-      <p className="text-sm text-slate-600">
+      <p className="text-secondary">
         No current results. The project is checked at the next evaluation if a baseline is in effect
         here.
       </p>
@@ -284,25 +291,31 @@ function ResultTables({ data, gitlabId }: { data: ProjectEvaluations; gitlabId: 
     const { name, version } = first.policy;
     const label = `${name} v${String(version)}`;
     return (
-      <div key={label} className="space-y-1">
-        <h3 className="text-sm font-semibold">
-          <Link to={baselineHref(name, version)} className={linkClass}>
-            {label}
-          </Link>
+      <div key={label}>
+        <h3 className="h4 mt-3">
+          <Link to={baselineHref(name, version)}>{label}</Link>
         </h3>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[40rem] text-left text-sm">
-            <caption className="sr-only">{`Results for ${label}`}</caption>
-            <thead className="border-b border-slate-200 bg-slate-50">
+        <div className="table-responsive-md">
+          <table className="table table-vcenter table-mobile-md mb-0">
+            <caption className="visually-hidden">{`Results for ${label}`}</caption>
+            <thead>
               <tr>
                 {["Rule", "Result", "Severity", "Why", "Evaluated", "Findings"].map((header) => (
-                  <th key={header} scope="col" className={`${cell} font-medium`}>
+                  <th
+                    key={header}
+                    scope="col"
+                    className={
+                      header === "Severity" || header === "Evaluated"
+                        ? "d-none d-md-table-cell"
+                        : ""
+                    }
+                  >
                     {header}
                   </th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {items.map((item) => (
                 <ResultRow key={item.id} item={item} gitlabId={gitlabId} />
               ))}
@@ -320,17 +333,15 @@ function PoliciesReaching({ row }: { row: CoverageRow }) {
   );
   if (listed.length === 0) return null;
   return (
-    <ul className="list-disc space-y-1 pl-5 text-sm">
+    <ul className="ps-3">
       {listed.map(({ type, policy }) => (
         <li key={`${type}-${String(policy.id)}-${policy.name}`}>
           {policy.id === null ? (
             policy.name
           ) : (
-            <Link to={securityPolicyHref(policy.id)} className={linkClass}>
-              {policy.name}
-            </Link>
+            <Link to={securityPolicyHref(policy.id)}>{policy.name}</Link>
           )}
-          <span className="text-slate-600">
+          <span className="text-secondary">
             {` — ${typeLabels[type]}, ${policy.enabled === false ? "disabled" : policy.enabled ? "enabled" : "enabled state unknown"}`}
             {policy.via && `, from ${policy.via}`}
             {policy.inherited && " (inherited)"}
@@ -346,7 +357,7 @@ function SecurityPolicies({ kind, gitlabId }: { kind: Kind; gitlabId: number }) 
   const loaded = useLoad(`coverage:${kind}`, (signal) => getCoverage(signal, kind));
   let body: ReactNode;
   if (loaded.error) body = <ErrorMessage error={loaded.error} retry={loaded.retry} />;
-  else if (!loaded.data) body = <Loading what="GitLab security policies" />;
+  else if (!loaded.data) body = <Loading label="Loading GitLab security policies…" />;
   else {
     const coverage = loaded.data;
     const rows = kind === "group" ? coverage.groups : coverage.projects;
@@ -355,19 +366,15 @@ function SecurityPolicies({ kind, gitlabId }: { kind: Kind; gitlabId: number }) 
     const problem = discoveryProblem(coverage);
     body = (
       <>
-        {problem && (
-          <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
-            {problem}
-          </p>
-        )}
+        {problem && <p className="alert alert-warning text-body">{problem}</p>}
         {row ? (
           <>
-            <p className="text-sm">
-              <span className="font-medium">{coverageLabels[row.status]}</span>
+            <p>
+              <span className="fw-medium">{coverageLabels[row.status]}</span>
               {`: ${coverageReason(row, kind, groups)}`}
             </p>
             {row.security_policy_project && (
-              <p className="text-sm text-slate-600">
+              <p className="text-secondary">
                 {`Policy source project linked here: ${row.security_policy_project}`}
               </p>
             )}
@@ -375,7 +382,7 @@ function SecurityPolicies({ kind, gitlabId }: { kind: Kind; gitlabId: number }) 
           </>
         ) : (
           !problem && (
-            <p className="text-sm text-slate-600">
+            <p className="text-secondary">
               {`Discovery hasn't recorded this ${kind} yet, so its coverage is unknown, not empty.`}
             </p>
           )
@@ -385,16 +392,12 @@ function SecurityPolicies({ kind, gitlabId }: { kind: Kind; gitlabId: number }) 
   }
   return (
     <section aria-labelledby="security-policies" className={card}>
-      <h2 id="security-policies" className="text-lg font-semibold">
+      <h2 id="security-policies" className="card-title">
         GitLab security policies reaching this
       </h2>
-      <p className="text-sm text-slate-600">
-        GitLab enforces these itself; Baluarte only reads them.
-      </p>
+      <p className="text-secondary">GitLab enforces these itself; Baluarte only reads them.</p>
       {body}
-      <Link to={COVERAGE_VIEW} className={`${linkClass} text-sm`}>
-        All coverage
-      </Link>
+      <Link to={COVERAGE_VIEW}>All coverage</Link>
     </section>
   );
 }
@@ -407,7 +410,7 @@ function isNotFound(error: ApiError | undefined): boolean {
 function useScopeChange(reload: () => void) {
   const [message, setMessage] = useState<string | null>(null);
   const notice = message ? (
-    <p role="status" className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm">
+    <p role="status" className="alert alert-success text-body">
       {message}
     </p>
   ) : null;
@@ -431,15 +434,17 @@ export function ProjectPage() {
   const scope = useScopeChange(loaded.retry);
   if (gitlabId === null || isNotFound(loaded.error)) return <NotFound kind="project" />;
   if (loaded.error) return <ErrorMessage error={loaded.error} retry={loaded.retry} />;
-  if (!loaded.data) return <Loading what="project" />;
+  if (!loaded.data) return <Waiting what="Project" />;
   const { project, ancestry, collection, not_evaluated } = loaded.data;
   const excluded = project.monitoring?.excluded === true || not_evaluated === "excluded";
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
+    <section aria-labelledby="page-title">
       <Header kind="project" path={project.path_with_namespace} ancestry={ancestry}>
         <Fact term="GitLab ID">{project.gitlab_id}</Fact>
         <Fact term="State">
-          <span title={stateHelp[project.state]}>{stateLabels[project.state]}</span>
+          <span className={badgeClass(stateTone[project.state])} title={stateHelp[project.state]}>
+            {stateLabels[project.state]}
+          </span>
         </Fact>
         <Fact term="Visibility">{visibilityLabel(project.visibility)}</Fact>
         <Fact term="Default branch">{project.default_branch ?? "None (empty repository)"}</Fact>
@@ -457,7 +462,7 @@ export function ProjectPage() {
         <Fact term="Last seen">{formatTime(project.last_seen_at)}</Fact>
         {project.last_error && (
           <Fact term="Last error">
-            <span className="text-red-800">{project.last_error}</span>
+            <span className="text-danger-emphasis">{project.last_error}</span>
           </Fact>
         )}
         <CollectionFact collection={collection} />
@@ -470,23 +475,21 @@ export function ProjectPage() {
       />
       {scope.notice}
       {asOf && (
-        <p className="text-sm text-slate-700">
+        <p className="text-secondary">
           Results and monitoring are shown as of the date viewed; baselines in effect and GitLab
           security policies are shown as they are now.
         </p>
       )}
-      <p className="text-sm">
-        <Link to={changesHref({ project: project.gitlab_id })} className={linkClass}>
-          Changes to the default branch
-        </Link>
+      <p>
+        <Link to={changesHref({ project: project.gitlab_id })}>Changes to the default branch</Link>
       </p>
       <InEffect kind="project" gitlabId={project.gitlab_id} />
       {not_evaluated === "archived" || excluded ? (
         <section aria-labelledby="results" className={card}>
-          <h2 id="results" className="text-lg font-semibold">
+          <h2 id="results" className="card-title">
             Latest results
           </h2>
-          <p className="text-sm text-slate-600">{excluded ? excludedNotice : archivedNotice}</p>
+          <p className="text-secondary">{excluded ? excludedNotice : archivedNotice}</p>
         </section>
       ) : (
         <Results gitlabId={project.gitlab_id} />
@@ -504,22 +507,22 @@ export function GroupPage() {
   const scope = useScopeChange(loaded.retry);
   if (gitlabId === null || isNotFound(loaded.error)) return <NotFound kind="group" />;
   if (loaded.error) return <ErrorMessage error={loaded.error} retry={loaded.retry} />;
-  if (!loaded.data) return <Loading what="group" />;
+  if (!loaded.data) return <Waiting what="Group" />;
   const { group, ancestry, collection, subgroups, projects } = loaded.data;
   const inventorySearch = `/inventory?${new URLSearchParams({ search: group.full_path }).toString()}`;
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
+    <section aria-labelledby="page-title">
       <Header kind="group" path={group.full_path} ancestry={ancestry}>
         <Fact term="GitLab ID">{group.gitlab_id}</Fact>
         <Fact term="State">
-          <span title={stateHelp[group.state]}>{stateLabels[group.state]}</span>
+          <span className={badgeClass(stateTone[group.state])} title={stateHelp[group.state]}>
+            {stateLabels[group.state]}
+          </span>
         </Fact>
         <Fact term="Visibility">{visibilityLabel(group.visibility)}</Fact>
         <Fact term="Contains">
           {`${String(subgroups)} ${subgroups === 1 ? "subgroup" : "subgroups"}, ${String(projects)} ${projects === 1 ? "project" : "projects"} directly. `}
-          <Link to={inventorySearch} className={linkClass}>
-            Find them in the inventory
-          </Link>
+          <Link to={inventorySearch}>Find them in the inventory</Link>
         </Fact>
         {group.tags && group.tags.length > 0 && (
           <Fact term="Tags">
@@ -529,7 +532,7 @@ export function GroupPage() {
         <Fact term="Last seen">{formatTime(group.last_seen_at)}</Fact>
         {group.last_error && (
           <Fact term="Last error">
-            <span className="text-red-800">{group.last_error}</span>
+            <span className="text-danger-emphasis">{group.last_error}</span>
           </Fact>
         )}
         <CollectionFact collection={collection} />

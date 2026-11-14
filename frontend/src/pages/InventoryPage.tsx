@@ -18,7 +18,6 @@ import { usePaged } from "../api/usePaged";
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
 import { FreshnessPanel } from "../freshness/FreshnessPanel";
 import { PopulationNote } from "../freshness/PopulationNote";
 import { isFiltered, readFilters, writeFilters, type InventoryView } from "../inventory/filters";
@@ -30,26 +29,44 @@ import { canWriteTags } from "../manager/format";
 import { ItemTags } from "../manager/parts";
 import { canWritePolicies } from "../policies/format";
 import { formatTime } from "../time";
+import { Badge, badgeClass, type Tone } from "../ui/Badge";
+import { useDeviceClass } from "../ui/device";
+import { EmptyState } from "../ui/EmptyState";
+import { ListFooter } from "../ui/ListFooter";
+import { Loading } from "../ui/Loading";
+import { PageHeader } from "../ui/PageHeader";
+
+const stateTone: Record<InventoryState, Tone> = {
+  active: "success",
+  inaccessible: "warning",
+  missing: "danger",
+};
+
+/** Columns hidden on phones, where each row stacks into a card. */
+const PHONE_HIDDEN: ReadonlySet<string> = new Set(["Visibility", "Default branch", "Last seen"]);
+const hide = (header: string) => (PHONE_HIDDEN.has(header) ? "d-none d-md-table-cell" : "");
 
 function StateCell({ state }: { state: InventoryState }) {
   return (
-    <td className="px-3 py-2">
-      <span title={stateHelp[state]}>{stateLabels[state]}</span>
-      {state !== "active" && <span className="sr-only">: {stateHelp[state]}</span>}
+    <td data-label="State">
+      <span className={badgeClass(stateTone[state])} title={stateHelp[state]}>
+        {stateLabels[state]}
+      </span>
+      {state !== "active" && <span className="visually-hidden">: {stateHelp[state]}</span>}
     </td>
   );
 }
 
 function ErrorCell({ error, at }: { error: string | null; at: string | null }) {
   return (
-    <td className="px-3 py-2 text-red-800">
+    <td data-label="Collection error">
       {error ? (
         <>
-          {error}
-          <span className="block text-xs text-slate-600">{formatTime(at)}</span>
+          <span className="text-danger-emphasis">{error}</span>
+          <span className="d-block small text-secondary">{formatTime(at)}</span>
         </>
       ) : (
-        <span className="text-slate-500">None</span>
+        <span className="text-secondary">None</span>
       )}
     </td>
   );
@@ -58,11 +75,10 @@ function ErrorCell({ error, at }: { error: string | null; at: string | null }) {
 function ExcludedBadge({ label }: { label: string | null }) {
   if (!label) return null;
   return (
-    <span
-      className="ml-2 rounded bg-violet-100 px-1.5 py-0.5 text-xs font-normal text-violet-950"
-      title="Not evaluated, read in detail or counted."
-    >
-      {label}
+    <span className="ms-2">
+      <Badge tone="secondary" title="Not evaluated, read in detail or counted.">
+        {label}
+      </Badge>
     </span>
   );
 }
@@ -80,20 +96,20 @@ function Table({
   children: ReactNode;
 }) {
   return (
-    <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-      <table className="w-full text-left text-sm">
-        <caption className="sr-only">{caption}</caption>
-        <thead className="border-b border-slate-200 bg-slate-50">
+    <div className="table-responsive-md">
+      <table className="table table-vcenter card-table table-mobile-md mb-0">
+        <caption className="visually-hidden">{caption}</caption>
+        <thead>
           <tr>
             {leading}
             {headers.map((header) => (
-              <th key={header} scope="col" className="px-3 py-2 font-medium">
+              <th key={header} scope="col" className={hide(header)}>
                 {header}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100">{children}</tbody>
+        <tbody>{children}</tbody>
       </table>
     </div>
   );
@@ -106,21 +122,20 @@ function ProjectRows({ projects, select }: { projects: Project[]; select: Select
   return projects.map((project) => (
     <tr key={project.id}>
       {select?.(project.id, project.path_with_namespace)}
-      <th scope="row" className="px-3 py-2 font-medium">
-        <Link to={projectHref(project.gitlab_id)} className={linkClass}>
+      <th scope="row" data-label="Project" className="fw-normal">
+        <Link to={projectHref(project.gitlab_id)} className="fw-medium text-break">
           {project.path_with_namespace}
         </Link>
         {project.namespace_kind === "user" && (
-          <span className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-xs font-normal">
-            Personal
+          <span className="ms-2">
+            <Badge tone="secondary">Personal</Badge>
           </span>
         )}
         {project.archived && (
-          <span
-            className="ml-2 rounded bg-slate-200 px-1.5 py-0.5 text-xs font-normal"
-            title="Archived projects are not checked by baselines."
-          >
-            Archived
+          <span className="ms-2">
+            <Badge tone="secondary" title="Archived projects are not checked by baselines.">
+              Archived
+            </Badge>
           </span>
         )}
         <ExcludedBadge
@@ -128,12 +143,16 @@ function ProjectRows({ projects, select }: { projects: Project[]; select: Select
         />
         <ItemTags tags={project.tags} />
       </th>
-      <td className="px-3 py-2">{visibilityLabel(project.visibility)}</td>
-      <td className="px-3 py-2">
-        {project.default_branch ?? <span className="text-slate-500">None (empty)</span>}
+      <td data-label="Visibility" className={hide("Visibility")}>
+        {visibilityLabel(project.visibility)}
+      </td>
+      <td data-label="Default branch" className={hide("Default branch")}>
+        {project.default_branch ?? <span className="text-secondary">None (empty)</span>}
       </td>
       <StateCell state={project.state} />
-      <td className="px-3 py-2 whitespace-nowrap">{formatTime(project.last_seen_at)}</td>
+      <td data-label="Last seen" className={`text-nowrap ${hide("Last seen")}`}>
+        {formatTime(project.last_seen_at)}
+      </td>
       <ErrorCell error={project.last_error} at={project.last_error_at} />
     </tr>
   ));
@@ -143,16 +162,20 @@ function GroupRows({ groups, select }: { groups: Group[]; select: SelectCell }) 
   return groups.map((group) => (
     <tr key={group.id}>
       {select?.(group.id, group.full_path)}
-      <th scope="row" className="px-3 py-2 font-medium">
-        <Link to={groupHref(group.gitlab_id)} className={linkClass}>
+      <th scope="row" data-label="Group" className="fw-normal">
+        <Link to={groupHref(group.gitlab_id)} className="fw-medium text-break">
           {group.full_path}
         </Link>
         <ExcludedBadge label={monitoringLabel(group.monitoring, "group", group.full_path)} />
         <ItemTags tags={group.tags} />
       </th>
-      <td className="px-3 py-2">{visibilityLabel(group.visibility)}</td>
+      <td data-label="Visibility" className={hide("Visibility")}>
+        {visibilityLabel(group.visibility)}
+      </td>
       <StateCell state={group.state} />
-      <td className="px-3 py-2 whitespace-nowrap">{formatTime(group.last_seen_at)}</td>
+      <td data-label="Last seen" className={`text-nowrap ${hide("Last seen")}`}>
+        {formatTime(group.last_seen_at)}
+      </td>
       <ErrorCell error={group.last_error} at={group.last_error_at} />
     </tr>
   ));
@@ -190,9 +213,9 @@ function Filters({ view, filters }: { view: InventoryView; filters: InventoryFil
       key={formKey}
       onSubmit={apply}
       aria-label={`Filter ${noun}`}
-      className="grid gap-3 rounded border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-6 lg:items-end"
+      className="card-body border-bottom row g-2 align-items-end mx-0"
     >
-      <label className="text-sm font-medium lg:col-span-2">
+      <label className="form-label col-12 col-md-6 col-xl-4 mb-0">
         Search path
         <input
           name="search"
@@ -200,12 +223,12 @@ function Filters({ view, filters }: { view: InventoryView; filters: InventoryFil
           defaultValue={filters.search}
           maxLength={200}
           placeholder={view === "projects" ? "group/project" : "group/subgroup"}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <label className="text-sm font-medium">
+      <label className="form-label col-6 col-md-3 col-xl-2 mb-0">
         State
-        <select name="state" defaultValue={filters.state} className={fieldClass}>
+        <select name="state" defaultValue={filters.state} className="form-select mt-1">
           <option value="">Any</option>
           <option value="active">Active</option>
           <option value="inaccessible">Inaccessible</option>
@@ -214,18 +237,22 @@ function Filters({ view, filters }: { view: InventoryView; filters: InventoryFil
       </label>
       {view === "projects" && (
         <>
-          <label className="text-sm font-medium">
+          <label className="form-label col-6 col-md-3 col-xl-2 mb-0">
             Visibility
-            <select name="visibility" defaultValue={filters.visibility} className={fieldClass}>
+            <select
+              name="visibility"
+              defaultValue={filters.visibility}
+              className="form-select mt-1"
+            >
               <option value="">Any</option>
               <option value="private">Private</option>
               <option value="internal">Internal</option>
               <option value="public">Public</option>
             </select>
           </label>
-          <label className="text-sm font-medium">
+          <label className="form-label col-6 col-md-3 col-xl-2 mb-0">
             Archived
-            <select name="archived" defaultValue={filters.archived} className={fieldClass}>
+            <select name="archived" defaultValue={filters.archived} className="form-select mt-1">
               <option value="">Any</option>
               <option value="false">Not archived</option>
               <option value="true">Archived only</option>
@@ -233,28 +260,33 @@ function Filters({ view, filters }: { view: InventoryView; filters: InventoryFil
           </label>
         </>
       )}
-      <label className="text-sm font-medium">
+      <label className="form-label col-6 col-md-3 col-xl-2 mb-0">
         Tag
         <input
           name="tag"
           defaultValue={filters.tag.replace(":", "=")}
           maxLength={127}
           placeholder="team=payments"
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <label className="flex items-center gap-2 text-sm font-medium">
-        <input name="has_error" type="checkbox" defaultChecked={filters.hasError} />
-        With collection errors
+      <label className="form-check col-12 col-md-auto mb-0 ms-2">
+        <input
+          name="has_error"
+          type="checkbox"
+          defaultChecked={filters.hasError}
+          className="form-check-input"
+        />
+        <span className="form-check-label">With collection errors</span>
       </label>
-      <div className="flex gap-2 sm:col-span-2 lg:col-span-6">
-        <button type="submit" className={buttonClass}>
+      <div className="col-12 btn-list">
+        <button type="submit" className="btn">
           Apply filters
         </button>
         {isFiltered(filters) && (
           <Link
             to={`?${writeFilters(view, { ...emptyFilters, showExcluded: filters.showExcluded }).toString()}`}
-            className={secondaryClass}
+            className="btn btn-ghost-secondary"
           >
             Clear
           </Link>
@@ -285,7 +317,7 @@ function ExcludedToggle({ view, filters }: { view: InventoryView; filters: Inven
       onClick={() => {
         setParams(writeFilters(view, { ...filters, showExcluded: !shown }));
       }}
-      className={secondaryClass}
+      className="btn btn-sm"
     >
       {shown ? "Hide excluded" : "Show excluded"}
     </button>
@@ -337,9 +369,9 @@ function SelectionBar<T>({
     <div
       role="group"
       aria-label={`Selected ${noun}`}
-      className="flex flex-wrap items-center gap-2 rounded border border-slate-200 bg-slate-50 p-2 text-sm"
+      className="card-body border-bottom py-2 d-flex flex-wrap align-items-center gap-2"
     >
-      <p aria-live="polite" className="mr-2">
+      <p aria-live="polite" className="mb-0 me-2">
         {`${count(chosen.length, type, `${type}s`)} selected.`}
       </p>
       {canScope && (
@@ -354,7 +386,7 @@ function SelectionBar<T>({
                 labels: toExclude.map((row) => row.path),
               });
             }}
-            className={secondaryClass}
+            className="btn btn-sm"
           >
             Exclude from monitoring
           </button>
@@ -364,7 +396,7 @@ function SelectionBar<T>({
             onClick={() => {
               open({ mode: "include", ids, labels: toInclude.map((row) => row.path) });
             }}
-            className={secondaryClass}
+            className="btn btn-sm"
           >
             Include again
           </button>
@@ -380,18 +412,18 @@ function SelectionBar<T>({
               labels: chosen.map((row) => row.path),
             });
           }}
-          className={secondaryClass}
+          className="btn btn-sm"
         >
           Tag…
         </button>
       )}
       {canScope && toExclude.length > MAX_BATCH && (
-        <p className="w-full text-slate-700">
+        <p className="w-100 mb-0 text-secondary">
           {`At most ${String(MAX_BATCH)} can be excluded at once.`}
         </p>
       )}
       {canScope && elsewhere.length > 0 && (
-        <p className="w-full text-slate-700">
+        <p className="w-100 mb-0 text-secondary">
           {`${count(elsewhere.length, "selected " + type + " is", `selected ${type}s are`)} excluded by a group or the personal-namespace setting; include them again under Monitoring scope.`}
         </p>
       )}
@@ -428,40 +460,49 @@ function Listing<T>({
     (page) => page.next_after_id,
     (after) => load(after),
   );
+  const device = useDeviceClass();
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [intent, setIntent] = useState<ScopeIntent | null>(null);
   const [tagIntent, setTagIntent] = useState<TagIntent | null>(null);
-  const selectable = canWrite || canTag;
+  // No bulk actions on phones: rows are read-only there.
+  const selectable = (canWrite || canTag) && device !== "phone";
   const noun = view === "projects" ? "projects" : "groups";
   const type = view === "projects" ? "project" : "group";
 
-  if (first.error) return <ErrorMessage error={first.error} retry={first.retry} />;
+  if (first.error) {
+    return (
+      <div className="card-body">
+        <ErrorMessage error={first.error} retry={first.retry} />
+      </div>
+    );
+  }
   if (first.loading) {
     return (
-      <p role="status" className="text-slate-600">
-        Loading {noun}…
-      </p>
+      <div className="card-body">
+        <Loading label={`Loading ${noun}…`} />
+      </div>
     );
   }
   const hidden = filters.showExcluded ? undefined : first.data?.excluded_hidden;
   const hiddenNote =
     typeof hidden === "number" && hidden > 0 ? (
-      <p className="text-sm text-slate-600">
+      <p className="text-secondary mb-0">
         {`${count(hidden, `excluded ${type}`, `excluded ${noun}`)} hidden. Select Show excluded to see ${hidden === 1 ? "it" : "them"}.`}
       </p>
     ) : null;
   if (paged.items.length === 0) {
     return (
-      <div className="space-y-2">
-        <p className="rounded border border-dashed border-slate-300 p-4 text-sm text-slate-600">
-          {isFiltered(filters)
+      <EmptyState
+        title={
+          isFiltered(filters)
             ? `No ${noun} match these filters.`
             : hiddenNote
               ? `Every ${type} found is excluded from monitoring.`
-              : `No ${noun} have been collected yet.`}
-        </p>
+              : `No ${noun} have been collected yet.`
+        }
+      >
         {hiddenNote}
-      </div>
+      </EmptyState>
     );
   }
 
@@ -477,8 +518,9 @@ function Listing<T>({
   }
   const select: SelectCell = selectable
     ? (id, path) => (
-        <td className="w-8 px-3 py-2">
+        <td className="w-1">
           <input
+            className="form-check-input m-0"
             type="checkbox"
             checked={selected.has(id)}
             onChange={() => {
@@ -490,8 +532,9 @@ function Listing<T>({
       )
     : null;
   const leading = selectable ? (
-    <th scope="col" className="w-8 px-3 py-2">
+    <th scope="col" className="w-1">
       <input
+        className="form-check-input m-0"
         type="checkbox"
         checked={allSelected}
         onChange={() => {
@@ -503,7 +546,7 @@ function Listing<T>({
   ) : undefined;
 
   return (
-    <div className="space-y-3">
+    <>
       {selectable && (
         <SelectionBar
           noun={noun}
@@ -524,30 +567,34 @@ function Listing<T>({
         />
       )}
       {tagIntent && (
-        <TagForm
-          intent={tagIntent}
-          onCancel={() => {
-            setTagIntent(null);
-          }}
-          onDone={(message) => {
-            setTagIntent(null);
-            setSelected(new Set());
-            onChanged(message);
-          }}
-        />
+        <div className="card-body border-bottom">
+          <TagForm
+            intent={tagIntent}
+            onCancel={() => {
+              setTagIntent(null);
+            }}
+            onDone={(message) => {
+              setTagIntent(null);
+              setSelected(new Set());
+              onChanged(message);
+            }}
+          />
+        </div>
       )}
       {intent && (
-        <ScopeForm
-          intent={intent}
-          onCancel={() => {
-            setIntent(null);
-          }}
-          onDone={(message) => {
-            setIntent(null);
-            setSelected(new Set());
-            onChanged(message);
-          }}
-        />
+        <div className="card-body border-bottom">
+          <ScopeForm
+            intent={intent}
+            onCancel={() => {
+              setIntent(null);
+            }}
+            onDone={(message) => {
+              setIntent(null);
+              setSelected(new Set());
+              onChanged(message);
+            }}
+          />
+        </div>
       )}
       <Table
         caption={view === "projects" ? "GitLab projects" : "GitLab groups"}
@@ -556,25 +603,16 @@ function Listing<T>({
       >
         {render(paged.items, select)}
       </Table>
-      <p className="text-sm text-slate-600" aria-live="polite">
-        Showing {paged.items.length} {noun}
-        {paged.next !== null ? " (more available)" : ""}.
-      </p>
-      {hiddenNote}
-      {paged.moreError && (
-        <ErrorMessage error={paged.moreError} retry={() => void paged.loadMore()} />
-      )}
-      {paged.next !== null && (
-        <button
-          type="button"
-          onClick={() => void paged.loadMore()}
-          disabled={paged.pending}
-          className={secondaryClass}
-        >
-          {paged.pending ? "Loading…" : `Load more ${noun}`}
-        </button>
-      )}
-    </div>
+      <ListFooter
+        noun={noun}
+        shown={paged.items.length}
+        hasMore={paged.next !== null}
+        pending={paged.pending}
+        error={paged.moreError}
+        onMore={() => void paged.loadMore()}
+      />
+      {hiddenNote && <div className="card-body pt-0">{hiddenNote}</div>}
+    </>
   );
 }
 
@@ -615,99 +653,93 @@ export function InventoryPage() {
   }
 
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
-      <div>
-        <h1 id="page-title" className="text-2xl font-semibold">
-          Inventory
-        </h1>
-        <p className="mt-2 text-slate-600">
-          GitLab groups, subgroups and projects visible to Baluarte&apos;s read-only token.
-        </p>
-        <PopulationNote population={freshness.data?.population} />
-      </div>
+    <section aria-labelledby="page-title">
+      <PageHeader
+        pretitle="Observe"
+        title="Inventory"
+        subtitle="GitLab groups, subgroups and projects visible to Baluarte's read-only token."
+      />
+      <PopulationNote population={freshness.data?.population} />
 
       {freshness.error ? (
         <ErrorMessage error={freshness.error} retry={freshness.retry} />
       ) : freshness.data ? (
         <FreshnessPanel report={freshness.data} />
       ) : (
-        <p role="status" className="text-slate-600">
-          Checking collection status…
-        </p>
+        <Loading label="Checking collection status…" rows={1} />
       )}
 
       {message && (
-        <p role="status" className="rounded border border-emerald-200 bg-emerald-50 p-3 text-sm">
+        <p role="status" className="alert alert-success text-body">
           {message}
         </p>
       )}
 
       <MonitoringScope reload={reload} onChanged={changed} />
 
-      <nav aria-label="Inventory views">
-        <ul className="flex gap-1">
-          {tabs.map((tab) => (
-            <li key={tab.view}>
-              <Link
-                to={`?${writeFilters(tab.view, filters).toString()}`}
-                aria-current={tab.view === view ? "page" : undefined}
-                className={`block rounded px-3 py-2 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 ${
-                  tab.view === view
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-700 hover:bg-slate-100"
-                }`}
-              >
-                {tab.label}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </nav>
+      <div className="card">
+        <div className="card-header">
+          <nav aria-label="Inventory views">
+            <ul className="nav nav-tabs card-header-tabs">
+              {tabs.map((tab) => (
+                <li key={tab.view} className="nav-item">
+                  <Link
+                    to={`?${writeFilters(tab.view, filters).toString()}`}
+                    aria-current={tab.view === view ? "page" : undefined}
+                    className={`nav-link ${tab.view === view ? "active" : ""}`}
+                  >
+                    {tab.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+        </div>
+        <Filters view={view} filters={filters} />
+        <div className="card-body border-bottom py-2 d-flex flex-wrap align-items-center gap-3">
+          <ExcludedToggle view={view} filters={filters} />
+          <p className="text-secondary mb-0">
+            {filters.showExcluded
+              ? "Excluded projects and groups are shown with an Excluded badge."
+              : "Projects and groups excluded from monitoring are hidden."}
+          </p>
+        </div>
 
-      <Filters view={view} filters={filters} />
-      <div className="flex flex-wrap items-center gap-3">
-        <ExcludedToggle view={view} filters={filters} />
-        <p className="text-sm text-slate-600">
-          {filters.showExcluded
-            ? "Excluded projects and groups are shown with an Excluded badge."
-            : "Projects and groups excluded from monitoring are hidden."}
-        </p>
+        {view === "projects" ? (
+          <Listing<Project>
+            key={listingKey}
+            view="projects"
+            filters={filters}
+            load={(after, signal) => listProjects(filters, after, signal)}
+            render={(items, select) => <ProjectRows projects={items} select={select} />}
+            facts={projectFacts}
+            canWrite={canWrite}
+            canTag={canTag}
+            onChanged={changed}
+            headers={[
+              "Project",
+              "Visibility",
+              "Default branch",
+              "State",
+              "Last seen",
+              "Collection error",
+            ]}
+          />
+        ) : (
+          <Listing<Group>
+            key={listingKey}
+            view="groups"
+            filters={filters}
+            load={(after, signal) => listGroups(filters, after, signal)}
+            render={(items, select) => <GroupRows groups={items} select={select} />}
+            facts={groupFacts}
+            canWrite={canWrite}
+            canTag={canTag}
+            onChanged={changed}
+            headers={["Group", "Visibility", "State", "Last seen", "Collection error"]}
+          />
+        )}
       </div>
-
-      {view === "projects" ? (
-        <Listing<Project>
-          key={listingKey}
-          view="projects"
-          filters={filters}
-          load={(after, signal) => listProjects(filters, after, signal)}
-          render={(items, select) => <ProjectRows projects={items} select={select} />}
-          facts={projectFacts}
-          canWrite={canWrite}
-          canTag={canTag}
-          onChanged={changed}
-          headers={[
-            "Project",
-            "Visibility",
-            "Default branch",
-            "State",
-            "Last seen",
-            "Collection error",
-          ]}
-        />
-      ) : (
-        <Listing<Group>
-          key={listingKey}
-          view="groups"
-          filters={filters}
-          load={(after, signal) => listGroups(filters, after, signal)}
-          render={(items, select) => <GroupRows groups={items} select={select} />}
-          facts={groupFacts}
-          canWrite={canWrite}
-          canTag={canTag}
-          onChanged={changed}
-          headers={["Group", "Visibility", "State", "Last seen", "Collection error"]}
-        />
-      )}
     </section>
   );
 }

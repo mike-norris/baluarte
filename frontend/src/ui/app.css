@@ -66,3 +66,13 @@
     bottom: calc(3.75rem + env(safe-area-inset-bottom, 0px));
   }
 }
+
+/* Notes and justifications keep the line breaks people typed. */
+.text-prewrap {
+  white-space: pre-wrap;
+}
+
+/* A fieldset that only groups controls for disabling, without a box of its own. */
+.d-contents {
+  display: contents;
+}

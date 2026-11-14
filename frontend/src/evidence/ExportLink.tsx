@@ -1,7 +1,6 @@
 import { Link } from "react-router";
 
 import { useAuth } from "../auth/context";
-import { linkClass } from "../components/styles";
 
 /** A link to the export form, prefilled; shown only to users who may export. */
 export function ExportLink({
@@ -18,12 +17,12 @@ export function ExportLink({
     return null;
   }
   return (
-    <p className="text-sm">
-      <Link to={href} className={linkClass}>
+    <p className="mb-0">
+      <Link to={href}>
         {label}
       </Link>
       {dropped.length > 0 && (
-        <span className="text-slate-600">
+        <span className="text-secondary">
           {` The export cannot filter by ${dropped.join(" or ")}, so it includes every value.`}
         </span>
       )}

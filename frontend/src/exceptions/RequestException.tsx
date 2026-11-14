@@ -10,7 +10,6 @@ import {
 } from "../api/exceptions";
 import type { FindingDetail } from "../api/evaluations";
 import { useAuth } from "../auth/context";
-import { buttonClass, fieldClass, secondaryClass } from "../components/styles";
 import { endOfUtcDay, expiryRange } from "./format";
 
 const errorClass = "rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900";
@@ -72,7 +71,7 @@ export function RequestExceptionForm({
         onClick={() => {
           setOpen(true);
         }}
-        className={secondaryClass}
+        className="btn"
       >
         Request exception
       </button>
@@ -118,38 +117,38 @@ export function RequestExceptionForm({
       onSubmit={(event) => void submit(event)}
       aria-labelledby="request-exception"
       noValidate
-      className="space-y-3 rounded border border-slate-200 p-3"
+      className="rounded border p-3"
     >
-      <h3 id="request-exception" ref={heading} tabIndex={-1} className="font-medium">
+      <h3 id="request-exception" ref={heading} tabIndex={-1} className="fw-medium">
         Request an exception
       </h3>
-      <p className="text-sm text-slate-700">
+      <p className="text-secondary">
         {`Waives this failure of ${finding.rule_id} for ${finding.project.path} until it expires. `}
         Someone other than you must approve it, and every step is audited.
       </p>
       {messages.length > 0 && (
         <div ref={alert} role="alert" tabIndex={-1} className={errorClass}>
-          <ul className="list-disc pl-5">
+          <ul className="ps-3">
             {messages.map((message) => (
               <li key={message}>{message}</li>
             ))}
           </ul>
         </div>
       )}
-      <label className="block text-sm font-medium">
+      <label className="d-block fw-medium">
         Justification
         <textarea
           name="justification"
           rows={4}
           maxLength={MAX_JUSTIFICATION}
           aria-describedby="justification-help"
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <p id="justification-help" className="text-xs text-slate-600">
+      <p id="justification-help" className="small text-secondary">
         {`Why the failure is acceptable for now, and what will fix it. ${String(MIN_JUSTIFICATION)} to ${String(MAX_JUSTIFICATION)} characters.`}
       </p>
-      <label className="block text-sm font-medium">
+      <label className="d-block fw-medium">
         Expires on (UTC)
         <input
           name="expiry"
@@ -157,14 +156,14 @@ export function RequestExceptionForm({
           min={range.min}
           max={range.max}
           aria-describedby="expiry-help"
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <p id="expiry-help" className="text-xs text-slate-600">
+      <p id="expiry-help" className="small text-secondary">
         {`Ends at 23:59:59 UTC on that day, at most ${String(MAX_EXCEPTION_DAYS)} days ahead. The finding reopens then if the rule still fails.`}
       </p>
-      <div className="flex gap-2">
-        <button type="submit" disabled={sending} className={buttonClass}>
+      <div className="d-flex gap-2">
+        <button type="submit" disabled={sending} className="btn btn-primary">
           {sending ? "Sending…" : "Submit request"}
         </button>
         <button
@@ -174,7 +173,7 @@ export function RequestExceptionForm({
             setProblems([]);
             setFailure(null);
           }}
-          className={secondaryClass}
+          className="btn"
         >
           Cancel
         </button>

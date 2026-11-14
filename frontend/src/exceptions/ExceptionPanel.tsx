@@ -8,7 +8,6 @@ import { useAsOf } from "../asof/context";
 import { PastReadOnly } from "../asof/PastReadOnly";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { linkClass } from "../components/styles";
 import { outcomeLabels, outcomeMeaning } from "../findings/format";
 import { formatTime } from "../time";
 import {
@@ -23,16 +22,16 @@ import { RequestExceptionForm } from "./RequestException";
 
 function Field({ term, children }: { term: string; children: ReactNode }) {
   return (
-    <div className="py-2 sm:grid sm:grid-cols-3 sm:gap-4">
-      <dt className="font-medium text-slate-700">{term}</dt>
-      <dd className="mt-1 sm:col-span-2 sm:mt-0">{children}</dd>
+    <div className="row g-2 py-2 border-bottom">
+      <dt className="col-md-4 fw-medium text-secondary">{term}</dt>
+      <dd className="col-md-8 mb-0">{children}</dd>
     </div>
   );
 }
 
 function Current({ exception }: { exception: PolicyException }) {
   return (
-    <dl className="mt-2 divide-y divide-slate-100 text-sm">
+    <dl className="mb-0">
       <Field term="State">
         {`${exceptionStateLabels[exception.state]}: ${exceptionStateMeaning[exception.state]}`}
       </Field>
@@ -46,10 +45,10 @@ function Current({ exception }: { exception: PolicyException }) {
       )}
       <Field term="Expires">{formatTime(exception.expires_at)}</Field>
       <Field term="Justification">
-        <span className="whitespace-pre-wrap">{exception.justification}</span>
+        <span className="text-prewrap">{exception.justification}</span>
       </Field>
       <Field term="Record">
-        <Link to={`/exceptions/${String(exception.id)}`} className={linkClass}>
+        <Link to={`/exceptions/${String(exception.id)}`}>
           {`Exception ${String(exception.id)}`}
         </Link>
       </Field>
@@ -106,7 +105,7 @@ export function ExceptionPanel({ finding }: { finding: FindingDetail }) {
   if (loaded.error) body = <ErrorMessage error={loaded.error} retry={loaded.retry} />;
   else if (loaded.loading) {
     body = (
-      <p role="status" className="mt-2 text-sm text-slate-600">
+      <p role="status" className="mt-2 text-secondary">
         Loading exceptions…
       </p>
     );
@@ -116,14 +115,14 @@ export function ExceptionPanel({ finding }: { finding: FindingDetail }) {
         {current ? (
           <Current exception={current} />
         ) : (
-          <p className="mt-2 text-sm">No exception is requested or in force for this rule.</p>
+          <p className="mt-2">No exception is requested or in force for this rule.</p>
         )}
         {user && hasPermission(user, CAN_REQUEST) && (
           <div className="mt-3">
             {asOf ? (
               <PastReadOnly />
             ) : reason ? (
-              <p className="text-sm text-slate-700">{reason}</p>
+              <p className="text-secondary">{reason}</p>
             ) : (
               <RequestExceptionForm
                 finding={finding}
@@ -140,25 +139,25 @@ export function ExceptionPanel({ finding }: { finding: FindingDetail }) {
   }
 
   return (
-    <section aria-labelledby="exception" className="rounded border border-slate-200 bg-white p-4">
-      <h2 id="exception" className="text-lg font-semibold">
+    <section aria-labelledby="exception" className="card card-body mb-3">
+      <h2 id="exception" className="card-title">
         Exception
       </h2>
-      {asOf && <p className="mt-1 text-sm text-slate-600">Exceptions are shown as they are now.</p>}
+      {asOf && <p className="mt-1 text-secondary">Exceptions are shown as they are now.</p>}
       {waived && finding.exception && (
-        <p className="mt-2 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+        <p className="alert alert-warning text-body">
           {`Excepted until ${formatTime(finding.exception.expires_at)}: the failure is recorded as excepted, not as passing. `}
           The finding reopens at expiry, or if the exception is revoked, while the rule still fails.
         </p>
       )}
       {requested && (
-        <p ref={status} role="status" tabIndex={-1} className="mt-2 text-sm font-medium">
+        <p ref={status} role="status" tabIndex={-1} className="mt-2 fw-medium">
           {`Exception ${String(requested.id)} requested. It has no effect until someone else approves it.`}
         </p>
       )}
       {body}
-      <p className="mt-3 text-sm">
-        <Link to={`/exceptions?${writeExceptionFilters(filters).toString()}`} className={linkClass}>
+      <p className="mt-3">
+        <Link to={`/exceptions?${writeExceptionFilters(filters).toString()}`}>
           All exceptions for this project and rule
         </Link>
       </p>

@@ -6,7 +6,6 @@ import { assignTag, listTags, tagText, unassignTag, type TagTarget } from "../ap
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
 import { MANAGER_TAGS } from "../manager/format";
 import { asApiError, Problems } from "../settings/parts";
 
@@ -61,15 +60,11 @@ export function TagForm({
   }
 
   return (
-    <div
-      role="group"
-      aria-labelledby="tag-form-title"
-      className="space-y-3 rounded border border-slate-300 bg-white p-4"
-    >
-      <h2 id="tag-form-title" className="font-semibold">
+    <div role="group" aria-labelledby="tag-form-title" className="rounded border p-3">
+      <h2 id="tag-form-title" className="fw-semibold">
         {`Tag ${String(count)} selected ${noun}`}
       </h2>
-      <ul className="max-h-32 list-disc overflow-y-auto pl-5 text-sm">
+      <ul className="ps-3 overflow-auto" style={{ maxHeight: "8rem" }}>
         {intent.labels.map((label) => (
           <li key={label}>{label}</li>
         ))}
@@ -78,22 +73,18 @@ export function TagForm({
       {tags.error ? (
         <ErrorMessage error={tags.error} retry={tags.retry} />
       ) : tags.data && tags.data.items.length === 0 ? (
-        <p className="text-sm text-slate-600">
-          No tags yet.{" "}
-          <Link to={MANAGER_TAGS} className={linkClass}>
-            Create one under Manager, Tags
-          </Link>
-          .
+        <p className="text-secondary">
+          No tags yet. <Link to={MANAGER_TAGS}>Create one under Manager, Tags</Link>.
         </p>
       ) : (
-        <label className="block text-sm font-medium">
+        <label className="d-block fw-medium">
           Tag
           <select
             value={tagId}
             onChange={(event) => {
               setTagId(event.currentTarget.value);
             }}
-            className={fieldClass}
+            className="form-control mt-1"
           >
             <option value="">{tags.data ? "Choose a tag" : "Loading tags…"}</option>
             {(tags.data?.items ?? []).map((tag) => (
@@ -104,16 +95,16 @@ export function TagForm({
           </select>
         </label>
       )}
-      <p className="text-xs text-slate-600">
+      <p className="small text-secondary">
         Tags are kept in Baluarte only; GitLab is not changed. A group&apos;s tag applies to its
         subgroups and projects.
       </p>
-      <div className="flex flex-wrap gap-2">
+      <div className="d-flex flex-wrap gap-2">
         <button
           type="button"
           disabled={saving || !chosen}
           onClick={() => void run("assign")}
-          className={buttonClass}
+          className="btn btn-primary"
         >
           Add tag
         </button>
@@ -121,11 +112,11 @@ export function TagForm({
           type="button"
           disabled={saving || !chosen}
           onClick={() => void run("unassign")}
-          className={secondaryClass}
+          className="btn"
         >
           Remove tag
         </button>
-        <button type="button" onClick={onCancel} className={secondaryClass}>
+        <button type="button" onClick={onCancel} className="btn">
           Cancel
         </button>
       </div>

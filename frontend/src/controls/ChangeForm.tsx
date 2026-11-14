@@ -8,7 +8,6 @@ import {
   type MappingChangeKind,
 } from "../api/controls";
 import { useAuth } from "../auth/context";
-import { buttonClass, fieldClass, secondaryClass } from "../components/styles";
 import {
   frameworkLabel,
   kindLabels,
@@ -108,20 +107,20 @@ export function ChangeForm({
       onSubmit={(event) => void submit(event)}
       aria-labelledby={`${id}-title`}
       noValidate
-      className="space-y-3 rounded border border-slate-300 bg-white p-4"
+      className="rounded border p-3"
     >
-      <h3 id={`${id}-title`} ref={heading} tabIndex={-1} className="font-semibold">
+      <h3 id={`${id}-title`} ref={heading} tabIndex={-1} className="fw-semibold">
         {`${kindLabels[intent.kind]}: ${control}`}
       </h3>
-      <p className="text-sm text-slate-700">{help[intent.kind]}</p>
+      <p className="text-secondary">{help[intent.kind]}</p>
       {intent.supersedes && (
-        <p className="text-sm">{`Withdraws change ${String(intent.supersedes.id)}: ${intent.supersedes.text}.`}</p>
+        <p>{`Withdraws change ${String(intent.supersedes.id)}: ${intent.supersedes.text}.`}</p>
       )}
       {intent.kind === "unmap" && choices.length === 1 && (
-        <p className="text-sm">{`Rule type: ${ruleTypeLabel(choices[0] ?? "")}`}</p>
+        <p>{`Rule type: ${ruleTypeLabel(choices[0] ?? "")}`}</p>
       )}
       {intent.kind === "map" && (
-        <label className="block text-sm font-medium">
+        <label className="d-block fw-medium">
           Rule type
           <select
             value={ruleType}
@@ -129,7 +128,7 @@ export function ChangeForm({
               setRuleType(event.target.value);
             }}
             required
-            className={fieldClass}
+            className="form-control mt-1"
           >
             <option value="">Choose a rule type</option>
             {choices.map((type) => (
@@ -141,7 +140,7 @@ export function ChangeForm({
         </label>
       )}
       <div>
-        <label htmlFor={`${id}-justification`} className="text-sm font-medium">
+        <label htmlFor={`${id}-justification`} className="fw-medium">
           Justification
         </label>
         <textarea
@@ -155,14 +154,14 @@ export function ChangeForm({
           onChange={(event) => {
             setJustification(event.target.value);
           }}
-          className={fieldClass}
+          className="form-control mt-1"
         />
-        <p id={`${id}-justification-help`} className="mt-1 text-xs text-slate-600">
+        <p id={`${id}-justification-help`} className="mt-1 small text-secondary">
           {`Why the organization makes this change, for reviewers and auditors. ${String(MIN_JUSTIFICATION)} to ${String(MAX_JUSTIFICATION)} characters.`}
         </p>
       </div>
       <div>
-        <label htmlFor={`${id}-evidence`} className="text-sm font-medium">
+        <label htmlFor={`${id}-evidence`} className="fw-medium">
           Where the evidence is (optional)
         </label>
         <input
@@ -173,12 +172,12 @@ export function ChangeForm({
           onChange={(event) => {
             setEvidenceRef(event.target.value);
           }}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </div>
       {datedKind && (
         <div>
-          <label htmlFor={`${id}-review`} className="text-sm font-medium">
+          <label htmlFor={`${id}-review`} className="fw-medium">
             Review by
           </label>
           <input
@@ -191,26 +190,26 @@ export function ChangeForm({
             onChange={(event) => {
               setReviewBy(event.target.value);
             }}
-            className={fieldClass}
+            className="form-control mt-1"
           />
-          <p id={`${id}-review-help`} className="mt-1 text-xs text-slate-600">
+          <p id={`${id}-review-help`} className="mt-1 small text-secondary">
             At most 365 days ahead. After this date the decision no longer counts until it is
             renewed.
           </p>
         </div>
       )}
       {errors.length > 0 && (
-        <ul role="alert" className="list-disc space-y-1 pl-5 text-sm text-red-900">
+        <ul role="alert" className="ps-3 text-danger-emphasis">
           {errors.map((error) => (
             <li key={error}>{error}</li>
           ))}
         </ul>
       )}
-      <div className="flex flex-wrap gap-2">
-        <button type="submit" disabled={sending} className={buttonClass}>
+      <div className="d-flex flex-wrap gap-2">
+        <button type="submit" disabled={sending} className="btn btn-primary">
           {sending ? "Sending…" : "Propose change"}
         </button>
-        <button type="button" onClick={onCancel} disabled={sending} className={secondaryClass}>
+        <button type="button" onClick={onCancel} disabled={sending} className="btn">
           Cancel
         </button>
       </div>

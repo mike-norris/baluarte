@@ -62,7 +62,16 @@ function OldEditorLink() {
 
 /** Pages already on Tabler; the rest render in the light legacy panel until moved. */
 const TABLER = { tabler: true } as const;
-const onTabler: ReadonlySet<string> = new Set(["/", "/reviews", "/remediation", "/exceptions"]);
+const onTabler: ReadonlySet<string> = new Set([
+  "/",
+  "/reviews",
+  "/remediation",
+  "/exceptions",
+  "/findings",
+  "/changes",
+  "/controls",
+  "/inventory",
+]);
 
 /** Sections that are implemented; the rest render a placeholder. */
 const pages: Partial<Record<string, ReactNode>> = {
@@ -106,18 +115,22 @@ export const routes: RouteObject[] = [
           })),
           {
             path: "/inventory/projects/:gitlabId",
+            handle: TABLER,
             element: page(() => import("./pages/InventoryItemPage"), "ProjectPage"),
           },
           {
             path: "/inventory/groups/:gitlabId",
+            handle: TABLER,
             element: page(() => import("./pages/InventoryItemPage"), "GroupPage"),
           },
           {
             path: "/findings/:findingId",
+            handle: TABLER,
             element: page(() => import("./pages/FindingDetailPage"), "FindingDetailPage"),
           },
           {
             path: "/changes/:changeId",
+            handle: TABLER,
             element: page(() => import("./pages/ChangeDetailPage"), "ChangeDetailPage"),
           },
           {
@@ -170,6 +183,7 @@ export const routes: RouteObject[] = [
           },
           {
             path: "/controls/:framework/:controlId",
+            handle: TABLER,
             element: page(() => import("./pages/ControlDetailPage"), "ControlDetailPage"),
           },
           {

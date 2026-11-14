@@ -6,7 +6,6 @@ import { useAsOf } from "../asof/context";
 import { PastReadOnly } from "../asof/PastReadOnly";
 import { useAuth } from "../auth/context";
 import { changePerson } from "../controls/format";
-import { secondaryClass } from "../components/styles";
 import { canWritePolicies } from "../policies/format";
 import { formatTime } from "../time";
 import { ScopeForm } from "./ScopeForm";
@@ -38,11 +37,8 @@ export function ExclusionNotice({
   const exclusion = exclusions.data?.items.find((item) => item.id === monitoring.exclusion_id);
   const here = includableHere(monitoring, type, path);
   return (
-    <section
-      aria-labelledby="excluded-title"
-      className="space-y-2 rounded border border-violet-300 bg-violet-50 p-4 text-sm"
-    >
-      <h2 id="excluded-title" className="text-lg font-semibold">
+    <section aria-labelledby="excluded-title" className="alert alert-secondary text-body">
+      <h2 id="excluded-title" className="card-title">
         Excluded from monitoring
       </h2>
       <p>
@@ -50,14 +46,14 @@ export function ExclusionNotice({
       </p>
       {exclusion && (
         <>
-          <p className="whitespace-pre-wrap">{exclusion.justification}</p>
-          <p className="text-xs text-slate-700">
+          <p className="text-prewrap">{exclusion.justification}</p>
+          <p className="small text-secondary">
             {`Excluded by ${changePerson(exclusion.proposed_by)} on ${formatTime(exclusion.proposed_at)}.`}
           </p>
         </>
       )}
       {canWrite && !here && (
-        <p className="text-slate-700">
+        <p className="text-secondary">
           Include it again from the Monitoring scope section of the Inventory page, where the
           covering exclusion is listed.
         </p>
@@ -70,7 +66,7 @@ export function ExclusionNotice({
           onClick={() => {
             setIncluding(true);
           }}
-          className={secondaryClass}
+          className="btn"
         >
           Include again
         </button>

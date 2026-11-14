@@ -1,6 +1,6 @@
 import type { CollectionKind, FreshnessReport } from "../api/gitlab";
 import { formatTime } from "../time";
-import { freshnessLabels, freshnessTone, needsAttention } from "./status";
+import { freshnessColor, freshnessLabels, needsAttention } from "./status";
 
 const kinds: { kind: CollectionKind; label: string }[] = [
   { kind: "projects", label: "Projects" },
@@ -29,11 +29,11 @@ function headline(report: FreshnessReport): string {
 export function FreshnessPanel({ report }: { report: FreshnessReport }) {
   if (report.status === "not_configured") {
     return (
-      <section aria-labelledby="freshness-title" className="rounded border border-slate-300 p-4">
-        <h2 id="freshness-title" className="font-semibold">
+      <section aria-labelledby="freshness-title" className="rounded border p-3">
+        <h2 id="freshness-title" className="alert-title h4">
           GitLab is not configured
         </h2>
-        <p className="mt-1 text-sm text-slate-700">
+        <p className="mt-1 text-secondary">
           An administrator needs to set the GitLab URL and a read-only token before the inventory
           can be collected.
         </p>
@@ -44,32 +44,38 @@ export function FreshnessPanel({ report }: { report: FreshnessReport }) {
   return (
     <section
       aria-labelledby="freshness-title"
-      className={`rounded border p-4 ${freshnessTone[report.status]}`}
+      className={`alert alert-${freshnessColor[report.status]} text-body`}
     >
-      <h2 id="freshness-title" className="font-semibold">
+      <h2 id="freshness-title" className="alert-title h4">
         Collection status: {freshnessLabels[report.status]}
       </h2>
-      <p className="mt-1 text-sm" role={urgent ? "alert" : undefined}>
+      <p className="mt-1" role={urgent ? "alert" : undefined}>
         {headline(report)}
       </p>
-      <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
+      <dl className="row g-2 mt-2 mb-0">
         {kinds.map(({ kind, label }) => {
           const entry = report.collections[kind];
           if (!entry) return null;
           const lastRun = entry.last_run;
           return (
-            <div key={kind} className="rounded border border-current/20 bg-white/60 p-3">
-              <dt className="font-medium">{label}</dt>
-              <dd>
-                {freshnessLabels[entry.status]}
-                {entry.running && " (collecting now)"}
-              </dd>
-              <dd className="text-slate-700">Last success: {formatTime(entry.last_success_at)}</dd>
-              {lastRun?.error && (lastRun.status === "failed" || lastRun.status === "partial") && (
-                <dd className="mt-1 break-words text-slate-800">
-                  Last run {lastRun.status === "failed" ? "failed" : "was partial"}: {lastRun.error}
+            <div key={kind} className="col-sm-4">
+              <div className="border rounded p-2 h-100">
+                <dt className="fw-medium">{label}</dt>
+                <dd>
+                  {freshnessLabels[entry.status]}
+                  {entry.running && " (collecting now)"}
                 </dd>
-              )}
+                <dd className="text-secondary">
+                  Last success: {formatTime(entry.last_success_at)}
+                </dd>
+                {lastRun?.error &&
+                  (lastRun.status === "failed" || lastRun.status === "partial") && (
+                    <dd className="mt-1 text-break">
+                      Last run {lastRun.status === "failed" ? "failed" : "was partial"}:{" "}
+                      {lastRun.error}
+                    </dd>
+                  )}
+              </div>
             </div>
           );
         })}

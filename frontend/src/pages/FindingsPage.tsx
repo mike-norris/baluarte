@@ -14,22 +14,21 @@ import { useLoad } from "../api/useLoad";
 import { useAsOf } from "../asof/context";
 import { AsOfResult } from "../asof/AsOfResult";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
 import { ExportLink } from "../evidence/ExportLink";
 import { findingsExportLink } from "../evidence/scope";
 import { findingsPlanLink } from "../remediation/format";
 import { PlanLink } from "../remediation/PlanLink";
 import { EvaluationNote } from "../findings/EvaluationNote";
 import { hasFindingFilters, readFindingFilters, writeFindingFilters } from "../findings/filters";
-import {
-  findingStateLabels,
-  outcomeLabels,
-  outcomeMeaning,
-  severityLabels,
-} from "../findings/format";
+import { FindingStateBadge, OutcomeBadge, SeverityBadge } from "../findings/badges";
+import { outcomeLabels, severityLabels } from "../findings/format";
 import { formatTime } from "../time";
-
-const cell = "px-3 py-2";
+import { useDeviceClass } from "../ui/device";
+import { EmptyState } from "../ui/EmptyState";
+import { ListFooter } from "../ui/ListFooter";
+import { Loading } from "../ui/Loading";
+import { PageHeader } from "../ui/PageHeader";
+import { ResponsiveTable, type Column } from "../ui/ResponsiveTable";
 
 function withoutTag(filters: FindingFilters): FindingFilters {
   const rest = { ...filters };
@@ -63,20 +62,20 @@ function Filters({ filters }: { filters: FindingFilters }) {
       key={writeFindingFilters(filters).toString()}
       onSubmit={apply}
       aria-label="Filter findings"
-      className="grid gap-3 rounded border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-6 lg:items-end"
+      className="card-body border-bottom row g-2 align-items-end mx-0"
     >
-      <label className="text-sm font-medium">
+      <label className="form-label col-6 col-md-4 col-xl-2 mb-0">
         State
-        <select name="state" defaultValue={filters.state ?? ""} className={fieldClass}>
+        <select name="state" defaultValue={filters.state ?? ""} className="form-select mt-1">
           <option value="">Any</option>
           <option value="open">Open</option>
           <option value="resolved">Resolved</option>
           <option value="excepted">Excepted</option>
         </select>
       </label>
-      <label className="text-sm font-medium">
+      <label className="form-label col-6 col-md-4 col-xl-2 mb-0">
         Latest outcome
-        <select name="outcome" defaultValue={filters.outcome ?? ""} className={fieldClass}>
+        <select name="outcome" defaultValue={filters.outcome ?? ""} className="form-select mt-1">
           <option value="">Any</option>
           {outcomes.map((outcome) => (
             <option key={outcome} value={outcome}>
@@ -85,9 +84,9 @@ function Filters({ filters }: { filters: FindingFilters }) {
           ))}
         </select>
       </label>
-      <label className="text-sm font-medium">
+      <label className="form-label col-6 col-md-4 col-xl-2 mb-0">
         Severity
-        <select name="severity" defaultValue={filters.severity ?? ""} className={fieldClass}>
+        <select name="severity" defaultValue={filters.severity ?? ""} className="form-select mt-1">
           <option value="">Any</option>
           {severities.map((severity) => (
             <option key={severity} value={severity}>
@@ -96,25 +95,25 @@ function Filters({ filters }: { filters: FindingFilters }) {
           ))}
         </select>
       </label>
-      <label className="text-sm font-medium">
+      <label className="form-label col-6 col-md-4 col-xl-2 mb-0">
         Policy name
         <input
           name="policy"
           defaultValue={filters.policy ?? ""}
           maxLength={63}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <label className="text-sm font-medium">
+      <label className="form-label col-6 col-md-4 col-xl-2 mb-0">
         Rule ID
         <input
           name="rule"
           defaultValue={filters.rule ?? ""}
           maxLength={63}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
-      <label className="text-sm font-medium">
+      <label className="form-label col-6 col-md-4 col-xl-2 mb-0">
         Project GitLab ID
         <input
           name="project"
@@ -122,26 +121,23 @@ function Filters({ filters }: { filters: FindingFilters }) {
           min={1}
           step={1}
           defaultValue={filters.project ?? ""}
-          className={fieldClass}
+          className="form-control mt-1"
         />
       </label>
       {filters.tag && (
-        <p className="text-sm sm:col-span-2 lg:col-span-6">
+        <p className="col-12 mb-0">
           {`Projects tagged ${filters.tag.replace(":", "=")} only. `}
-          <Link
-            to={`?${writeFindingFilters(withoutTag(filters)).toString()}`}
-            className={linkClass}
-          >
+          <Link to={`?${writeFindingFilters(withoutTag(filters)).toString()}`}>
             Remove the tag filter
           </Link>
         </p>
       )}
-      <div className="flex gap-2 sm:col-span-2 lg:col-span-6">
-        <button type="submit" className={buttonClass}>
+      <div className="col-12 btn-list">
+        <button type="submit" className="btn">
           Apply filters
         </button>
         {hasFindingFilters(filters) && (
-          <Link to="/findings" className={secondaryClass}>
+          <Link to="/findings" className="btn btn-ghost-secondary">
             Clear
           </Link>
         )}
@@ -150,57 +146,69 @@ function Filters({ filters }: { filters: FindingFilters }) {
   );
 }
 
-function OutcomeCell({ finding }: { finding: Finding }) {
-  const doubtful = finding.latest_outcome === "unknown" || finding.latest_outcome === "unsupported";
+function StateCell({ finding }: { finding: Finding }) {
   return (
-    <td className={cell}>
-      {outcomeLabels[finding.latest_outcome]}
-      {doubtful && <span className="sr-only">: {outcomeMeaning[finding.latest_outcome]}</span>}
-    </td>
+    <>
+      <FindingStateBadge state={finding.state} />
+      {finding.state === "excepted" && finding.exception && (
+        <span className="d-block small text-secondary">
+          {`until ${formatTime(finding.exception.expires_at)}; not passing`}
+        </span>
+      )}
+      {finding.state === "resolved" && finding.resolution === "project_archived" && (
+        <span className="d-block small text-secondary">project archived; not checked</span>
+      )}
+    </>
   );
 }
 
-function FindingRows({ findings }: { findings: Finding[] }) {
-  return findings.map((finding) => (
-    <tr key={finding.id}>
-      <th scope="row" className={`${cell} font-medium`}>
-        <Link to={`/findings/${String(finding.id)}`} className={linkClass}>
-          {finding.project.path}
-        </Link>
-      </th>
-      <td className={cell}>{finding.rule_id}</td>
-      <td className={cell}>
+const columns: readonly Column<Finding>[] = [
+  {
+    key: "project",
+    header: "Project",
+    rowHeader: true,
+    render: (finding) => (
+      <Link to={`/findings/${String(finding.id)}`} className="fw-medium text-break">
+        {finding.project.path}
+      </Link>
+    ),
+  },
+  { key: "rule", header: "Rule", render: (finding) => finding.rule_id },
+  {
+    key: "policy",
+    header: "Policy",
+    render: (finding) => (
+      <>
         {finding.policy.name}{" "}
-        <span className="text-slate-600">{`v${String(finding.policy.version)}`}</span>
-      </td>
-      <td className={cell}>{severityLabels[finding.severity] ?? finding.severity}</td>
-      <td className={cell}>
-        {findingStateLabels[finding.state]}
-        {finding.state === "excepted" && finding.exception && (
-          <span className="block text-xs text-slate-600">
-            {`until ${formatTime(finding.exception.expires_at)}; not passing`}
-          </span>
-        )}
-        {finding.state === "resolved" && finding.resolution === "project_archived" && (
-          <span className="block text-xs text-slate-600">project archived; not checked</span>
-        )}
-      </td>
-      <OutcomeCell finding={finding} />
-      <td className={`${cell} whitespace-nowrap`}>{formatTime(finding.first_seen_at)}</td>
-      <td className={`${cell} whitespace-nowrap`}>{formatTime(finding.last_seen_at)}</td>
-    </tr>
-  ));
-}
-
-const headers = [
-  "Project",
-  "Rule",
-  "Policy",
-  "Severity",
-  "State",
-  "Latest outcome",
-  "First seen",
-  "Last seen",
+        <span className="text-secondary">{`v${String(finding.policy.version)}`}</span>
+      </>
+    ),
+    priority: 3,
+  },
+  {
+    key: "severity",
+    header: "Severity",
+    render: (finding) => <SeverityBadge severity={finding.severity} />,
+  },
+  { key: "state", header: "State", render: (finding) => <StateCell finding={finding} /> },
+  {
+    key: "outcome",
+    header: "Latest outcome",
+    render: (finding) => <OutcomeBadge outcome={finding.latest_outcome} />,
+    priority: 2,
+  },
+  {
+    key: "first",
+    header: "First seen",
+    render: (finding) => <span className="text-nowrap">{formatTime(finding.first_seen_at)}</span>,
+    priority: 3,
+  },
+  {
+    key: "last",
+    header: "Last seen",
+    render: (finding) => <span className="text-nowrap">{formatTime(finding.last_seen_at)}</span>,
+    priority: 2,
+  },
 ];
 
 function Listing({ filters }: { filters: FindingFilters }) {
@@ -214,65 +222,56 @@ function Listing({ filters }: { filters: FindingFilters }) {
     (after) => listFindings(filters, after, undefined, asOf),
   );
 
-  if (first.error) return <ErrorMessage error={first.error} retry={first.retry} />;
-  if (first.loading) {
+  if (first.error) {
     return (
-      <p role="status" className="text-slate-600">
-        Loading findings…
-      </p>
+      <div className="card-body">
+        <ErrorMessage error={first.error} retry={first.retry} />
+      </div>
     );
   }
-  const more = paged.next !== null ? " (more available)" : "";
+  if (first.loading) {
+    return (
+      <div className="card-body">
+        <Loading label="Loading findings…" />
+      </div>
+    );
+  }
   if (paged.items.length === 0) {
     return (
-      <div className="space-y-3">
-        <AsOfResult answer={first.data} />
-        <p className="rounded border border-dashed border-slate-300 p-4 text-sm text-slate-600">
-          {hasFindingFilters(filters)
-            ? "No findings match these filters."
-            : "No findings yet. A finding opens when a rule fails; " +
-              "it does not mean every rule passed."}
-        </p>
-      </div>
+      <>
+        <div className="card-body pb-0">
+          <AsOfResult answer={first.data} />
+        </div>
+        <EmptyState
+          title={
+            hasFindingFilters(filters)
+              ? "No findings match these filters."
+              : "No findings yet. A finding opens when a rule fails; it does not mean every rule passed."
+          }
+        />
+      </>
     );
   }
   return (
-    <div className="space-y-3">
-      <AsOfResult answer={first.data} />
-      <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-        <table className="w-full text-left text-sm">
-          <caption className="sr-only">Findings</caption>
-          <thead className="border-b border-slate-200 bg-slate-50">
-            <tr>
-              {headers.map((header) => (
-                <th key={header} scope="col" className={`${cell} font-medium`}>
-                  {header}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            <FindingRows findings={paged.items} />
-          </tbody>
-        </table>
+    <>
+      <div className="card-body pb-0">
+        <AsOfResult answer={first.data} />
       </div>
-      <p className="text-sm text-slate-600" aria-live="polite">
-        {`Showing ${String(paged.items.length)} findings${more}.`}
-      </p>
-      {paged.moreError && (
-        <ErrorMessage error={paged.moreError} retry={() => void paged.loadMore()} />
-      )}
-      {paged.next !== null && (
-        <button
-          type="button"
-          onClick={() => void paged.loadMore()}
-          disabled={paged.pending}
-          className={secondaryClass}
-        >
-          {paged.pending ? "Loading…" : "Load more findings"}
-        </button>
-      )}
-    </div>
+      <ResponsiveTable
+        caption="Findings"
+        columns={columns}
+        rows={paged.items}
+        rowKey={(finding) => finding.id}
+      />
+      <ListFooter
+        noun="findings"
+        shown={paged.items.length}
+        hasMore={paged.next !== null}
+        pending={paged.pending}
+        error={paged.moreError}
+        onMore={() => void paged.loadMore()}
+      />
+    </>
   );
 }
 
@@ -280,23 +279,26 @@ export function FindingsPage() {
   const [params] = useSearchParams();
   const filters = readFindingFilters(params);
   const planLink = findingsPlanLink(filters);
+  const device = useDeviceClass();
 
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
-      <div>
-        <h1 id="page-title" className="text-2xl font-semibold">
-          Findings
-        </h1>
-        <p className="mt-2 text-slate-600">
-          Rules a project failed, followed until they pass. An unknown or unsupported latest outcome
-          means the last check could not decide; it never resolves a finding.
-        </p>
-      </div>
+    <section aria-labelledby="page-title">
+      <PageHeader
+        pretitle="Observe"
+        title="Findings"
+        subtitle="Rules a project failed, followed until they pass. An unknown or unsupported latest outcome means the last check could not decide; it never resolves a finding."
+      />
       <EvaluationNote />
-      <Filters filters={filters} />
-      <ExportLink label="Export evidence for this view" {...findingsExportLink(filters)} />
-      {planLink && <PlanLink label="Plan a dry-run fix for this view" {...planLink} />}
-      <Listing filters={filters} />
+      <div className="d-flex flex-column gap-1 mb-3">
+        <ExportLink label="Export evidence for this view" {...findingsExportLink(filters)} />
+        {planLink && device !== "phone" && (
+          <PlanLink label="Plan a dry-run fix for this view" {...planLink} />
+        )}
+      </div>
+      <div className="card">
+        <Filters filters={filters} />
+        <Listing filters={filters} />
+      </div>
     </section>
   );
 }
