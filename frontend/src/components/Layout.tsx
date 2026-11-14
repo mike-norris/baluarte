@@ -7,7 +7,7 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import { useId, useState } from "react";
-import { NavLink, Outlet } from "react-router";
+import { NavLink, Outlet, useMatches } from "react-router";
 
 import { AsOfBanner } from "../asof/AsOfBanner";
 import { AsOfPicker } from "../asof/AsOfPicker";
@@ -227,6 +227,9 @@ function Shell() {
   const user = session.status === "signed_in" ? session.user : null;
   const items = user ? visibleNavItems(user.permissions) : [];
   const phone = device === "phone";
+  const onTabler = useMatches().some(
+    (match) => (match.handle as { tabler?: boolean } | undefined)?.tabler === true,
+  );
 
   return (
     <FreshnessProvider enabled={user !== null}>
@@ -259,10 +262,14 @@ function Shell() {
             {user?.permissions.includes("compliance:read") === true && <ComplianceAlertBanner />}
             <main id="main" tabIndex={-1} className="page-body">
               <div className="container-xl">
-                {/* Pages not yet moved to Tabler keep their light look. Removed with Tailwind. */}
-                <div data-bs-theme="light" className="legacy-page">
+                {onTabler ? (
                   <Outlet />
-                </div>
+                ) : (
+                  // Pages not yet moved to Tabler keep their light look. Removed with Tailwind.
+                  <div data-bs-theme="light" className="legacy-page">
+                    <Outlet />
+                  </div>
+                )}
               </div>
             </main>
           </div>

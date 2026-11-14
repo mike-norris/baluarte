@@ -12,14 +12,14 @@ export function AsOfResult({ answer }: { answer: AsOfAnswer | undefined }) {
   const when = asOfText(asOf);
   if (answer.as_of === undefined || answer.as_of === null || !("evaluation_run" in answer)) {
     return (
-      <p role="alert" className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900">
+      <p role="alert" className="alert alert-danger text-body mb-0">
         {`The server did not confirm these results are as of ${when}; they may be current. Go back to now, or ask an administrator to update Baluarte.`}
       </p>
     );
   }
   const run = answer.evaluation_run;
   return (
-    <p className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+    <p className="alert alert-warning text-body mb-0">
       {run
         ? `As of ${when}: from evaluation run ${String(run.id)}, finished ${formatTime(run.finished_at)}, the latest finished by then.`
         : `No evaluation had finished by ${when}, so there are no results for then.`}
