@@ -138,8 +138,11 @@ describe("label plans", () => {
     const user = userEvent.setup();
     renderAt("/labels/plans/4");
 
-    await user.type(await screen.findByLabelText("Note (required to reject)"), "Checked the colours.");
-    await user.click(screen.getByRole("button", { name: "Approve this digest" }));
+    await user.click(await screen.findByRole("button", { name: "Approve this digest" }));
+    const dialog = screen.getByRole("dialog", { name: "Approve this plan?" });
+    expect(dialog).toHaveTextContent("f".repeat(64));
+    await user.type(within(dialog).getByLabelText("Note (optional)"), "Checked the colours.");
+    await user.click(within(dialog).getByRole("button", { name: "Confirm approval" }));
     expect(await screen.findByText("Plan 4 approved.")).toBeInTheDocument();
     expect(bodyOf(calls, "/api/v1/labels/plans/4/approve")).toEqual({
       plan_digest: "f".repeat(64),
@@ -205,6 +208,7 @@ describe("label plans", () => {
     renderAt("/labels/plans/4");
 
     await user.click(await screen.findByRole("button", { name: "Apply in GitLab" }));
+    await user.click(screen.getByRole("button", { name: "Confirm apply" }));
     expect(await screen.findByText("Plan 4 is being applied.")).toBeInTheDocument();
     expect(screen.getByText(/Applying: Being applied in GitLab/)).toBeInTheDocument();
     await act(async () => {

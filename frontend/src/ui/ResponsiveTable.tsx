@@ -11,6 +11,8 @@ export interface Column<Row> {
   priority?: 1 | 2 | 3;
   /** Right-aligned numbers. */
   numeric?: boolean;
+  /** This column names the row, so it is a row header for screen readers. */
+  rowHeader?: true;
 }
 
 interface ResponsiveTableProps<Row> {
@@ -43,7 +45,9 @@ export function ResponsiveTable<Row>({
   return (
     <div className="table-responsive-md">
       <table className="table table-vcenter card-table table-mobile-md mb-0">
-        <caption className={showCaption ? "caption-top px-3" : "visually-hidden"}>{caption}</caption>
+        <caption className={showCaption ? "caption-top px-3" : "visually-hidden"}>
+          {caption}
+        </caption>
         <thead>
           <tr>
             {columns.map((column) => (
@@ -60,15 +64,19 @@ export function ResponsiveTable<Row>({
         <tbody>
           {rows.map((row) => (
             <tr key={rowKey(row)}>
-              {columns.map((column) => (
-                <td
-                  key={column.key}
-                  data-label={column.header}
-                  className={`${HIDE[column.priority ?? 1]} ${column.numeric ? "text-md-end tabular-nums" : ""}`}
-                >
-                  {column.render(row)}
-                </td>
-              ))}
+              {columns.map((column) => {
+                const Cell = column.rowHeader ? "th" : "td";
+                return (
+                  <Cell
+                    key={column.key}
+                    scope={column.rowHeader ? "row" : undefined}
+                    data-label={column.header}
+                    className={`${HIDE[column.priority ?? 1]} ${column.numeric ? "text-md-end tabular-nums" : ""} ${column.rowHeader ? "fw-normal" : ""}`}
+                  >
+                    {column.render(row)}
+                  </Cell>
+                );
+              })}
             </tr>
           ))}
         </tbody>

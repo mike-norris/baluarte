@@ -62,7 +62,7 @@ function OldEditorLink() {
 
 /** Pages already on Tabler; the rest render in the light legacy panel until moved. */
 const TABLER = { tabler: true } as const;
-const onTabler: ReadonlySet<string> = new Set(["/", "/reviews"]);
+const onTabler: ReadonlySet<string> = new Set(["/", "/reviews", "/remediation", "/exceptions"]);
 
 /** Sections that are implemented; the rest render a placeholder. */
 const pages: Partial<Record<string, ReactNode>> = {
@@ -150,18 +150,22 @@ export const routes: RouteObject[] = [
           },
           {
             path: "/labels/plans",
+            handle: TABLER,
             element: page(() => import("./pages/LabelPlansPage"), "LabelPlansPage"),
           },
           {
             path: "/labels/plans/:planId",
+            handle: TABLER,
             element: page(() => import("./pages/LabelPlanPage"), "LabelPlanPage"),
           },
           {
             path: "/time/issue-plans",
+            handle: TABLER,
             element: page(() => import("./pages/IssuePlansPage"), "IssuePlansPage"),
           },
           {
             path: "/time/issue-plans/:planId",
+            handle: TABLER,
             element: page(() => import("./pages/IssuePlanPage"), "IssuePlanPage"),
           },
           {
@@ -170,14 +174,17 @@ export const routes: RouteObject[] = [
           },
           {
             path: "/exceptions/:exceptionId",
+            handle: TABLER,
             element: page(() => import("./pages/ExceptionDetailPage"), "ExceptionDetailPage"),
           },
           {
             path: "/remediation/new",
+            handle: TABLER,
             element: page(() => import("./pages/RemediationNewPage"), "RemediationNewPage"),
           },
           {
             path: "/remediation/:planId",
+            handle: TABLER,
             element: page(() => import("./pages/RemediationPlanPage"), "RemediationPlanPage"),
           },
           {

@@ -14,7 +14,6 @@ import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import type { CurrentUser } from "../auth/session";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
 import {
   CAN_APPROVE,
   exceptionStateLabels,
@@ -24,8 +23,11 @@ import {
   requesterName,
 } from "../exceptions/format";
 import { formatTime } from "../time";
-
-const errorClass = "rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900";
+import { DecisionBar } from "../ui/DecisionBar";
+import { useDeviceClass } from "../ui/device";
+import { Dialog } from "../ui/Dialog";
+import { Loading } from "../ui/Loading";
+import { PageHeader } from "../ui/PageHeader";
 
 function who(user: UserRef | null): string {
   if (!user) return "Baluarte";
@@ -34,9 +36,11 @@ function who(user: UserRef | null): string {
 
 function Field({ term, children }: { term: string; children: ReactNode }) {
   return (
-    <div className="py-2 sm:grid sm:grid-cols-3 sm:gap-4">
-      <dt className="font-medium text-slate-700">{term}</dt>
-      <dd className="mt-1 sm:col-span-2 sm:mt-0">{children}</dd>
+    <div className="row g-2 py-2 border-bottom">
+      <dt className="col-md-4 fw-medium text-secondary">{term}</dt>
+      <dd className="col-md-8 mb-0" style={{ minWidth: 0 }}>
+        {children}
+      </dd>
     </div>
   );
 }
@@ -131,12 +135,8 @@ function Confirm({
   const text = actionText[action];
   const [failure, setFailure] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
-  const heading = useRef<HTMLHeadingElement>(null);
   const alert = useRef<HTMLParagraphElement>(null);
 
-  useEffect(() => {
-    heading.current?.focus();
-  }, []);
   useEffect(() => {
     if (failure) alert.current?.focus();
   }, [failure]);
@@ -163,31 +163,23 @@ function Confirm({
   }
 
   return (
-    <form
-      onSubmit={(event) => void submit(event)}
-      aria-labelledby="confirm-heading"
-      noValidate
-      className="mt-3 space-y-3 rounded border border-slate-300 p-3"
-    >
-      <h3 id="confirm-heading" ref={heading} tabIndex={-1} className="font-medium">
-        {text.heading}
-      </h3>
-      <p className="text-sm">{`${actionEffect[action]} This change is audited.`}</p>
+    <form onSubmit={(event) => void submit(event)} aria-label={text.heading} noValidate>
+      <p>{`${actionEffect[action]} This change is audited.`}</p>
       {failure && (
-        <p ref={alert} role="alert" tabIndex={-1} className={errorClass}>
+        <p ref={alert} role="alert" tabIndex={-1} className="alert alert-danger text-body">
           {failure}
         </p>
       )}
-      <label className="block text-sm font-medium">
+      <label className="form-label w-100 mb-3">
         {text.noteRequired ? "Reason" : "Note (optional)"}
-        <textarea name="note" rows={3} maxLength={MAX_NOTE} className={fieldClass} />
+        <textarea name="note" rows={3} maxLength={MAX_NOTE} className="form-control mt-1" />
       </label>
-      <div className="flex gap-2">
-        <button type="submit" disabled={sending} className={buttonClass}>
-          {sending ? "Sending…" : text.confirm}
-        </button>
-        <button type="button" onClick={onCancel} className={secondaryClass}>
+      <div className="btn-list justify-content-end">
+        <button type="button" onClick={onCancel} className="btn">
           Cancel
+        </button>
+        <button type="submit" disabled={sending} className="btn btn-primary">
+          {sending ? "Sending…" : text.confirm}
         </button>
       </div>
     </form>
@@ -204,6 +196,7 @@ function Actions({
   onChanged: (updated: PolicyException, action: ExceptionAction) => void;
 }) {
   const [action, setAction] = useState<ExceptionAction | null>(null);
+  const device = useDeviceClass();
   if (!hasPermission(user, CAN_APPROVE)) return null;
   const own = isOwn(exception, user) && user.development_mode !== true;
   const available: ExceptionAction[] = [];
@@ -211,46 +204,56 @@ function Actions({
   if (exception.state === "requested" || exception.state === "approved") available.push("revoke");
   if (available.length === 0 && !own) return null;
 
+  // Phones offer decisions only; revoking is not an approve-or-reject decision.
+  const shown = device === "phone" ? available.filter((item) => item !== "revoke") : available;
+
   return (
-    <section aria-labelledby="actions" className="rounded border border-slate-200 bg-white p-4">
-      <h2 id="actions" className="text-lg font-semibold">
-        Decision
-      </h2>
-      {own && exception.state === "requested" && (
-        <p className="mt-2 text-sm">
-          This is your own request. Someone else must approve or reject it.
-        </p>
-      )}
-      {action ? (
-        <Confirm
-          exception={exception}
-          action={action}
-          csrfToken={user.csrf_token}
-          onDone={(updated) => {
-            setAction(null);
-            onChanged(updated, action);
-          }}
-          onCancel={() => {
-            setAction(null);
-          }}
-        />
-      ) : (
-        <div className="mt-3 flex gap-2">
-          {available.map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => {
-                setAction(item);
-              }}
-              className={item === "approve" ? buttonClass : secondaryClass}
-            >
-              {actionText[item].open}
-            </button>
-          ))}
-        </div>
-      )}
-    </section>
+    <>
+      <DecisionBar
+        summary={
+          own && exception.state === "requested"
+            ? "This is your own request. Someone else must approve or reject it."
+            : "Each decision is recorded with its note, and an evaluation is queued."
+        }
+      >
+        {shown.map((item) => (
+          <button
+            key={item}
+            type="button"
+            onClick={() => {
+              setAction(item);
+            }}
+            className={
+              item === "approve" ? "btn btn-primary" : item === "revoke" ? "btn btn-danger" : "btn"
+            }
+          >
+            {actionText[item].open}
+          </button>
+        ))}
+      </DecisionBar>
+      <Dialog
+        open={action !== null}
+        title={action ? actionText[action].heading : ""}
+        onClose={() => {
+          setAction(null);
+        }}
+      >
+        {action && (
+          <Confirm
+            exception={exception}
+            action={action}
+            csrfToken={user.csrf_token}
+            onDone={(updated) => {
+              setAction(null);
+              onChanged(updated, action);
+            }}
+            onCancel={() => {
+              setAction(null);
+            }}
+          />
+        )}
+      </Dialog>
+    </>
   );
 }
 
@@ -267,21 +270,23 @@ function Detail({ initial }: { initial: PolicyException }) {
   return (
     <>
       {changed && (
-        <p ref={status} role="status" tabIndex={-1} className="text-sm font-medium">
+        <p ref={status} role="status" tabIndex={-1} className="alert alert-success text-body">
           {`Exception ${String(exception.id)} ${actionText[changed.action].done}. An evaluation has been queued, so findings follow on its next run. The change is audited.`}
         </p>
       )}
-      <section aria-labelledby="summary" className="rounded border border-slate-200 bg-white p-4">
-        <h2 id="summary" className="text-lg font-semibold">
-          Summary
-        </h2>
-        <dl className="mt-2 divide-y divide-slate-100 text-sm">
+      <section aria-labelledby="summary" className="card mb-3">
+        <div className="card-header">
+          <h2 id="summary" className="card-title">
+            Summary
+          </h2>
+        </div>
+        <dl className="card-body mb-0 py-0">
           <Field term="State">
             {`${exceptionStateLabels[exception.state]}: ${exceptionStateMeaning[exception.state]}`}
           </Field>
           <Field term="Project">
             {exception.project.path}{" "}
-            <span className="text-slate-600">
+            <span className="text-secondary">
               {`(GitLab ID ${String(exception.project.gitlab_id)}, ${exception.project.state})`}
             </span>
           </Field>
@@ -289,7 +294,7 @@ function Detail({ initial }: { initial: PolicyException }) {
           <Field term="Rule">{exception.rule_id}</Field>
           <Field term="Expires">{formatTime(exception.expires_at)}</Field>
           <Field term="Justification">
-            <span className="whitespace-pre-wrap">{exception.justification}</span>
+            <span style={{ whiteSpace: "pre-wrap" }}>{exception.justification}</span>
           </Field>
           <Field term="Findings">
             <Link
@@ -298,12 +303,35 @@ function Detail({ initial }: { initial: PolicyException }) {
                 policy: exception.policy_name,
                 rule: exception.rule_id,
               }).toString()}`}
-              className={linkClass}
             >
               Findings for this project and rule
             </Link>
           </Field>
         </dl>
+      </section>
+      <section aria-labelledby="history" className="card mb-3">
+        <div className="card-header d-block">
+          <h2 id="history" className="card-title">
+            History
+          </h2>
+          <p className="text-secondary small mb-0 mt-1">Oldest first. Every step is audited.</p>
+        </div>
+        <ol className="list-group list-group-flush">
+          {exceptionHistory(exception).map((step) => (
+            <li key={step.label} className="list-group-item">
+              <p className="mb-0">
+                <span className="fw-medium">{step.label}</span>
+                {` ${formatTime(step.at)}`}
+                {step.by && ` by ${step.by}`}
+              </p>
+              {step.note && (
+                <p className="text-secondary mb-0" style={{ whiteSpace: "pre-wrap" }}>
+                  {step.note}
+                </p>
+              )}
+            </li>
+          ))}
+        </ol>
       </section>
       {session.status === "signed_in" && (
         <Actions
@@ -314,24 +342,6 @@ function Detail({ initial }: { initial: PolicyException }) {
           }}
         />
       )}
-      <section aria-labelledby="history" className="rounded border border-slate-200 bg-white p-4">
-        <h2 id="history" className="text-lg font-semibold">
-          History
-        </h2>
-        <p className="mt-1 text-sm text-slate-600">Oldest first. Every step is audited.</p>
-        <ol className="mt-2 space-y-2 text-sm">
-          {exceptionHistory(exception).map((step) => (
-            <li key={step.label} className="border-l-2 border-slate-300 pl-3">
-              <p>
-                <span className="font-medium">{step.label}</span>
-                {` ${formatTime(step.at)}`}
-                {step.by && ` by ${step.by}`}
-              </p>
-              {step.note && <p className="whitespace-pre-wrap text-slate-700">{step.note}</p>}
-            </li>
-          ))}
-        </ol>
-      </section>
     </>
   );
 }
@@ -346,35 +356,27 @@ export function ExceptionDetailPage() {
 
   let body: ReactNode;
   if (loaded.error?.status === 404) {
-    body = <p className="text-slate-600">{`There is no exception with ID ${exceptionId}.`}</p>;
+    body = <p className="text-secondary">{`There is no exception with ID ${exceptionId}.`}</p>;
   } else if (loaded.error) {
     body = <ErrorMessage error={loaded.error} retry={loaded.retry} />;
   } else if (!loaded.data) {
-    body = (
-      <p role="status" className="text-slate-600">
-        Loading exception…
-      </p>
-    );
+    body = <Loading label="Loading exception…" />;
   } else {
     body = <Detail key={loaded.data.id} initial={loaded.data} />;
   }
 
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
-      <div>
-        <p className="text-sm">
-          <Link to="/exceptions" className={linkClass}>
-            Exceptions
-          </Link>
-        </p>
-        <h1 id="page-title" className="mt-1 text-2xl font-semibold">
-          {loaded.error?.status === 404
+    <section aria-labelledby="page-title">
+      <PageHeader
+        pretitle={<Link to="/exceptions">Exceptions</Link>}
+        title={
+          loaded.error?.status === 404
             ? "Exception not found"
             : loaded.data
               ? `Exception ${String(loaded.data.id)}: ${loaded.data.rule_id} on ${loaded.data.project.path}`
-              : "Exception"}
-        </h1>
-      </div>
+              : "Exception"
+        }
+      />
       {body}
     </section>
   );

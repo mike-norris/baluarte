@@ -172,6 +172,7 @@ describe("issue plans", () => {
     renderAt("/time/issue-plans/4");
 
     await user.click(await screen.findByRole("button", { name: "Approve this digest" }));
+    await user.click(screen.getByRole("button", { name: "Confirm approval" }));
     expect(await screen.findByText("Plan 4 approved.")).toBeInTheDocument();
     expect(bodyOf(calls, "/api/v1/issue-plans/4/approve")).toEqual({
       plan_digest: "a".repeat(64),
@@ -197,10 +198,28 @@ describe("issue plans", () => {
     renderAt("/time/issue-plans/4");
 
     await user.click(await screen.findByRole("button", { name: "Approve this digest" }));
+    await user.click(screen.getByRole("button", { name: "Confirm approval" }));
     expect(await screen.findByText("Plan 4 approved.")).toBeInTheDocument();
     expect(bodyOf(calls, "/api/v1/issue-plans/4/approve")).toEqual({
       plan_digest: "a".repeat(64),
     });
+  });
+
+  it("offers approve and reject on a phone, but never apply", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("max-width: 767.98px"),
+      media: query,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+    api(approver, { "GET /api/v1/issue-plans/4": () => json(plan({ state: "submitted" })) });
+    renderAt("/time/issue-plans/4");
+
+    const decision = await screen.findByRole("region", { name: "Decision" });
+    expect(within(decision).getByRole("button", { name: "Approve this digest" })).toBeEnabled();
+    expect(within(decision).getByRole("button", { name: "Reject" })).toBeEnabled();
+    expect(within(decision).queryByRole("button", { name: "Apply in GitLab" })).not.toBeInTheDocument();
+    expect(decision).toHaveTextContent("Apply: Available on a larger screen.");
   });
 
   it("shows issues that changed since the plan as left alone", async () => {

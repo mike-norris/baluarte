@@ -322,7 +322,7 @@ describe("deciding an exception", () => {
     const decision = await screen.findByRole("region", { name: "Decision" });
     await user.click(within(decision).getByRole("button", { name: "Approve…" }));
     expect(screen.getByRole("heading", { name: "Approve this exception?" })).toHaveFocus();
-    expect(decision).toHaveTextContent("This change is audited.");
+    expect(screen.getByRole("dialog", { name: "Approve this exception?" })).toHaveTextContent("This change is audited.");
     await user.click(screen.getByRole("button", { name: "Confirm approval" }));
 
     const status = await screen.findByText(/^Exception 31 approved\./);

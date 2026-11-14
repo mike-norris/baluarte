@@ -8,8 +8,8 @@ interface DialogProps {
   title: string;
   onClose: () => void;
   children: ReactNode;
-  /** The buttons; Cancel is added by the caller so its label can say what is kept. */
-  footer: ReactNode;
+  /** The buttons; omitted when the body is a form with its own. */
+  footer?: ReactNode;
 }
 
 /**
@@ -38,7 +38,7 @@ export function Dialog({ open, title, onClose, children, footer }: DialogProps) 
               <button type="button" className="btn-close" aria-label="Close" onClick={onClose} />
             </div>
             <div className="modal-body">{children}</div>
-            <div className="modal-footer">{footer}</div>
+            {footer && <div className="modal-footer">{footer}</div>}
           </div>
         </div>
       </div>
