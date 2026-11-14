@@ -18,7 +18,6 @@ import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import type { CurrentUser } from "../auth/session";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
 import { DryRunNotice } from "../remediation/DryRunNotice";
 import { SkippedTable } from "../remediation/SkippedTable";
 import {
@@ -32,26 +31,30 @@ import {
   userLabel,
 } from "../remediation/format";
 import { formatTime } from "../time";
+import { DecisionBar } from "../ui/DecisionBar";
+import { useDeviceClass } from "../ui/device";
+import { Dialog } from "../ui/Dialog";
+import { Loading } from "../ui/Loading";
+import { PageHeader } from "../ui/PageHeader";
 
-const errorClass = "rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900";
-const warningClass = "rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900";
-const codeClass =
-  "mt-1 overflow-x-auto rounded bg-slate-900 p-3 font-mono text-xs whitespace-pre text-slate-100";
+const codeClass = "mb-0 small";
 
 function Field({ term, children }: { term: string; children: ReactNode }) {
   return (
-    <div className="py-2 sm:grid sm:grid-cols-3 sm:gap-4">
-      <dt className="font-medium text-slate-700">{term}</dt>
-      <dd className="mt-1 sm:col-span-2 sm:mt-0">{children}</dd>
+    <div className="row g-2 py-2 border-bottom">
+      <dt className="col-md-4 fw-medium text-secondary">{term}</dt>
+      <dd className="col-md-8 mb-0" style={{ minWidth: 0 }}>
+        {children}
+      </dd>
     </div>
   );
 }
 
 function Lines({ lines }: { lines: string[] }) {
   return (
-    <ul className="space-y-0.5">
+    <ul className="list-unstyled mb-0">
       {lines.map((line) => (
-        <li key={line} className="font-mono text-xs">
+        <li key={line} className="font-monospace small text-break">
           {line}
         </li>
       ))}
@@ -64,19 +67,21 @@ function Step({ step }: { step: PlanStep }) {
   const headingId = `step-${String(step.step)}`;
   return (
     <li>
-      <article aria-labelledby={headingId} className="rounded border border-slate-200 p-4">
-        <h3 id={headingId} className="font-semibold">
-          {`Step ${String(step.step)}: ${label} for ${step.target.project_path}`}
-        </h3>
-        <dl className="mt-2 divide-y divide-slate-100 text-sm">
+      <article aria-labelledby={headingId} className="card card-sm">
+        <div className="card-header">
+          <h3 id={headingId} className="card-title">
+            {`Step ${String(step.step)}: ${label} for ${step.target.project_path}`}
+          </h3>
+        </div>
+        <dl className="card-body mb-0 py-0">
           <Field term="Change">
-            <div className="grid gap-2 sm:grid-cols-2">
-              <div>
-                <p className="font-medium">Current (observed)</p>
+            <div className="row g-2">
+              <div className="col-sm-6">
+                <p className="fw-medium mb-1">Current (observed)</p>
                 <Lines lines={describeValues(step.current)} />
               </div>
-              <div>
-                <p className="font-medium">Intended</p>
+              <div className="col-sm-6">
+                <p className="fw-medium mb-1">Intended</p>
                 <Lines lines={describeValues(step.intended)} />
               </div>
             </div>
@@ -88,7 +93,7 @@ function Step({ step }: { step: PlanStep }) {
             <pre aria-label={`Request for step ${String(step.step)}`} className={codeClass}>
               {requestText(step.request)}
             </pre>
-            <p className="mt-1 text-slate-600">Not sent: execution is not available.</p>
+            <p className="mt-1 mb-0 text-secondary">Not sent: execution is not available.</p>
           </Field>
           <Field term="Verified by reading">
             <pre
@@ -99,14 +104,14 @@ function Step({ step }: { step: PlanStep }) {
             </pre>
           </Field>
           <Field term="Preconditions to re-check">
-            <ul className="list-disc space-y-1 pl-5">
+            <ul className="mb-0 ps-3">
               {step.preconditions.map((item) => (
                 <li key={item}>{item}</li>
               ))}
             </ul>
           </Field>
           <Field term="Blast radius">
-            <ul className="list-disc space-y-1 pl-5">
+            <ul className="mb-0 ps-3">
               {step.effects.map((item) => (
                 <li key={item}>{item}</li>
               ))}
@@ -114,9 +119,9 @@ function Step({ step }: { step: PlanStep }) {
           </Field>
           <Field term="GitLab requires">{`${step.requires.role}; tier: ${step.requires.tier}`}</Field>
           <Field term="Based on">
-            <ul className="space-y-1">
+            <ul className="list-unstyled mb-0">
               <li>
-                <Link to={`/findings/${String(step.finding_id)}`} className={linkClass}>
+                <Link to={`/findings/${String(step.finding_id)}`}>
                   {`Finding ${String(step.finding_id)}`}
                 </Link>
                 {`, evaluation ${String(step.evaluation_id)}`}
@@ -127,13 +132,13 @@ function Step({ step }: { step: PlanStep }) {
               <li>
                 {`Evidence ${String(step.observation_id)} from ${step.observation_source}, collected ${formatTime(step.observed_at)}`}
               </li>
-              <li className="break-all font-mono text-xs">
+              <li className="text-break font-monospace small">
                 {`Evidence digest ${step.observation_digest ?? "none"}`}
               </li>
             </ul>
           </Field>
           <Field term="Idempotency key">
-            <code className="break-all font-mono text-xs">{step.idempotency_key}</code>
+            <code className="text-break bg-transparent p-0">{step.idempotency_key}</code>
           </Field>
         </dl>
       </article>
@@ -201,12 +206,8 @@ function Confirm({
   const text = actionText[action];
   const [failure, setFailure] = useState<Failure | null>(null);
   const [sending, setSending] = useState(false);
-  const heading = useRef<HTMLHeadingElement>(null);
   const alert = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    heading.current?.focus();
-  }, []);
   useEffect(() => {
     if (failure) alert.current?.focus();
   }, [failure]);
@@ -242,21 +243,13 @@ function Confirm({
   }
 
   return (
-    <form
-      onSubmit={(event) => void submit(event)}
-      aria-labelledby="confirm-heading"
-      noValidate
-      className="mt-3 space-y-3 rounded border border-slate-300 p-3"
-    >
-      <h3 id="confirm-heading" ref={heading} tabIndex={-1} className="font-medium">
-        {text.heading}
-      </h3>
-      <p className="text-sm break-words">{`${effect(action, plan)} This change is audited.`}</p>
+    <form onSubmit={(event) => void submit(event)} aria-label={text.heading} noValidate>
+      <p className="text-break">{`${effect(action, plan)} This change is audited.`}</p>
       {failure && (
-        <div ref={alert} role="alert" tabIndex={-1} className={errorClass}>
-          <p>{failure.message}</p>
+        <div ref={alert} role="alert" tabIndex={-1} className="alert alert-danger text-body">
+          <p className="mb-0">{failure.message}</p>
           {failure.reasons.length > 0 && (
-            <ul className="mt-2 list-disc space-y-1 pl-5">
+            <ul className="mt-2 mb-0 ps-3">
               {failure.reasons.map((reason) => (
                 <li key={reason}>{reason}</li>
               ))}
@@ -265,17 +258,17 @@ function Confirm({
         </div>
       )}
       {action !== "submit" && (
-        <label className="block text-sm font-medium">
+        <label className="form-label w-100 mb-3">
           {action === "reject" ? "Reason" : "Note (optional)"}
-          <textarea name="note" rows={3} maxLength={MAX_NOTE} className={fieldClass} />
+          <textarea name="note" rows={3} maxLength={MAX_NOTE} className="form-control mt-1" />
         </label>
       )}
-      <div className="flex gap-2">
-        <button type="submit" disabled={sending} className={buttonClass}>
-          {sending ? "Sending…" : text.confirm}
-        </button>
-        <button type="button" onClick={onCancel} className={secondaryClass}>
+      <div className="btn-list justify-content-end">
+        <button type="button" onClick={onCancel} className="btn">
           Cancel
+        </button>
+        <button type="submit" disabled={sending} className="btn btn-primary">
+          {sending ? "Sending…" : text.confirm}
         </button>
       </div>
     </form>
@@ -292,6 +285,7 @@ function Actions({
   onChanged: (updated: Plan, action: Action) => void;
 }) {
   const [action, setAction] = useState<Action | null>(null);
+  const device = useDeviceClass();
   const creator = isCreator(plan, user);
   const ownDecision = creator && user.development_mode !== true;
   const available: Action[] = [];
@@ -310,47 +304,54 @@ function Actions({
     notes.push("The stored plan no longer matches its digest, so it cannot be approved.");
   }
   if (available.length === 0 && notes.length === 0) return null;
+  // Phones offer decisions only.
+  const shown = device === "phone" ? available.filter((item) => item !== "submit") : available;
 
   return (
-    <section aria-labelledby="actions" className="rounded border border-slate-200 bg-white p-4">
-      <h2 id="actions" className="text-lg font-semibold">
-        Decision
-      </h2>
-      {notes.map((note) => (
-        <p key={note} className="mt-2 text-sm">
-          {note}
-        </p>
-      ))}
-      {action ? (
-        <Confirm
-          plan={plan}
-          action={action}
-          csrfToken={user.csrf_token}
-          onDone={(updated) => {
-            setAction(null);
-            onChanged(updated, action);
-          }}
-          onCancel={() => {
-            setAction(null);
-          }}
-        />
-      ) : (
-        <div className="mt-3 flex gap-2">
-          {available.map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => {
-                setAction(item);
-              }}
-              className={item === "reject" ? secondaryClass : buttonClass}
-            >
-              {actionText[item].open}
-            </button>
-          ))}
-        </div>
-      )}
-    </section>
+    <>
+      <DecisionBar
+        summary={
+          notes.length > 0
+            ? notes.join(" ")
+            : "Approving binds to the plan digest shown; nothing is changed in GitLab."
+        }
+      >
+        {shown.map((item) => (
+          <button
+            key={item}
+            type="button"
+            onClick={() => {
+              setAction(item);
+            }}
+            className={item === "reject" ? "btn" : "btn btn-primary"}
+          >
+            {actionText[item].open}
+          </button>
+        ))}
+      </DecisionBar>
+      <Dialog
+        open={action !== null}
+        title={action ? actionText[action].heading : ""}
+        onClose={() => {
+          setAction(null);
+        }}
+      >
+        {action && (
+          <Confirm
+            plan={plan}
+            action={action}
+            csrfToken={user.csrf_token}
+            onDone={(updated) => {
+              setAction(null);
+              onChanged(updated, action);
+            }}
+            onCancel={() => {
+              setAction(null);
+            }}
+          />
+        )}
+      </Dialog>
+    </>
   );
 }
 
@@ -376,32 +377,35 @@ function Detail({ initial, created }: { initial: Plan; created: boolean }) {
   return (
     <>
       {message && (
-        <p ref={status} role="status" tabIndex={-1} className="text-sm font-medium">
+        <p ref={status} role="status" tabIndex={-1} className="alert alert-success text-body">
           {`${message} Nothing was changed in GitLab.`}
         </p>
       )}
       {!plan.digest_valid && (
-        <p role="alert" className={errorClass}>
+        <p role="alert" className="alert alert-danger text-body">
           The stored plan no longer matches its digest: it was altered after it was created. Do not
           rely on it; it cannot be approved.
         </p>
       )}
       {pending && plan.stale_reasons.length > 0 && (
-        <div role="alert" className={warningClass}>
-          <p className="font-medium">This plan is stale and would be refused for approval:</p>
-          <ul className="mt-1 list-disc space-y-1 pl-5">
+        <div role="alert" className="alert alert-warning text-body">
+          <p className="fw-medium mb-1">This plan is stale and would be refused for approval:</p>
+          <ul className="mb-1 ps-3">
             {plan.stale_reasons.map((reason) => (
               <li key={reason}>{reason}</li>
             ))}
           </ul>
-          <p className="mt-1">Build a new plan from the current findings instead.</p>
+          <p className="mb-0">Build a new plan from the current findings instead.</p>
         </div>
       )}
-      <section aria-labelledby="summary" className="rounded border border-slate-200 bg-white p-4">
-        <h2 id="summary" className="text-lg font-semibold">
-          Summary
-        </h2>
-        <dl className="mt-2 divide-y divide-slate-100 text-sm">
+      <section aria-labelledby="summary" className="card mb-3">
+        <div className="card-header">
+          <h2 id="summary" className="card-title">
+            Summary
+          </h2>
+        </div>
+        <div className="card-body">
+        <dl className="mb-0">
           <Field term="State">{`${planStateLabels[plan.state]}: ${planStateMeaning[plan.state]}`}</Field>
           <Field term="Steps">
             {`${String(plan.steps)} to change, ${String(plan.skipped)} skipped`}
@@ -415,15 +419,15 @@ function Detail({ initial, created }: { initial: Plan; created: boolean }) {
             <Field term={plan.state === "rejected" ? "Rejected" : "Decided"}>
               {`${formatTime(plan.decided_at)} by ${userLabel(plan.decided_by_user_id, user)}`}
               {plan.decision_note && (
-                <span className="block whitespace-pre-wrap text-slate-700">
+                <span className="d-block text-secondary" style={{ whiteSpace: "pre-wrap" }}>
                   {plan.decision_note}
                 </span>
               )}
             </Field>
           )}
           <Field term="Plan digest">
-            <code className="break-all font-mono text-xs">{plan.plan_digest}</code>
-            <span className="block text-slate-600">
+            <code className="text-break bg-transparent p-0">{plan.plan_digest}</code>
+            <span className="d-block text-secondary">
               {plan.digest_valid
                 ? "Recomputed by the API on this read: it matches."
                 : "Recomputed by the API on this read: it does not match."}
@@ -431,16 +435,56 @@ function Detail({ initial, created }: { initial: Plan; created: boolean }) {
           </Field>
           {plan.approved_digest && (
             <Field term="Approved digest">
-              <code className="break-all font-mono text-xs">{plan.approved_digest}</code>
+              <code className="text-break bg-transparent p-0">{plan.approved_digest}</code>
             </Field>
           )}
           <Field term="Instance">{doc.instance}</Field>
           <Field term="Execution">{doc.execution}</Field>
         </dl>
-        <h3 className="mt-4 font-medium">Changes at a glance</h3>
+        <h3 className="mt-3 h4">Changes at a glance</h3>
         <pre aria-label="Plan summary" className={codeClass}>
           {plan.summary.join("\n")}
         </pre>
+        </div>
+      </section>
+      <section aria-labelledby="steps" className="mb-3">
+        <h2 id="steps" className="h3">
+          Steps
+        </h2>
+        <ol className="list-unstyled d-grid gap-3 mb-0">
+          {doc.steps.map((step) => (
+            <Step key={step.step} step={step} />
+          ))}
+        </ol>
+      </section>
+      <section aria-labelledby="skipped" className="card mb-3">
+        <div className="card-header">
+          <h2 id="skipped" className="card-title">
+            Skipped findings
+          </h2>
+        </div>
+        {doc.skipped.length === 0 ? (
+          <p className="card-body mb-0">Every finding in scope has a step.</p>
+        ) : (
+          <SkippedTable skipped={doc.skipped} caption="Skipped findings" />
+        )}
+      </section>
+      <section aria-labelledby="excluded" className="card mb-3">
+        <div className="card-header d-block">
+          <h2 id="excluded" className="card-title">
+            Never planned
+          </h2>
+          <p className="text-secondary small mb-0 mt-1">
+            Changes remediation does not make, whatever the findings say.
+          </p>
+        </div>
+        <dl className="card-body mb-0 py-0">
+          {Object.entries(doc.excluded_actions).map(([action, reason]) => (
+            <Field key={action} term={action}>
+              {reason}
+            </Field>
+          ))}
+        </dl>
       </section>
       {user && (
         <Actions
@@ -451,41 +495,6 @@ function Detail({ initial, created }: { initial: Plan; created: boolean }) {
           }}
         />
       )}
-      <section aria-labelledby="steps" className="rounded border border-slate-200 bg-white p-4">
-        <h2 id="steps" className="text-lg font-semibold">
-          Steps
-        </h2>
-        <ol className="mt-3 space-y-4">
-          {doc.steps.map((step) => (
-            <Step key={step.step} step={step} />
-          ))}
-        </ol>
-      </section>
-      <section aria-labelledby="skipped" className="rounded border border-slate-200 bg-white p-4">
-        <h2 id="skipped" className="text-lg font-semibold">
-          Skipped findings
-        </h2>
-        {doc.skipped.length === 0 ? (
-          <p className="mt-2 text-sm">Every finding in scope has a step.</p>
-        ) : (
-          <SkippedTable skipped={doc.skipped} caption="Skipped findings" />
-        )}
-      </section>
-      <section aria-labelledby="excluded" className="rounded border border-slate-200 bg-white p-4">
-        <h2 id="excluded" className="text-lg font-semibold">
-          Never planned
-        </h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Changes remediation does not make, whatever the findings say.
-        </p>
-        <dl className="mt-2 divide-y divide-slate-100 text-sm">
-          {Object.entries(doc.excluded_actions).map(([action, reason]) => (
-            <Field key={action} term={action}>
-              {reason}
-            </Field>
-          ))}
-        </dl>
-      </section>
     </>
   );
 }
@@ -502,31 +511,21 @@ export function RemediationPlanPage() {
 
   let body: ReactNode;
   if (loaded.error?.status === 404) {
-    body = <p className="text-slate-600">{`There is no remediation plan with ID ${planId}.`}</p>;
+    body = <p className="text-secondary">{`There is no remediation plan with ID ${planId}.`}</p>;
   } else if (loaded.error) {
     body = <ErrorMessage error={loaded.error} retry={loaded.retry} />;
   } else if (!loaded.data) {
-    body = (
-      <p role="status" className="text-slate-600">
-        Loading plan…
-      </p>
-    );
+    body = <Loading label="Loading plan…" />;
   } else {
     body = <Detail key={loaded.data.id} initial={loaded.data} created={created} />;
   }
 
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
-      <div>
-        <p className="text-sm">
-          <Link to="/remediation" className={linkClass}>
-            All remediation plans
-          </Link>
-        </p>
-        <h1 id="page-title" className="mt-2 text-2xl font-semibold">
-          {valid ? `Remediation plan ${planId}` : "Remediation plan"}
-        </h1>
-      </div>
+    <section aria-labelledby="page-title">
+      <PageHeader
+        pretitle={<Link to="/remediation">All remediation plans</Link>}
+        title={valid ? `Remediation plan ${planId}` : "Remediation plan"}
+      />
       <DryRunNotice />
       {body}
     </section>

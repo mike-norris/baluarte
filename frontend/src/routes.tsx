@@ -172,6 +172,7 @@ export const routes: RouteObject[] = [
           },
           {
             path: "/exceptions/:exceptionId",
+            handle: TABLER,
             element: page(() => import("./pages/ExceptionDetailPage"), "ExceptionDetailPage"),
           },
           {
@@ -180,6 +181,7 @@ export const routes: RouteObject[] = [
           },
           {
             path: "/remediation/:planId",
+            handle: TABLER,
             element: page(() => import("./pages/RemediationPlanPage"), "RemediationPlanPage"),
           },
           {
