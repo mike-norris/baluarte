@@ -2,7 +2,6 @@ import { useId, useState, type KeyboardEvent } from "react";
 
 import { ApiError } from "../api/client";
 import { listGroups, listProjects, type InventoryFilters } from "../api/gitlab";
-import { fieldClass, secondaryClass } from "../components/styles";
 
 export interface Picked {
   type: "group" | "project";
@@ -92,9 +91,9 @@ export function TargetPicker({
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex flex-wrap items-end gap-2">
-        <label className="grow text-sm font-medium" htmlFor={`${id}-search`}>
+    <div>
+      <div className="d-flex flex-wrap align-items-end gap-2">
+        <label className="grow fw-medium" htmlFor={`${id}-search`}>
           {`Find a ${noun} by path`}
           <input
             id={`${id}-search`}
@@ -106,33 +105,28 @@ export function TargetPicker({
               setText(event.target.value);
             }}
             onKeyDown={onKeyDown}
-            className={fieldClass}
+            className="form-control mt-1"
           />
         </label>
-        <button
-          type="button"
-          onClick={() => void run()}
-          disabled={searching}
-          className={secondaryClass}
-        >
+        <button type="button" onClick={() => void run()} disabled={searching} className="btn">
           {searching ? "Searching…" : `Search ${noun}s`}
         </button>
       </div>
       <div aria-live="polite">
-        {failure && <p className="text-sm text-red-900">{failure}</p>}
+        {failure && <p className="text-danger-emphasis">{failure}</p>}
         {options !== null && options.length === 0 && (
-          <p className="text-sm text-slate-600">{`No active ${noun}s match.`}</p>
+          <p className="text-secondary">{`No active ${noun}s match.`}</p>
         )}
       </div>
       {options !== null && options.length > 0 && (
-        <fieldset className="max-h-64 overflow-y-auto rounded border border-slate-200 p-2">
-          <legend className="px-1 text-sm font-medium">
+        <fieldset className="max-h-64 overflow-y-auto rounded border p-2">
+          <legend className="px-1 fw-medium">
             {`Matching ${noun}s${options.length === SEARCH_LIMIT ? " (first 100; narrow the search)" : ""}`}
           </legend>
-          <ul className="space-y-1">
+          <ul>
             {options.map((option) => (
               <li key={option.gitlabId}>
-                <label className="flex items-center gap-2 text-sm">
+                <label className="d-flex align-items-center gap-2">
                   <input
                     type="radio"
                     name={`${id}-target`}
@@ -145,8 +139,8 @@ export function TargetPicker({
                       });
                     }}
                   />
-                  <span className="font-medium">{option.path}</span>
-                  <span className="text-slate-600">{option.detail}</span>
+                  <span className="fw-medium">{option.path}</span>
+                  <span className="text-secondary">{option.detail}</span>
                 </label>
               </li>
             ))}
@@ -154,8 +148,8 @@ export function TargetPicker({
         </fieldset>
       )}
       {value?.type === type && (
-        <p className="text-sm">
-          Selected: <span className="font-medium">{value.path}</span>
+        <p>
+          Selected: <span className="fw-medium">{value.path}</span>
         </p>
       )}
     </div>

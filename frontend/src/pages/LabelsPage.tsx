@@ -21,7 +21,6 @@ import { useAsOf } from "../asof/context";
 import { AsOfResult } from "../asof/AsOfResult";
 import { PastReadOnly } from "../asof/PastReadOnly";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, fieldClass, linkClass, secondaryClass } from "../components/styles";
 import {
   driftKindLabels,
   driftKindMeaning,
@@ -39,8 +38,10 @@ import { Swatch } from "../labels/Swatch";
 import { CHANGES_VIEW, personText } from "../policies/format";
 import { hasPermission } from "../remediation/format";
 import { formatTime } from "../time";
+import { PageHeader } from "../ui/PageHeader";
+import { useDeviceClass } from "../ui/device";
 
-const cell = "px-3 py-2 align-top";
+const cell = "align-top";
 
 function Taxonomy({ version }: { version: TaxonomyVersion }) {
   const spec = version.spec;
@@ -48,23 +49,23 @@ function Taxonomy({ version }: { version: TaxonomyVersion }) {
     ? "Not reviewed: review was off, so it applied at once"
     : `Approved by ${personText(version.decided_by)}`;
   return (
-    <div className="space-y-3">
-      <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-[max-content_1fr]">
-        <dt className="font-medium">Taxonomy</dt>
+    <div>
+      <dl className="grid gap-x-6 row-gap-1 sm:grid-cols-[max-content_1fr]">
+        <dt className="fw-medium">Taxonomy</dt>
         <dd>{`${version.name} v${String(version.version)} (${taxonomyStateLabels[version.state]})`}</dd>
-        <dt className="font-medium">In force since</dt>
+        <dt className="fw-medium">In force since</dt>
         <dd>{formatTime(version.in_force_from)}</dd>
-        <dt className="font-medium">Proposed by</dt>
+        <dt className="fw-medium">Proposed by</dt>
         <dd>{`${personText(version.proposed_by)}; ${decided}`}</dd>
         {spec && (
           <>
-            <dt className="font-medium">Groups</dt>
+            <dt className="fw-medium">Groups</dt>
             <dd>{spec.scope.groups.join(", ")}</dd>
-            <dt className="font-medium">Defined at</dt>
+            <dt className="fw-medium">Defined at</dt>
             <dd>
               {spec.placement === "top_level_group" ? "Each top-level group" : spec.placement}
             </dd>
-            <dt className="font-medium">Other labels</dt>
+            <dt className="fw-medium">Other labels</dt>
             <dd>
               {spec.strict
                 ? "Strict: labels not in the taxonomy count as drift"
@@ -72,14 +73,14 @@ function Taxonomy({ version }: { version: TaxonomyVersion }) {
             </dd>
           </>
         )}
-        <dt className="font-medium">Digest</dt>
-        <dd className="break-all font-mono text-xs">{version.digest}</dd>
+        <dt className="fw-medium">Digest</dt>
+        <dd className="text-break font-monospace small">{version.digest}</dd>
       </dl>
       {spec && (
-        <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-          <table className="w-full text-left text-sm">
-            <caption className="sr-only">Labels in the taxonomy</caption>
-            <thead className="border-b border-slate-200 bg-slate-50">
+        <div className="card table-responsive">
+          <table className="table table-vcenter card-table mb-0">
+            <caption className="visually-hidden">Labels in the taxonomy</caption>
+            <thead>
               <tr>
                 {["Label", "Colour", "Description", "Renamed from"].map((header) => (
                   <th key={header} scope="col" className={`${cell} font-medium`}>
@@ -88,7 +89,7 @@ function Taxonomy({ version }: { version: TaxonomyVersion }) {
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {spec.labels.map((label) => (
                 <tr key={label.name}>
                   <th scope="row" className={`${cell} font-medium`}>
@@ -115,7 +116,9 @@ function TaxonomySection() {
   const asOf = useAsOf();
   const { session } = useAuth();
   const user = session.status === "signed_in" ? session.user : null;
-  const canPropose = user !== null && hasPermission(user, CAN_PROPOSE);
+  const device = useDeviceClass();
+  // Phones can approve or reject a proposed taxonomy, but not propose one.
+  const canPropose = user !== null && hasPermission(user, CAN_PROPOSE) && device !== "phone";
   const taxonomy = useLoad(`labels:taxonomy@${asOf ?? "now"}`, (signal) =>
     getTaxonomy(asOf, signal),
   );
@@ -124,7 +127,7 @@ function TaxonomySection() {
   if (taxonomy.error) body = <ErrorMessage error={taxonomy.error} retry={taxonomy.retry} />;
   else if (!taxonomy.data) {
     body = (
-      <p role="status" className="text-slate-600">
+      <p role="status" className="text-secondary">
         Loading the label taxonomy…
       </p>
     );
@@ -136,18 +139,16 @@ function TaxonomySection() {
         {current ? (
           <Taxonomy version={current} />
         ) : (
-          <p className="rounded border border-dashed border-slate-300 p-4 text-sm text-slate-600">
+          <p className="text-secondary border border-dashed rounded p-3">
             {asOf
               ? "No label taxonomy was in force then."
               : "No label taxonomy is in force. Define one to see where groups and projects drift from it."}
           </p>
         )}
         {waiting > 0 && !asOf && (
-          <p className="text-sm">
+          <p>
             {`${String(waiting)} proposed ${waiting === 1 ? "taxonomy is" : "taxonomies are"} waiting for review. `}
-            <Link to={CHANGES_VIEW} className={linkClass}>
-              Open the review queue
-            </Link>
+            <Link to={CHANGES_VIEW}>Open the review queue</Link>
           </p>
         )}
         {canPropose &&
@@ -155,7 +156,7 @@ function TaxonomySection() {
             <PastReadOnly />
           ) : (
             <p>
-              <Link to={TAXONOMY_EDITOR} className={buttonClass}>
+              <Link to={TAXONOMY_EDITOR} className="btn btn-primary">
                 {current ? "Propose a change to the taxonomy" : "Define the taxonomy"}
               </Link>
             </p>
@@ -164,8 +165,8 @@ function TaxonomySection() {
     );
   }
   return (
-    <section aria-labelledby="taxonomy-title" className="space-y-3">
-      <h2 id="taxonomy-title" className="text-lg font-semibold">
+    <section aria-labelledby="taxonomy-title">
+      <h2 id="taxonomy-title" className="card-title">
         Taxonomy in force
       </h2>
       {body}
@@ -188,36 +189,37 @@ function groupFilterHref(params: URLSearchParams, group: string): string {
 function Summary({ totals }: { totals: DriftTotals }) {
   const [params] = useSearchParams();
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <section aria-labelledby="by-kind-title" className="space-y-2">
-        <h3 id="by-kind-title" className="font-medium">
+    <div className="grid gap-3 lg:grid-cols-2">
+      <section aria-labelledby="by-kind-title">
+        <h3 id="by-kind-title" className="fw-medium">
           {`Drift by kind (${String(totals.total)} in all)`}
         </h3>
-        <ul className="divide-y divide-slate-100 rounded border border-slate-200 bg-white text-sm">
+        <ul className="list-group">
           {driftKinds.map((kind) => (
-            <li key={kind} className="flex items-baseline justify-between gap-3 px-3 py-2">
+            <li
+              key={kind}
+              className="d-flex align-items-baseline justify-content-between gap-3 px-3 py-2"
+            >
               <span>
-                <Link to={kindHref(params, kind)} className={linkClass}>
-                  {driftKindLabels[kind]}
-                </Link>
-                <span className="block text-xs text-slate-600">{driftKindMeaning[kind]}</span>
+                <Link to={kindHref(params, kind)}>{driftKindLabels[kind]}</Link>
+                <span className="d-block small text-secondary">{driftKindMeaning[kind]}</span>
               </span>
-              <span className="font-medium tabular-nums">{totals.by_kind[kind] ?? 0}</span>
+              <span className="fw-medium tabular-nums">{totals.by_kind[kind] ?? 0}</span>
             </li>
           ))}
         </ul>
       </section>
-      <section aria-labelledby="by-group-title" className="space-y-2">
-        <h3 id="by-group-title" className="font-medium">
+      <section aria-labelledby="by-group-title">
+        <h3 id="by-group-title" className="fw-medium">
           Drift by top-level group
         </h3>
         {totals.by_group.length === 0 ? (
-          <p className="text-sm text-slate-600">No drift in any group.</p>
+          <p className="text-secondary">No drift in any group.</p>
         ) : (
-          <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-            <table className="w-full text-left text-sm">
-              <caption className="sr-only">Drift by top-level group</caption>
-              <thead className="border-b border-slate-200 bg-slate-50">
+          <div className="card table-responsive">
+            <table className="table table-vcenter card-table mb-0">
+              <caption className="visually-hidden">Drift by top-level group</caption>
+              <thead>
                 <tr>
                   <th scope="col" className={`${cell} font-medium`}>
                     Group
@@ -230,13 +232,11 @@ function Summary({ totals }: { totals: DriftTotals }) {
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody>
                 {totals.by_group.map((row) => (
                   <tr key={row.group}>
                     <th scope="row" className={`${cell} font-medium`}>
-                      <Link to={groupFilterHref(params, row.group)} className={linkClass}>
-                        {row.group}
-                      </Link>
+                      <Link to={groupFilterHref(params, row.group)}>{row.group}</Link>
                     </th>
                     <td className={`${cell} tabular-nums`}>{row.total}</td>
                     <td className={`${cell} tabular-nums`}>{row.by_kind.unknown ?? 0}</td>
@@ -281,15 +281,15 @@ function Filters({ filters }: { filters: DriftFilters }) {
       key={writeDriftFilters(filters).toString()}
       onSubmit={apply}
       aria-label="Filter label drift"
-      className="flex flex-wrap items-end gap-3 rounded border border-slate-200 bg-white p-4"
+      className="d-flex flex-wrap align-items-end gap-3 rounded border p-3"
     >
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         Top-level group
-        <input name="group" defaultValue={filters.group ?? ""} className={fieldClass} />
+        <input name="group" defaultValue={filters.group ?? ""} className="form-control mt-1" />
       </label>
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         Kind
-        <select name="kind" defaultValue={filters.kind ?? ""} className={fieldClass}>
+        <select name="kind" defaultValue={filters.kind ?? ""} className="form-control mt-1">
           <option value="">Any</option>
           {driftKinds.map((kind) => (
             <option key={kind} value={kind}>
@@ -298,15 +298,15 @@ function Filters({ filters }: { filters: DriftFilters }) {
           ))}
         </select>
       </label>
-      <label className="text-sm font-medium">
+      <label className="fw-medium">
         Label
-        <input name="label" defaultValue={filters.label ?? ""} className={fieldClass} />
+        <input name="label" defaultValue={filters.label ?? ""} className="form-control mt-1" />
       </label>
-      <button type="submit" className={buttonClass}>
+      <button type="submit" className="btn btn-primary">
         Apply filters
       </button>
       {hasDriftFilters(filters) && (
-        <button type="button" onClick={clear} className={secondaryClass}>
+        <button type="button" onClick={clear} className="btn">
           Clear
         </button>
       )}
@@ -328,7 +328,7 @@ function Drift({ filters }: { filters: DriftFilters }) {
   if (first.error) return <ErrorMessage error={first.error} retry={first.retry} />;
   if (!first.data) {
     return (
-      <p role="status" className="text-slate-600">
+      <p role="status" className="text-secondary">
         Loading label drift…
       </p>
     );
@@ -336,9 +336,9 @@ function Drift({ filters }: { filters: DriftFilters }) {
   const page = first.data;
   const more = paged.next !== null ? " (more available)" : "";
   return (
-    <div className="space-y-4">
+    <div>
       <AsOfResult answer={page} />
-      <p className="text-sm text-slate-600">
+      <p className="text-secondary">
         {page.taxonomy
           ? `Measured against ${page.taxonomy.name} v${String(page.taxonomy.version)}, from labels read ${formatTime(page.collected_at)}.`
           : "No taxonomy was in force, so there is nothing to measure drift against."}
@@ -346,7 +346,7 @@ function Drift({ filters }: { filters: DriftFilters }) {
       <Summary totals={page.totals} />
       <Filters filters={filters} />
       {paged.items.length === 0 ? (
-        <p className="rounded border border-dashed border-slate-300 p-4 text-sm text-slate-600">
+        <p className="text-secondary border border-dashed rounded p-3">
           {hasDriftFilters(filters)
             ? "No drift matches these filters."
             : "No drift: every group and project in scope matches the taxonomy."}
@@ -354,7 +354,7 @@ function Drift({ filters }: { filters: DriftFilters }) {
       ) : (
         <>
           <DriftTable items={paged.items} caption="Label drift by group or project" />
-          <p className="text-sm text-slate-600" aria-live="polite">
+          <p className="text-secondary" aria-live="polite">
             {`Showing ${String(paged.items.length)} of ${String(page.totals.total)} drift items${more}.`}
           </p>
         </>
@@ -367,7 +367,7 @@ function Drift({ filters }: { filters: DriftFilters }) {
           type="button"
           onClick={() => void paged.loadMore()}
           disabled={paged.pending}
-          className={secondaryClass}
+          className="btn"
         >
           {paged.pending ? "Loading…" : "Load more drift"}
         </button>
@@ -382,35 +382,22 @@ export function LabelsPage() {
   const { session } = useAuth();
   const canPlan = session.status === "signed_in" && hasPermission(session.user, CAN_PLAN);
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
+    <section aria-labelledby="page-title">
       <div>
-        <h1 id="page-title" className="text-2xl font-semibold">
-          Labels
-        </h1>
-        <p className="mt-2 max-w-3xl text-slate-600">
-          One set of labels for every group: the taxonomy in force, and where groups and projects
-          differ from it. Labels that could not be read are unknown, never counted as missing or
-          matching. Fixes are made through reviewed plans, which never delete a label.
-        </p>
-        <p className="mt-3 flex flex-wrap gap-4">
-          <Link to={LABEL_FINDINGS} className={linkClass}>
-            Label consistency findings
-          </Link>
-          {canPlan && (
-            <Link to={LABEL_PLANS} className={linkClass}>
-              Label plans
-            </Link>
-          )}
-          {canPlan && (
-            <Link to={ISSUE_PLANS} className={linkClass}>
-              Closed issue time
-            </Link>
-          )}
+        <PageHeader
+          pretitle="Govern"
+          title="Labels"
+          subtitle="One set of labels for every group: the taxonomy in force, and where groups and projects differ from it. Labels that could not be read are unknown, never counted as missing or matching. Fixes are made through reviewed plans, which never delete a label."
+        />
+        <p className="d-flex flex-wrap gap-3">
+          <Link to={LABEL_FINDINGS}>Label consistency findings</Link>
+          {canPlan && <Link to={LABEL_PLANS}>Label plans</Link>}
+          {canPlan && <Link to={ISSUE_PLANS}>Closed issue time</Link>}
         </p>
       </div>
       <TaxonomySection />
-      <section aria-labelledby="drift-title" className="space-y-3">
-        <h2 id="drift-title" className="text-lg font-semibold">
+      <section aria-labelledby="drift-title" className="card card-body mb-3">
+        <h2 id="drift-title" className="card-title">
           Drift
         </h2>
         <Drift filters={filters} />

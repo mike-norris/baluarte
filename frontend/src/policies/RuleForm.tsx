@@ -1,6 +1,5 @@
 import { useId } from "react";
 
-import { fieldClass, secondaryClass } from "../components/styles";
 import { AccessRules } from "./AccessRules";
 import { ChangeRules } from "./ChangeRules";
 import {
@@ -30,7 +29,7 @@ function SeveritySelect({
   onChange: (severity: Severity) => void;
 }) {
   return (
-    <label className="text-sm font-medium">
+    <label className="fw-medium">
       {label}
       <select
         value={value}
@@ -38,7 +37,7 @@ function SeveritySelect({
         onChange={(event) => {
           onChange(event.target.value as Severity);
         }}
-        className={fieldClass}
+        className="form-control mt-1"
       >
         {severities.map((severity) => (
           <option key={severity} value={severity}>
@@ -50,7 +49,7 @@ function SeveritySelect({
   );
 }
 
-const ruleCard = "space-y-3 rounded border border-slate-200 p-3";
+const ruleCard = "border rounded p-3 mb-3";
 
 /**
  * The fields of a baseline: its name, which groups it covers, and its rules as switches. The
@@ -71,7 +70,7 @@ export function RuleForm({
   return (
     <div className="space-y-5">
       <div className="grid gap-3 sm:grid-cols-2">
-        <label className="text-sm font-medium" htmlFor={`${id}-name`}>
+        <label className="fw-medium" htmlFor={`${id}-name`}>
           Name
           <input
             id={`${id}-name`}
@@ -82,10 +81,10 @@ export function RuleForm({
             onChange={(event) => {
               onChange({ ...form, name: event.target.value });
             }}
-            className={`${fieldClass} ${nameLocked ? "bg-slate-100" : ""}`}
+            className="form-control mt-1"
           />
         </label>
-        <label className="text-sm font-medium" htmlFor={`${id}-description`}>
+        <label className="fw-medium" htmlFor={`${id}-description`}>
           Description (optional)
           <input
             id={`${id}-description`}
@@ -94,21 +93,21 @@ export function RuleForm({
             onChange={(event) => {
               onChange({ ...form, description: event.target.value });
             }}
-            className={fieldClass}
+            className="form-control mt-1"
           />
         </label>
       </div>
-      <p id={`${id}-name-help`} className="-mt-3 text-sm text-slate-600">
+      <p id={`${id}-name-help`} className="-mt-3 text-secondary">
         {nameLocked
           ? "Saving adds the next version of this baseline. Earlier versions stay as they were."
           : "Lowercase letters, digits and hyphens, for example recommended-baseline. Findings name it."}
       </p>
 
-      <fieldset className="space-y-3">
-        <legend className="text-base font-semibold">Rules</legend>
+      <fieldset>
+        <legend className="fw-semibold">Rules</legend>
 
         <div className={ruleCard}>
-          <label className="flex items-center gap-2 text-sm font-medium">
+          <label className="d-flex align-items-center gap-2 fw-medium">
             <input
               type="checkbox"
               checked={visibility.enabled}
@@ -118,19 +117,19 @@ export function RuleForm({
             />
             Projects have an allowed visibility
           </label>
-          <fieldset disabled={!visibility.enabled} className="space-y-3 pl-6 disabled:opacity-60">
-            <legend className="sr-only">Project visibility settings</legend>
+          <fieldset disabled={!visibility.enabled} className="pl-6 disabled:opacity-60">
+            <legend className="visually-hidden">Project visibility settings</legend>
             <div>
-              <p className="text-sm font-medium" id={`${id}-allowed`}>
+              <p className="fw-medium" id={`${id}-allowed`}>
                 Allowed visibility
               </p>
               <div
-                className="mt-1 flex flex-wrap gap-4"
+                className="mt-1 d-flex flex-wrap gap-3"
                 role="group"
                 aria-labelledby={`${id}-allowed`}
               >
                 {visibilities.map((value) => (
-                  <label key={value} className="flex items-center gap-2 text-sm">
+                  <label key={value} className="d-flex align-items-center gap-2">
                     <input
                       type="checkbox"
                       checked={visibility.allowed.includes(value)}
@@ -145,7 +144,7 @@ export function RuleForm({
                   </label>
                 ))}
               </div>
-              <p className="mt-1 text-sm text-slate-600">
+              <p className="mt-1 text-secondary">
                 A project with any other visibility fails. Public projects can be read by anyone who
                 can reach GitLab.
               </p>
@@ -164,7 +163,7 @@ export function RuleForm({
         </div>
 
         <div className={ruleCard}>
-          <label className="flex items-center gap-2 text-sm font-medium">
+          <label className="d-flex align-items-center gap-2 fw-medium">
             <input
               type="checkbox"
               checked={branch.enabled}
@@ -174,9 +173,9 @@ export function RuleForm({
             />
             Every default branch is protected
           </label>
-          <fieldset disabled={!branch.enabled} className="space-y-3 pl-6 disabled:opacity-60">
-            <legend className="sr-only">Default branch protection settings</legend>
-            <p className="text-sm text-slate-600">
+          <fieldset disabled={!branch.enabled} className="pl-6 disabled:opacity-60">
+            <legend className="visually-hidden">Default branch protection settings</legend>
+            <p className="text-secondary">
               Passes when a protected-branch rule in GitLab, exact or wildcard, covers the
               project&apos;s default branch. An empty repository has no default branch, so its
               result is unknown.
@@ -196,23 +195,21 @@ export function RuleForm({
 
         {scan.enabled && (
           <section aria-label="Required scans rule" className={ruleCard}>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-medium">
-                Projects run scans through a GitLab scan execution policy
-              </p>
+            <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+              <p className="fw-medium">Projects run scans through a GitLab scan execution policy</p>
               <button
                 type="button"
                 onClick={() => {
                   onChange({ ...form, scan: offScanRule() });
                 }}
-                className={`${secondaryClass} text-xs`}
+                className="btn btn-sm"
               >
                 Remove rule
               </button>
             </div>
-            <div className="space-y-3 pl-6">
+            <div className="pl-6">
               <div>
-                <p className="text-sm font-medium" id={`${id}-scans`}>
+                <p className="fw-medium" id={`${id}-scans`}>
                   Required scans
                 </p>
                 <div
@@ -221,7 +218,7 @@ export function RuleForm({
                   aria-labelledby={`${id}-scans`}
                 >
                   {scans.map((value) => (
-                    <label key={value} className="flex items-center gap-2 text-sm">
+                    <label key={value} className="d-flex align-items-center gap-2">
                       <input
                         type="checkbox"
                         checked={scan.scans.includes(value)}
@@ -239,14 +236,14 @@ export function RuleForm({
                     </label>
                   ))}
                 </div>
-                <p className="mt-1 text-sm text-slate-600">
+                <p className="mt-1 text-secondary">
                   Passes when the enabled scan execution policies reaching a project, together, run
                   every chosen scan on its default branch, in pipelines or on a schedule. Policies
                   that run only for merge requests don&apos;t count. GitLab enforces the policy;
                   Baluarte only reads it.
                 </p>
               </div>
-              <label className="flex items-center gap-2 text-sm">
+              <label className="d-flex align-items-center gap-2">
                 <input
                   type="checkbox"
                   checked={scan.allowSkipCi}
@@ -259,7 +256,7 @@ export function RuleForm({
                 />
                 Count a policy that lets pipelines skip CI
               </label>
-              <p className="-mt-2 pl-6 text-sm text-slate-600">
+              <p className="-mt-2 pl-6 text-secondary">
                 As in GitLab, a policy without a <code>skip_ci</code> setting can be skipped. When
                 this is off, only policies that forbid skipping count.
               </p>
@@ -279,8 +276,8 @@ export function RuleForm({
 
         {approval.enabled && (
           <section aria-label="Required approvals rule" className={ruleCard}>
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-medium">
+            <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+              <p className="fw-medium">
                 Merge requests need approval through a GitLab approval policy
               </p>
               <button
@@ -288,13 +285,13 @@ export function RuleForm({
                 onClick={() => {
                   onChange({ ...form, approval: offApprovalRule() });
                 }}
-                className={`${secondaryClass} text-xs`}
+                className="btn btn-sm"
               >
                 Remove rule
               </button>
             </div>
-            <div className="space-y-3 pl-6">
-              <label className="block max-w-xs text-sm font-medium" htmlFor={`${id}-approvals`}>
+            <div className="pl-6">
+              <label className="d-block max-w-xs fw-medium" htmlFor={`${id}-approvals`}>
                 Approvals required, at least
                 <input
                   id={`${id}-approvals`}
@@ -312,16 +309,16 @@ export function RuleForm({
                       },
                     });
                   }}
-                  className={fieldClass}
+                  className="form-control mt-1"
                 />
               </label>
-              <p className="text-sm text-slate-600">
+              <p className="text-secondary">
                 Passes when one enabled approval policy reaching a project requires at least this
                 many approvals on every merge request to a protected branch. Rules that ask for
                 approval only when a scan or license finding matches don&apos;t count, so a license
                 approval policy alone doesn&apos;t satisfy this.
               </p>
-              <label className="flex items-center gap-2 text-sm">
+              <label className="d-flex align-items-center gap-2">
                 <input
                   type="checkbox"
                   checked={approval.forbidAuthorApproval}
@@ -337,7 +334,7 @@ export function RuleForm({
                 />
                 The policy must stop the author approving
               </label>
-              <label className="flex items-center gap-2 text-sm">
+              <label className="d-flex align-items-center gap-2">
                 <input
                   type="checkbox"
                   checked={approval.forbidCommitterApproval}
@@ -368,8 +365,8 @@ export function RuleForm({
         )}
 
         {(!scan.enabled || !approval.enabled) && (
-          <div className="space-y-2">
-            <div className="flex flex-wrap gap-2">
+          <div>
+            <div className="d-flex flex-wrap gap-2">
               {!scan.enabled && (
                 <button
                   type="button"
@@ -379,7 +376,7 @@ export function RuleForm({
                       scan: { ...offScanRule(), enabled: true },
                     });
                   }}
-                  className={secondaryClass}
+                  className="btn"
                 >
                   Add rule: required scans
                 </button>
@@ -393,13 +390,13 @@ export function RuleForm({
                       approval: { ...offApprovalRule(), enabled: true },
                     });
                   }}
-                  className={secondaryClass}
+                  className="btn"
                 >
                   Add rule: required approvals
                 </button>
               )}
             </div>
-            <p className="text-sm text-slate-600">
+            <p className="text-secondary">
               These rules check GitLab security policies, which need GitLab Ultimate. Where Baluarte
               can&apos;t read them, results are unknown, never passing.
             </p>
@@ -410,9 +407,9 @@ export function RuleForm({
         <ChangeRules form={form} onChange={onChange} />
       </fieldset>
 
-      <fieldset className="space-y-2">
-        <legend className="text-base font-semibold">Groups it covers</legend>
-        <label className="flex items-center gap-2 text-sm">
+      <fieldset>
+        <legend className="fw-semibold">Groups it covers</legend>
+        <label className="d-flex align-items-center gap-2">
           <input
             type="radio"
             name={`${id}-scope`}
@@ -423,7 +420,7 @@ export function RuleForm({
           />
           Every group and project it is applied to
         </label>
-        <label className="flex items-center gap-2 text-sm">
+        <label className="d-flex align-items-center gap-2">
           <input
             type="radio"
             name={`${id}-scope`}
@@ -435,7 +432,7 @@ export function RuleForm({
           Only some groups
         </label>
         {form.scope === "groups" && (
-          <label className="block pl-6 text-sm font-medium" htmlFor={`${id}-groups`}>
+          <label className="d-block pl-6 fw-medium" htmlFor={`${id}-groups`}>
             Group paths, one per line
             <textarea
               id={`${id}-groups`}
@@ -445,9 +442,9 @@ export function RuleForm({
               onChange={(event) => {
                 onChange({ ...form, groups: event.target.value.split("\n") });
               }}
-              className={`${fieldClass} font-mono`}
+              className="form-control mt-1 font-monospace"
             />
-            <span id={`${id}-groups-help`} className="mt-1 block font-normal text-slate-600">
+            <span id={`${id}-groups-help`} className="mt-1 d-block fw-normal text-secondary">
               A group also covers its subgroups. Elsewhere the baseline is not checked, even where
               it is applied.
             </span>

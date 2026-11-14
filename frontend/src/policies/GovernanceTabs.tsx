@@ -3,8 +3,8 @@ import { Link, NavLink } from "react-router";
 
 import { listPolicyChanges } from "../api/policies";
 import { useLoad } from "../api/useLoad";
-import { linkClass } from "../components/styles";
 import { APPLY_VIEW, CHANGES_VIEW, GOVERNANCE, SECURITY_POLICIES_VIEW } from "./format";
+import { PageHeader } from "../ui/PageHeader";
 
 const tabs = [
   { to: GOVERNANCE, label: "Baselines" },
@@ -27,20 +27,14 @@ export function ReviewStatus() {
   const count = page.next_before_id === null ? String(waiting) : `${String(waiting)}+`;
   if (!page.review_required) {
     return (
-      <p
-        role="status"
-        className="rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950"
-      >
-        <span className="font-medium">Baseline changes take effect without review.</span>
+      <p role="status" className="alert alert-warning text-body">
+        <span className="fw-medium">Baseline changes take effect without review.</span>
         {" New versions and where baselines apply change as soon as one person saves them. An "}
         administrator can require a second person to approve them in Settings.
         {waiting > 0 && (
           <>
             {` ${count} earlier ${waiting === 1 ? "proposal is" : "proposals are"} still waiting: `}
-            <Link to={CHANGES_VIEW} className={linkClass}>
-              review them
-            </Link>
-            .
+            <Link to={CHANGES_VIEW}>review them</Link>.
           </>
         )}
       </p>
@@ -48,11 +42,9 @@ export function ReviewStatus() {
   }
   if (waiting === 0) return null;
   return (
-    <p role="status" className="rounded border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950">
+    <p role="status" className="alert alert-info text-body">
       {`${count} baseline ${waiting === 1 ? "change is" : "changes are"} waiting for review. `}
-      <Link to={CHANGES_VIEW} className={linkClass}>
-        Review changes
-      </Link>
+      <Link to={CHANGES_VIEW}>Review changes</Link>
     </p>
   );
 }
@@ -60,31 +52,17 @@ export function ReviewStatus() {
 /** The Governance heading, its tabs and an optional action, shared by the three views. */
 export function GovernanceHeader({ intro, action }: { intro: ReactNode; action?: ReactNode }) {
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 id="page-title" className="text-2xl font-semibold">
-            Governance
-          </h1>
-          <p className="mt-2 max-w-3xl text-slate-600">{intro}</p>
-        </div>
-        {action}
-      </div>
+    <>
+      <PageHeader pretitle="Govern" title="Governance" subtitle={intro} actions={action} />
       <ReviewStatus />
-      <nav aria-label="Governance views">
-        <ul className="flex flex-wrap gap-1 border-b border-slate-200">
+      <nav aria-label="Governance views" className="mb-3">
+        <ul className="nav nav-tabs flex-nowrap overflow-auto">
           {tabs.map((tab) => (
-            <li key={tab.to}>
+            <li key={tab.to} className="nav-item">
               <NavLink
                 to={tab.to}
                 end={tab.to === GOVERNANCE || tab.to === APPLY_VIEW}
-                className={({ isActive }) =>
-                  `-mb-px block border-b-2 px-3 py-2 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 ${
-                    isActive
-                      ? "border-slate-900 text-slate-900"
-                      : "border-transparent text-slate-600 hover:text-slate-900"
-                  }`
-                }
+                className="nav-link text-nowrap"
               >
                 {tab.label}
               </NavLink>
@@ -92,6 +70,6 @@ export function GovernanceHeader({ intro, action }: { intro: ReactNode; action?:
           ))}
         </ul>
       </nav>
-    </div>
+    </>
   );
 }

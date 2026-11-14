@@ -5,15 +5,15 @@ import { isHexColor } from "./format";
  * swatch itself is hidden from assistive technology and never stands alone.
  */
 export function Swatch({ color }: { color: string | null | undefined }) {
-  if (!color) return <span className="text-slate-600">None</span>;
+  if (!color) return <span className="text-secondary">None</span>;
   const valid = isHexColor(color);
   return (
-    <span className="inline-flex items-center gap-1.5 whitespace-nowrap font-mono text-xs">
+    <span className="d-inline-flex align-items-center gap-1 text-nowrap font-monospace small">
       {valid && (
         <span
           aria-hidden="true"
-          className="inline-block h-3.5 w-3.5 rounded-sm border border-slate-400"
-          style={{ backgroundColor: color }}
+          className="d-inline-block rounded-1 border flex-shrink-0"
+          style={{ backgroundColor: color, width: "0.875rem", height: "0.875rem" }}
         />
       )}
       {color.toLowerCase()}

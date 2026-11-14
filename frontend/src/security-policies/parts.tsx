@@ -6,10 +6,10 @@ import { getSettings } from "../api/setup";
 import { discoverSecurityPolicies, type DiscoveryContext } from "../api/securityPolicies";
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
-import { secondaryClass } from "../components/styles";
 import { GovernanceHeader } from "../policies/GovernanceTabs";
 import { SECURITY_POLICIES_VIEW } from "../policies/format";
 import { collectedText, COVERAGE_VIEW, discoveryProblem, typeGaps } from "./format";
+import { useDeviceClass } from "../ui/device";
 
 export const SETTINGS_MANAGE = "settings:manage";
 
@@ -24,38 +24,33 @@ function canManage(permissions: string[] | undefined): boolean {
 export function SecurityPoliciesHeader({ context }: { context: DiscoveryContext | undefined }) {
   const { session } = useAuth();
   const user = session.status === "signed_in" ? session.user : null;
+  const device = useDeviceClass();
   return (
-    <div className="space-y-4">
+    <div>
       <GovernanceHeader
         intro={INTRO}
         action={
-          user && canManage(user.permissions) ? <CollectNow csrf={user.csrf_token} /> : undefined
+          user && canManage(user.permissions) && device !== "phone" ? (
+            <CollectNow csrf={user.csrf_token} />
+          ) : undefined
         }
       />
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="d-flex flex-wrap align-items-center justify-content-between gap-3">
         <nav aria-label="GitLab security policy views">
-          <ul className="flex gap-1">
+          <ul className="nav nav-pills">
             {[
               { to: SECURITY_POLICIES_VIEW, label: "Policies" },
               { to: COVERAGE_VIEW, label: "Coverage" },
             ].map((tab) => (
               <li key={tab.to}>
-                <NavLink
-                  to={tab.to}
-                  end
-                  className={({ isActive }) =>
-                    `block rounded px-3 py-1.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 ${
-                      isActive ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-100"
-                    }`
-                  }
-                >
+                <NavLink to={tab.to} end className="nav-link">
                   {tab.label}
                 </NavLink>
               </li>
             ))}
           </ul>
         </nav>
-        {context && <p className="text-sm text-slate-600">{collectedText(context)}</p>}
+        {context && <p className="text-secondary">{collectedText(context)}</p>}
       </div>
       {context && <DiscoveryNotice context={context} />}
     </div>
@@ -68,7 +63,7 @@ export function DiscoveryNotice({ context }: { context: DiscoveryContext }) {
   const gaps = typeGaps(context);
   if (!problem && !gaps && context.collection.status !== "stale") return null;
   return (
-    <div className="space-y-1 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+    <div className="alert alert-warning text-body">
       {problem && <p>{problem}</p>}
       {!problem && context.collection.status === "stale" && (
         <p>These results are stale: the last successful collection is older than expected.</p>
@@ -100,18 +95,18 @@ function CollectNow({ csrf }: { csrf: string }) {
   }
 
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className="d-flex flex-column align-items-end gap-1">
       <button
         type="button"
         onClick={() => void collect()}
         disabled={state.kind === "pending"}
-        className={secondaryClass}
+        className="btn"
       >
         {state.kind === "pending" ? "Queuing…" : "Collect now"}
       </button>
-      <p aria-live="polite" className="text-xs text-slate-600">
+      <p aria-live="polite" className="small text-secondary">
         {state.kind === "queued" && "Queued. Results appear here when the collection finishes."}
-        {state.kind === "failed" && <span className="text-red-800">{state.message}</span>}
+        {state.kind === "failed" && <span className="text-danger-emphasis">{state.message}</span>}
       </p>
     </div>
   );
@@ -134,15 +129,15 @@ export function useGitLabUrl(): string | null {
 
 export function EnabledCell({ enabled }: { enabled: boolean | null }) {
   if (enabled === true) return <span>Enabled</span>;
-  if (enabled === false) return <span className="text-amber-900">Disabled</span>;
-  return <span className="text-slate-600">Unknown</span>;
+  if (enabled === false) return <span className="text-warning-emphasis">Disabled</span>;
+  return <span className="text-secondary">Unknown</span>;
 }
 
 export function ExternalLink({ href, children }: { href: string; children: string }) {
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer" className="text-sky-800 underline">
+    <a href={href} target="_blank" rel="noopener noreferrer">
       {children}
-      <span className="sr-only"> (opens in a new tab)</span> ↗
+      <span className="visually-hidden"> (opens in a new tab)</span> ↗
     </a>
   );
 }

@@ -11,7 +11,6 @@ import {
 } from "../api/securityPolicies";
 import { useLoad } from "../api/useLoad";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { linkClass } from "../components/styles";
 import {
   coverageLabels,
   coverageReason,
@@ -24,19 +23,19 @@ import { SecurityPoliciesHeader } from "../security-policies/parts";
 type Kind = "groups" | "projects";
 type Show = "all" | "gaps" | "unknown";
 
-const cell = "px-3 py-2";
+const cell = "align-top";
 
 const statusStyle: Record<CoverageStatus, string> = {
-  covered: "bg-emerald-100 text-emerald-950",
-  not_covered: "bg-red-100 text-red-950",
-  unknown: "bg-amber-100 text-amber-950",
+  covered: "bg-success-subtle text-success-emphasis border border-success-subtle",
+  not_covered: "bg-danger-subtle text-danger-emphasis border border-danger-subtle",
+  unknown: "bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle",
 };
 
 function TypeCell({ coverage }: { coverage: TypeCoverage | undefined }) {
   if (!coverage || coverage.status !== "ok") {
     const text = coverage?.status === "unsupported" ? "Not supported" : "Unknown";
     return (
-      <span className="text-amber-900" title={text}>
+      <span className="text-warning-emphasis" title={text}>
         <span aria-hidden="true">? </span>
         {text}
       </span>
@@ -51,9 +50,7 @@ function TypeCell({ coverage }: { coverage: TypeCoverage | undefined }) {
             <li key={`${String(policy.id)}:${policy.name}`}>
               <span aria-hidden="true">✓ </span>
               {policy.id !== null ? (
-                <Link to={securityPolicyHref(policy.id)} className={linkClass}>
-                  {policy.name}
-                </Link>
+                <Link to={securityPolicyHref(policy.id)}>{policy.name}</Link>
               ) : (
                 policy.name
               )}
@@ -61,12 +58,14 @@ function TypeCell({ coverage }: { coverage: TypeCoverage | undefined }) {
           ))}
         </ul>
       ) : (
-        <span className="text-slate-600">
+        <span className="text-secondary">
           <span aria-hidden="true">✗ </span>
           {coverage.disabled > 0 ? `None enabled (${String(coverage.disabled)} disabled)` : "None"}
         </span>
       )}
-      {coverage.truncated && <span className="block text-xs text-amber-900">List cut short</span>}
+      {coverage.truncated && (
+        <span className="d-block small text-warning-emphasis">List cut short</span>
+      )}
     </>
   );
 }
@@ -82,10 +81,10 @@ function CoverageTable({
 }) {
   const noun = kind === "groups" ? "group" : "project";
   return (
-    <div className="overflow-x-auto rounded border border-slate-200 bg-white">
-      <table className="w-full text-left text-sm">
-        <caption className="sr-only">{`GitLab security policy coverage by ${noun}`}</caption>
-        <thead className="border-b border-slate-200 bg-slate-50">
+    <div className="card table-responsive">
+      <table className="table table-vcenter card-table mb-0">
+        <caption className="visually-hidden">{`GitLab security policy coverage by ${noun}`}</caption>
+        <thead>
           <tr>
             <th scope="col" className={`${cell} font-medium`}>
               {kind === "groups" ? "Group" : "Project"}
@@ -102,13 +101,13 @@ function CoverageTable({
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100 align-top">
+        <tbody className="align-top">
           {rows.map((row) => (
             <tr key={row.id}>
               <th scope="row" className={`${cell} font-medium`}>
                 {row.path}
                 {row.security_policy_project && (
-                  <span className="block text-xs font-normal text-slate-600">
+                  <span className="d-block small fw-normal text-secondary">
                     {`Policy source project: ${row.security_policy_project}`}
                   </span>
                 )}
@@ -119,7 +118,7 @@ function CoverageTable({
                 >
                   {coverageLabels[row.status]}
                 </span>
-                <span className="mt-1 block text-slate-700">
+                <span className="mt-1 d-block text-secondary">
                   {coverageReason(row, kind === "groups" ? "group" : "project", groups)}
                 </span>
               </td>
@@ -138,11 +137,11 @@ function CoverageTable({
 
 function Counts({ label, counts }: { label: string; counts: CoverageCounts }) {
   return (
-    <div className="rounded border border-slate-200 bg-white p-3 text-sm">
-      <h3 className="font-medium">{label}</h3>
+    <div className="rounded border p-3">
+      <h3 className="fw-medium">{label}</h3>
       <p>
         {`${String(counts.covered)} covered · `}
-        <span className={counts.not_covered > 0 ? "font-medium text-red-900" : ""}>
+        <span className={counts.not_covered > 0 ? "fw-medium text-danger-emphasis" : ""}>
           {`${String(counts.not_covered)} not covered`}
         </span>
         {` · ${String(counts.unknown)} unknown`}
@@ -177,21 +176,16 @@ function Body({ coverage, kind, show }: { coverage: Coverage; kind: Kind; show: 
     setParams(params);
   }
 
-  const toggle = (active: boolean) =>
-    `rounded px-3 py-1.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 ${
-      active
-        ? "bg-slate-900 text-white"
-        : "border border-slate-300 bg-white text-slate-800 hover:bg-slate-100"
-    }`;
+  const toggle = (active: boolean) => `btn btn-sm ${active ? "btn-primary" : ""}`;
 
   return (
-    <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2">
+    <div>
+      <div className="row g-3 row-cols-1 row-cols-sm-2 mb-3">
         <Counts label="Groups" counts={coverage.summary.groups} />
         <Counts label="Projects" counts={coverage.summary.projects} />
       </div>
-      <div className="flex flex-wrap gap-4">
-        <div role="group" aria-label="Show coverage for" className="flex gap-1">
+      <div className="d-flex flex-wrap gap-3">
+        <div role="group" aria-label="Show coverage for" className="d-flex gap-1">
           {(["groups", "projects"] as const).map((value) => (
             <button
               key={value}
@@ -204,7 +198,7 @@ function Body({ coverage, kind, show }: { coverage: Coverage; kind: Kind; show: 
             </button>
           ))}
         </div>
-        <div role="group" aria-label="Filter coverage" className="flex gap-1">
+        <div role="group" aria-label="Filter coverage" className="d-flex gap-1">
           {(
             [
               ["all", "All"],
@@ -225,7 +219,7 @@ function Body({ coverage, kind, show }: { coverage: Coverage; kind: Kind; show: 
         </div>
       </div>
       {rows.length === 0 ? (
-        <p className="rounded border border-dashed border-slate-300 p-4 text-sm text-slate-600">
+        <p className="text-secondary border border-dashed rounded p-3">
           {show === "gaps"
             ? `No ${kind} are known to be uncovered. Unknown ones are listed under "Only unknown".`
             : show === "unknown"
@@ -235,7 +229,7 @@ function Body({ coverage, kind, show }: { coverage: Coverage; kind: Kind; show: 
       ) : (
         <CoverageTable rows={rows} kind={kind} groups={groups} />
       )}
-      <p className="text-sm text-slate-600" aria-live="polite">
+      <p className="text-secondary" aria-live="polite">
         {`Showing ${String(rows.length)} of ${String(all.length)} ${kind}.`}
       </p>
     </div>
@@ -251,14 +245,14 @@ export function SecurityPolicyCoveragePage() {
   if (coverage.error) body = <ErrorMessage error={coverage.error} retry={coverage.retry} />;
   else if (!coverage.data) {
     body = (
-      <p role="status" className="text-slate-600">
+      <p role="status" className="text-secondary">
         Loading coverage…
       </p>
     );
   } else body = <Body coverage={coverage.data} kind={kind} show={show} />;
 
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
+    <section aria-labelledby="page-title">
       <SecurityPoliciesHeader context={coverage.data} />
       {body}
     </section>

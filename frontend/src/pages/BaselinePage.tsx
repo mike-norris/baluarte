@@ -18,7 +18,6 @@ import {
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { buttonClass, linkClass, secondaryClass } from "../components/styles";
 import { ApplyForm, appliedMessage } from "../policies/AssignForm";
 import { AppliedToList } from "../policies/AssignmentList";
 import {
@@ -34,6 +33,8 @@ import { ResultLine, ResultsAsOf, total } from "../policies/results";
 import { readableRules, scopeGroups, severityLabels } from "../policies/yaml";
 import { formatTime } from "../time";
 import type { SavedState } from "./BaselineEditorPage";
+import { PageHeader } from "../ui/PageHeader";
+import { useDeviceClass } from "../ui/device";
 
 const emptyCounts = {
   pass: 0,
@@ -44,10 +45,10 @@ const emptyCounts = {
 };
 
 const severityClass: Record<string, string> = {
-  critical: "bg-red-100 text-red-900",
+  critical: "bg-danger text-danger-fg",
   high: "bg-orange-100 text-orange-900",
-  medium: "bg-amber-100 text-amber-900",
-  low: "bg-slate-100 text-slate-800",
+  medium: "bg-warning-subtle text-warning-emphasis border border-warning-subtle",
+  low: "bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle",
 };
 
 function VersionDetail({
@@ -65,7 +66,7 @@ function VersionDetail({
   if (loaded.error) return <ErrorMessage error={loaded.error} retry={loaded.retry} />;
   if (!loaded.data) {
     return (
-      <p role="status" className="text-slate-600">
+      <p role="status" className="text-secondary">
         Loading version…
       </p>
     );
@@ -78,15 +79,12 @@ function VersionDetail({
     ?.versions.find((item) => item.version === policy.version);
   const ruleCounts = new Map(counted?.rules.map((rule) => [rule.rule_id, rule.results]));
   return (
-    <section
-      aria-labelledby="rules"
-      className="space-y-3 rounded border border-slate-200 bg-white p-4"
-    >
-      <h2 id="rules" className="text-lg font-semibold">
+    <section aria-labelledby="rules" className="card card-body mb-3">
+      <h2 id="rules" className="card-title">
         {`Rules in version ${String(policy.version)}`}
       </h2>
       {results && (
-        <div className="space-y-1 text-sm">
+        <div>
           {counted && total(counted.projects) > 0 ? (
             <p>
               <ResultLine
@@ -99,7 +97,7 @@ function VersionDetail({
               />
             </p>
           ) : (
-            <p className="text-slate-600">
+            <p className="text-secondary">
               No project was checked against this version in the latest evaluation.
             </p>
           )}
@@ -107,21 +105,21 @@ function VersionDetail({
         </div>
       )}
       {rules.length === 0 ? (
-        <p className="text-sm text-slate-600">The rules are shown in the YAML below.</p>
+        <p className="text-secondary">The rules are shown in the YAML below.</p>
       ) : (
-        <ul className="divide-y divide-slate-100">
+        <ul>
           {rules.map((rule) => (
-            <li key={rule.id} className="flex flex-wrap items-start gap-3 py-2 text-sm">
+            <li key={rule.id} className="d-flex flex-wrap align-items-start gap-3 py-2">
               <span
                 className={`rounded px-2 py-0.5 text-xs font-medium ${severityClass[rule.severity] ?? ""}`}
               >
                 {severityLabels[rule.severity]}
               </span>
               <span className="grow">
-                <span className="font-medium">{rule.sentence}</span>
-                {rule.detail && <span className="block text-slate-600">{rule.detail}</span>}
+                <span className="fw-medium">{rule.sentence}</span>
+                {rule.detail && <span className="d-block text-secondary">{rule.detail}</span>}
                 {ruleCounts.get(rule.id) && (
-                  <span className="block" aria-label={`Results for ${rule.id}`}>
+                  <span className="d-block" aria-label={`Results for ${rule.id}`}>
                     <ResultLine
                       counts={ruleCounts.get(rule.id) ?? emptyCounts}
                       failingHref={filteredFindingsHref({
@@ -133,28 +131,28 @@ function VersionDetail({
                   </span>
                 )}
               </span>
-              <code className="font-mono text-xs text-slate-600">{rule.id}</code>
+              <code className="font-monospace small text-secondary">{rule.id}</code>
             </li>
           ))}
         </ul>
       )}
-      <p className="text-sm text-slate-600">
+      <p className="text-secondary">
         {groups === null
           ? "Covers every group and project it is applied to."
           : `Covers only ${groups.join(", ")} and their subgroups, even where it is applied more widely.`}
       </p>
-      <p className="text-sm text-slate-600">{`Review: ${reviewText(policy.review)}.`}</p>
-      <details className="text-sm">
-        <summary className="cursor-pointer font-medium">Show YAML (read-only)</summary>
-        <dl className="mt-2 grid gap-x-4 gap-y-1 sm:grid-cols-[max-content_1fr]">
-          <dt className="font-medium text-slate-700">Saved</dt>
+      <p className="text-secondary">{`Review: ${reviewText(policy.review)}.`}</p>
+      <details>
+        <summary className="fw-medium">Show YAML (read-only)</summary>
+        <dl className="mt-2 grid column-gap-3 row-gap-1 sm:grid-cols-[max-content_1fr]">
+          <dt className="col-md-4 fw-medium text-secondary">Saved</dt>
           <dd>{formatTime(policy.created_at)}</dd>
-          <dt className="font-medium text-slate-700">SHA-256</dt>
-          <dd className="font-mono text-xs break-all">{policy.yaml_digest}</dd>
+          <dt className="col-md-4 fw-medium text-secondary">SHA-256</dt>
+          <dd className="font-monospace small text-break">{policy.yaml_digest}</dd>
         </dl>
         <pre
           aria-label={`YAML of ${name} version ${String(policy.version)}`}
-          className="mt-2 overflow-x-auto rounded bg-slate-900 p-3 text-xs text-slate-100"
+          className="mt-2 mb-0 small"
         >
           {policy.source_yaml}
         </pre>
@@ -173,22 +171,18 @@ function Versions({
   selected: number;
 }) {
   return (
-    <nav aria-label="Versions" className="space-y-2">
-      <h2 className="text-lg font-semibold">Versions</h2>
-      <p className="text-sm text-slate-600">
+    <nav aria-label="Versions">
+      <h2 className="card-title">Versions</h2>
+      <p className="text-secondary">
         Saved versions never change, so every result names exactly what it was checked against.
       </p>
-      <ul className="flex flex-wrap gap-2">
+      <ul className="d-flex flex-wrap gap-2">
         {versions.map((version, index) => (
           <li key={version.version}>
             <Link
               to={baselineHref(name, version.version)}
               aria-current={version.version === selected ? "page" : undefined}
-              className={`block rounded px-3 py-1.5 text-sm font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 ${
-                version.version === selected
-                  ? "bg-slate-900 text-white"
-                  : "border border-slate-300 bg-white text-slate-800 hover:bg-slate-100"
-              }`}
+              className={`btn btn-sm ${version.version === selected ? "btn-primary" : ""}`}
             >
               {`v${String(version.version)}${index === 0 ? " (latest)" : ""}`}
             </Link>
@@ -247,17 +241,17 @@ function RolloutBanner({
 
   const places = behind.length === 1 ? "1 place" : `${String(behind.length)} places`;
   return (
-    <div className="space-y-2 rounded border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950">
+    <div className="alert alert-warning text-body">
       <p>{`v${String(latest)} is newer than the version applied in ${places}.`}</p>
       {confirming ? (
         <>
           <p>{`Apply v${String(latest)} to: ${behind.map(targetText).join("; ")}?`}</p>
-          <div className="flex gap-2">
+          <div className="d-flex gap-2">
             <button
               type="button"
               disabled={sending}
               onClick={() => void rollOut()}
-              className={buttonClass}
+              className="btn btn-primary"
             >
               {sending ? "Applying…" : `Apply v${String(latest)}`}
             </button>
@@ -266,7 +260,7 @@ function RolloutBanner({
               onClick={() => {
                 setConfirming(false);
               }}
-              className={secondaryClass}
+              className="btn"
             >
               Not now
             </button>
@@ -278,7 +272,7 @@ function RolloutBanner({
           onClick={() => {
             setConfirming(true);
           }}
-          className={secondaryClass}
+          className="btn"
         >
           {`Review and apply v${String(latest)}…`}
         </button>
@@ -288,6 +282,7 @@ function RolloutBanner({
 }
 
 export function BaselinePage() {
+  const device = useDeviceClass();
   const { name = "" } = useParams();
   const [params] = useSearchParams();
   const location = useLocation();
@@ -324,7 +319,7 @@ export function BaselinePage() {
   if (versions.error) body = <ErrorMessage error={versions.error} retry={versions.retry} />;
   else if (!versions.data || selected === undefined || latest === undefined) {
     body = (
-      <p role="status" className="text-slate-600">
+      <p role="status" className="text-secondary">
         Loading baseline…
       </p>
     );
@@ -348,21 +343,19 @@ export function BaselinePage() {
             }}
           />
         )}
-        <section aria-labelledby="applied" className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 id="applied" className="text-lg font-semibold">
+        <section aria-labelledby="applied">
+          <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <h2 id="applied" className="card-title">
               Applied to
             </h2>
             {applied.length > 0 && (
-              <Link to={findingsHref(name)} className={linkClass}>
-                Open findings for this baseline
-              </Link>
+              <Link to={findingsHref(name)}>Open findings for this baseline</Link>
             )}
           </div>
           {assignments.error ? (
             <ErrorMessage error={assignments.error} retry={assignments.retry} />
           ) : !assignments.data ? (
-            <p role="status" className="text-slate-600">
+            <p role="status" className="text-secondary">
               Loading where it is applied…
             </p>
           ) : (
@@ -376,39 +369,37 @@ export function BaselinePage() {
   }
 
   return (
-    <section aria-labelledby="page-title" className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-sm">
-            <Link to={GOVERNANCE} className={linkClass}>
-              Governance
-            </Link>
+    <section aria-labelledby="page-title">
+      <PageHeader
+        pretitle={
+          <>
+            <Link to={GOVERNANCE}>Governance</Link>
             {" › Baselines"}
-          </p>
-          <h1 id="page-title" className="mt-1 text-2xl font-semibold">
-            {name}
-          </h1>
-        </div>
-        {canWrite && selected !== undefined && (
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setApplying(true);
-                setMessage(null);
-              }}
-              className={buttonClass}
-            >
-              Apply…
-            </button>
-            <Link to={editorHref({ name, version: selected })} className={secondaryClass}>
-              Edit
-            </Link>
-          </div>
-        )}
-      </div>
+          </>
+        }
+        title={name}
+        actions={
+          canWrite && selected !== undefined && device !== "phone" ? (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setApplying(true);
+                  setMessage(null);
+                }}
+                className="btn btn-primary"
+              >
+                Apply…
+              </button>
+              <Link to={editorHref({ name, version: selected })} className="btn">
+                Edit
+              </Link>
+            </>
+          ) : undefined
+        }
+      />
       {message && (
-        <p ref={status} role="status" tabIndex={-1} className="text-sm font-medium">
+        <p ref={status} role="status" tabIndex={-1} className="alert alert-success text-body">
           {message}
         </p>
       )}

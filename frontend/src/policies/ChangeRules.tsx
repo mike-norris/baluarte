@@ -1,4 +1,3 @@
-import { secondaryClass } from "../components/styles";
 import { Card, Check, help, SeveritySelect, WholeNumber } from "./AccessRules";
 import {
   MAX_APPROVALS,
@@ -179,15 +178,10 @@ export function ChangeRules({
       )}
 
       {add.length > 0 && (
-        <div className="space-y-2">
-          <div className="flex flex-wrap gap-2">
+        <div>
+          <div className="d-flex flex-wrap gap-2">
             {add.map((button) => (
-              <button
-                key={button.label}
-                type="button"
-                onClick={button.on}
-                className={secondaryClass}
-              >
+              <button key={button.label} type="button" onClick={button.on} className="btn">
                 {button.label}
               </button>
             ))}

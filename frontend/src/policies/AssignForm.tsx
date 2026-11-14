@@ -10,11 +10,10 @@ import {
   type VersionSummary,
 } from "../api/policies";
 import { useAuth } from "../auth/context";
-import { buttonClass, fieldClass, secondaryClass } from "../components/styles";
 import { proposedMessage, targetText, targetTypeLabels } from "./format";
 import { TargetPicker, type Picked } from "./TargetPicker";
 
-const errorClass = "rounded border border-red-300 bg-red-50 p-3 text-sm text-red-900";
+const errorClass = "alert alert-danger text-body";
 const targetTypes: readonly TargetType[] = ["instance", "group", "project"];
 
 export interface Destination {
@@ -64,12 +63,12 @@ export function DestinationPicker({
 }) {
   const id = useId();
   return (
-    <div className="space-y-3">
+    <div>
       <fieldset>
-        <legend className="text-sm font-medium">{legend}</legend>
-        <div className="mt-1 flex flex-wrap gap-4">
+        <legend className="fw-medium">{legend}</legend>
+        <div className="mt-1 d-flex flex-wrap gap-3">
           {targetTypes.map((type) => (
-            <label key={type} className="flex items-center gap-2 text-sm">
+            <label key={type} className="d-flex align-items-center gap-2">
               <input
                 type="radio"
                 name={`${id}-type`}
@@ -85,7 +84,7 @@ export function DestinationPicker({
         </div>
       </fieldset>
       {value.type === "instance" ? (
-        <p className="text-sm text-slate-600">
+        <p className="text-secondary">
           Every group and project is checked, except where a closer setting replaces it.
         </p>
       ) : (
@@ -158,33 +157,33 @@ export function ApplyForm({
       onSubmit={(event) => void submit(event)}
       aria-labelledby={`${id}-title`}
       noValidate
-      className="space-y-4 rounded border border-slate-200 bg-white p-4"
+      className="card card-body mb-3"
     >
-      <h2 id={`${id}-title`} className="text-lg font-semibold">
+      <h2 id={`${id}-title`} className="card-title">
         {`Apply ${name}`}
       </h2>
-      <p className="text-sm text-slate-600">
+      <p className="text-secondary">
         Closer settings replace broader ones: a project&apos;s own setting, then its groups, then
         the whole instance. Applying another version where this baseline is already applied replaces
         it there.
       </p>
       {problems.length > 0 && (
         <div ref={alert} role="alert" tabIndex={-1} className={errorClass}>
-          <ul className="list-disc pl-5">
+          <ul className="ps-3">
             {problems.map((problem) => (
               <li key={problem}>{problem}</li>
             ))}
           </ul>
         </div>
       )}
-      <label className="block max-w-xs text-sm font-medium">
+      <label className="d-block max-w-xs fw-medium">
         Version
         <select
           value={version ?? ""}
           onChange={(event) => {
             setVersion(Number(event.target.value));
           }}
-          className={fieldClass}
+          className="form-control mt-1"
         >
           {versions.map((item, index) => (
             <option key={item.version} value={item.version}>
@@ -194,11 +193,11 @@ export function ApplyForm({
         </select>
       </label>
       <DestinationPicker value={destination} onChange={setDestination} />
-      <div className="flex flex-wrap gap-2">
-        <button type="submit" disabled={sending} className={buttonClass}>
+      <div className="d-flex flex-wrap gap-2">
+        <button type="submit" disabled={sending} className="btn btn-primary">
           {sending ? "Applying…" : "Apply"}
         </button>
-        <button type="button" onClick={onCancel} className={secondaryClass}>
+        <button type="button" onClick={onCancel} className="btn">
           Cancel
         </button>
       </div>
