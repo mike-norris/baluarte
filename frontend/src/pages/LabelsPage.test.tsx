@@ -73,7 +73,7 @@ describe("labels page", () => {
     expect(
       screen.getByRole("link", { name: "Propose a change to the taxonomy" }),
     ).toHaveAttribute("href", "/labels/taxonomy/new");
-    expect(screen.getByRole("link", { name: "Label plans" })).toHaveAttribute(
+    expect(within(screen.getByRole("main")).getByRole("link", { name: "Label plans" })).toHaveAttribute(
       "href",
       "/labels/plans",
     );
@@ -120,7 +120,7 @@ describe("labels page", () => {
     );
     // Without the baseline writing permission there is nothing to propose or plan.
     expect(screen.queryByRole("link", { name: /Propose a change/ })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Label plans" })).not.toBeInTheDocument();
+    expect(within(screen.getByRole("main")).queryByRole("link", { name: "Label plans" })).not.toBeInTheDocument();
   });
 
   it("filters drift through the URL and loads more pages after the last item", async () => {

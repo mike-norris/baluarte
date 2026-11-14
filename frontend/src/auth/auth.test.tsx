@@ -88,8 +88,10 @@ describe("account menu", () => {
 
     renderAt("/");
 
-    expect(await screen.findByText("Ada Lovelace")).toBeInTheDocument();
-    expect(screen.getByText("(analyst)")).toBeInTheDocument();
+    const account = await screen.findByRole("button", { name: "Account: Ada Lovelace" });
+    expect(account).toHaveTextContent("analyst");
+    await userEvent.setup().click(account);
+    expect(screen.getByText("ada@example.test")).toBeInTheDocument();
   });
 
   it("falls back to email, then subject, for the name", async () => {
@@ -108,7 +110,8 @@ describe("account menu", () => {
     const user = userEvent.setup();
 
     renderAt("/");
-    await user.click(await screen.findByRole("button", { name: "Sign out" }));
+    await user.click(await screen.findByRole("button", { name: /^Account: / }));
+    await user.click(screen.getByRole("button", { name: "Sign out" }));
 
     expect(
       await screen.findByRole("heading", { level: 1, name: "Sign in to Baluarte" }),
@@ -130,7 +133,8 @@ describe("account menu", () => {
     const user = userEvent.setup();
 
     renderAt("/governance");
-    await user.click(await screen.findByRole("button", { name: "Sign out" }));
+    await user.click(await screen.findByRole("button", { name: /^Account: / }));
+    await user.click(screen.getByRole("button", { name: "Sign out" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Sign-out failed");
     expect(screen.getByRole("navigation", { name: "Primary" })).toBeInTheDocument();

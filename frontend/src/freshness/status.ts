@@ -48,6 +48,18 @@ export const freshnessTone: Record<SignalStatus, string> = {
   fresh: "border-emerald-300 bg-emerald-50 text-emerald-900",
 };
 
+/** Tabler's colour name for each status, for status dots in the Tabler shell. */
+export const freshnessColor: Record<SignalStatus, "danger" | "secondary" | "warning" | "success"> = {
+  failed: "danger",
+  unknown: "danger",
+  never: "secondary",
+  not_configured: "secondary",
+  checking: "secondary",
+  stale: "warning",
+  partial: "warning",
+  fresh: "success",
+};
+
 /** Statuses under which GitLab-derived data must not be read as current. */
 export function needsAttention(status: SignalStatus): boolean {
   return status === "failed" || status === "stale" || status === "unknown";

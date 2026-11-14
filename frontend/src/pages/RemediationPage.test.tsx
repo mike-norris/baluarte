@@ -162,7 +162,8 @@ describe("remediation plans list", () => {
       "href",
       "/remediation/new",
     );
-    expect(screen.getByRole("link", { name: "Remediation" })).toBeInTheDocument();
+    const nav = screen.getByRole("navigation", { name: "Primary" });
+    expect(within(nav).getByRole("link", { name: "Remediation plans" })).toBeInTheDocument();
   });
 
   it("does not offer creation without the planning permission", async () => {

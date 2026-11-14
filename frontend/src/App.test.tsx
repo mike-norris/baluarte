@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { navItems } from "./navigation";
+import { navItems, navTitle } from "./navigation";
 import { routes } from "./routes";
 import { analyst, signedIn } from "./test/api";
 
@@ -79,10 +79,12 @@ describe("navigation", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Findings" })).toBeInTheDocument();
   });
 
-  it.each(navItems)("renders a page heading for $label", async ({ path, label }) => {
-    renderAt(path);
+  it.each(navItems)("renders a page heading for $label", async (item) => {
+    renderAt(item.path);
 
-    expect(await screen.findByRole("heading", { level: 1, name: label })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("heading", { level: 1, name: navTitle(item) }),
+    ).toBeInTheDocument();
   });
 
   it("shows a not-found page for unknown paths", () => {

@@ -159,7 +159,7 @@ describe("past-date view", () => {
     expect(calls.map((call) => call.url)).toContain(`/api/v1/findings/5?as_of=${Q}`);
 
     const nav = screen.getByRole("navigation", { name: "Primary" });
-    await user.click(within(nav).getByRole("link", { name: "Evidence" }));
+    await user.click(within(nav).getByRole("link", { name: "Evidence exports" }));
     expect(await screen.findByRole("heading", { level: 1, name: "Evidence" })).toBeInTheDocument();
     expect(asOfIn(router)).toBeNull();
     expect(screen.getByRole("region", { name: "Past-date view" })).toHaveTextContent(

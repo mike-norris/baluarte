@@ -1,0 +1,56 @@
+/* The app's own rules: composition of Tabler only, no new colours. */
+
+/* Accessibility rulings in the design spec: a visible focus ring and readable input borders. */
+:root {
+  --tblr-focus-ring-opacity: 1;
+  --tblr-focus-ring-opacity-dark: 1;
+}
+[data-bs-theme="dark"] {
+  --tblr-control-border-color: var(--tblr-gray-500);
+}
+
+/* iOS zooms into inputs under 16px; phones only type in decision notes. */
+@media (max-width: 767.98px) {
+  .modal .form-control {
+    font-size: 1rem;
+  }
+}
+
+/* Digits line up in tables and figures. */
+.table,
+.datagrid-content,
+.badge,
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Phone bottom bar, clear of the home indicator; content keeps room above it. */
+.app-bottom-nav {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (max-width: 767.98px) {
+  .page-has-bottom-nav {
+    padding-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+.app-bottom-nav .nav-link {
+  flex-direction: column;
+  gap: 0.125rem;
+  font-size: 0.6875rem;
+  min-height: 3.5rem;
+}
+
+/* The past-date banner stays in view under the header. */
+.app-asof-banner {
+  position: sticky;
+  top: 0;
+  z-index: 1020;
+}
+
+/* Pages not yet moved to Tabler keep their light look inside the dark shell. Removed with Tailwind. */
+.legacy-page {
+  background: var(--tblr-body-bg);
+  color: var(--tblr-body-color);
+  border-radius: var(--tblr-border-radius-lg);
+  padding: 1.5rem;
+}
