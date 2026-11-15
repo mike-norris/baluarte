@@ -57,7 +57,7 @@ function DriftRow({ item }: { item: DriftItem }) {
   const evidence = item.observations;
   return (
     <tr>
-      <th scope="row" className={`${cell} font-medium`}>
+      <th scope="row" className={`${cell} fw-medium`}>
         <Link to={ownerHref(item.owner)}>{item.owner.path}</Link>
         <span className="d-block small fw-normal text-secondary">
           {item.owner.type === "group" ? "Group" : "Project"}
@@ -101,7 +101,7 @@ export function DriftTable({ items, caption }: { items: DriftItem[]; caption: st
         <thead>
           <tr>
             {headers.map((header) => (
-              <th key={header} scope="col" className={`${cell} font-medium`}>
+              <th key={header} scope="col" className={`${cell} fw-medium`}>
                 {header}
               </th>
             ))}

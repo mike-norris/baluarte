@@ -99,7 +99,7 @@ function NewTagForm({ onCreated }: { onCreated: (message: string) => void }) {
     >
       <h2 className="fw-semibold">New tag</h2>
       <Problems messages={problems} />
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="d-grid gap-3 cols-sm-2">
         <label className="fw-medium">
           Key
           <input
@@ -120,7 +120,7 @@ function NewTagForm({ onCreated }: { onCreated: (message: string) => void }) {
             className="form-control mt-1"
           />
         </label>
-        <label className="fw-medium sm:col-span-2">
+        <label className="fw-medium span-sm-2">
           Description (optional)
           <input name="description" maxLength={MAX_TAG_DESCRIPTION} className="form-control mt-1" />
         </label>
@@ -131,7 +131,12 @@ function NewTagForm({ onCreated }: { onCreated: (message: string) => void }) {
           </label>
           <label className="fw-medium">
             <span className="visually-hidden">Colour value</span>
-            <input name="color" type="color" defaultValue="#1f6feb" className="h-9 w-14" />
+            <input
+              name="color"
+              type="color"
+              defaultValue="#1f6feb"
+              className="form-control-color"
+            />
           </label>
         </div>
       </div>
@@ -288,7 +293,7 @@ function EditTag({ tag, onSaved }: { tag: TagDetail; onSaved: (message: string) 
             name="color"
             type="color"
             defaultValue={tag.color ?? "#1f6feb"}
-            className="h-9 w-14"
+            className="form-control-color"
           />
         </label>
       </div>
@@ -424,7 +429,7 @@ function Assignments({
                   type="button"
                   onClick={() => void remove(assignment)}
                   aria-label={`Remove from ${assignment.target_path}`}
-                  className={`ml-auto ${secondaryClass}`}
+                  className={`ms-auto ${secondaryClass}`}
                 >
                   Remove
                 </button>
@@ -470,7 +475,7 @@ export function TagPage() {
         <ErrorMessage error={tag.error} retry={tag.retry} />
       ) : tag.data ? (
         <>
-          <dl className="grid column-gap-3 gap-y-2 sm:grid-cols-[max-content_1fr]">
+          <dl className="d-grid column-gap-3 row-gap-2 cols-dl">
             <dt className="col-md-4 fw-medium text-secondary">Tag</dt>
             <dd>
               <TagChip tag={tag.data} color={tag.data.color} />

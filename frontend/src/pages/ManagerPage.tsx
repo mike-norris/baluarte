@@ -57,7 +57,7 @@ function changeText(window: ChangeWindow): string {
 
 function Figure({ term, children }: { term: string; children: ReactNode }) {
   return (
-    <div className="contents">
+    <div className="d-contents">
       <dt className="col-md-4 fw-medium text-secondary">{term}</dt>
       <dd>{children}</dd>
     </div>
@@ -90,12 +90,12 @@ function RowCard({ row, focusTag }: { row: OverviewRow; focusTag: string | undef
           )}
         </h2>
         {row.key.type === "group" && (
-          <Link to={groupHref(row.key.gitlab_id)} className={`text-sm ${linkClass}`}>
+          <Link to={groupHref(row.key.gitlab_id)} className={` ${linkClass}`}>
             In the inventory
           </Link>
         )}
       </div>
-      <dl className="grid column-gap-3 gap-y-2 sm:grid-cols-[max-content_1fr]">
+      <dl className="d-grid column-gap-3 row-gap-2 cols-dl">
         <Figure term="Projects">
           {`${String(row.projects.monitored)} monitored`}
           {row.projects.excluded > 0 && `, ${String(row.projects.excluded)} excluded`}
@@ -187,7 +187,7 @@ export function ManagerPage() {
             {`Nothing to show for ${focusText(focus)}.`}
           </p>
         ) : (
-          <div className="grid gap-3 lg:grid-cols-2">
+          <div className="d-grid gap-3 cols-lg-2">
             {overview.data.rows.map((row) => (
               <RowCard key={rowName(row.key)} row={row} focusTag={focus.tag} />
             ))}
@@ -232,7 +232,7 @@ function TrendCharts({ trends }: { trends: Trends }) {
         {`${String(trends.projects)} projects. Open findings are left out of periods with no evaluation run.`}
         {note && ` ${note}`}
       </p>
-      <div className="grid gap-3 lg:grid-cols-2">
+      <div className="d-grid gap-3 cols-lg-2">
         <LineChart
           title="Open findings"
           labels={labels}
@@ -340,7 +340,7 @@ export function TrendsPage() {
         onSubmit={apply}
         aria-label="Trend period"
         noValidate
-        className="grid gap-3 rounded border p-3 sm:grid-cols-4 sm:items-end"
+        className="d-grid gap-3 rounded border p-3 cols-sm-4 align-items-sm-end"
       >
         <label className="fw-medium">
           Period
@@ -360,7 +360,7 @@ export function TrendsPage() {
         <button type="submit" className="btn btn-primary">
           Show
         </button>
-        <p className="small text-secondary sm:col-span-4">
+        <p className="small text-secondary span-sm-4">
           {`Empty dates show the last 12 periods. At most ${String(MAX_BUCKETS.week)} weeks or ${String(MAX_BUCKETS.month)} months.`}
         </p>
       </form>

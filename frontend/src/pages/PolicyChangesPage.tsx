@@ -237,7 +237,7 @@ function History({ reload }: { reload: number }) {
           <thead>
             <tr>
               {["Change", "Outcome", "Proposed", "Review"].map((header) => (
-                <th key={header} scope="col" className={`${cell} font-medium`}>
+                <th key={header} scope="col" className={`${cell} fw-medium`}>
                   {header}
                 </th>
               ))}
@@ -246,7 +246,7 @@ function History({ reload }: { reload: number }) {
           <tbody>
             {decided.map((change) => (
               <tr key={change.id}>
-                <th scope="row" className={`${cell} font-medium`}>
+                <th scope="row" className={`${cell} fw-medium`}>
                   {changeText(change)}
                 </th>
                 <td className={cell}>{stateLabels[change.state]}</td>

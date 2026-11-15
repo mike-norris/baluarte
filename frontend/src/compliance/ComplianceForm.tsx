@@ -59,9 +59,9 @@ export function ViolationList({
       <p className="fw-medium text-danger-emphasis">
         Not saved: these values do not meet the profile, and no exception is in force for them.
       </p>
-      <ul >
+      <ul>
         {violations.map((violation) => (
-          <li key={violation.control_id} >
+          <li key={violation.control_id}>
             <p className="text-danger-emphasis">
               {`${settingInfo[violation.setting].label}: ${String(violation.value)}. ${describeRequirement(violation.setting, violation.required)} (${violation.frameworks.map(frameworkShort).join(", ")}).`}
             </p>
@@ -173,7 +173,7 @@ export function ComplianceForm({
     <form onSubmit={(event) => void submit(event)} noValidate className="space-y-5">
       <Problems messages={problems} />
       {violations.length > 0 && <ViolationList violations={violations} action={violationAction} />}
-      <fieldset >
+      <fieldset>
         <legend className="fw-semibold">Frameworks Baluarte must meet</legend>
         <p className="text-secondary">
           This governs how Baluarte itself operates: how long it keeps its audit log and evidence,
@@ -216,7 +216,7 @@ export function ComplianceForm({
         )}
       </fieldset>
 
-      <fieldset >
+      <fieldset>
         <legend className="fw-semibold">Operating settings</legend>
         {settingOrder.map((name) => {
           const info = settingInfo[name];
@@ -247,7 +247,7 @@ export function ComplianceForm({
           );
           if (typeof value === "boolean") {
             return (
-              <div key={name} >
+              <div key={name}>
                 <label className="d-flex align-items-start gap-2 fw-medium">
                   <input
                     type="checkbox"
@@ -257,11 +257,11 @@ export function ComplianceForm({
                     onChange={(event) => {
                       setDraft({ ...draft, [name]: event.target.checked });
                     }}
-                    className="mt-0.5 h-4 w-4"
+                    className="mt-1 h-4 w-4"
                   />
                   {info.label}
                 </label>
-                <div className="pl-6">
+                <div className="ps-4">
                   {hint}
                   {warning}
                 </div>
@@ -290,7 +290,7 @@ export function ComplianceForm({
                 onChange={(event) => {
                   setDraft({ ...draft, [name]: event.currentTarget.value });
                 }}
-                className={`${fieldClass} max-w-40`}
+                className={`${fieldClass} mw-10`}
               />
               {hint}
               {warning}

@@ -176,7 +176,7 @@ export function ApplyForm({
           </ul>
         </div>
       )}
-      <label className="d-block max-w-xs fw-medium">
+      <label className="d-block mw-xs fw-medium">
         Version
         <select
           value={version ?? ""}

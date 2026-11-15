@@ -117,14 +117,9 @@ function TimeForm({
   );
 
   return (
-    <form
-      onSubmit={(event) => void submit(event)}
-      aria-label="Time tracking settings"
-      noValidate
-
-    >
+    <form onSubmit={(event) => void submit(event)} aria-label="Time tracking settings" noValidate>
       <Problems messages={problems} />
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="d-grid gap-3 cols-sm-3">
         {number(
           "lookback_days",
           "Lookback (days)",
@@ -170,7 +165,7 @@ export function TimeSettingsCard({ csrf }: { csrf: string }) {
         <ErrorMessage error={loaded.error} retry={loaded.retry} />
       ) : loaded.data ? (
         <>
-          <p >
+          <p>
             {loaded.data.per_person_enabled
               ? "Time per person is shown to managers for their groups, and to administrators. Turn it off with BALUARTE_TIME_PER_PERSON=false in the deployment."
               : "Time per person is turned off for this deployment (BALUARTE_TIME_PER_PERSON=false). Only totals are shown."}

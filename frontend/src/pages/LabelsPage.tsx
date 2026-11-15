@@ -50,7 +50,7 @@ function Taxonomy({ version }: { version: TaxonomyVersion }) {
     : `Approved by ${personText(version.decided_by)}`;
   return (
     <div>
-      <dl className="grid gap-x-6 row-gap-1 sm:grid-cols-[max-content_1fr]">
+      <dl className="d-grid column-gap-4 row-gap-1 cols-dl">
         <dt className="fw-medium">Taxonomy</dt>
         <dd>{`${version.name} v${String(version.version)} (${taxonomyStateLabels[version.state]})`}</dd>
         <dt className="fw-medium">In force since</dt>
@@ -83,7 +83,7 @@ function Taxonomy({ version }: { version: TaxonomyVersion }) {
             <thead>
               <tr>
                 {["Label", "Colour", "Description", "Renamed from"].map((header) => (
-                  <th key={header} scope="col" className={`${cell} font-medium`}>
+                  <th key={header} scope="col" className={`${cell} fw-medium`}>
                     {header}
                   </th>
                 ))}
@@ -92,7 +92,7 @@ function Taxonomy({ version }: { version: TaxonomyVersion }) {
             <tbody>
               {spec.labels.map((label) => (
                 <tr key={label.name}>
-                  <th scope="row" className={`${cell} font-medium`}>
+                  <th scope="row" className={`${cell} fw-medium`}>
                     {label.name}
                   </th>
                   <td className={cell}>
@@ -189,7 +189,7 @@ function groupFilterHref(params: URLSearchParams, group: string): string {
 function Summary({ totals }: { totals: DriftTotals }) {
   const [params] = useSearchParams();
   return (
-    <div className="grid gap-3 lg:grid-cols-2">
+    <div className="d-grid gap-3 cols-lg-2">
       <section aria-labelledby="by-kind-title">
         <h3 id="by-kind-title" className="fw-medium">
           {`Drift by kind (${String(totals.total)} in all)`}
@@ -221,13 +221,13 @@ function Summary({ totals }: { totals: DriftTotals }) {
               <caption className="visually-hidden">Drift by top-level group</caption>
               <thead>
                 <tr>
-                  <th scope="col" className={`${cell} font-medium`}>
+                  <th scope="col" className={`${cell} fw-medium`}>
                     Group
                   </th>
-                  <th scope="col" className={`${cell} font-medium`}>
+                  <th scope="col" className={`${cell} fw-medium`}>
                     Drift
                   </th>
-                  <th scope="col" className={`${cell} font-medium`}>
+                  <th scope="col" className={`${cell} fw-medium`}>
                     Unknown
                   </th>
                 </tr>
@@ -235,7 +235,7 @@ function Summary({ totals }: { totals: DriftTotals }) {
               <tbody>
                 {totals.by_group.map((row) => (
                   <tr key={row.group}>
-                    <th scope="row" className={`${cell} font-medium`}>
+                    <th scope="row" className={`${cell} fw-medium`}>
                       <Link to={groupFilterHref(params, row.group)}>{row.group}</Link>
                     </th>
                     <td className={`${cell} tabular-nums`}>{row.total}</td>

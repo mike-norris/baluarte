@@ -65,7 +65,7 @@ function formValues(form: FormData): ExportForm {
 
 function ScopeFields({ initial, disabled }: { initial: ExportForm; disabled: boolean }) {
   return (
-    <fieldset disabled={disabled} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    <fieldset disabled={disabled} className="d-grid gap-3 cols-sm-2 cols-lg-3">
       <legend className="visually-hidden">Scope</legend>
       <div>
         <label className="fw-medium">
@@ -218,7 +218,7 @@ function ExportFormFields({
           onChange={(event) => {
             setAll(event.currentTarget.checked);
           }}
-          className="mt-0.5"
+          className="mt-1"
         />
         <span>
           Export everything

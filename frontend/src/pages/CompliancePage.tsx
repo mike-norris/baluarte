@@ -37,13 +37,7 @@ import { useDeviceClass } from "../ui/device";
 const cell = "px-3 py-2 align-top";
 
 function StatusBadge({ status }: { status: ControlPosture["status"] }) {
-  return (
-    <span
-      className={`inline-block rounded px-2 py-0.5 text-xs font-semibold whitespace-nowrap ${statusClass[status]}`}
-    >
-      {statusLabel[status]}
-    </span>
-  );
+  return <span className={`badge text-nowrap ${statusClass[status]}`}>{statusLabel[status]}</span>;
 }
 
 /** "SOC 2 CC6.1 · ISO 27001 A.8.5", for the selected frameworks (or all when none is selected). */
@@ -177,7 +171,7 @@ function ControlItem({
 }) {
   const refs = references(control, selected);
   return (
-    <li className="border-b py-3 last:border-b-0">
+    <li className="border-bottom py-3 border-bottom-last-0">
       <div className="d-flex flex-wrap align-items-baseline gap-2">
         <StatusBadge status={posture.status} />
         <h3 className="fw-medium">{posture.title}</h3>
@@ -194,7 +188,7 @@ function ControlItem({
           {control?.how_to && (
             <div>
               <p className="fw-medium">How to meet it</p>
-              <p className="whitespace-pre-line text-secondary">{control.how_to}</p>
+              <p className="text-preline text-secondary">{control.how_to}</p>
             </div>
           )}
           {Object.keys(posture.evidence).length > 0 && (
@@ -277,7 +271,7 @@ function ExceptionRow({
       <span className="small text-secondary">Another administrator must decide.</span>
     ) : (
       <div className="d-flex flex-wrap align-items-end gap-2">
-        <div className="min-w-64 flex-1">
+        <div className="minw-16 flex-fill">
           <label htmlFor={noteId} className="fw-medium">
             Note (required to reject)
           </label>
@@ -331,12 +325,12 @@ function ExceptionRow({
 
   return (
     <tr>
-      <th scope="row" className={`${cell} font-medium`}>
+      <th scope="row" className={`${cell} fw-medium`}>
         {title}
       </th>
       <td className={cell}>{exceptionState(exception)}</td>
       <td className={cell}>{exception.justification}</td>
-      <td className={`${cell} whitespace-nowrap`}>{exception.expires_on}</td>
+      <td className={`${cell} text-nowrap`}>{exception.expires_on}</td>
       <td className={cell}>
         {`${exception.requested_by}, ${formatTime(exception.requested_at)}`}
         {exception.decided_by &&
@@ -414,7 +408,7 @@ function Exceptions({
         <div className="overflow-x-auto">
           <table className="table table-vcenter card-table mb-0">
             <caption className="visually-hidden">Exceptions to the compliance profile</caption>
-            <thead className="border-b small text-secondary text-uppercase">
+            <thead className="border-bottom small text-secondary text-uppercase">
               <tr>
                 <th scope="col" className={cell}>
                   Control

@@ -68,3 +68,90 @@
 .d-contents {
   display: contents;
 }
+
+/*
+ * Layout helpers Tabler does not ship. Responsive grid columns use Tabler's breakpoints and
+ * pair with `d-grid` and Tabler's gap utilities.
+ */
+.cols-dl {
+  column-gap: 1rem;
+}
+@media (min-width: 576px) {
+  .cols-sm-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .cols-sm-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .cols-sm-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .cols-dl {
+    grid-template-columns: max-content minmax(0, 1fr);
+  }
+  .span-sm-2 {
+    grid-column: span 2 / span 2;
+  }
+  .span-sm-4 {
+    grid-column: span 4 / span 4;
+  }
+}
+@media (min-width: 768px) {
+  .cols-md-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (min-width: 992px) {
+  .cols-lg-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .cols-lg-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .cols-lg-4 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .cols-lg-5 {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+  .span-lg-4 {
+    grid-column: span 4 / span 4;
+  }
+}
+
+/* Readable line lengths and control widths. */
+.mw-measure {
+  max-width: 48rem;
+}
+.mw-md {
+  max-width: 28rem;
+}
+.mw-xs {
+  max-width: 20rem;
+}
+.mw-12 {
+  max-width: 12rem;
+}
+.mw-10 {
+  max-width: 10rem;
+}
+.minw-12 {
+  min-width: 12rem;
+}
+.minw-16 {
+  min-width: 16rem;
+}
+.mh-16 {
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+.text-preline {
+  white-space: pre-line;
+}
+.border-dashed {
+  border-style: dashed !important;
+}
+.border-bottom-last-0:last-child {
+  border-bottom: 0 !important;
+}

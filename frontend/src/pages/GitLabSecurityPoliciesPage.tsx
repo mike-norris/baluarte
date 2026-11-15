@@ -47,7 +47,7 @@ function PolicyTable({ policies }: { policies: SecurityPolicySummary[] }) {
           <tr>
             {["GitLab security policy", "Type", "State", "Policy source project", "Reaches"].map(
               (header) => (
-                <th key={header} scope="col" className={`${cell} font-medium`}>
+                <th key={header} scope="col" className={`${cell} fw-medium`}>
                   {header}
                 </th>
               ),
@@ -57,7 +57,7 @@ function PolicyTable({ policies }: { policies: SecurityPolicySummary[] }) {
         <tbody className="align-top">
           {policies.map((policy) => (
             <tr key={policy.id}>
-              <th scope="row" className={`${cell} font-medium`}>
+              <th scope="row" className={`${cell} fw-medium`}>
                 <Link to={securityPolicyHref(policy.id)}>{policy.name}</Link>
                 {policy.state === "missing" && (
                   <span className="ms-2 badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle fw-normal">
@@ -77,7 +77,7 @@ function PolicyTable({ policies }: { policies: SecurityPolicySummary[] }) {
                   </span>
                 )}
               </td>
-              <td className={`${cell} whitespace-nowrap`}>{reachText(policy)}</td>
+              <td className={`${cell} text-nowrap`}>{reachText(policy)}</td>
             </tr>
           ))}
         </tbody>

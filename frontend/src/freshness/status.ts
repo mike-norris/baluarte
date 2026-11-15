@@ -36,29 +36,18 @@ export const freshnessLabels: Record<SignalStatus, string> = {
   checking: "Checking…",
 };
 
-/** Colour always accompanies text, never replaces it. */
-export const freshnessTone: Record<SignalStatus, string> = {
-  failed: "border-red-300 bg-red-50 text-red-900",
-  unknown: "border-red-300 bg-red-50 text-red-900",
-  never: "border-slate-300 bg-slate-100 text-slate-800",
-  not_configured: "border-slate-300 bg-slate-100 text-slate-800",
-  checking: "border-slate-300 bg-white text-slate-700",
-  stale: "border-amber-300 bg-amber-50 text-amber-900",
-  partial: "border-amber-300 bg-amber-50 text-amber-900",
-  fresh: "border-emerald-300 bg-emerald-50 text-emerald-900",
-};
-
 /** Tabler's colour name for each status, for status dots in the Tabler shell. */
-export const freshnessColor: Record<SignalStatus, "danger" | "secondary" | "warning" | "success"> = {
-  failed: "danger",
-  unknown: "danger",
-  never: "secondary",
-  not_configured: "secondary",
-  checking: "secondary",
-  stale: "warning",
-  partial: "warning",
-  fresh: "success",
-};
+export const freshnessColor: Record<SignalStatus, "danger" | "secondary" | "warning" | "success"> =
+  {
+    failed: "danger",
+    unknown: "danger",
+    never: "secondary",
+    not_configured: "secondary",
+    checking: "secondary",
+    stale: "warning",
+    partial: "warning",
+    fresh: "success",
+  };
 
 /** Statuses under which GitLab-derived data must not be read as current. */
 export function needsAttention(status: SignalStatus): boolean {

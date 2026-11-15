@@ -348,7 +348,7 @@ function Editor({
         </section>
       )}
 
-      <div ref={result} tabIndex={-1} aria-live="polite" className="focus:outline-none">
+      <div ref={result} tabIndex={-1} aria-live="polite" className="">
         {feedback && <FeedbackBox feedback={feedback} />}
       </div>
 

@@ -120,10 +120,10 @@ function Filters({ filters, by }: { filters: TimeFilters; by: TimeGrouping }) {
       onSubmit={apply}
       aria-label="Filter time"
       noValidate
-      className="grid gap-3 rounded border p-3 sm:grid-cols-2 lg:grid-cols-4 lg:items-end"
+      className="d-grid gap-3 rounded border p-3 cols-sm-2 cols-lg-4 align-items-lg-end"
     >
       {problem && (
-        <p role="alert" className="text-danger-emphasis sm:col-span-2 lg:col-span-4">
+        <p role="alert" className="text-danger-emphasis span-sm-2 span-lg-4">
           {problem}
         </p>
       )}

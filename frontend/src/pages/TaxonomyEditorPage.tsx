@@ -72,7 +72,7 @@ function LabelRow({
   return (
     <fieldset className="rounded border p-3">
       <legend className="px-1 fw-medium">{title}</legend>
-      <div className="grid gap-3 md:grid-cols-2">
+      <div className="d-grid gap-3 cols-md-2">
         <label className="fw-medium" htmlFor={`${id}-name`}>
           Name
           <input
@@ -94,7 +94,7 @@ function LabelRow({
               onChange={(event) => {
                 set({ color: event.target.value });
               }}
-              className="h-8 w-10 rounded border"
+              className="form-control-color rounded border"
             />
             <input
               id={`${id}-hex`}
@@ -343,7 +343,7 @@ function Editor({ view }: { view: TaxonomyView }) {
       </div>
       {mode === "form" ? (
         <div>
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="d-grid gap-3 cols-md-2">
             <label className="fw-medium" htmlFor={`${id}-name`}>
               Taxonomy name
               <input

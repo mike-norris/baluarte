@@ -30,9 +30,7 @@ function Badge({ tone, children }: { tone: "good" | "bad" | "neutral"; children:
     neutral: "bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle",
   };
   return (
-    <span
-      className={`inline-block rounded px-2 py-0.5 text-xs font-semibold whitespace-nowrap ${tones[tone]}`}
-    >
+    <span className={`d-inline-block rounded px-2 small fw-semibold text-nowrap ${tones[tone]}`}>
       {children}
     </span>
   );
@@ -72,7 +70,7 @@ function HowTo({ service }: { service: Service }) {
 
   const file = service.config?.[active];
   return (
-    <div >
+    <div>
       <div role="tablist" aria-label={`How to run ${service.name}`} className="d-flex gap-1">
         {platforms.map((platform, index) => {
           const selected = platform.id === active;
@@ -101,12 +99,7 @@ function HowTo({ service }: { service: Service }) {
           );
         })}
       </div>
-      <div
-        role="tabpanel"
-        id={`${id}-${active}-panel`}
-        aria-labelledby={`${id}-${active}-tab`}
-
-      >
+      <div role="tabpanel" id={`${id}-${active}-panel`} aria-labelledby={`${id}-${active}-tab`}>
         <Markdown
           source={service.how_to[active]}
           label={`${service.name}, ${platforms.find((item) => item.id === active)?.label ?? ""}`}
@@ -130,7 +123,7 @@ function HowTo({ service }: { service: Service }) {
 function ServiceItem({ service }: { service: Service }) {
   const state = serviceState(service);
   return (
-    <li className="border-b py-3 last:border-b-0">
+    <li className="border-bottom py-3 border-bottom-last-0">
       <div className="d-flex flex-wrap align-items-baseline gap-2">
         <Badge tone={state.tone}>{state.label}</Badge>
         <h3 className="fw-medium">{service.name}</h3>
@@ -141,17 +134,12 @@ function ServiceItem({ service }: { service: Service }) {
       <p className="text-secondary">{service.purpose}</p>
       {service.detail && <p className="text-secondary">{service.detail}</p>}
       {service.id === "audit-shipping" && (
-        <p >
+        <p>
           Runs inside Baluarte; nothing to start.{" "}
-          <Link to="/settings#audit-shipping">
-            Configure audit log shipping in Settings
-          </Link>
+          <Link to="/settings#audit-shipping">Configure audit log shipping in Settings</Link>
         </p>
       )}
-      <details
-
-        open={service.required && !(service.detected && service.healthy)}
-      >
+      <details open={service.required && !(service.detected && service.healthy)}>
         <summary className="fw-medium text-primary">
           How to set it up
           <span className="visually-hidden">: {service.name}</span>
@@ -224,12 +212,7 @@ function Sha({ value }: { value: string }) {
       <code title={value} className="font-monospace small">
         {value.slice(0, 12)}…
       </code>
-      <button
-        type="button"
-        onClick={copy}
-        aria-label={`Copy SHA-256 ${value}`}
-        className="small"
-      >
+      <button type="button" onClick={copy} aria-label={`Copy SHA-256 ${value}`} className="small">
         Copy
       </button>
       <span aria-live="polite" className="small text-secondary">
@@ -262,7 +245,7 @@ export function BackupsPanel({ backups }: { backups: Backups }) {
         <div className="overflow-x-auto">
           <table className="table table-vcenter card-table mb-0">
             <caption className="visually-hidden">Recent backups</caption>
-            <thead className="border-b small text-secondary text-uppercase">
+            <thead className="border-bottom small text-secondary text-uppercase">
               <tr>
                 <th scope="col" className={cell}>
                   Started
@@ -284,17 +267,17 @@ export function BackupsPanel({ backups }: { backups: Backups }) {
                 </th>
               </tr>
             </thead>
-            <tbody >
+            <tbody>
               {backups.runs.map((run) => (
                 <tr key={run.id}>
-                  <td className={`${cell} whitespace-nowrap`}>{formatTime(run.started_at)}</td>
-                  <td className={`${cell} whitespace-nowrap`}>{duration(run)}</td>
+                  <td className={`${cell} text-nowrap`}>{formatTime(run.started_at)}</td>
+                  <td className={`${cell} text-nowrap`}>{duration(run)}</td>
                   <td className={cell}>
                     <Badge tone={run.status === "succeeded" ? "good" : "bad"}>
                       {run.status === "succeeded" ? "Succeeded" : "Failed"}
                     </Badge>
                   </td>
-                  <td className={`${cell} whitespace-nowrap`}>
+                  <td className={`${cell} text-nowrap`}>
                     {run.size_bytes === null ? "" : formatBytes(run.size_bytes)}
                   </td>
                   <td className={cell}>{run.sha256 && <Sha value={run.sha256} />}</td>

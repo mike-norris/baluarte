@@ -97,7 +97,7 @@ function BaselineTable({
         <thead>
           <tr>
             {["Baseline", "Latest version", "Applied to", "Results"].map((header) => (
-              <th key={header} scope="col" className={`${cell} font-medium`}>
+              <th key={header} scope="col" className={`${cell} fw-medium`}>
                 {header}
               </th>
             ))}
@@ -108,7 +108,7 @@ function BaselineTable({
             const applied = assignments.filter((item) => item.policy_name === policy.name);
             return (
               <tr key={policy.name}>
-                <th scope="row" className={`${cell} font-medium`}>
+                <th scope="row" className={`${cell} fw-medium`}>
                   <Link to={baselineHref(policy.name)}>{policy.name}</Link>
                   <span className="d-block small fw-normal text-secondary">
                     {`${String(policy.versions)} ${policy.versions === 1 ? "version" : "versions"}`}
@@ -155,13 +155,13 @@ function GetStarted({ canWrite }: { canWrite: boolean }) {
       <h2 id="get-started" className="card-title">
         Baluarte isn&apos;t checking anything yet
       </h2>
-      <p className="max-w-3xl text-secondary">
+      <p className="mw-measure text-secondary">
         A baseline is a set of rules Baluarte checks your GitLab configuration against, for example
         &quot;projects are not public&quot;. Baluarte only reads GitLab; it never changes it.
       </p>
       {canWrite ? (
         <>
-          <div className="max-w-2xl rounded border p-3">
+          <div className="mw-measure rounded border p-3">
             <h3 className="fw-semibold">Recommended baseline</h3>
             <ul className="mt-2">
               {recommended.map((rule) => (

@@ -69,7 +69,7 @@ export function RuleForm({
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="d-grid gap-3 cols-sm-2">
         <label className="fw-medium" htmlFor={`${id}-name`}>
           Name
           <input
@@ -97,7 +97,7 @@ export function RuleForm({
           />
         </label>
       </div>
-      <p id={`${id}-name-help`} className="-mt-3 text-secondary">
+      <p id={`${id}-name-help`} className="mt-n3 text-secondary">
         {nameLocked
           ? "Saving adds the next version of this baseline. Earlier versions stay as they were."
           : "Lowercase letters, digits and hyphens, for example recommended-baseline. Findings name it."}
@@ -117,7 +117,7 @@ export function RuleForm({
             />
             Projects have an allowed visibility
           </label>
-          <fieldset disabled={!visibility.enabled} className="pl-6 disabled:opacity-60">
+          <fieldset disabled={!visibility.enabled} className="ps-4">
             <legend className="visually-hidden">Project visibility settings</legend>
             <div>
               <p className="fw-medium" id={`${id}-allowed`}>
@@ -149,7 +149,7 @@ export function RuleForm({
                 can reach GitLab.
               </p>
             </div>
-            <div className="max-w-xs">
+            <div className="mw-xs">
               <SeveritySelect
                 label="Severity"
                 value={visibility.severity}
@@ -173,14 +173,14 @@ export function RuleForm({
             />
             Every default branch is protected
           </label>
-          <fieldset disabled={!branch.enabled} className="pl-6 disabled:opacity-60">
+          <fieldset disabled={!branch.enabled} className="ps-4">
             <legend className="visually-hidden">Default branch protection settings</legend>
             <p className="text-secondary">
               Passes when a protected-branch rule in GitLab, exact or wildcard, covers the
               project&apos;s default branch. An empty repository has no default branch, so its
               result is unknown.
             </p>
-            <div className="max-w-xs">
+            <div className="mw-xs">
               <SeveritySelect
                 label="Severity"
                 value={branch.severity}
@@ -207,13 +207,13 @@ export function RuleForm({
                 Remove rule
               </button>
             </div>
-            <div className="pl-6">
+            <div className="ps-4">
               <div>
                 <p className="fw-medium" id={`${id}-scans`}>
                   Required scans
                 </p>
                 <div
-                  className="mt-1 grid gap-2 sm:grid-cols-2"
+                  className="mt-1 d-grid gap-2 cols-sm-2"
                   role="group"
                   aria-labelledby={`${id}-scans`}
                 >
@@ -256,11 +256,11 @@ export function RuleForm({
                 />
                 Count a policy that lets pipelines skip CI
               </label>
-              <p className="-mt-2 pl-6 text-secondary">
+              <p className="mt-n2 ps-4 text-secondary">
                 As in GitLab, a policy without a <code>skip_ci</code> setting can be skipped. When
                 this is off, only policies that forbid skipping count.
               </p>
-              <div className="max-w-xs">
+              <div className="mw-xs">
                 <SeveritySelect
                   label="Severity"
                   value={scan.severity}
@@ -290,8 +290,8 @@ export function RuleForm({
                 Remove rule
               </button>
             </div>
-            <div className="pl-6">
-              <label className="d-block max-w-xs fw-medium" htmlFor={`${id}-approvals`}>
+            <div className="ps-4">
+              <label className="d-block mw-xs fw-medium" htmlFor={`${id}-approvals`}>
                 Approvals required, at least
                 <input
                   id={`${id}-approvals`}
@@ -350,7 +350,7 @@ export function RuleForm({
                 />
                 The policy must stop anyone who committed approving
               </label>
-              <div className="max-w-xs">
+              <div className="mw-xs">
                 <SeveritySelect
                   label="Severity"
                   value={approval.severity}
@@ -432,7 +432,7 @@ export function RuleForm({
           Only some groups
         </label>
         {form.scope === "groups" && (
-          <label className="d-block pl-6 fw-medium" htmlFor={`${id}-groups`}>
+          <label className="d-block ps-4 fw-medium" htmlFor={`${id}-groups`}>
             Group paths, one per line
             <textarea
               id={`${id}-groups`}
