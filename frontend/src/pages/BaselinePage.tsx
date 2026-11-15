@@ -46,7 +46,7 @@ const emptyCounts = {
 
 const severityClass: Record<string, string> = {
   critical: "bg-danger text-danger-fg",
-  high: "bg-orange-100 text-orange-900",
+  high: "bg-orange-lt",
   medium: "bg-warning-subtle text-warning-emphasis border border-warning-subtle",
   low: "bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle",
 };
@@ -111,11 +111,11 @@ function VersionDetail({
           {rules.map((rule) => (
             <li key={rule.id} className="d-flex flex-wrap align-items-start gap-3 py-2">
               <span
-                className={`rounded px-2 py-0.5 text-xs font-medium ${severityClass[rule.severity] ?? ""}`}
+                className={`rounded px-2 small fw-medium ${severityClass[rule.severity] ?? ""}`}
               >
                 {severityLabels[rule.severity]}
               </span>
-              <span className="grow">
+              <span className="flex-grow-1">
                 <span className="fw-medium">{rule.sentence}</span>
                 {rule.detail && <span className="d-block text-secondary">{rule.detail}</span>}
                 {ruleCounts.get(rule.id) && (
@@ -144,7 +144,7 @@ function VersionDetail({
       <p className="text-secondary">{`Review: ${reviewText(policy.review)}.`}</p>
       <details>
         <summary className="fw-medium">Show YAML (read-only)</summary>
-        <dl className="mt-2 grid column-gap-3 row-gap-1 sm:grid-cols-[max-content_1fr]">
+        <dl className="mt-2 d-grid column-gap-3 row-gap-1 cols-dl">
           <dt className="col-md-4 fw-medium text-secondary">Saved</dt>
           <dd>{formatTime(policy.created_at)}</dd>
           <dt className="col-md-4 fw-medium text-secondary">SHA-256</dt>

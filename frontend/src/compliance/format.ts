@@ -201,11 +201,11 @@ export const statusLabel: Record<ControlStatus, string> = {
 };
 
 export const statusClass: Record<ControlStatus, string> = {
-  met: "bg-emerald-100 text-emerald-900",
-  not_met: "bg-red-100 text-red-900",
-  needs_attestation: "bg-amber-100 text-amber-950",
-  excepted: "bg-sky-100 text-sky-900",
-  not_applicable: "bg-slate-100 text-slate-700",
+  met: "bg-success-subtle text-success-emphasis border border-success-subtle",
+  not_met: "bg-danger-subtle text-danger-emphasis border border-danger-subtle",
+  needs_attestation: "bg-warning-subtle text-warning-emphasis border border-warning-subtle",
+  excepted: "bg-info-subtle text-info-emphasis border border-info-subtle",
+  not_applicable: "bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle",
 };
 
 export const statusOrder: ControlStatus[] = [

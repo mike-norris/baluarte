@@ -54,7 +54,7 @@ export function ResultLine({
 }) {
   const parts = countParts(counts);
   return (
-    <span className="d-inline-flex flex-wrap gap-x-2">
+    <span className="d-inline-flex flex-wrap column-gap-2">
       {noun && <span className="text-secondary">{`${plural(total(counts), ...noun)}:`}</span>}
       {parts.map((part, index) => (
         <span key={part.key} className={tone[part.key]}>

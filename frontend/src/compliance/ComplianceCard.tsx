@@ -139,7 +139,7 @@ export function ComplianceCard({ csrf }: { csrf: string }) {
           >
             {profile.configured ? "Edit profile" : "Choose a profile"}
           </button>
-          <Link to={COMPLIANCE} className={`text-sm ${linkClass}`}>
+          <Link to={COMPLIANCE} className={` ${linkClass}`}>
             See the compliance posture
           </Link>
         </div>

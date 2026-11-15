@@ -43,9 +43,7 @@ function readOnly(scopes: string[] | null): boolean {
 
 export function GitLabTestResultView({ result }: { result: GitLabTestResult }) {
   return (
-    <div
-      className={`alert text-body ${result.ok ? "alert-success" : "alert-danger"}`}
-    >
+    <div className={`alert text-body ${result.ok ? "alert-success" : "alert-danger"}`}>
       <p className="fw-medium">{result.ok ? "Connection succeeded" : "Connection failed"}</p>
       {result.error && <p>{result.error}</p>}
       <ul className="ps-3">
@@ -73,12 +71,10 @@ export function GitLabTestResultView({ result }: { result: GitLabTestResult }) {
         </p>
       )}
       {result.checks.length > 0 && (
-        <ul >
+        <ul>
           {result.checks.map((check) => (
             <li key={check.name} className="d-flex flex-wrap align-items-baseline gap-2">
-              <span
-                className={`rounded px-1.5 py-0.5 text-xs font-medium ${checkClasses[check.status]}`}
-              >
+              <span className={`rounded small fw-medium ${checkClasses[check.status]}`}>
                 {checkLabels[check.status]}
               </span>
               <span className="fw-medium">{check.name}:</span>
@@ -199,12 +195,7 @@ export function GitLabForm({
   }
 
   return (
-    <form
-      onSubmit={(event) => void submit(event)}
-      aria-label="GitLab connection"
-      noValidate
-
-    >
+    <form onSubmit={(event) => void submit(event)} aria-label="GitLab connection" noValidate>
       <Problems messages={failure ? [failure] : problems} />
       <label className="d-block fw-medium">
         GitLab address
@@ -245,7 +236,7 @@ export function GitLabForm({
       </p>
       {!canStoreSecret && <SecretKeyNotice />}
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="d-grid gap-3 cols-sm-2">
         <label className="d-block fw-medium">
           Request timeout (seconds)
           <input
@@ -277,16 +268,11 @@ export function GitLabForm({
         360 (six hours).
       </p>
 
-      <div >
-        <button
-          type="button"
-          onClick={() => void runTest()}
-          disabled={testing}
-          className="btn"
-        >
+      <div>
+        <button type="button" onClick={() => void runTest()} disabled={testing} className="btn">
           {testing ? "Testing…" : "Test connection"}
         </button>
-        <div aria-live="polite" >
+        <div aria-live="polite">
           {testFailure && <p className={errorClass}>{testFailure}</p>}
           {test && <GitLabTestResultView result={test} />}
         </div>

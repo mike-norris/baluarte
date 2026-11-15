@@ -36,9 +36,9 @@ export function Problems({ messages }: { messages: string[] }) {
 /** Read-only values as a description list. */
 export function Values({ rows }: { rows: [string, ReactNode][] }) {
   return (
-    <dl className="grid column-gap-3 gap-y-2 sm:grid-cols-[max-content_1fr]">
+    <dl className="d-grid column-gap-3 row-gap-2 cols-dl">
       {rows.map(([label, value]) => (
-        <div key={label} className="contents">
+        <div key={label} className="d-contents">
           <dt className="col-md-4 fw-medium text-secondary">{label}</dt>
           <dd className="text-break">{value}</dd>
         </div>
@@ -76,10 +76,12 @@ export function CopyValue({ label, value }: { label: string; value: string }) {
   }
 
   return (
-    <div >
+    <div>
       <p className="fw-medium">{label}</p>
       <div className="d-flex flex-wrap align-items-center gap-2">
-        <code className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">{value}</code>
+        <code className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">
+          {value}
+        </code>
         <button type="button" onClick={copy} className="btn">
           Copy<span className="visually-hidden"> {label.toLowerCase()}</span>
         </button>

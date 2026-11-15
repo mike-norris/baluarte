@@ -64,18 +64,6 @@ export const statusMeaning: Record<ControlStatus, string> = {
     "The organization's record that this control is out of scope or met elsewhere has passed its review date, so it no longer counts.",
 };
 
-/** Badge colours; the label always carries the meaning, so colour is never the only cue. */
-export const statusClasses: Record<ControlStatus, string> = {
-  met: "border-emerald-300 bg-emerald-50 text-emerald-950",
-  not_met: "border-red-300 bg-red-50 text-red-950",
-  unknown: "border-amber-300 bg-amber-50 text-amber-950",
-  no_results: "border-slate-300 bg-slate-50 text-slate-800",
-  not_covered: "border-slate-300 bg-white text-slate-800",
-  not_applicable: "border-slate-300 bg-slate-100 text-slate-800",
-  manual: "border-sky-300 bg-sky-50 text-sky-950",
-  review_overdue: "border-orange-300 bg-orange-50 text-orange-950",
-};
-
 export const ruleTypes: readonly string[] = [
   VISIBILITY_TYPE,
   BRANCH_TYPE,

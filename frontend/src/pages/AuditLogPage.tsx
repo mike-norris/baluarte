@@ -52,9 +52,9 @@ function EventRow({ event }: { event: AuditEvent }) {
     : event.resource_type;
   return (
     <tr>
-      <td className={`${cell} whitespace-nowrap`}>{formatTime(event.occurred_at)}</td>
-      <td className={`${cell} font-mono text-xs`}>{event.actor}</td>
-      <th scope="row" className={`${cell} font-mono text-xs font-medium`}>
+      <td className={`${cell} text-nowrap`}>{formatTime(event.occurred_at)}</td>
+      <td className={`${cell} font-monospace small`}>{event.actor}</td>
+      <th scope="row" className={`${cell} font-monospace small fw-medium`}>
         {event.action}
       </th>
       <td className={cell}>{target}</td>
@@ -106,7 +106,7 @@ function Filters({
     <form
       onSubmit={submit}
       aria-label="Filter the audit log"
-      className="grid gap-3 rounded border p-3 sm:grid-cols-2 lg:grid-cols-5"
+      className="d-grid gap-3 rounded border p-3 cols-sm-2 cols-lg-5"
     >
       <label className="fw-medium">
         Action
@@ -207,7 +207,7 @@ export function AuditLogPage() {
             <thead>
               <tr>
                 {["Time", "Actor", "Action", "Target", "Details", "Digest"].map((header) => (
-                  <th key={header} scope="col" className={`${cell} font-medium`}>
+                  <th key={header} scope="col" className={`${cell} fw-medium`}>
                     {header}
                   </th>
                 ))}

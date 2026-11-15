@@ -111,7 +111,7 @@ function Recorded({ exportId, seed }: { exportId: string; seed: string | null })
                 setRecord({ status: "loading" });
                 setAttempt((value) => value + 1);
               }}
-              className={`ml-2 ${secondaryClass}`}
+              className={`ms-2 ${secondaryClass}`}
             >
               Check again
             </button>
@@ -125,7 +125,7 @@ function Recorded({ exportId, seed }: { exportId: string; seed: string | null })
 function Outcome({ run, cancel }: { run: Run; cancel: () => void }) {
   if (run.status === "running") {
     return (
-      <div >
+      <div>
         <p role="status">Building the package… It is offered once every byte has arrived.</p>
         <button type="button" onClick={cancel} className="btn">
           Cancel package
@@ -157,10 +157,7 @@ function Outcome({ run, cancel }: { run: Run; cancel: () => void }) {
   if (run.status === "failed") {
     const reasons = errorReasons(run.error);
     return (
-      <div
-        role="alert"
-        className="alert alert-danger text-body"
-      >
+      <div role="alert" className="alert alert-danger text-body">
         <p>{run.error.message}</p>
         {reasons.length > 0 && (
           <ul className="mt-1 ps-3" aria-label="Reasons">
@@ -227,12 +224,12 @@ export function PackageForm({ csrfToken }: { csrfToken: string }) {
   }
 
   return (
-    <section aria-labelledby="package-title" >
+    <section aria-labelledby="package-title">
       <div>
         <h2 id="package-title" className="card-title">
           Audit package
         </h2>
-        <p className="mt-1 max-w-3xl text-secondary">
+        <p className="mt-1 mw-measure text-secondary">
           Everything an auditor needs for a period: findings and results as they stood at its end,
           every change in it, a sample of those changes with their full evidence, and the control
           mapping and monitoring scope in force.
@@ -243,7 +240,7 @@ export function PackageForm({ csrfToken }: { csrfToken: string }) {
         aria-label="Create an audit package"
         className="card card-body mb-3"
       >
-        <fieldset className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <fieldset className="d-grid gap-3 cols-sm-2 cols-lg-3">
           <legend className="fw-medium">Period and scope</legend>
           <label className="fw-medium">
             From (UTC)
@@ -280,10 +277,15 @@ export function PackageForm({ csrfToken }: { csrfToken: string }) {
           </label>
           <label className="fw-medium">
             Control ID
-            <input name="control" maxLength={20} placeholder="CC8.1" className="form-control mt-1" />
+            <input
+              name="control"
+              maxLength={20}
+              placeholder="CC8.1"
+              className="form-control mt-1"
+            />
           </label>
         </fieldset>
-        <fieldset className="grid gap-3 sm:grid-cols-2">
+        <fieldset className="d-grid gap-3 cols-sm-2">
           <legend className="fw-medium">Sample of changes</legend>
           <label className="fw-medium">
             Sample size
@@ -318,10 +320,7 @@ export function PackageForm({ csrfToken }: { csrfToken: string }) {
         </button>
       </form>
       {errors.length > 0 && (
-        <div
-          role="alert"
-          className="alert alert-danger text-body"
-        >
+        <div role="alert" className="alert alert-danger text-body">
           <p className="fw-medium">The package was not started:</p>
           <ul className="mt-1 ps-3">
             {errors.map((error) => (

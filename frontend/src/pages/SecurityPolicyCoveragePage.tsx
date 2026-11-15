@@ -86,15 +86,15 @@ function CoverageTable({
         <caption className="visually-hidden">{`GitLab security policy coverage by ${noun}`}</caption>
         <thead>
           <tr>
-            <th scope="col" className={`${cell} font-medium`}>
+            <th scope="col" className={`${cell} fw-medium`}>
               {kind === "groups" ? "Group" : "Project"}
             </th>
-            <th scope="col" className={`${cell} font-medium`}>
+            <th scope="col" className={`${cell} fw-medium`}>
               Coverage
             </th>
             {policyTypes.map((type) => (
-              <th key={type} scope="col" className={`${cell} font-medium`}>
-                <abbr title={typeLabels[type]} className="no-underline">
+              <th key={type} scope="col" className={`${cell} fw-medium`}>
+                <abbr title={typeLabels[type]} className="text-decoration-none">
                   {shortTypeLabels[type]}
                 </abbr>
               </th>
@@ -104,7 +104,7 @@ function CoverageTable({
         <tbody className="align-top">
           {rows.map((row) => (
             <tr key={row.id}>
-              <th scope="row" className={`${cell} font-medium`}>
+              <th scope="row" className={`${cell} fw-medium`}>
                 {row.path}
                 {row.security_policy_project && (
                   <span className="d-block small fw-normal text-secondary">
@@ -112,10 +112,8 @@ function CoverageTable({
                   </span>
                 )}
               </th>
-              <td className={`${cell} min-w-64`}>
-                <span
-                  className={`rounded px-1.5 py-0.5 text-xs font-medium ${statusStyle[row.status]}`}
-                >
+              <td className={`${cell} minw-16`}>
+                <span className={`rounded small fw-medium ${statusStyle[row.status]}`}>
                   {coverageLabels[row.status]}
                 </span>
                 <span className="mt-1 d-block text-secondary">

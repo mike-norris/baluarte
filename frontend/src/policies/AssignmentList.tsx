@@ -86,12 +86,12 @@ export function AppliedToList({
           <thead>
             <tr>
               {["Applied to", "Kind", "Version", "Since"].map((header) => (
-                <th key={header} scope="col" className={`${cell} font-medium`}>
+                <th key={header} scope="col" className={`${cell} fw-medium`}>
                   {header}
                 </th>
               ))}
               {canWrite && (
-                <th scope="col" className={`${cell} font-medium`}>
+                <th scope="col" className={`${cell} fw-medium`}>
                   <span className="visually-hidden">Actions</span>
                 </th>
               )}
@@ -108,7 +108,7 @@ export function AppliedToList({
                 : undefined;
               return (
                 <tr key={assignment.id}>
-                  <th scope="row" className={`${cell} font-medium`}>
+                  <th scope="row" className={`${cell} fw-medium`}>
                     {where}
                     {note && (
                       <span className="d-block small fw-normal text-warning-emphasis">{note}</span>

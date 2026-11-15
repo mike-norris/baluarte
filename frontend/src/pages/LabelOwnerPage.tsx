@@ -36,7 +36,7 @@ function Labels({ data }: { data: OwnerLabels }) {
         <thead>
           <tr>
             {["Label", "Colour", "Description", "Defined on"].map((header) => (
-              <th key={header} scope="col" className={`${cell} font-medium`}>
+              <th key={header} scope="col" className={`${cell} fw-medium`}>
                 {header}
               </th>
             ))}
@@ -45,7 +45,7 @@ function Labels({ data }: { data: OwnerLabels }) {
         <tbody>
           {data.labels.map((label) => (
             <tr key={`${String(label.id)}:${label.defined_at.path}`}>
-              <th scope="row" className={`${cell} font-medium`}>
+              <th scope="row" className={`${cell} fw-medium`}>
                 {label.name}
               </th>
               <td className={cell}>

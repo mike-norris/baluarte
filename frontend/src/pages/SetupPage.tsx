@@ -73,7 +73,7 @@ function storeCsrf(token: string | null) {
   }
 }
 
-const primaryLinkClass = `inline-block ${buttonClass}`;
+const primaryLinkClass = `d-inline-block ${buttonClass}`;
 
 function SignInToFinish() {
   return (
@@ -158,7 +158,7 @@ function CodeStep({
             }}
             autoComplete="one-time-code"
             spellCheck={false}
-            className={`${fieldClass} font-mono`}
+            className={`${fieldClass} font-monospace`}
           />
         </label>
         <details>
@@ -258,7 +258,7 @@ function StepNav({
   extra?: ReactNode;
 }) {
   return (
-    <div className="d-flex flex-wrap gap-2 border-t pt-4">
+    <div className="d-flex flex-wrap gap-2 border-top pt-4">
       {back && (
         <button type="button" onClick={back} className="btn">
           Back

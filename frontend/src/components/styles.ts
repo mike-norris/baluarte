@@ -1,7 +1,4 @@
-/**
- * Tabler classes for the few controls still built from shared strings. Tabler's own focus ring
- * stays visible for keyboard users. Slated for removal with Tailwind.
- */
+/** Tabler classes for the few controls built from shared strings. Tabler's focus ring stays visible. */
 export const buttonClass = "btn btn-primary";
 export const secondaryClass = "btn";
 export const fieldClass = "form-control mt-1";

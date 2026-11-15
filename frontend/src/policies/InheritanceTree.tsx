@@ -198,7 +198,7 @@ function Row({
   return (
     <li className="py-1">
       <div className="d-flex flex-wrap align-items-start column-gap-3 row-gap-1 rounded px-2 py-1">
-        <span className="d-flex min-w-48 align-items-center gap-1 fw-medium">
+        <span className="d-flex minw-12 align-items-center gap-1 fw-medium">
           {node.children.length > 0 ? (
             <button
               type="button"
@@ -216,7 +216,7 @@ function Row({
           )}
           <Link to={groupHref(node.group.gitlab_id)}>{node.group.full_path}</Link>
         </span>
-        <div className="grow">
+        <div className="flex-grow-1">
           {node.effects.length === 0 ? (
             <p className="text-secondary">Nothing checked</p>
           ) : (
@@ -328,7 +328,7 @@ function Row({
             </div>
           ))}
       {expanded && children.length > 0 && (
-        <ul aria-label={`Subgroups of ${node.group.full_path}`} className="ml-5 border-l pl-2">
+        <ul aria-label={`Subgroups of ${node.group.full_path}`} className="ms-4 border-start ps-2">
           {children.map((child) => (
             <Row
               key={child.group.gitlab_id}
@@ -382,7 +382,7 @@ export function InheritanceTree({
       <h2 id={`${id}-title`} className="visually-hidden">
         Inheritance
       </h2>
-      <label className="d-block max-w-md fw-medium" htmlFor={`${id}-search`}>
+      <label className="d-block mw-md fw-medium" htmlFor={`${id}-search`}>
         Find a group
         <input
           id={`${id}-search`}
@@ -399,9 +399,9 @@ export function InheritanceTree({
       <div className="rounded border p-2">
         <ul aria-label="Where baselines apply">
           <li className="py-1">
-            <div className="d-flex flex-wrap align-items-start column-gap-3 row-gap-1 rounded px-2 py-1.5">
-              <span className="min-w-48 fw-semibold">This instance</span>
-              <div className="grow">
+            <div className="d-flex flex-wrap align-items-start column-gap-3 row-gap-1 rounded px-2 py-1">
+              <span className="minw-12 fw-semibold">This instance</span>
+              <div className="flex-grow-1">
                 {instanceNames.length === 0 ? (
                   <p className="text-secondary">Nothing applied to the whole instance</p>
                 ) : (
@@ -421,11 +421,11 @@ export function InheritanceTree({
               </div>
             </div>
             {roots.length === 0 ? (
-              <p className="ml-7 py-2 text-secondary">
+              <p className="ms-5 py-2 text-secondary">
                 {search.trim() ? "No group matches." : "No groups have been collected yet."}
               </p>
             ) : (
-              <ul aria-label="Top-level groups" className="ml-5 border-l pl-2">
+              <ul aria-label="Top-level groups" className="ms-4 border-start ps-2">
                 {roots.map((node) => (
                   <Row
                     key={node.group.gitlab_id}

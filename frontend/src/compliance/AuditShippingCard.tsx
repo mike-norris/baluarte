@@ -137,7 +137,7 @@ function Field({
   id: string;
 }) {
   return (
-    <div >
+    <div>
       <label htmlFor={id} className="d-block fw-medium">
         {label}
       </label>
@@ -153,9 +153,7 @@ function Field({
 
 function StatusPanel({ status }: { status: ShippingStatus }) {
   if (!status.enabled) {
-    return (
-      <p className="text-secondary">Shipping is off. Audit events stay only in Baluarte.</p>
-    );
+    return <p className="text-secondary">Shipping is off. Audit events stay only in Baluarte.</p>;
   }
   const behind =
     status.lag_events === 0
@@ -178,7 +176,7 @@ function StatusPanel({ status }: { status: ShippingStatus }) {
     ]);
   }
   return (
-    <div aria-label="Shipping status" role="group" >
+    <div aria-label="Shipping status" role="group">
       <Values rows={rows} />
     </div>
   );
@@ -281,7 +279,7 @@ function ShippingForm({
           onChange={(event) => {
             set(key, event.currentTarget.value);
           }}
-          className={`${fieldClass} font-mono text-xs`}
+          className={`${fieldClass} font-monospace small`}
         />
       )}
     </Field>
@@ -317,7 +315,7 @@ function ShippingForm({
   );
 
   return (
-    <form onSubmit={(event) => void save(event)} noValidate >
+    <form onSubmit={(event) => void save(event)} noValidate>
       <Problems messages={problems} />
       <label className="d-flex align-items-center gap-2 fw-medium">
         <input
@@ -330,7 +328,7 @@ function ShippingForm({
         />
         Ship audit events to this destination
       </label>
-      <fieldset >
+      <fieldset>
         <legend className="fw-medium">Destination</legend>
         {(
           [
@@ -354,7 +352,7 @@ function ShippingForm({
         ))}
       </fieldset>
       {draft.type === "syslog_tls" ? (
-        <div >
+        <div>
           {textField("host", "Syslog host")}
           {textField("port", "Port", "6514 is the standard port for syslog over TLS.", "numeric")}
           {textField(
@@ -365,10 +363,10 @@ function ShippingForm({
           {caField("syslogCa")}
         </div>
       ) : (
-        <div >
+        <div>
           {textField("url", "Address", "For example https://logs.example.internal:9200")}
           {textField("index", "Index")}
-          <fieldset >
+          <fieldset>
             <legend className="fw-medium">Authentication</legend>
             {(
               [
@@ -405,11 +403,7 @@ function ShippingForm({
       {test && (
         <p
           role={test.ok ? "status" : "alert"}
-          className={
-            test.ok
-              ? "alert alert-success text-body"
-              : errorClass
-          }
+          className={test.ok ? "alert alert-success text-body" : errorClass}
         >
           {test.ok ? `Test message delivered. ${test.detail}` : `Test failed: ${test.detail}`}
         </p>

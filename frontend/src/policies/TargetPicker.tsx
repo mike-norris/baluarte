@@ -93,7 +93,7 @@ export function TargetPicker({
   return (
     <div>
       <div className="d-flex flex-wrap align-items-end gap-2">
-        <label className="grow fw-medium" htmlFor={`${id}-search`}>
+        <label className="flex-grow-1 fw-medium" htmlFor={`${id}-search`}>
           {`Find a ${noun} by path`}
           <input
             id={`${id}-search`}
@@ -119,7 +119,7 @@ export function TargetPicker({
         )}
       </div>
       {options !== null && options.length > 0 && (
-        <fieldset className="max-h-64 overflow-y-auto rounded border p-2">
+        <fieldset className="mh-16 overflow-y-auto rounded border p-2">
           <legend className="px-1 fw-medium">
             {`Matching ${noun}s${options.length === SEARCH_LIMIT ? " (first 100; narrow the search)" : ""}`}
           </legend>

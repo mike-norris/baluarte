@@ -255,7 +255,7 @@ function Filters({ query, card }: { query: TimecardQuery; card: Timecard | null 
       key={writeTimecardQuery(query).toString()}
       onSubmit={apply}
       aria-label="Timecard filters"
-      className="grid gap-3 rounded border p-3 sm:grid-cols-2 lg:grid-cols-4"
+      className="d-grid gap-3 rounded border p-3 cols-sm-2 cols-lg-4"
     >
       <label className="fw-medium">
         From
@@ -307,16 +307,16 @@ function Filters({ query, card }: { query: TimecardQuery; card: Timecard | null 
           </select>
         </label>
       ))}
-      <label className="d-flex align-items-center gap-2 self-end">
+      <label className="d-flex align-items-center gap-2 align-self-end">
         <input name="removed" type="checkbox" defaultChecked={query.removed} />
         Include time removed in GitLab
       </label>
       {problem && (
-        <p role="alert" className="text-danger-emphasis sm:col-span-2 lg:col-span-4">
+        <p role="alert" className="text-danger-emphasis span-sm-2 span-lg-4">
           {problem}
         </p>
       )}
-      <div className="d-flex align-items-end gap-2 sm:col-span-2 lg:col-span-4">
+      <div className="d-flex align-items-end gap-2 span-sm-2 span-lg-4">
         <button type="submit" className="btn btn-primary">
           Show timecard
         </button>
@@ -408,7 +408,7 @@ function TimecardTable({ card, query }: { card: Timecard; query: TimecardQuery }
                   key={column}
                   scope="col"
                   aria-sort={sorted}
-                  className={`px-3 py-2 font-medium ${NUMERIC.has(column) ? "text-right" : ""}`}
+                  className={`px-3 py-2 fw-medium ${NUMERIC.has(column) ? "text-end" : ""}`}
                 >
                   <button
                     type="button"
@@ -453,7 +453,7 @@ function Totals({ card }: { card: Timecard }) {
   const { totals } = card;
   return (
     <div>
-      <dl className="grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      <dl className="d-grid gap-3 cols-sm-3 cols-lg-5">
         {[
           ["Total", `${formatMinutes(totals.minutes)} min (${hours(totals.minutes)})`],
           ["Logged", `${formatMinutes(totals.logged_minutes)} min`],
@@ -473,7 +473,7 @@ function Totals({ card }: { card: Timecard }) {
           <tbody>
             {Object.entries(card.per_person).map(([name, minutes]) => (
               <tr key={name}>
-                <th scope="row" className="pr-4 fw-normal">
+                <th scope="row" className="pe-3 fw-normal">
                   {name}
                 </th>
                 <td className="text-end tabular-nums">{formatMinutes(minutes)}</td>

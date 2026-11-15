@@ -136,7 +136,7 @@ export function ExceptionRequestForm({
           onChange={(event) => {
             setExpiresOn(event.currentTarget.value);
           }}
-          className={`${fieldClass} max-w-48`}
+          className={`${fieldClass} mw-12`}
         />
         <p id={`${id}-expires-hint`} className="small text-secondary">
           At most {MAX_EXCEPTION_DAYS} days from today.

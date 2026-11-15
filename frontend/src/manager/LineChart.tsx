@@ -93,10 +93,7 @@ export function LineChart({
       : `${title} from ${labels[0] ?? ""} to ${labels.at(-1) ?? ""}. Latest: ${latest}. The table below lists every value.`;
 
   return (
-    <figure
-      aria-labelledby={`${id}-title`}
-      className="rounded border p-3"
-    >
+    <figure aria-labelledby={`${id}-title`} className="rounded border p-3">
       <figcaption id={`${id}-title`} className="fw-medium">
         {title}
       </figcaption>
@@ -178,7 +175,7 @@ export function LineChart({
           {series.map((item, index) => {
             const style = styles[index % styles.length] ?? styles[0];
             return (
-              <li key={item.name} className="d-flex align-items-center gap-1.5">
+              <li key={item.name} className="d-flex align-items-center gap-1">
                 <svg width="28" height="10" viewBox="0 0 28 10">
                   <line
                     x1={0}
@@ -197,12 +194,12 @@ export function LineChart({
           })}
         </ul>
       )}
-      <details >
+      <details>
         <summary className="text-primary">{`${title} as a table`}</summary>
         <div className="mt-2 overflow-x-auto">
           <table className="table table-vcenter card-table mb-0">
             <caption className="visually-hidden">{title}</caption>
-            <thead className="border-b">
+            <thead className="border-bottom">
               <tr>
                 <th scope="col" className="px-2 py-1 fw-medium">
                   Period ending
@@ -214,7 +211,7 @@ export function LineChart({
                 ))}
               </tr>
             </thead>
-            <tbody >
+            <tbody>
               {labels.map((label, at) => (
                 <tr key={label}>
                   <th scope="row" className="px-2 py-1 fw-normal text-nowrap">

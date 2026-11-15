@@ -29,7 +29,7 @@ export function SeveritySelect({
   onChange: (severity: Severity) => void;
 }) {
   return (
-    <div className="max-w-xs">
+    <div className="mw-xs">
       <label className="fw-medium">
         Severity
         <select
@@ -68,7 +68,7 @@ export function WholeNumber({
 }) {
   const id = useId();
   return (
-    <label className="d-block max-w-xs fw-medium" htmlFor={id}>
+    <label className="d-block mw-xs fw-medium" htmlFor={id}>
       {label}
       <input
         id={id}
@@ -128,7 +128,7 @@ export function Card({
           Remove rule
         </button>
       </div>
-      <div className="pl-6">{children}</div>
+      <div className="ps-4">{children}</div>
     </section>
   );
 }

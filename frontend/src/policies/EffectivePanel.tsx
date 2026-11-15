@@ -39,7 +39,7 @@ export function ResolutionView({ resolution }: { resolution: Resolution }) {
         {chain.map((step, index) => (
           <span key={`${step}-${String(index)}`}>
             {index > 0 && <span aria-hidden="true">{" ▸ "}</span>}
-            <span className={index === chain.length - 1 ? "font-semibold" : ""}>{step}</span>
+            <span className={index === chain.length - 1 ? "fw-semibold" : ""}>{step}</span>
           </span>
         ))}
       </p>

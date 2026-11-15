@@ -90,10 +90,10 @@ function Detail({ policy }: { policy: SecurityPolicyDetail }) {
           {policy.state === "missing" && " · No longer found in GitLab"}
           <span className="text-secondary"> · from GitLab, read-only</span>
         </p>
-        {policy.description && <p className="max-w-3xl text-secondary">{policy.description}</p>}
+        {policy.description && <p className="mw-measure text-secondary">{policy.description}</p>}
       </div>
 
-      <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-[max-content_1fr]">
+      <dl className="d-grid column-gap-4 row-gap-2 cols-dl">
         <dt className="fw-medium">Policy source project</dt>
         <dd>
           {policy.origin_path}
@@ -183,7 +183,7 @@ function Detail({ policy }: { policy: SecurityPolicyDetail }) {
         <h3 id="reach-title" className="fw-semibold">
           Where it reaches
         </h3>
-        <div className="grid gap-3 sm:grid-cols-2">
+        <div className="d-grid gap-3 cols-sm-2">
           <Reached title="Groups" targets={policy.reached.groups} kind="group" />
           <Reached title="Projects" targets={policy.reached.projects} kind="project" />
         </div>
