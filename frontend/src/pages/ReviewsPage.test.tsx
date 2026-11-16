@@ -104,6 +104,17 @@ describe("review queue", () => {
     expect(await screen.findByText("Nothing is waiting for your decision.")).toBeInTheDocument();
   });
 
+  it("sends an exclusion from monitoring to the changes page, where it is decided", async () => {
+    serve({
+      items: [item("scope_exclusion", 5, "Stop monitoring acme/legacy", 2, { expires_at: null })],
+      partial: [],
+    });
+    renderAt("/reviews");
+    expect(
+      await screen.findByRole("link", { name: "Stop monitoring acme/legacy" }),
+    ).toHaveAttribute("href", "/governance/changes");
+  });
+
   it("says which kinds have more waiting than it shows", async () => {
     serve({ items: [], partial: ["exception"] });
     renderAt("/reviews");
