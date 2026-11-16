@@ -4,7 +4,7 @@ import { Link, useSearchParams } from "react-router";
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { canDecide, isMine, kindLabels, loadReviewQueue, type ReviewItem } from "../reviews/queue";
+import { isMine, kindLabels, loadReviewQueue, type ReviewItem } from "../reviews/queue";
 import { formatTime } from "../time";
 import { Badge } from "../ui/Badge";
 import { EmptyState } from "../ui/EmptyState";
@@ -57,16 +57,12 @@ export function ReviewsPage() {
   const [params] = useSearchParams();
   const view: View = params.get("view") === "mine" ? "mine" : "waiting";
   const queue = useLoad(`reviews@${String(user?.user_id)}`, (signal) =>
-    user
-      ? loadReviewQueue(user, signal)
-      : Promise.resolve({ items: [], unreadable: [], partial: [] }),
+    user ? loadReviewQueue(signal) : Promise.resolve({ items: [], partial: [] }),
   );
 
   const items =
     user && queue.data
-      ? queue.data.items.filter((item) =>
-          view === "mine" ? isMine(user, item) : canDecide(user, item),
-        )
+      ? queue.data.items.filter((item) => (view === "mine" ? isMine(user, item) : item.canDecide))
       : [];
   const partial = (queue.data?.partial.length ?? 0) > 0;
 
@@ -95,17 +91,11 @@ export function ReviewsPage() {
           {tab("mine", "Proposed by you")}
         </ul>
       </nav>
-      {queue.data && queue.data.unreadable.length > 0 && (
-        <Notice tone="warning" title="Some lists could not be read">
-          {`Items of these kinds may be missing: ${queue.data.unreadable
-            .map((kind) => kindLabels[kind].toLowerCase())
-            .join(", ")}.`}
-        </Notice>
-      )}
       {partial && (
         <Notice tone="info">
-          Some kinds have more waiting items than one page; open them from their own pages to see
-          the rest.
+          {`More are waiting than shown here for: ${(queue.data?.partial ?? [])
+            .map((kind) => kindLabels[kind].toLowerCase())
+            .join(", ")}. Open them from their own pages to see the rest.`}
         </Notice>
       )}
       <div className="card">

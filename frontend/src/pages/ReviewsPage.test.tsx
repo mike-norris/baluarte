@@ -5,65 +5,48 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { CurrentUser } from "../auth/session";
 import { routes } from "../routes";
-import { analyst, json } from "../test/api";
-import { evaluationFreshness, freshness } from "../test/freshness";
+import { analyst, json, mockApi, type Call } from "../test/api";
+import { EVALUATION_FRESHNESS, evaluationFreshness, freshness } from "../test/freshness";
 
-const reviewer: CurrentUser = {
-  ...analyst,
-  permissions: [...analyst.permissions, "remediation:approve"],
+type Item = {
+  kind: string;
+  id: number;
+  title: string;
+  proposed_by: { user_id: number | null; display_name: string | null };
+  proposed_at: string;
+  expires_at: string | null;
+  can_decide: boolean;
+  framework?: string | null;
+  control_id?: string | null;
 };
 
-const person = (user_id: number, display_name: string) => ({
-  actor: `user:${String(user_id)}`,
-  user_id,
-  display_name,
-});
-
-function plan(id: number, by: ReturnType<typeof person>) {
+function item(
+  kind: string,
+  id: number,
+  title: string,
+  by: number,
+  extra: Partial<Item> = {},
+): Item {
   return {
+    kind,
     id,
-    state: "submitted",
-    scope: { groups: ["acme"] },
-    taxonomy: null,
-    totals: {},
-    steps: 12,
-    manual: 0,
-    plan_digest: "a".repeat(64),
-    created_by: by,
-    created_at: "2026-11-13T10:00:00Z",
+    title,
+    proposed_by: { user_id: by, display_name: by === 1 ? "Ada Lovelace" : "Grace Hopper" },
+    proposed_at: "2026-11-13T10:00:00Z",
     expires_at: "2099-11-14T10:00:00Z",
-    decided_by: null,
-    decided_at: null,
-    finished_at: null,
+    can_decide: by !== 1,
+    ...extra,
   };
 }
 
-/** Answers each list by its path, whatever the query; anything unexpected fails. */
-function serve(user: CurrentUser, lists: Record<string, unknown>, failing: string[] = []) {
-  vi.stubGlobal("fetch", (input: RequestInfo | URL) => {
-    const url = new URL(input.toString(), "http://localhost");
-    const path = url.pathname;
-    if (path === "/api/v1/auth/me") return Promise.resolve(json(user));
-    if (path === "/api/v1/gitlab/freshness") return Promise.resolve(json(freshness()));
-    if (path === "/api/v1/evaluations/freshness") {
-      return Promise.resolve(json(evaluationFreshness()));
-    }
-    if (failing.includes(path)) return Promise.resolve(json({ detail: "boom" }, 500));
-    if (path in lists) return Promise.resolve(json(lists[path]));
-    return Promise.reject(new TypeError(`unexpected fetch: ${path}`));
+function serve(queue: unknown, user: CurrentUser = analyst): Call[] {
+  return mockApi({
+    "GET /api/v1/auth/me": () => json(user),
+    "GET /api/v1/gitlab/freshness": () => json(freshness()),
+    [EVALUATION_FRESHNESS]: () => json(evaluationFreshness()),
+    "GET /api/v1/reviews": () => json(queue),
   });
 }
-
-const empty = {
-  "/api/v1/policy-changes": { review_required: true, items: [], next_before_id: null },
-  "/api/v1/labels/taxonomy": { current: null, versions: [], review_required: true },
-  "/api/v1/labels/plans": { items: [], next_after_id: null },
-  "/api/v1/issue-plans": { items: [], next_after_id: null },
-  "/api/v1/remediation/plans": { items: [], next_after_id: null },
-  "/api/v1/exceptions": { items: [], next_after_id: null },
-  "/api/v1/scope/exclusions": { items: [] },
-  "/api/v1/control-mapping/changes": { items: [] },
-};
 
 function renderAt(path: string) {
   const router = createMemoryRouter(routes, { initialEntries: [path] });
@@ -77,25 +60,33 @@ describe("review queue", () => {
   });
 
   it("lists what the user may decide, and what they proposed under its own tab", async () => {
-    serve(reviewer, {
-      ...empty,
-      "/api/v1/labels/plans": {
-        items: [plan(4, person(2, "Grace Hopper"))],
-        next_after_id: null,
-      },
-      "/api/v1/issue-plans": { items: [plan(9, person(1, "Ada Lovelace"))], next_after_id: null },
+    const calls = serve({
+      items: [
+        item("label_plan", 4, "Label plan 4: 12 steps", 2),
+        item("issue_plan", 9, "Issue plan 9: 12 steps", 1),
+        item("mapping_change", 3, "SOC2 CC8.1", 2, {
+          expires_at: null,
+          framework: "soc2",
+          control_id: "CC8.1",
+        }),
+      ],
+      partial: [],
     });
     const user = userEvent.setup();
     renderAt("/reviews");
 
     const waiting = await screen.findByRole("table", { name: "Waiting for you" });
     const rows = within(waiting).getAllByRole("row");
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(3);
     expect(within(rows[1] as HTMLElement).getByRole("link")).toHaveAttribute(
       "href",
       "/labels/plans/4",
     );
     expect(rows[1]).toHaveTextContent("Grace Hopper");
+    expect(within(waiting).getByRole("link", { name: "SOC2 CC8.1" })).toHaveAttribute(
+      "href",
+      "/controls/soc2/CC8.1",
+    );
 
     await user.click(screen.getByRole("link", { name: "Proposed by you" }));
     const mine = await screen.findByRole("table", { name: "Proposed by you" });
@@ -103,37 +94,21 @@ describe("review queue", () => {
       "href",
       "/time/issue-plans/9",
     );
+    // One request for the whole queue.
+    expect(calls.filter((call) => call.url.startsWith("/api/v1/reviews"))).toHaveLength(1);
   });
 
-  it("leaves the user's own items out of their queue outside development mode", async () => {
-    serve(reviewer, {
-      ...empty,
-      "/api/v1/labels/plans": { items: [plan(4, person(1, "Ada Lovelace"))], next_after_id: null },
-    });
+  it("leaves out items the API says the user may not decide", async () => {
+    serve({ items: [item("label_plan", 4, "Label plan 4: 12 steps", 1)], partial: [] });
     renderAt("/reviews");
     expect(await screen.findByText("Nothing is waiting for your decision.")).toBeInTheDocument();
   });
 
-  it("includes the user's own items in development mode", async () => {
-    serve(
-      { ...reviewer, development_mode: true },
-      {
-        ...empty,
-        "/api/v1/labels/plans": {
-          items: [plan(4, person(1, "Ada Lovelace"))],
-          next_after_id: null,
-        },
-      },
-    );
-    renderAt("/reviews");
-    expect(await screen.findByRole("link", { name: "Label plan 4: 12 steps" })).toBeInTheDocument();
-  });
-
-  it("says which lists could not be read rather than hiding the gap", async () => {
-    serve(reviewer, empty, ["/api/v1/exceptions"]);
+  it("says which kinds have more waiting than it shows", async () => {
+    serve({ items: [], partial: ["exception"] });
     renderAt("/reviews");
     expect(
-      await screen.findByText(/Items of these kinds may be missing: exception\./),
+      await screen.findByText(/More are waiting than shown here for: exception\./),
     ).toBeInTheDocument();
   });
 });
