@@ -1,5 +1,5 @@
 import { IconDots, IconMenu2, IconMoon, IconShieldLock, IconSun, IconX } from "@tabler/icons-react";
-import { useId, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { NavLink, Outlet } from "react-router";
 
 import { AsOfBanner } from "../asof/AsOfBanner";
@@ -16,6 +16,8 @@ import { useTheme } from "../ui/theme";
 import { ThemeProvider } from "../ui/ThemeProvider";
 import { AccountMenu } from "./AccountMenu";
 import { DevelopmentModeBanner } from "./DevelopmentModeBanner";
+import { JumpSearch } from "./JumpSearch";
+import { Shortcuts } from "./Shortcuts";
 
 function NavItems({ items, onNavigate }: { items: readonly NavItem[]; onNavigate?: () => void }) {
   return navGroups.map((group) => {
@@ -226,8 +228,10 @@ function Shell() {
   const { session } = useAuth();
   const device = useDeviceClass();
   const user = session.status === "signed_in" ? session.user : null;
-  const items = user ? visibleNavItems(user.permissions) : [];
+  const permissions = user?.permissions;
+  const items = useMemo(() => (permissions ? visibleNavItems(permissions) : []), [permissions]);
   const phone = device === "phone";
+  const paths = useMemo(() => new Set(items.map((item) => item.path)), [items]);
 
   return (
     <FreshnessProvider enabled={user !== null}>
@@ -247,6 +251,7 @@ function Shell() {
                     Baluarte
                   </span>
                 )}
+                {user && !phone && <JumpSearch items={items} />}
                 <div className="navbar-nav flex-row align-items-center gap-2 ms-auto">
                   {user && <AsOfPicker />}
                   <FreshnessIndicator />
@@ -266,6 +271,7 @@ function Shell() {
           </div>
         </div>
         {user && phone && <BottomNav items={items} />}
+        {user && !phone && <Shortcuts paths={paths} />}
       </AsOfProvider>
     </FreshnessProvider>
   );

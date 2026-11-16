@@ -30,11 +30,12 @@ import {
   targetText,
 } from "../policies/format";
 import { ResultLine, ResultsAsOf, total } from "../policies/results";
-import { readableRules, scopeGroups, severityLabels } from "../policies/yaml";
+import { readableRules, scopeGroups } from "../policies/yaml";
 import { formatTime } from "../time";
 import type { SavedState } from "./BaselineEditorPage";
 import { PageHeader } from "../ui/PageHeader";
 import { useDeviceClass } from "../ui/device";
+import { SeverityBadge } from "../findings/badges";
 
 const emptyCounts = {
   pass: 0,
@@ -42,13 +43,6 @@ const emptyCounts = {
   unknown: 0,
   unsupported: 0,
   excepted: 0,
-};
-
-const severityClass: Record<string, string> = {
-  critical: "bg-danger text-danger-fg",
-  high: "bg-orange-lt",
-  medium: "bg-warning-subtle text-warning-emphasis border border-warning-subtle",
-  low: "bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle",
 };
 
 function VersionDetail({
@@ -110,11 +104,7 @@ function VersionDetail({
         <ul>
           {rules.map((rule) => (
             <li key={rule.id} className="d-flex flex-wrap align-items-start gap-3 py-2">
-              <span
-                className={`rounded px-2 small fw-medium ${severityClass[rule.severity] ?? ""}`}
-              >
-                {severityLabels[rule.severity]}
-              </span>
+              <SeverityBadge severity={rule.severity} />
               <span className="flex-grow-1">
                 <span className="fw-medium">{rule.sentence}</span>
                 {rule.detail && <span className="d-block text-secondary">{rule.detail}</span>}
