@@ -63,7 +63,7 @@ export function DestinationPicker({
 }) {
   const id = useId();
   return (
-    <div>
+    <div className="stack-3">
       <fieldset>
         <legend className="fw-medium">{legend}</legend>
         <div className="mt-1 d-flex flex-wrap gap-3">
@@ -157,7 +157,7 @@ export function ApplyForm({
       onSubmit={(event) => void submit(event)}
       aria-labelledby={`${id}-title`}
       noValidate
-      className="card card-body mb-3"
+      className="card card-body mb-3 stack-4"
     >
       <h2 id={`${id}-title`} className="card-title">
         {`Apply ${name}`}

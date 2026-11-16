@@ -46,12 +46,12 @@ function ScopeList({
     return <p className="text-secondary">No groups are assigned to managers yet.</p>;
   }
   return (
-    <div >
+    <div className="stack-2">
       <Problems messages={problems} />
       <div className="overflow-x-auto rounded border">
         <table className="table table-vcenter card-table mb-0">
           <caption className="visually-hidden">Groups assigned to managers</caption>
-          <thead >
+          <thead>
             <tr>
               {["Manager", "Group", "Assigned", ""].map((title) => (
                 <th key={title || "actions"} scope="col" className="px-3 py-2 fw-medium">
@@ -60,7 +60,7 @@ function ScopeList({
               ))}
             </tr>
           </thead>
-          <tbody >
+          <tbody>
             {scopes.map((scope) => (
               <tr key={scope.id}>
                 <th scope="row" className="px-3 py-2 fw-medium">
@@ -120,7 +120,7 @@ function AssignForm({ csrf, onAssigned }: { csrf: string; onAssigned: (message: 
 
   if (users.error) return <ErrorMessage error={users.error} retry={users.retry} />;
   return (
-    <div className="rounded border p-3">
+    <div className="rounded border p-3 stack-3">
       <h3 className="fw-medium">Assign a group</h3>
       <Problems messages={problems} />
       {users.data && managers.length === 0 ? (

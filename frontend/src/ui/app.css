@@ -155,3 +155,46 @@
 .border-bottom-last-0:last-child {
   border-bottom: 0 !important;
 }
+
+/*
+ * A card that is its own body (`card card-body`) lays its content out as normal flow, so
+ * buttons and links keep their own width instead of stretching across the card.
+ */
+.card.card-body {
+  display: block;
+}
+
+/* Stacked cards (and tables in cards) keep Tabler's 1rem rhythm with whatever follows them. */
+.page-body .card:not(:last-child) {
+  margin-bottom: 1rem;
+}
+
+/*
+ * Vertical rhythm between siblings, as Tailwind's space-y-* gave it: a gap after every child but
+ * the last, without making the parent a flex container (Tabler's space-y-* would, stretching
+ * buttons). Tabler's margin utilities on a child still win.
+ */
+.stack-05 > :not(:last-child) {
+  margin-bottom: 0.125rem;
+}
+.stack-1 > :not(:last-child) {
+  margin-bottom: 0.25rem;
+}
+.stack-2 > :not(:last-child) {
+  margin-bottom: 0.5rem;
+}
+.stack-3 > :not(:last-child) {
+  margin-bottom: 0.75rem;
+}
+.stack-4 > :not(:last-child) {
+  margin-bottom: 1rem;
+}
+.stack-6 > :not(:last-child) {
+  margin-bottom: 1.5rem;
+}
+
+/* The blocks of a page, and of a card that is its own body, are 1rem apart. */
+.page-body .container-xl > section > :not(:last-child),
+.card.card-body > :not(:last-child) {
+  margin-bottom: 1rem;
+}

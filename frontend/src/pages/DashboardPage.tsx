@@ -71,7 +71,7 @@ function EvaluationStatus() {
           <p role={attention ? "alert" : undefined} className="mb-2">
             {evaluationHeadline(report)}
           </p>
-          <ul className="mb-0 text-secondary">
+          <ul className="mb-0 text-secondary stack-1">
             <li>{`Last successful evaluation: ${formatTime(report.last_success_at)}`}</li>
             {report.running && <li>An evaluation is running now.</li>}
             {report.queued && !report.running && <li>An evaluation is queued.</li>}

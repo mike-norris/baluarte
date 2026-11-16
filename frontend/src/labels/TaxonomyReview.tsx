@@ -22,7 +22,7 @@ function YamlDiff({ base, proposed }: { base: string | undefined; proposed: stri
   const caption =
     base === undefined ? "The proposed taxonomy" : "Changes from the taxonomy in force";
   return (
-    <figure>
+    <figure className="stack-1">
       <figcaption className="fw-medium">{caption}</figcaption>
       <pre aria-label={caption} className="small mb-0 overflow-auto" style={{ maxHeight: "20rem" }}>
         {lineDiff(base ?? "", proposed).map((line, index) => (
@@ -90,7 +90,7 @@ function PendingVersion({
   }
 
   return (
-    <li className="card card-body mb-3">
+    <li className="card card-body mb-3 stack-3">
       <div>
         <h3 className="fw-medium">{summary}</h3>
         <p className="text-secondary">
@@ -183,7 +183,7 @@ export function TaxonomyReview({
       pending.length === 0 ? (
         <p className="text-secondary">No label taxonomy is waiting.</p>
       ) : (
-        <ul aria-label="Label taxonomies waiting for review">
+        <ul className="stack-3" aria-label="Label taxonomies waiting for review">
           {pending.map((version) => (
             <PendingVersion
               key={version.id}
@@ -197,7 +197,7 @@ export function TaxonomyReview({
       );
   }
   return (
-    <section aria-labelledby="taxonomy-pending-title">
+    <section className="stack-3" aria-labelledby="taxonomy-pending-title">
       <h2 id="taxonomy-pending-title" className="card-title">
         Label taxonomies waiting for review
       </h2>

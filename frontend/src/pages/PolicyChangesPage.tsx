@@ -59,7 +59,7 @@ function Diff({ id }: { id: number }) {
       ? "The proposed baseline (new)"
       : `Changes from v${String(baseVersion)}, the version in force`;
   return (
-    <figure>
+    <figure className="stack-1">
       <figcaption className="fw-medium">{caption}</figcaption>
       <pre aria-label={caption} className="small mb-0 overflow-auto" style={{ maxHeight: "24rem" }}>
         {lines.map((line, index) => (
@@ -129,7 +129,7 @@ function PendingChange({
   }
 
   return (
-    <li className="card card-body mb-3">
+    <li className="card card-body mb-3 stack-3">
       <div>
         <h3 className="fw-medium">{summary}</h3>
         <p className="text-secondary">
@@ -230,7 +230,7 @@ function History({ reload }: { reload: number }) {
     return <p className="text-secondary">No baseline changes are recorded yet.</p>;
   }
   return (
-    <div>
+    <div className="stack-2">
       <div className="card table-responsive">
         <table className="table table-vcenter card-table mb-0">
           <caption className="visually-hidden">Decided baseline changes</caption>
@@ -317,7 +317,7 @@ export function PolicyChangesPage() {
     waiting = <p className="text-secondary">Nothing is waiting for review.</p>;
   } else {
     waiting = (
-      <ul aria-label="Changes waiting for review">
+      <ul className="stack-3" aria-label="Changes waiting for review">
         {pending.data.items.map((change) => (
           <PendingChange key={change.id} change={change} user={user} onDecided={decided} />
         ))}
@@ -333,7 +333,7 @@ export function PolicyChangesPage() {
           {message}
         </p>
       )}
-      <section aria-labelledby="pending-title">
+      <section className="stack-3" aria-labelledby="pending-title">
         <h2 id="pending-title" className="card-title">
           Waiting for review
         </h2>
@@ -342,7 +342,7 @@ export function PolicyChangesPage() {
       <MappingReview reload={reload} onDecided={decided} />
       <ScopeReview reload={reload} onDecided={decided} />
       <TaxonomyReview reload={reload} onDecided={decided} />
-      <section aria-labelledby="history-title">
+      <section className="stack-3" aria-labelledby="history-title">
         <h2 id="history-title" className="card-title">
           Decided changes
         </h2>

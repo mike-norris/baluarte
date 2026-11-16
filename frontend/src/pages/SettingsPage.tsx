@@ -168,7 +168,7 @@ function GitLabCard({ csrf, secretKey }: { csrf: string; secretKey: boolean | nu
             <div
               role="group"
               aria-label="Confirm disconnect"
-              className="border border-danger-subtle rounded p-3"
+              className="border border-danger-subtle rounded p-3 stack-2"
             >
               <p>
                 Disconnect GitLab? The stored token is deleted and collection stops. Collected

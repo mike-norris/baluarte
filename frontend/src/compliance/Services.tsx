@@ -70,7 +70,7 @@ function HowTo({ service }: { service: Service }) {
 
   const file = service.config?.[active];
   return (
-    <div>
+    <div className="stack-3">
       <div role="tablist" aria-label={`How to run ${service.name}`} className="d-flex gap-1">
         {platforms.map((platform, index) => {
           const selected = platform.id === active;
@@ -99,7 +99,12 @@ function HowTo({ service }: { service: Service }) {
           );
         })}
       </div>
-      <div role="tabpanel" id={`${id}-${active}-panel`} aria-labelledby={`${id}-${active}-tab`}>
+      <div
+        role="tabpanel"
+        id={`${id}-${active}-panel`}
+        aria-labelledby={`${id}-${active}-tab`}
+        className="stack-3"
+      >
         <Markdown
           source={service.how_to[active]}
           label={`${service.name}, ${platforms.find((item) => item.id === active)?.label ?? ""}`}
@@ -123,7 +128,7 @@ function HowTo({ service }: { service: Service }) {
 function ServiceItem({ service }: { service: Service }) {
   const state = serviceState(service);
   return (
-    <li className="border-bottom py-3 border-bottom-last-0">
+    <li className="border-bottom py-3 border-bottom-last-0 stack-2">
       <div className="d-flex flex-wrap align-items-baseline gap-2">
         <Badge tone={state.tone}>{state.label}</Badge>
         <h3 className="fw-medium">{service.name}</h3>

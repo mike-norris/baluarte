@@ -9,7 +9,6 @@ import { isHexColor } from "../labels/format";
 import { TargetPicker, type Picked } from "../policies/TargetPicker";
 import { focusText, managerTabs, readFocus, writeFocus } from "./format";
 
-
 /** The manager space's sections the user may open; the focus is carried between them. */
 export function ManagerTabs() {
   const { session } = useAuth();
@@ -75,7 +74,9 @@ export function ItemTags({ tags }: { tags: ItemTag[] | undefined }) {
             tag={tag}
             title={tag.via === "group" ? `From group ${tag.from_path ?? ""}` : "On the project"}
           />
-          {tag.via === "group" && <span className="visually-hidden"> (from group {tag.from_path})</span>}
+          {tag.via === "group" && (
+            <span className="visually-hidden"> (from group {tag.from_path})</span>
+          )}
         </li>
       ))}
     </ul>
@@ -97,7 +98,7 @@ export function FocusPicker() {
   return (
     <details className="rounded border p-3">
       <summary className="fw-medium">{`Showing ${focusText(focus)}. Change`}</summary>
-      <div className="mt-3">
+      <div className="mt-3 stack-3">
         <fieldset className="d-flex gap-3">
           <legend className="visually-hidden">Roll up by</legend>
           <label className="d-flex align-items-center gap-2">
@@ -124,7 +125,7 @@ export function FocusPicker() {
           </label>
         </fieldset>
         {mode === "group" ? (
-          <div >
+          <div className="stack-2">
             <TargetPicker type="group" value={picked} onChange={setPicked} />
             <button
               type="button"

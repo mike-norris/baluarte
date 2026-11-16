@@ -1,6 +1,5 @@
 import { useState, type ReactNode } from "react";
 
-
 /**
  * A small markdown subset for the how-to text the API sends: paragraphs, headings, bullet and
  * numbered lists, fenced code blocks (with a copy button), inline code, bold and links. Text is
@@ -86,7 +85,10 @@ export function Inline({ text }: { text: string }) {
     const key = `${String(match.index)}`;
     if (match[1] !== undefined) {
       parts.push(
-        <code key={key} className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">
+        <code
+          key={key}
+          className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle"
+        >
           {match[1]}
         </code>,
       );
@@ -130,17 +132,12 @@ export function CodeBlock({ code, label }: { code: string; label: string }) {
   }
 
   return (
-    <div >
+    <div className="stack-1">
       <pre className="small">
         <code>{code}</code>
       </pre>
       <div className="d-flex align-items-center gap-2">
-        <button
-          type="button"
-          onClick={copy}
-          aria-label={`Copy ${label}`}
-          className="btn"
-        >
+        <button type="button" onClick={copy} aria-label={`Copy ${label}`} className="btn">
           Copy
         </button>
         <span aria-live="polite" className="small text-secondary">
@@ -162,7 +159,7 @@ export function Markdown({ source, label }: { source: string; label: string }) {
     (_, index) => blocks.slice(0, index + 1).filter((block) => block.kind === "code").length,
   );
   return (
-    <div >
+    <div className="stack-3">
       {blocks.map((block, index) => {
         const key = String(index);
         switch (block.kind) {
@@ -187,11 +184,11 @@ export function Markdown({ source, label }: { source: string; label: string }) {
               </li>
             ));
             return block.ordered ? (
-              <ol key={key} className="ps-3">
+              <ol key={key} className="ps-3 stack-1">
                 {items}
               </ol>
             ) : (
-              <ul key={key} className="ps-3">
+              <ul key={key} className="ps-3 stack-1">
                 {items}
               </ul>
             );

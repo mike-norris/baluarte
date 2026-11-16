@@ -67,7 +67,7 @@ function PendingMappingChange({
   }
 
   return (
-    <li className="card card-body mb-3">
+    <li className="card card-body mb-3 stack-3">
       <div>
         <h3 className="fw-medium">{summary}</h3>
         <p className="text-secondary">
@@ -77,7 +77,7 @@ function PendingMappingChange({
           </Link>
         </p>
       </div>
-      <dl >
+      <dl className="stack-1">
         <div>
           <dt className="fw-medium">Justification</dt>
           <dd className="text-prewrap">{change.justification}</dd>
@@ -178,20 +178,15 @@ export function MappingReview({
     body = <p className="text-secondary">No control mapping change is waiting.</p>;
   } else {
     body = (
-      <ul  aria-label="Control mapping changes waiting for review">
+      <ul className="stack-3" aria-label="Control mapping changes waiting for review">
         {pending.data.items.map((change) => (
-          <PendingMappingChange
-            key={change.id}
-            change={change}
-            user={user}
-            onDecided={onDecided}
-          />
+          <PendingMappingChange key={change.id} change={change} user={user} onDecided={onDecided} />
         ))}
       </ul>
     );
   }
   return (
-    <section aria-labelledby="mapping-pending-title" >
+    <section className="stack-3" aria-labelledby="mapping-pending-title">
       <h2 id="mapping-pending-title" className="card-title">
         Control mapping changes waiting for review
       </h2>

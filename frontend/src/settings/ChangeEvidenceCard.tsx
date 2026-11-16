@@ -66,7 +66,12 @@ function ChangeEvidenceForm({
   }
 
   return (
-    <form onSubmit={(event) => void submit(event)} aria-label="Change evidence settings" noValidate>
+    <form
+      onSubmit={(event) => void submit(event)}
+      aria-label="Change evidence settings"
+      noValidate
+      className="stack-4"
+    >
       <Problems messages={problems} />
       <div className="d-grid gap-3 cols-sm-2">
         <div>

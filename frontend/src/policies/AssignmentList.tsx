@@ -74,7 +74,7 @@ export function AppliedToList({
   }
 
   return (
-    <div>
+    <div className="stack-2">
       {failure && (
         <p role="alert" className="text-danger-emphasis">
           {failure}
@@ -132,7 +132,7 @@ export function AppliedToList({
                   {canWrite && (
                     <td className={cell}>
                       {confirming === assignment.id ? (
-                        <div>
+                        <div className="stack-2">
                           <p>
                             {`Stop checking ${assignment.policy_name} on ${targetText(assignment)}? Projects there fall back to whatever is applied above it, or to nothing.`}
                           </p>

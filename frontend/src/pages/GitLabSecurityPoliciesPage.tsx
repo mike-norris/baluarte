@@ -169,7 +169,7 @@ export function GitLabSecurityPoliciesPage() {
     );
   } else {
     body = (
-      <div>
+      <div className="stack-3">
         <PolicyTable policies={paged.items} />
         <p className="text-secondary" aria-live="polite">
           {`Showing ${String(paged.items.length)} GitLab security ${paged.items.length === 1 ? "policy" : "policies"}${

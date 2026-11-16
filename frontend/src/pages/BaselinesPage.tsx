@@ -36,7 +36,7 @@ function AppliedCell({ policy, applied }: { policy: PolicySummary; applied: Assi
   const behind = applied.some((assignment) => assignment.version < policy.latest_version);
   return (
     <>
-      <ul>
+      <ul className="stack-05">
         {applied.slice(0, SHOWN_TARGETS).map((assignment) => (
           <li key={assignment.id}>
             {`${placeName(assignment)} `}
@@ -163,7 +163,7 @@ function GetStarted({ canWrite }: { canWrite: boolean }) {
         <>
           <div className="mw-measure rounded border p-3">
             <h3 className="fw-semibold">Recommended baseline</h3>
-            <ul className="mt-2">
+            <ul className="mt-2 stack-1">
               {recommended.map((rule) => (
                 <li key={rule.id} className="d-flex justify-content-between gap-3">
                   <span>{rule.sentence}</span>
@@ -222,7 +222,7 @@ export function BaselinesPage() {
     body = <GetStarted canWrite={canWrite} />;
   } else {
     body = (
-      <div>
+      <div className="stack-3">
         {assignments.data.length === 0 && (
           <p className="alert alert-warning text-body">
             No baseline is applied anywhere, so nothing is checked. Open a baseline and apply it.

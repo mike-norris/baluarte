@@ -118,7 +118,7 @@ function CodeStep({
   }
 
   return (
-    <div>
+    <div className="stack-6">
       {notice && (
         <p role="status" className={noteClass}>
           {notice}
@@ -163,7 +163,7 @@ function CodeStep({
         </label>
         <details>
           <summary className="fw-medium">Where to find the code</summary>
-          <div className="mt-2 text-secondary">
+          <div className="mt-2 text-secondary stack-2">
             <p>Docker Compose:</p>
             <pre className="alert alert-secondary text-body">
               {
@@ -316,7 +316,7 @@ function OidcStep({ status, csrf, onError, onChanged, go }: StepProps) {
 
   if (deployment) {
     return (
-      <div>
+      <div className="stack-4">
         <DeploymentNotice what="Sign-in" />
         {config.data && <Values rows={oidcRows(config.data)} />}
         <StepNav
@@ -329,7 +329,7 @@ function OidcStep({ status, csrf, onError, onChanged, go }: StepProps) {
   }
 
   return (
-    <div>
+    <div className="stack-4">
       <p className="text-secondary">
         Baluarte signs people in with your OpenID Connect provider and gives them roles from their
         groups. Register Baluarte as an application with the provider first, then enter its details
@@ -374,7 +374,7 @@ function GitLabStep({ status, csrf, onError, onChanged, go }: StepProps) {
 
   if (deployment) {
     return (
-      <div>
+      <div className="stack-4">
         <DeploymentNotice what="The GitLab connection" />
         {config.data && <Values rows={gitlabRows(config.data)} />}
         <StepNav back={back} next={next} />
@@ -383,7 +383,7 @@ function GitLabStep({ status, csrf, onError, onChanged, go }: StepProps) {
   }
 
   return (
-    <div>
+    <div className="stack-4">
       <p className="text-secondary">
         Connect the self-managed GitLab instance Baluarte governs. This step is optional: you can
         connect GitLab later from Settings.
@@ -433,7 +433,7 @@ function ComplianceStep({ csrf, onError, onChanged, go }: StepProps) {
   const configured = profile.data.configured;
 
   return (
-    <div>
+    <div className="stack-4">
       <p className="text-secondary">
         Should Baluarte itself meet SOC 2, ISO 27001 or NIST audit requirements? Your choice sets
         how long Baluarte keeps its audit log and evidence, how long sessions last and whether
@@ -499,7 +499,7 @@ function ReviewStep({ status, onError, go }: StepProps) {
   const complianceMissing = compliance.data !== null && !compliance.data.configured;
 
   return (
-    <div>
+    <div className="stack-6">
       <section aria-labelledby="review-oidc" className={cardClass}>
         <h3 id="review-oidc" className="fw-semibold">
           Identity provider
@@ -602,7 +602,7 @@ function Wizard({ status, csrf, onError, onChanged }: Omit<StepProps, "go">) {
   const props = { status, csrf, onError, onChanged, go };
 
   return (
-    <div>
+    <div className="stack-6">
       <nav aria-label="Setup steps">
         <ol className="steps steps-counter mb-4">
           {steps.map((item, index) => (

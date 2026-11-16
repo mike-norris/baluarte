@@ -115,6 +115,7 @@ function AttestForm({
       onSubmit={(event) => void submit(event)}
       noValidate
       aria-label={`Attest ${control.title}`}
+      className="stack-2"
     >
       <Problems messages={problems} />
       <label htmlFor={`${id}-statement`} className="d-block fw-medium">
@@ -171,7 +172,7 @@ function ControlItem({
 }) {
   const refs = references(control, selected);
   return (
-    <li className="border-bottom py-3 border-bottom-last-0">
+    <li className="border-bottom py-3 border-bottom-last-0 stack-2">
       <div className="d-flex flex-wrap align-items-baseline gap-2">
         <StatusBadge status={posture.status} />
         <h3 className="fw-medium">{posture.title}</h3>
@@ -183,7 +184,7 @@ function ControlItem({
           Details and how to fix
           <span className="visually-hidden">: {posture.title}</span>
         </summary>
-        <div className="mt-2">
+        <div className="mt-2 stack-3">
           {control?.description && <p className="text-secondary">{control.description}</p>}
           {control?.how_to && (
             <div>
@@ -540,7 +541,7 @@ export function CompliancePage() {
             </p>
           </div>
         )}
-        <section aria-labelledby="posture-heading">
+        <section className="stack-3" aria-labelledby="posture-heading">
           <h2 id="posture-heading" className="card-title">
             Posture
           </h2>

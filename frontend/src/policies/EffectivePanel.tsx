@@ -34,7 +34,7 @@ export function ResolutionView({ resolution }: { resolution: Resolution }) {
   const chain = [...resolution.path].reverse().map(where);
   const notInEffect = resolution.considered.filter((item) => item.outcome !== "effective");
   return (
-    <div>
+    <div className="stack-3">
       <p aria-label="Inheritance chain">
         {chain.map((step, index) => (
           <span key={`${step}-${String(index)}`}>
@@ -63,7 +63,7 @@ export function ResolutionView({ resolution }: { resolution: Resolution }) {
       ) : (
         <div>
           <p className="fw-medium">In effect</p>
-          <ul className="mt-1 ps-3">
+          <ul className="mt-1 ps-3 stack-1">
             {resolution.policies.map((policy) => (
               <li key={policy.assignment_id}>
                 <Link to={baselineHref(policy.name, policy.version)}>
@@ -81,7 +81,7 @@ export function ResolutionView({ resolution }: { resolution: Resolution }) {
       {notInEffect.length > 0 && (
         <div>
           <p className="fw-medium">Also applied above, but not in effect here</p>
-          <ul className="mt-1 ps-3">
+          <ul className="mt-1 ps-3 stack-1">
             {notInEffect.map((item) => (
               <li key={item.assignment_id}>
                 {`${item.name} v${String(item.version)} from ${where(item.assigned_to)}: ${outcomeLabels[item.outcome]}`}

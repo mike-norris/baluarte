@@ -128,7 +128,7 @@ export function Card({
           Remove rule
         </button>
       </div>
-      <div className="ps-4">{children}</div>
+      <div className="ps-4 stack-3">{children}</div>
     </section>
   );
 }
@@ -375,7 +375,7 @@ export function AccessRules({
       )}
 
       {add.length > 0 && (
-        <div>
+        <div className="stack-2">
           <div className="d-flex flex-wrap gap-2">
             {add.map((button) => (
               <button key={button.label} type="button" onClick={button.on} className="btn">

@@ -76,7 +76,7 @@ function Recorded({ exportId, seed }: { exportId: string; seed: string | null })
   const usedSeed = seed ?? recordedSeed;
   const digest = record.status === "loaded" ? record.record.manifest_sha256 : null;
   return (
-    <dl className="mt-2">
+    <dl className="mt-2 stack-2">
       <div>
         <dt className="fw-medium">Package</dt>
         <dd>
@@ -125,7 +125,7 @@ function Recorded({ exportId, seed }: { exportId: string; seed: string | null })
 function Outcome({ run, cancel }: { run: Run; cancel: () => void }) {
   if (run.status === "running") {
     return (
-      <div>
+      <div className="stack-2">
         <p role="status">Building the package… It is offered once every byte has arrived.</p>
         <button type="button" onClick={cancel} className="btn">
           Cancel package
@@ -224,7 +224,7 @@ export function PackageForm({ csrfToken }: { csrfToken: string }) {
   }
 
   return (
-    <section aria-labelledby="package-title">
+    <section className="stack-4" aria-labelledby="package-title">
       <div>
         <h2 id="package-title" className="card-title">
           Audit package
@@ -238,7 +238,7 @@ export function PackageForm({ csrfToken }: { csrfToken: string }) {
       <form
         onSubmit={(event) => void submit(event)}
         aria-label="Create an audit package"
-        className="card card-body mb-3"
+        className="card card-body mb-3 stack-4"
       >
         <fieldset className="d-grid gap-3 cols-sm-2 cols-lg-3">
           <legend className="fw-medium">Period and scope</legend>

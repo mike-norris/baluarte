@@ -11,7 +11,7 @@ export function CollectionNote() {
   const evaluation = freshness?.signals.find((signal) => signal.source === "evaluation");
   if (!freshness || !collection || !evaluation) return null;
   return (
-    <aside aria-label="Data freshness" className="mt-4 text-secondary">
+    <aside aria-label="Data freshness" className="mt-4 text-secondary stack-1">
       <p>
         GitLab collection status:{" "}
         <span className="fw-medium">{statusLabel("collection", collection.status)}</span>
@@ -33,13 +33,9 @@ export function CollectionNote() {
         </p>
       )}
       <p>
-        <Link to="/inventory">
-          Collection details
-        </Link>
+        <Link to="/inventory">Collection details</Link>
         {" · "}
-        <Link to="/">
-          Compliance overview
-        </Link>
+        <Link to="/">Compliance overview</Link>
       </p>
     </aside>
   );

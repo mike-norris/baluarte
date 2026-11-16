@@ -10,7 +10,7 @@ const cell = "align-top";
 function Values({ lines }: { lines: string[] }) {
   if (lines.length === 0) return <span className="text-secondary">None</span>;
   return (
-    <ul>
+    <ul className="stack-05">
       {lines.map((line) => (
         <li key={line} className="text-break">
           {line}
@@ -30,7 +30,7 @@ function ObservedCell({ item }: { item: DriftItem }) {
   }
   const observed = item.observed;
   return (
-    <div>
+    <div className="stack-1">
       {observed?.color && <Swatch color={observed.color} />}
       <Values lines={valuesText(observed ? { ...observed, color: null } : null)} />
       {observed?.defined_at && (
@@ -43,7 +43,7 @@ function ObservedCell({ item }: { item: DriftItem }) {
 function ExpectedCell({ item }: { item: DriftItem }) {
   const expected = item.expected;
   return (
-    <div>
+    <div className="stack-1">
       {expected?.color && <Swatch color={expected.color} />}
       <Values lines={valuesText(expected ? { ...expected, color: null } : null)} />
       {expected?.placement && (
@@ -77,7 +77,7 @@ function DriftRow({ item }: { item: DriftItem }) {
         {evidence.length === 0 ? (
           <span className="text-secondary">No observation</span>
         ) : (
-          <ul className="small">
+          <ul className="small stack-05">
             {evidence.map((observation) => (
               <li key={observation.id}>
                 {`Observation ${String(observation.id)}, ${formatTime(observation.collected_at)}`}
