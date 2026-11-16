@@ -28,6 +28,7 @@ from baluarte.api.v1 import (
     policy_changes,
     ready,
     remediation,
+    reviews,
     scope,
     security_policies,
     setup,
@@ -75,6 +76,7 @@ protected.include_router(manager.router)
 protected.include_router(tags.router)
 protected.include_router(time.router)
 protected.include_router(issue_plans.router)
+protected.include_router(reviews.router)
 
 router = APIRouter(prefix="/api/v1")
 router.include_router(public)
