@@ -76,7 +76,8 @@ function href(item: ReviewItemOut): string {
     case "exception":
       return `/exceptions/${id}`;
     case "scope_exclusion":
-      return "/inventory";
+      // Exclusions are decided on the changes page, beside baseline and mapping changes.
+      return CHANGES_VIEW;
     case "mapping_change":
       return item.framework && item.control_id
         ? controlPath(item.framework, item.control_id)
