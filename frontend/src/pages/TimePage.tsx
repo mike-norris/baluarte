@@ -28,6 +28,7 @@ import { canReadPeople, MANAGER_TIME, readFocus } from "../manager/format";
 import { ManagerTabs } from "../manager/parts";
 import { formatTime } from "../time";
 import { PageHeader } from "../ui/PageHeader";
+import { useDeviceClass } from "../ui/device";
 
 const DEFAULT_DAYS = 30;
 const LABEL_LIMIT = 255;
@@ -473,7 +474,10 @@ export function TimePage() {
   const person = text(params.get("person"));
   const key = writeTimeView(filters, by).toString();
   const summary = useLoad(`time?${key}`, (signal) => getTimeSummary(filters, by, signal));
-  const peopleAllowed = canReadPeople(user) && summary.data?.per_person_enabled === true;
+  // Phones show the summary only; time per person (audited personal data) needs a larger screen.
+  const phone = useDeviceClass() === "phone";
+  const peopleEnabled = canReadPeople(user) && summary.data?.per_person_enabled === true;
+  const peopleAllowed = peopleEnabled && !phone;
 
   return (
     <section aria-labelledby="page-title">
@@ -509,6 +513,9 @@ export function TimePage() {
               </h2>
               <People filters={filters} by={by} />
             </section>
+          )}
+          {peopleEnabled && phone && (
+            <p className="text-secondary">Time per person is available on a larger screen.</p>
           )}
           {canReadPeople(user) && !summary.data.per_person_enabled && (
             <p className="text-secondary">This deployment does not show time per person.</p>

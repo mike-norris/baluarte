@@ -104,6 +104,22 @@ describe("time per person", () => {
     expect(screen.queryByRole("button", { name: "Show time per person" })).not.toBeInTheDocument();
   });
 
+  it("stays off phones, which show the summary only", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("max-width: 767.98px"),
+      media: query,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+    const calls = api(manager);
+    renderAt(`/manager/time?${PERIOD}&person=dev.one`);
+
+    await screen.findByRole("table", { name: "Time by group" });
+    expect(screen.getByText("Time per person is available on a larger screen.")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Show time per person" })).not.toBeInTheDocument();
+    expect(calls.some((call) => call.url.startsWith("/api/v1/time/people"))).toBe(false);
+  });
+
   it("loads only when asked for, saying the view is audited", async () => {
     const calls = api(manager, { [PEOPLE]: () => json(people()) });
     const user = userEvent.setup();
