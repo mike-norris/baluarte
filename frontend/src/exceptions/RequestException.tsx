@@ -117,7 +117,7 @@ export function RequestExceptionForm({
       onSubmit={(event) => void submit(event)}
       aria-labelledby="request-exception"
       noValidate
-      className="rounded border p-3"
+      className="rounded border p-3 stack-3"
     >
       <h3 id="request-exception" ref={heading} tabIndex={-1} className="fw-medium">
         Request an exception

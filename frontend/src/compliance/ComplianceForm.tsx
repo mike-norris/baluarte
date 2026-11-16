@@ -55,13 +55,13 @@ export function ViolationList({
   action?: ((violation: Violation) => ReactNode) | undefined;
 }) {
   return (
-    <div role="alert" className="alert alert-danger text-body">
+    <div role="alert" className="alert alert-danger text-body stack-2">
       <p className="fw-medium text-danger-emphasis">
         Not saved: these values do not meet the profile, and no exception is in force for them.
       </p>
-      <ul>
+      <ul className="stack-2">
         {violations.map((violation) => (
-          <li key={violation.control_id}>
+          <li className="stack-1" key={violation.control_id}>
             <p className="text-danger-emphasis">
               {`${settingInfo[violation.setting].label}: ${String(violation.value)}. ${describeRequirement(violation.setting, violation.required)} (${violation.frameworks.map(frameworkShort).join(", ")}).`}
             </p>
@@ -173,7 +173,7 @@ export function ComplianceForm({
     <form onSubmit={(event) => void submit(event)} noValidate className="space-y-5">
       <Problems messages={problems} />
       {violations.length > 0 && <ViolationList violations={violations} action={violationAction} />}
-      <fieldset>
+      <fieldset className="stack-2">
         <legend className="fw-semibold">Frameworks Baluarte must meet</legend>
         <p className="text-secondary">
           This governs how Baluarte itself operates: how long it keeps its audit log and evidence,
@@ -216,7 +216,7 @@ export function ComplianceForm({
         )}
       </fieldset>
 
-      <fieldset>
+      <fieldset className="stack-4">
         <legend className="fw-semibold">Operating settings</legend>
         {settingOrder.map((name) => {
           const info = settingInfo[name];
@@ -247,7 +247,7 @@ export function ComplianceForm({
           );
           if (typeof value === "boolean") {
             return (
-              <div key={name}>
+              <div className="stack-1" key={name}>
                 <label className="d-flex align-items-start gap-2 fw-medium">
                   <input
                     type="checkbox"

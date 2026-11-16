@@ -137,7 +137,7 @@ function Field({
   id: string;
 }) {
   return (
-    <div>
+    <div className="stack-1">
       <label htmlFor={id} className="d-block fw-medium">
         {label}
       </label>
@@ -176,7 +176,7 @@ function StatusPanel({ status }: { status: ShippingStatus }) {
     ]);
   }
   return (
-    <div aria-label="Shipping status" role="group">
+    <div className="stack-2" aria-label="Shipping status" role="group">
       <Values rows={rows} />
     </div>
   );
@@ -315,7 +315,7 @@ function ShippingForm({
   );
 
   return (
-    <form onSubmit={(event) => void save(event)} noValidate>
+    <form className="stack-4" onSubmit={(event) => void save(event)} noValidate>
       <Problems messages={problems} />
       <label className="d-flex align-items-center gap-2 fw-medium">
         <input
@@ -328,7 +328,7 @@ function ShippingForm({
         />
         Ship audit events to this destination
       </label>
-      <fieldset>
+      <fieldset className="stack-2">
         <legend className="fw-medium">Destination</legend>
         {(
           [
@@ -352,7 +352,7 @@ function ShippingForm({
         ))}
       </fieldset>
       {draft.type === "syslog_tls" ? (
-        <div>
+        <div className="stack-3">
           {textField("host", "Syslog host")}
           {textField("port", "Port", "6514 is the standard port for syslog over TLS.", "numeric")}
           {textField(
@@ -363,10 +363,10 @@ function ShippingForm({
           {caField("syslogCa")}
         </div>
       ) : (
-        <div>
+        <div className="stack-3">
           {textField("url", "Address", "For example https://logs.example.internal:9200")}
           {textField("index", "Index")}
-          <fieldset>
+          <fieldset className="stack-2">
             <legend className="fw-medium">Authentication</legend>
             {(
               [

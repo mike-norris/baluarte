@@ -239,10 +239,10 @@ function Shell() {
         <a href="#main" className="visually-hidden-focusable btn btn-primary position-absolute m-2">
           Skip to main content
         </a>
-        {user?.development_mode === true && <DevelopmentModeBanner />}
         <div className={`page ${phone && user ? "page-has-bottom-nav" : ""}`}>
           {user && !phone && <Sidebar items={items} />}
           <div className="page-wrapper">
+            {user?.development_mode === true && <DevelopmentModeBanner />}
             <header className="navbar navbar-expand d-print-none border-bottom">
               <div className="container-xl">
                 {(!user || phone) && (

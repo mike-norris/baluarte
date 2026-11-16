@@ -49,7 +49,7 @@ function Taxonomy({ version }: { version: TaxonomyVersion }) {
     ? "Not reviewed: review was off, so it applied at once"
     : `Approved by ${personText(version.decided_by)}`;
   return (
-    <div>
+    <div className="stack-3">
       <dl className="d-grid column-gap-4 row-gap-1 cols-dl">
         <dt className="fw-medium">Taxonomy</dt>
         <dd>{`${version.name} v${String(version.version)} (${taxonomyStateLabels[version.state]})`}</dd>
@@ -165,7 +165,7 @@ function TaxonomySection() {
     );
   }
   return (
-    <section aria-labelledby="taxonomy-title">
+    <section className="stack-3" aria-labelledby="taxonomy-title">
       <h2 id="taxonomy-title" className="card-title">
         Taxonomy in force
       </h2>
@@ -190,7 +190,7 @@ function Summary({ totals }: { totals: DriftTotals }) {
   const [params] = useSearchParams();
   return (
     <div className="d-grid gap-3 cols-lg-2">
-      <section aria-labelledby="by-kind-title">
+      <section className="stack-2" aria-labelledby="by-kind-title">
         <h3 id="by-kind-title" className="fw-medium">
           {`Drift by kind (${String(totals.total)} in all)`}
         </h3>
@@ -209,7 +209,7 @@ function Summary({ totals }: { totals: DriftTotals }) {
           ))}
         </ul>
       </section>
-      <section aria-labelledby="by-group-title">
+      <section className="stack-2" aria-labelledby="by-group-title">
         <h3 id="by-group-title" className="fw-medium">
           Drift by top-level group
         </h3>
@@ -336,7 +336,7 @@ function Drift({ filters }: { filters: DriftFilters }) {
   const page = first.data;
   const more = paged.next !== null ? " (more available)" : "";
   return (
-    <div>
+    <div className="stack-4">
       <AsOfResult answer={page} />
       <p className="text-secondary">
         {page.taxonomy
@@ -396,7 +396,7 @@ export function LabelsPage() {
         </p>
       </div>
       <TaxonomySection />
-      <section aria-labelledby="drift-title" className="card card-body mb-3">
+      <section aria-labelledby="drift-title" className="card card-body mb-3 stack-3">
         <h2 id="drift-title" className="card-title">
           Drift
         </h2>

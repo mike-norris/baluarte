@@ -58,7 +58,7 @@ function changeText(window: ChangeWindow): string {
 function Figure({ term, children }: { term: string; children: ReactNode }) {
   return (
     <div className="d-contents">
-      <dt className="col-md-4 fw-medium text-secondary">{term}</dt>
+      <dt className="fw-medium text-secondary">{term}</dt>
       <dd>{children}</dd>
     </div>
   );
@@ -227,7 +227,7 @@ function TrendCharts({ trends }: { trends: Trends }) {
   }
   const note = currentOnlyText(trends.current_only);
   return (
-    <div>
+    <div className="stack-3">
       <p className="text-secondary">
         {`${String(trends.projects)} projects. Open findings are left out of periods with no evaluation run.`}
         {note && ` ${note}`}

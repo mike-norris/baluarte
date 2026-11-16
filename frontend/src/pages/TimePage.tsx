@@ -331,7 +331,7 @@ function People({ filters, by }: { filters: TimeFilters; by: TimeGrouping }) {
   const key = writeTimeView(filters, by).toString();
   if (shown !== key) {
     return (
-      <div>
+      <div className="stack-2">
         <AuditedNote />
         <button
           type="button"
@@ -353,7 +353,7 @@ function PeopleLoaded({ filters, by }: { filters: TimeFilters; by: TimeGrouping 
     getPeople(filters, signal),
   );
   return (
-    <div>
+    <div className="stack-2">
       <AuditedNote />
       {people.error ? (
         <Refusal error={people.error} retry={people.retry} />
@@ -387,7 +387,7 @@ function PersonEntries({
     (after) => getPersonEntries(username, range, after),
   );
   return (
-    <section aria-labelledby="person-title">
+    <section className="stack-3" aria-labelledby="person-title">
       <h2 id="person-title" className="card-title">
         {`Time logged by ${username}`}
       </h2>
@@ -507,7 +507,7 @@ export function TimePage() {
             <SummaryTable summary={summary.data} />
           )}
           {!person && peopleAllowed && (
-            <section aria-labelledby="people-title">
+            <section className="stack-3" aria-labelledby="people-title">
               <h2 id="people-title" className="card-title">
                 Time per person
               </h2>

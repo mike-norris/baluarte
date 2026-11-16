@@ -70,7 +70,7 @@ function LabelRow({
     onChange({ ...row, label: { ...label, ...change } });
   }
   return (
-    <fieldset className="rounded border p-3">
+    <fieldset className="rounded border p-3 stack-2">
       <legend className="px-1 fw-medium">{title}</legend>
       <div className="d-grid gap-3 cols-md-2">
         <label className="fw-medium" htmlFor={`${id}-name`}>
@@ -146,7 +146,7 @@ function LabelRow({
 
 function Issues({ issues }: { issues: TaxonomyIssue[] }) {
   return (
-    <ul className="ps-3">
+    <ul className="ps-3 stack-1">
       {issues.map((issue) => (
         <li key={`${issue.path}:${issue.message}`}>
           {issue.path ? `${issue.path}: ${issue.message}` : issue.message}
@@ -295,7 +295,7 @@ function Editor({ view }: { view: TaxonomyView }) {
   }
 
   return (
-    <form onSubmit={(event) => void propose(event)} noValidate>
+    <form className="stack-6" onSubmit={(event) => void propose(event)} noValidate>
       {(problems.length > 0 || issues.length > 0 || failure || checked) && (
         <div
           role={checked && !failure ? "status" : "alert"}
@@ -312,7 +312,7 @@ function Editor({ view }: { view: TaxonomyView }) {
                 : checked)}
           </p>
           {problems.length > 0 && (
-            <ul className="mt-1 ps-3">
+            <ul className="mt-1 ps-3 stack-1">
               {problems.map((problem) => (
                 <li key={problem}>{problem}</li>
               ))}
@@ -342,7 +342,7 @@ function Editor({ view }: { view: TaxonomyView }) {
         </button>
       </div>
       {mode === "form" ? (
-        <div>
+        <div className="stack-4">
           <div className="d-grid gap-3 cols-md-2">
             <label className="fw-medium" htmlFor={`${id}-name`}>
               Taxonomy name
@@ -383,7 +383,7 @@ function Editor({ view }: { view: TaxonomyView }) {
               <span className="fw-medium">Strict</span>: labels not in the taxonomy count as drift.
             </span>
           </label>
-          <div>
+          <div className="stack-3">
             <h2 className="card-title">{`Labels (${String(rows.length)})`}</h2>
             {rows.map((row, index) => (
               <LabelRow
@@ -418,7 +418,7 @@ function Editor({ view }: { view: TaxonomyView }) {
           </div>
         </div>
       ) : (
-        <div>
+        <div className="stack-2">
           <label className="fw-medium" htmlFor={`${id}-yaml`}>
             Taxonomy YAML
           </label>

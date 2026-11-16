@@ -195,7 +195,7 @@ export function AuditLogPage() {
   } else {
     const invalid = paged.items.filter((event) => !event.digest_valid).length;
     body = (
-      <div>
+      <div className="stack-2">
         {invalid > 0 && (
           <p role="alert" className="alert alert-danger text-body">
             {`${String(invalid)} ${invalid === 1 ? "event's details no longer match its" : "events' details no longer match their"} recorded digest. Compare with the baluarte.audit log stream.`}

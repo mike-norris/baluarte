@@ -103,7 +103,7 @@ export function RuleForm({
           : "Lowercase letters, digits and hyphens, for example recommended-baseline. Findings name it."}
       </p>
 
-      <fieldset>
+      <fieldset className="stack-3">
         <legend className="fw-semibold">Rules</legend>
 
         <div className={ruleCard}>
@@ -117,7 +117,7 @@ export function RuleForm({
             />
             Projects have an allowed visibility
           </label>
-          <fieldset disabled={!visibility.enabled} className="ps-4">
+          <fieldset disabled={!visibility.enabled} className="ps-4 stack-3">
             <legend className="visually-hidden">Project visibility settings</legend>
             <div>
               <p className="fw-medium" id={`${id}-allowed`}>
@@ -173,7 +173,7 @@ export function RuleForm({
             />
             Every default branch is protected
           </label>
-          <fieldset disabled={!branch.enabled} className="ps-4">
+          <fieldset disabled={!branch.enabled} className="ps-4 stack-3">
             <legend className="visually-hidden">Default branch protection settings</legend>
             <p className="text-secondary">
               Passes when a protected-branch rule in GitLab, exact or wildcard, covers the
@@ -207,7 +207,7 @@ export function RuleForm({
                 Remove rule
               </button>
             </div>
-            <div className="ps-4">
+            <div className="ps-4 stack-3">
               <div>
                 <p className="fw-medium" id={`${id}-scans`}>
                   Required scans
@@ -290,7 +290,7 @@ export function RuleForm({
                 Remove rule
               </button>
             </div>
-            <div className="ps-4">
+            <div className="ps-4 stack-3">
               <label className="d-block mw-xs fw-medium" htmlFor={`${id}-approvals`}>
                 Approvals required, at least
                 <input
@@ -365,7 +365,7 @@ export function RuleForm({
         )}
 
         {(!scan.enabled || !approval.enabled) && (
-          <div>
+          <div className="stack-2">
             <div className="d-flex flex-wrap gap-2">
               {!scan.enabled && (
                 <button
@@ -407,7 +407,7 @@ export function RuleForm({
         <ChangeRules form={form} onChange={onChange} />
       </fieldset>
 
-      <fieldset>
+      <fieldset className="stack-2">
         <legend className="fw-semibold">Groups it covers</legend>
         <label className="d-flex align-items-center gap-2">
           <input

@@ -71,7 +71,7 @@ export function GitLabTestResultView({ result }: { result: GitLabTestResult }) {
         </p>
       )}
       {result.checks.length > 0 && (
-        <ul>
+        <ul className="stack-1">
           {result.checks.map((check) => (
             <li key={check.name} className="d-flex flex-wrap align-items-baseline gap-2">
               <span className={`rounded small fw-medium ${checkClasses[check.status]}`}>
@@ -195,7 +195,12 @@ export function GitLabForm({
   }
 
   return (
-    <form onSubmit={(event) => void submit(event)} aria-label="GitLab connection" noValidate>
+    <form
+      onSubmit={(event) => void submit(event)}
+      aria-label="GitLab connection"
+      noValidate
+      className="stack-4"
+    >
       <Problems messages={failure ? [failure] : problems} />
       <label className="d-block fw-medium">
         GitLab address
@@ -268,11 +273,11 @@ export function GitLabForm({
         360 (six hours).
       </p>
 
-      <div>
+      <div className="stack-2">
         <button type="button" onClick={() => void runTest()} disabled={testing} className="btn">
           {testing ? "Testing…" : "Test connection"}
         </button>
-        <div aria-live="polite">
+        <div className="stack-2" aria-live="polite">
           {testFailure && <p className={errorClass}>{testFailure}</p>}
           {test && <GitLabTestResultView result={test} />}
         </div>

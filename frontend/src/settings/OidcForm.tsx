@@ -67,10 +67,8 @@ export function OidcTestResultView({ result }: { result: OidcTestResult }) {
 function ProviderHints() {
   return (
     <details className="rounded border p-3">
-      <summary className="fw-medium">
-        Using GitLab as the identity provider
-      </summary>
-      <ul className="mt-2 ps-3 text-secondary">
+      <summary className="fw-medium">Using GitLab as the identity provider</summary>
+      <ul className="mt-2 ps-3 text-secondary stack-1">
         <li>
           In GitLab, add an application under <em>User settings → Applications</em> or a
           group&apos;s <em>Settings → Applications</em>, with the redirect URI below and the scopes{" "}
@@ -186,12 +184,7 @@ export function OidcForm({
   }
 
   return (
-    <form
-      onSubmit={(event) => void submit(event)}
-      aria-label="Identity provider"
-      noValidate
-
-    >
+    <form onSubmit={(event) => void submit(event)} aria-label="Identity provider" noValidate>
       <Problems messages={failure ? [failure] : problems} />
       {lockoutWarning && (
         <p className={noteClass}>
@@ -218,7 +211,7 @@ export function OidcForm({
       </p>
       {redirect && <CopyValue label="Redirect URI to register" value={redirect} />}
 
-      <div >
+      <div className="stack-2">
         <label className="d-block fw-medium">
           Issuer
           <input
@@ -234,15 +227,10 @@ export function OidcForm({
         <p id={`${id}-issuer-help`} className="small text-secondary">
           Baluarte reads <code>/.well-known/openid-configuration</code> from this https URL.
         </p>
-        <button
-          type="button"
-          onClick={() => void runTest()}
-          disabled={testing}
-          className="btn"
-        >
+        <button type="button" onClick={() => void runTest()} disabled={testing} className="btn">
           {testing ? "Testing…" : "Test discovery"}
         </button>
-        <div aria-live="polite" >
+        <div className="stack-2" aria-live="polite">
           {testFailure && <p className={errorClass}>{testFailure}</p>}
           {test && <OidcTestResultView result={test} />}
         </div>
@@ -260,7 +248,7 @@ export function OidcForm({
       </label>
 
       {canStoreSecret ? (
-        <div >
+        <div className="stack-2">
           <label className="d-block fw-medium">
             Client secret
             <input
@@ -295,7 +283,7 @@ export function OidcForm({
         <SecretKeyNotice />
       )}
 
-      <fieldset className="rounded border p-3">
+      <fieldset className="rounded border p-3 stack-3">
         <legend className="px-1 fw-medium">Roles from identity provider groups</legend>
         <p className="small text-secondary">
           One group per line. A user gets every role whose groups they belong to; users in none of
@@ -350,10 +338,15 @@ export function OidcForm({
 
       <details className="rounded border p-3">
         <summary className="fw-medium">Advanced</summary>
-        <div className="mt-3">
+        <div className="mt-3 stack-3">
           <label className="d-block fw-medium">
             Scopes
-            <input name="scopes" value={fields.scopes} onChange={change} className="form-control mt-1" />
+            <input
+              name="scopes"
+              value={fields.scopes}
+              onChange={change}
+              className="form-control mt-1"
+            />
           </label>
           <label className="d-block fw-medium">
             Roles claim

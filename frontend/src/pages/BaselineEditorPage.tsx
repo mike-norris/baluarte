@@ -60,7 +60,7 @@ function FeedbackBox({ feedback }: { feedback: Feedback }) {
       return (
         <div className={errorClass}>
           <p className="fw-medium">Fix these before saving:</p>
-          <ul className="mt-1 ps-3">
+          <ul className="mt-1 ps-3 stack-1">
             {feedback.problems.map((problem) => (
               <li key={problem}>{problem}</li>
             ))}
@@ -73,7 +73,7 @@ function FeedbackBox({ feedback }: { feedback: Feedback }) {
           <p className="fw-medium">
             {`Not valid: ${String(feedback.errors.length)} ${feedback.errors.length === 1 ? "problem" : "problems"}.`}
           </p>
-          <ul className="mt-1 ps-3">
+          <ul className="mt-1 ps-3 stack-1">
             {feedback.errors.map((error, index) => (
               <li key={`${error.path}-${String(index)}`}>
                 <code className="font-monospace">{error.path}</code>
@@ -98,7 +98,7 @@ function YamlHelp() {
   return (
     <details className="text-secondary">
       <summary className="fw-medium">Field reference</summary>
-      <ul className="mt-2 ps-3">
+      <ul className="mt-2 ps-3 stack-1">
         <li>
           <code className="font-monospace">metadata.name</code> identifies the baseline: a new name
           creates a baseline, an existing name adds its next version.
@@ -277,7 +277,7 @@ function Editor({
   const disabled = busy !== null || !source.trim() || tooLarge;
 
   return (
-    <div>
+    <div className="stack-6">
       <div className="d-flex flex-wrap gap-2" role="group" aria-label="Editing mode">
         <button
           type="button"
@@ -316,7 +316,7 @@ function Editor({
       {yaml === null ? (
         <RuleForm form={form} onChange={setForm} nameLocked={existing !== null} />
       ) : (
-        <div>
+        <div className="stack-2">
           <label className="d-block fw-medium" htmlFor={`${id}-source`}>
             Baseline YAML
           </label>

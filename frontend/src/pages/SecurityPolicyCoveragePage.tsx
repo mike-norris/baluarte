@@ -177,7 +177,7 @@ function Body({ coverage, kind, show }: { coverage: Coverage; kind: Kind; show: 
   const toggle = (active: boolean) => `btn btn-sm ${active ? "btn-primary" : ""}`;
 
   return (
-    <div>
+    <div className="stack-4">
       <div className="row g-3 row-cols-1 row-cols-sm-2 mb-3">
         <Counts label="Groups" counts={coverage.summary.groups} />
         <Counts label="Projects" counts={coverage.summary.projects} />

@@ -101,13 +101,13 @@ function OwnerView({ type, gitlabId }: { type: LabelOwner["type"]; gitlabId: num
         )}
       </div>
       <AsOfResult answer={data} />
-      <section aria-labelledby="labels-title">
+      <section className="stack-3" aria-labelledby="labels-title">
         <h2 id="labels-title" className="card-title">
           Labels available here
         </h2>
         <Labels data={data} />
       </section>
-      <section aria-labelledby="owner-drift-title">
+      <section className="stack-3" aria-labelledby="owner-drift-title">
         <h2 id="owner-drift-title" className="card-title">
           Drift from the taxonomy
         </h2>

@@ -52,7 +52,7 @@ function Field({ term, children }: { term: string; children: ReactNode }) {
 
 function Lines({ lines }: { lines: string[] }) {
   return (
-    <ul className="list-unstyled mb-0">
+    <ul className="list-unstyled mb-0 stack-05">
       {lines.map((line) => (
         <li key={line} className="font-monospace small text-break">
           {line}
@@ -104,14 +104,14 @@ function Step({ step }: { step: PlanStep }) {
             </pre>
           </Field>
           <Field term="Preconditions to re-check">
-            <ul className="mb-0 ps-3">
+            <ul className="mb-0 ps-3 stack-1">
               {step.preconditions.map((item) => (
                 <li key={item}>{item}</li>
               ))}
             </ul>
           </Field>
           <Field term="Blast radius">
-            <ul className="mb-0 ps-3">
+            <ul className="mb-0 ps-3 stack-1">
               {step.effects.map((item) => (
                 <li key={item}>{item}</li>
               ))}
@@ -119,7 +119,7 @@ function Step({ step }: { step: PlanStep }) {
           </Field>
           <Field term="GitLab requires">{`${step.requires.role}; tier: ${step.requires.tier}`}</Field>
           <Field term="Based on">
-            <ul className="list-unstyled mb-0">
+            <ul className="list-unstyled mb-0 stack-1">
               <li>
                 <Link to={`/findings/${String(step.finding_id)}`}>
                   {`Finding ${String(step.finding_id)}`}
@@ -249,7 +249,7 @@ function Confirm({
         <div ref={alert} role="alert" tabIndex={-1} className="alert alert-danger text-body">
           <p className="mb-0">{failure.message}</p>
           {failure.reasons.length > 0 && (
-            <ul className="mt-2 mb-0 ps-3">
+            <ul className="mt-2 mb-0 ps-3 stack-1">
               {failure.reasons.map((reason) => (
                 <li key={reason}>{reason}</li>
               ))}
@@ -390,7 +390,7 @@ function Detail({ initial, created }: { initial: Plan; created: boolean }) {
       {pending && plan.stale_reasons.length > 0 && (
         <div role="alert" className="alert alert-warning text-body">
           <p className="fw-medium mb-1">This plan is stale and would be refused for approval:</p>
-          <ul className="mb-1 ps-3">
+          <ul className="mb-1 ps-3 stack-1">
             {plan.stale_reasons.map((reason) => (
               <li key={reason}>{reason}</li>
             ))}
@@ -451,7 +451,7 @@ function Detail({ initial, created }: { initial: Plan; created: boolean }) {
         <h2 id="steps" className="h3">
           Steps
         </h2>
-        <ol className="list-unstyled d-grid gap-3 mb-0">
+        <ol className="list-unstyled d-grid gap-3 mb-0 stack-4">
           {doc.steps.map((step) => (
             <Step key={step.step} step={step} />
           ))}

@@ -95,7 +95,7 @@ function NewTagForm({ onCreated }: { onCreated: (message: string) => void }) {
       onSubmit={(event) => void submit(event)}
       aria-label="New tag"
       noValidate
-      className="card card-body mb-3"
+      className="card card-body mb-3 stack-3"
     >
       <h2 className="fw-semibold">New tag</h2>
       <Problems messages={problems} />
@@ -269,7 +269,7 @@ function EditTag({ tag, onSaved }: { tag: TagDetail; onSaved: (message: string) 
       onSubmit={(event) => void submit(event)}
       aria-label="Edit tag"
       noValidate
-      className="card card-body mb-3"
+      className="card card-body mb-3 stack-3"
     >
       <h2 className="fw-semibold">Description and colour</h2>
       <Problems messages={problems} />
@@ -328,7 +328,7 @@ function AssignForm({ tag, onDone }: { tag: TagDetail; onDone: (message: string)
   }
 
   return (
-    <div className="card card-body mb-3">
+    <div className="card card-body mb-3 stack-3">
       <h2 className="fw-semibold">Assign</h2>
       <p className="text-secondary">
         A group&apos;s tag applies to its subgroups and projects. A value assigned to a project
@@ -398,7 +398,7 @@ function Assignments({
   }
 
   return (
-    <section aria-labelledby="assignments-title">
+    <section className="stack-3" aria-labelledby="assignments-title">
       <h2 id="assignments-title" className="card-title">
         Assigned to
       </h2>
@@ -476,15 +476,15 @@ export function TagPage() {
       ) : tag.data ? (
         <>
           <dl className="d-grid column-gap-3 row-gap-2 cols-dl">
-            <dt className="col-md-4 fw-medium text-secondary">Tag</dt>
+            <dt className="fw-medium text-secondary">Tag</dt>
             <dd>
               <TagChip tag={tag.data} color={tag.data.color} />
             </dd>
-            <dt className="col-md-4 fw-medium text-secondary">Description</dt>
+            <dt className="fw-medium text-secondary">Description</dt>
             <dd>{tag.data.description ?? "None"}</dd>
-            <dt className="col-md-4 fw-medium text-secondary">Covers</dt>
+            <dt className="fw-medium text-secondary">Covers</dt>
             <dd>{`${String(tag.data.projects)} projects, through ${String(tag.data.groups)} groups and direct assignments`}</dd>
-            <dt className="col-md-4 fw-medium text-secondary">Created</dt>
+            <dt className="fw-medium text-secondary">Created</dt>
             <dd>{`${personName(tag.data.created_by)}, ${formatTime(tag.data.created_at)}`}</dd>
           </dl>
           <p>

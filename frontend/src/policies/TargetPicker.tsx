@@ -91,7 +91,7 @@ export function TargetPicker({
   }
 
   return (
-    <div>
+    <div className="stack-2">
       <div className="d-flex flex-wrap align-items-end gap-2">
         <label className="flex-grow-1 fw-medium" htmlFor={`${id}-search`}>
           {`Find a ${noun} by path`}
@@ -123,7 +123,7 @@ export function TargetPicker({
           <legend className="px-1 fw-medium">
             {`Matching ${noun}s${options.length === SEARCH_LIMIT ? " (first 100; narrow the search)" : ""}`}
           </legend>
-          <ul>
+          <ul className="stack-1">
             {options.map((option) => (
               <li key={option.gitlabId}>
                 <label className="d-flex align-items-center gap-2">

@@ -220,7 +220,7 @@ function Row({
           {node.effects.length === 0 ? (
             <p className="text-secondary">Nothing checked</p>
           ) : (
-            <ul>
+            <ul className="stack-05">
               {node.effects.map((effect) => (
                 <EffectLine key={effect.name} effect={effect} />
               ))}
@@ -235,7 +235,7 @@ function Row({
             </p>
           )}
           {node.projectAssignments.length > 0 && (
-            <ul className="mt-1 border-start border-2 ps-3">
+            <ul className="mt-1 border-start border-2 ps-3 stack-05">
               {node.projectAssignments.map((item) => (
                 <li key={item.assignmentId}>
                   <Link to={projectHref(item.projectGitlabId)} className="fw-medium">
@@ -378,7 +378,7 @@ export function InheritanceTree({
   const instanceNames = tree.instance;
 
   return (
-    <section aria-labelledby={`${id}-title`}>
+    <section className="stack-3" aria-labelledby={`${id}-title`}>
       <h2 id={`${id}-title`} className="visually-hidden">
         Inheritance
       </h2>
@@ -405,7 +405,7 @@ export function InheritanceTree({
                 {instanceNames.length === 0 ? (
                   <p className="text-secondary">Nothing applied to the whole instance</p>
                 ) : (
-                  <ul>
+                  <ul className="stack-05">
                     {instanceNames.map((item) => (
                       <li key={item.assignmentId}>
                         <Link to={baselineHref(item.name, item.version)}>

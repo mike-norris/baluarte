@@ -89,7 +89,8 @@ export function JumpSearch({ items }: { items: readonly NavItem[] }) {
   const sections = useMemo(() => new Set(items.map((item) => item.path)), [items]);
   const canSearchInventory = sections.has("/inventory");
   const trimmed = query.trim();
-  const searchInventory = canSearchInventory && trimmed.length >= 2 && !trimmed.startsWith("#") && !/^\d+$/.test(trimmed);
+  const searchInventory =
+    canSearchInventory && trimmed.length >= 2 && !trimmed.startsWith("#") && !/^\d+$/.test(trimmed);
 
   useEffect(() => {
     if (!searchInventory) return;
@@ -192,7 +193,7 @@ export function JumpSearch({ items }: { items: readonly NavItem[] }) {
         </span>
         <input
           id={JUMP_SEARCH_ID}
-          type="search"
+          type="text"
           role="combobox"
           aria-label="Jump to a page, record or project"
           aria-expanded={expanded}
@@ -213,9 +214,11 @@ export function JumpSearch({ items }: { items: readonly NavItem[] }) {
           }}
           onKeyDown={onKeyDown}
         />
-        <span className="input-icon-addon" aria-hidden="true">
-          <kbd>/</kbd>
-        </span>
+        {query === "" && (
+          <span className="input-icon-addon" aria-hidden="true">
+            <kbd>/</kbd>
+          </span>
+        )}
       </div>
       {expanded && (
         <div className="dropdown-menu show w-100 mt-1">

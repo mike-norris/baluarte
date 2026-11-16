@@ -18,7 +18,10 @@ export const MAX_TOKEN = 1024;
 
 function StatusValues({ status }: { status: WriteTokenStatus }) {
   const rows: [string, ReactNode][] = [
-    ["Label writes", status.writes_enabled ? "Enabled for this deployment" : "Turned off for this deployment"],
+    [
+      "Label writes",
+      status.writes_enabled ? "Enabled for this deployment" : "Turned off for this deployment",
+    ],
     ["Write token", status.set ? "Set (hidden)" : "Not set"],
   ];
   if (status.set) {
@@ -103,9 +106,14 @@ function TokenForm({
   }
 
   return (
-    <div >
+    <div className="stack-4">
       <Problems messages={problems} />
-      <form onSubmit={(event) => void save(event)} aria-label="Label write token" noValidate >
+      <form
+        className="stack-3"
+        onSubmit={(event) => void save(event)}
+        aria-label="Label write token"
+        noValidate
+      >
         <label className="d-block fw-medium">
           {status.set ? "Replace the write token" : "Write token"}
           <input
@@ -129,8 +137,16 @@ function TokenForm({
         </p>
         {!canStore && <SecretKeyNotice />}
         <div className="d-flex flex-wrap gap-2">
-          <button type="submit" disabled={!canStore || sending !== null} className="btn btn-primary">
-            {sending === "save" ? "Checking and saving…" : status.set ? "Replace token" : "Save token"}
+          <button
+            type="submit"
+            disabled={!canStore || sending !== null}
+            className="btn btn-primary"
+          >
+            {sending === "save"
+              ? "Checking and saving…"
+              : status.set
+                ? "Replace token"
+                : "Save token"}
           </button>
           {status.set && !confirmRemove && (
             <button
@@ -203,7 +219,9 @@ export function LabelWriteTokenCard({
         <>
           <StatusValues status={loaded.data} />
           {loaded.data.check_error && (
-            <p className={noteClass}>{`GitLab could not confirm the token: ${loaded.data.check_error}`}</p>
+            <p
+              className={noteClass}
+            >{`GitLab could not confirm the token: ${loaded.data.check_error}`}</p>
           )}
           {!loaded.data.writes_enabled && (
             <p className={noteClass}>

@@ -259,7 +259,7 @@ function ExportFormFields({
 function Verification({ done }: { done: Extract<Download, { status: "done" }> | null }) {
   const file = done?.filename ?? "<file>";
   return (
-    <section aria-labelledby="verify-title" className="text-secondary">
+    <section aria-labelledby="verify-title" className="text-secondary stack-2">
       <h2 id="verify-title" className="fs-3 fw-semibold">
         Verifying an export
       </h2>
@@ -302,7 +302,7 @@ function Verification({ done }: { done: Extract<Download, { status: "done" }> | 
 function Progress({ download, cancel }: { download: Download; cancel: () => void }) {
   if (download.status === "running") {
     return (
-      <div className="rounded border p-3">
+      <div className="rounded border p-3 stack-2">
         <p role="status">Exporting… The file is offered once every byte has arrived.</p>
         <p className="text-secondary">{`${formatBytes(download.bytes)} received`}</p>
         <button type="button" onClick={cancel} className="btn">
@@ -386,7 +386,7 @@ function Exporter({ csrfToken }: { csrfToken: string }) {
   }
 
   return (
-    <div>
+    <div className="stack-6">
       <ExportFormFields
         key={writeExportParams(readExportForm(params)).toString()}
         initial={readExportForm(params)}

@@ -117,7 +117,12 @@ function TimeForm({
   );
 
   return (
-    <form onSubmit={(event) => void submit(event)} aria-label="Time tracking settings" noValidate>
+    <form
+      onSubmit={(event) => void submit(event)}
+      aria-label="Time tracking settings"
+      noValidate
+      className="stack-4"
+    >
       <Problems messages={problems} />
       <div className="d-grid gap-3 cols-sm-3">
         {number(

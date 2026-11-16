@@ -39,7 +39,7 @@ export function Values({ rows }: { rows: [string, ReactNode][] }) {
     <dl className="d-grid column-gap-3 row-gap-2 cols-dl">
       {rows.map(([label, value]) => (
         <div key={label} className="d-contents">
-          <dt className="col-md-4 fw-medium text-secondary">{label}</dt>
+          <dt className="fw-medium text-secondary">{label}</dt>
           <dd className="text-break">{value}</dd>
         </div>
       ))}
@@ -76,7 +76,7 @@ export function CopyValue({ label, value }: { label: string; value: string }) {
   }
 
   return (
-    <div>
+    <div className="stack-1">
       <p className="fw-medium">{label}</p>
       <div className="d-flex flex-wrap align-items-center gap-2">
         <code className="badge bg-secondary-subtle text-secondary-emphasis border border-secondary-subtle">

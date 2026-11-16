@@ -452,7 +452,7 @@ function TimecardTable({ card, query }: { card: Timecard; query: TimecardQuery }
 function Totals({ card }: { card: Timecard }) {
   const { totals } = card;
   return (
-    <div>
+    <div className="stack-3">
       <dl className="d-grid gap-3 cols-sm-3 cols-lg-5">
         {[
           ["Total", `${formatMinutes(totals.minutes)} min (${hours(totals.minutes)})`],

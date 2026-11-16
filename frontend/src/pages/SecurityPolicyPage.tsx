@@ -52,7 +52,7 @@ function Reached({
       {targets.length === 0 ? (
         <p className="text-secondary">{`No ${kind} lists this policy in its latest discovery.`}</p>
       ) : (
-        <ul className="mt-1">
+        <ul className="mt-1 stack-05">
           {targets.slice(0, SHOWN).map((target) => (
             <li key={target.id}>
               {target.path}
@@ -147,7 +147,7 @@ function Detail({ policy }: { policy: SecurityPolicyDetail }) {
         {summary ? (
           <>
             {summary.lines.length > 0 ? (
-              <ul className="ps-3">
+              <ul className="ps-3 stack-1">
                 {summary.lines.map((line) => (
                   <li key={line}>{line}</li>
                 ))}
@@ -179,7 +179,7 @@ function Detail({ policy }: { policy: SecurityPolicyDetail }) {
         )}
       </section>
 
-      <section aria-labelledby="reach-title">
+      <section className="stack-3" aria-labelledby="reach-title">
         <h3 id="reach-title" className="fw-semibold">
           Where it reaches
         </h3>

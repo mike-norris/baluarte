@@ -26,7 +26,7 @@ export function SecurityPoliciesHeader({ context }: { context: DiscoveryContext 
   const user = session.status === "signed_in" ? session.user : null;
   const device = useDeviceClass();
   return (
-    <div>
+    <div className="stack-4">
       <GovernanceHeader
         intro={INTRO}
         action={
@@ -63,7 +63,7 @@ export function DiscoveryNotice({ context }: { context: DiscoveryContext }) {
   const gaps = typeGaps(context);
   if (!problem && !gaps && context.collection.status !== "stale") return null;
   return (
-    <div className="alert alert-warning text-body">
+    <div className="alert alert-warning text-body stack-1">
       {problem && <p>{problem}</p>}
       {!problem && context.collection.status === "stale" && (
         <p>These results are stale: the last successful collection is older than expected.</p>

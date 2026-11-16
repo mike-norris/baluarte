@@ -78,7 +78,7 @@ function VersionDetail({
         {`Rules in version ${String(policy.version)}`}
       </h2>
       {results && (
-        <div>
+        <div className="stack-1">
           {counted && total(counted.projects) > 0 ? (
             <p>
               <ResultLine
@@ -135,9 +135,9 @@ function VersionDetail({
       <details>
         <summary className="fw-medium">Show YAML (read-only)</summary>
         <dl className="mt-2 d-grid column-gap-3 row-gap-1 cols-dl">
-          <dt className="col-md-4 fw-medium text-secondary">Saved</dt>
+          <dt className="fw-medium text-secondary">Saved</dt>
           <dd>{formatTime(policy.created_at)}</dd>
-          <dt className="col-md-4 fw-medium text-secondary">SHA-256</dt>
+          <dt className="fw-medium text-secondary">SHA-256</dt>
           <dd className="font-monospace small text-break">{policy.yaml_digest}</dd>
         </dl>
         <pre
@@ -161,7 +161,7 @@ function Versions({
   selected: number;
 }) {
   return (
-    <nav aria-label="Versions">
+    <nav className="stack-2" aria-label="Versions">
       <h2 className="card-title">Versions</h2>
       <p className="text-secondary">
         Saved versions never change, so every result names exactly what it was checked against.
@@ -231,7 +231,7 @@ function RolloutBanner({
 
   const places = behind.length === 1 ? "1 place" : `${String(behind.length)} places`;
   return (
-    <div className="alert alert-warning text-body">
+    <div className="alert alert-warning text-body stack-2">
       <p>{`v${String(latest)} is newer than the version applied in ${places}.`}</p>
       {confirming ? (
         <>
@@ -333,7 +333,7 @@ export function BaselinePage() {
             }}
           />
         )}
-        <section aria-labelledby="applied">
+        <section className="stack-3" aria-labelledby="applied">
           <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
             <h2 id="applied" className="card-title">
               Applied to
