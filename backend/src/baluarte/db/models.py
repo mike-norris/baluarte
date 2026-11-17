@@ -96,6 +96,7 @@ SETTING_KEYS = (
     "change_evidence",
     "label_write_token",
     "time_tracking",
+    "notifications",
 )
 SECRET_NAMES = (
     "oidc_client_secret",
@@ -103,7 +104,18 @@ SECRET_NAMES = (
     "audit_shipping_es_api_key",
     "audit_shipping_es_password",
     "label_write_token",
+    "notifications_smtp_password",
+    "notifications_webhook_url",
 )
+NOTIFICATION_EVENTS = (
+    "new_findings",
+    "collection_unhealthy",
+    "collection_recovered",
+    "review_waiting",
+    "weekly_digest",
+)
+NOTIFICATION_CHANNELS = ("email", "webhook")
+DELIVERY_STATUSES = ("pending", "sent", "failed")
 BACKUP_STATUSES = ("succeeded", "failed")
 CHANGE_KINDS = ("merge_request", "direct_push", "deployment")
 CHANGE_OUTCOMES = ("pass", "fail", "unknown")
@@ -1635,6 +1647,69 @@ class AuditShipment(Base):
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
     consecutive_failures: Mapped[int] = mapped_column(Integer, server_default="0")
+    created_at: Mapped[datetime] = utc_now()
+
+
+class Notification(Base):
+    """A message produced by one event (``baluarte.notifications``), stored as it is sent.
+
+    ``dedup_key`` names the event, e.g. ``findings:<run id>`` or ``digest:<ISO week>``; it is
+    unique, so an event produces at most one notification however many workers notice it.
+    Messages hold no personal data: counts, project paths, rule IDs and links only.
+    """
+
+    __tablename__ = "notification"
+    __table_args__ = (
+        Index("ix_notification_event_type", "event_type", "id"),
+        Index("ix_notification_created", "created_at"),
+        one_of("event_type", NOTIFICATION_EVENTS),
+        sha256_hex("body_digest"),
+        CheckConstraint("length(dedup_key) BETWEEN 1 AND 200", name="dedup_key_length"),
+    )
+
+    id: Mapped[int] = pk()
+    event_type: Mapped[str] = mapped_column(Text)
+    dedup_key: Mapped[str] = mapped_column(Text, unique=True)
+    created_at: Mapped[datetime] = utc_now()
+    subject: Mapped[str] = mapped_column(Text)
+    body_text: Mapped[str] = mapped_column(Text)
+    body_html: Mapped[str] = mapped_column(Text)
+    # SHA-256 of the subject and the plain text body.
+    body_digest: Mapped[str] = mapped_column(Text)
+
+
+class NotificationDelivery(Base):
+    """One notification sent to one channel: ``pending`` until sent, retried with backoff, then
+    ``sent`` or ``failed``. ``last_error`` is redacted and never holds a secret."""
+
+    __tablename__ = "notification_delivery"
+    __table_args__ = (
+        UniqueConstraint("notification_id", "channel"),
+        Index(
+            "ix_notification_delivery_due",
+            "next_attempt_at",
+            postgresql_where=text("status = 'pending'"),
+        ),
+        one_of("channel", NOTIFICATION_CHANNELS),
+        one_of("status", DELIVERY_STATUSES),
+        CheckConstraint("attempts >= 0", name="attempts_nonnegative"),
+        CheckConstraint(
+            "(status = 'pending') = (next_attempt_at IS NOT NULL)",
+            name="pending_has_next_attempt",
+        ),
+        CheckConstraint("(status = 'sent') = (sent_at IS NOT NULL)", name="sent_has_time"),
+    )
+
+    id: Mapped[int] = pk()
+    notification_id: Mapped[int] = mapped_column(ForeignKey("notification.id", ondelete="CASCADE"))
+    channel: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, server_default="0")
+    last_error: Mapped[str | None] = mapped_column(Text)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = utc_now()
 
 

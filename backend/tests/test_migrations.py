@@ -40,6 +40,8 @@ TABLES = {
     "label_plan",
     "label_taxonomy",
     "manager_scope",
+    "notification",
+    "notification_delivery",
     "observation",
     "oidc_login",
     "policy",

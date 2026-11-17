@@ -45,6 +45,7 @@ Baluarte is self-hosted and works on every GitLab tier. Its distinguishing promi
 | FR-021 | Time tracking: spent and estimated time by group, project, label, milestone and person ([ADR-0010](architecture/ADR-0010-time-tracking-personal-data.md)) | M9 | Totals reconciliation and access tests |
 | FR-022 | A manager role and space: results by group or team, trends and time | M9 | Authorization tests |
 | FR-023 | Tags kept in Baluarte to group projects across the GitLab hierarchy | M9 | Tag scoping tests |
+| FR-024 | Notifications to email and a chat webhook, off by default, each event sent once with a recorded delivery and no personal data ([NOTIFICATIONS.md](NOTIFICATIONS.md)) | M10 | Dedup, retry, TLS and privacy tests against local SMTP and webhook servers |
 
 ## Explicit exclusions from v0.1
 

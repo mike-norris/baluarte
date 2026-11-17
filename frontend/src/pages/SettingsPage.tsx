@@ -19,6 +19,7 @@ import { ErrorMessage } from "../components/ErrorMessage";
 import { ChangeEvidenceCard } from "../settings/ChangeEvidenceCard";
 import { LabelWriteTokenCard } from "../settings/LabelWriteTokenCard";
 import { ManagerScopesCard } from "../settings/ManagerScopesCard";
+import { NotificationsCard } from "../settings/NotificationsCard";
 import { TimeSettingsCard } from "../settings/TimeSettingsCard";
 import { describeInterval } from "../settings/format";
 import { GitLabForm } from "../settings/GitLabForm";
@@ -336,7 +337,7 @@ export function SettingsPage() {
         <PageHeader
           pretitle="Admin"
           title="Settings"
-          subtitle="The identity provider, the GitLab connection, the compliance profile, audit log shipping and system information. Every change is audited; secrets can be replaced but are never shown."
+          subtitle="The identity provider, the GitLab connection, the compliance profile, audit log shipping, notifications and system information. Every change is audited; secrets can be replaced but are never shown."
         />
       </div>
       {allowed && phone ? (
@@ -434,6 +435,7 @@ function SettingsContent({ csrf }: { csrf: string }) {
       <TimeSettingsCard csrf={csrf} />
       <ComplianceCard csrf={csrf} />
       <AuditShippingCard csrf={csrf} />
+      <NotificationsCard csrf={csrf} />
       {info.error ? (
         <ErrorMessage error={info.error} retry={info.retry} />
       ) : info.data ? (

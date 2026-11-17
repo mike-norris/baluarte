@@ -120,10 +120,21 @@ A failed collection is recorded, but nobody is told unless something watches for
 
 - **Logs:** the worker logs `event: gitlab.collection_unhealthy` (WARNING) once when collection starts failing or falls overdue, and `event: gitlab.collection_recovered` (WARNING) once when it recovers. Route the worker's JSON log to your log platform and alert on the first event. Each worker process logs its own transitions, so with several workers expect one event per worker.
 - **API:** `GET /api/v1/gitlab/freshness` returns `alert` (null while healthy). A probe can alert while it is non-null.
+- **Notifications:** with the collection health event on ([NOTIFICATIONS.md](NOTIFICATIONS.md)), one email or chat message when collection becomes unhealthy and one when it recovers, however many workers run.
 
 Thresholds: `failing` after 3 failed runs in a row for any kind; `overdue` when scheduled and a kind's last success is older than twice the interval. Scheduled jobs retry after 1, 5 and 15 minutes, so a short network or GitLab outage recovers without an alert ([GITLAB_INTEGRATION.md](GITLAB_INTEGRATION.md#scheduling-and-freshness)).
 
 An auditor reads a gap in successful collection as a period in which the monitoring control did not operate. Keep the alert routed, and record the cause and fix of any outage.
+
+## Notifications
+
+The worker sends [notifications](NOTIFICATIONS.md) once a channel is configured under Settings → Notifications. To check them:
+
+- Settings → Notifications lists the latest 50 deliveries with their status and last error; `GET /api/v1/notifications/deliveries` returns the same to administrators and auditors.
+- The worker logs `event: notifications.delivery_failed` (WARNING) for each failed attempt, with the channel and a redacted reason. Attempts are retried after 1, 5, 15 and 60 minutes; the fifth failure marks the delivery `failed` and it is not sent again.
+- "Send test" on each channel says which stage failed: connect (DNS, firewall, port), TLS (certificate not trusted, or no STARTTLS), authentication, or the server rejected the message (recipients, sender, size).
+
+Notifications need outbound access from the worker to the SMTP server and webhook host only. No new environment variables are needed; the secret key (`BALUARTE_SECRET_KEY_FILE`) must be mounted in the API (to save secrets) and the worker (to send).
 
 ## Retention
 
@@ -139,6 +150,7 @@ The operating profile ([COMPLIANCE.md](COMPLIANCE.md)) sets how long data is kep
 | `evaluation_run`, `collection_run` | Older than the evidence period and finished, unless an evaluation, observation or security policy still refers to it. Runs are evidence of collection failures, so they follow the evidence period, not the job period |
 | `collection_job`, `export_job` | Finished more than the job period ago and not referred to by a run or observation. Queued and running jobs are never deleted |
 | `user_session`, `oidc_login`, `setup_session` | Ended (expired or revoked) more than 30 days ago |
+| `notification`, `notification_delivery` | Created before the audit period, unless a delivery is still pending; deliveries go with their notification ([NOTIFICATIONS.md](NOTIFICATIONS.md)) |
 
 Everything else is kept: `manager_scope`, `tag`, `tag_assignment`, `time_cursor`, `policy`, `policy_change`, `control_mapping_change`, `policy_exception`, `remediation_plan`, `compliance_exception`, `compliance_attestation`, `finding`, inventory and settings. An observation is added only when a target's status, payload or error changes, so growth follows the rate of change in GitLab; an evaluation row is added for every rule and project on every run (2 rules, 10,000 projects and 4 runs a day is 80,000 rows a day).
 

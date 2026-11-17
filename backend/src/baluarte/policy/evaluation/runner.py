@@ -16,6 +16,7 @@ from datetime import timedelta
 from typing import Literal
 
 from sqlalchemy import Engine, and_, exists, func, or_, select, update
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from baluarte.db.models import (
@@ -29,6 +30,7 @@ from baluarte.integrations.gitlab.instances import instance_for
 from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_settings
 from baluarte.jobs import queue
 from baluarte.jobs.queue import ClaimedJob, PermanentJobError
+from baluarte.notifications import events as notification_events
 from baluarte.policy.assignments import resolve_project
 from baluarte.policy.evaluation.project import (
     capability_statuses,
@@ -182,6 +184,8 @@ def evaluate_all(
         with Session(engine) as db:
             # Read once, so every page is judged against the same collection freshness.
             collections = collection_contexts(db, instance_id, settings)
+            # The open findings before any page, to tell which this run opens (FR-024).
+            before = _open_findings(db, instance_id)
         after_id = 0
         while True:
             with Session(engine) as db:
@@ -212,7 +216,33 @@ def evaluate_all(
         )
         raise
     finish_run(engine, run_id, "succeeded", projects, tally)
+    if before is not None:
+        _notify_new_findings(engine, run_id, instance_id, before)
     return run_id, tally
+
+
+def _open_findings(db: Session, instance_id: int) -> set[int] | None:
+    """The open findings, when new findings are to be notified; None otherwise."""
+    try:
+        if not notification_events.watching_findings(db):
+            return None
+        return notification_events.open_findings(db, instance_id)
+    except SQLAlchemyError as exc:
+        db.rollback()
+        logger.warning("notifications: open findings not read (%s)", type(exc).__name__)
+        return None
+
+
+def _notify_new_findings(engine: Engine, run_id: int, instance_id: int, before: set[int]) -> None:
+    """Record the run's new findings for notification. A failure never fails the evaluation."""
+    try:
+        with Session(engine) as db:
+            notification_events.notify_new_findings(db, run_id, instance_id, before)
+            db.commit()
+    except Exception as exc:
+        logger.warning(
+            "notifications: new findings of run %s not recorded (%s)", run_id, type(exc).__name__
+        )
 
 
 def evaluate(job: ClaimedJob, engine: Engine) -> None:

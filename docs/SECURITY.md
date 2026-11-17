@@ -51,7 +51,7 @@ Sign-in, failed sign-in (with a reason code) and sign-out are written to `audit_
 ## Secrets and logs
 
 - Secrets set by the deployment are read only from files named by `<NAME>_FILE` (Docker or Kubernetes secret mounts). Setting a secret directly in the environment, or a password inside `BALUARTE_DATABASE_URL`, is a configuration error. Secret values are never returned by the API: `GET /api/v1/settings` reports them only as `configured` or `not_set`.
-- The GitLab token and OIDC client secret can instead be entered in the web UI. See the next section. The audit shipping destination's Elasticsearch API key or password can only be entered there, and is sealed the same way.
+- The GitLab token and OIDC client secret can instead be entered in the web UI. See the next section. The audit shipping destination's Elasticsearch API key or password can only be entered there, and is sealed the same way. So can the notification SMTP password and chat webhook URL ([NOTIFICATIONS.md](NOTIFICATIONS.md)); the webhook URL is treated as a secret because it embeds its token.
 - All processes log one JSON object per line to stdout (`BALUARTE_LOG_FORMAT=text` for development). Uvicorn's loggers are routed through the same handler.
 - Every log line is redacted after formatting: values of secrets read from files, credentials in URLs, `Bearer`/`Basic` credentials, GitLab tokens (`glpat-` and other `gl*-` prefixes), JWTs, and the values of sensitive parameters (`private_token`, `access_token`, `token`, `password`, `secret`, `client_secret`, `code`, `state`, ...). This covers the authorization code and state in the OIDC callback's access-log line. Redaction is pattern-based defence in depth; code must still avoid logging secrets.
 - Background job errors store only messages written for storage; unexpected exceptions are recorded by type name.
@@ -74,6 +74,15 @@ Sign-in, failed sign-in (with a reason code) and sign-out are written to `audit_
 - **Where stored secrets go.** A stored secret is only ever sent to the host it was entered for. Changing the issuer or GitLab URL requires entering it again, and "test with the stored token" works only for the stored URL.
 - **Outbound requests.** The discovery and connection tests make the API send `GET` requests to the URL entered, https only, never following redirects.
 - **Risk while setup is open.** Anyone who can read the API log or run a command in its container can complete setup. Complete it promptly after installing, and keep API logs private.
+
+## Notifications and outbound traffic
+
+Baluarte needs no internet access. [Notifications](NOTIFICATIONS.md) are off until an administrator turns on a channel, and only then does the worker connect out, and only to the SMTP server and webhook host entered.
+
+- **Always TLS, always verified.** SMTP uses STARTTLS (refusing a server that does not offer it, before any credential is sent) or implicit TLS; the webhook must be https and redirects are not followed. Certificates are verified against the system trust store or a CA entered with the channel, as for audit shipping; there is no option to turn verification off.
+- **Secrets.** The SMTP password and the webhook URL are sealed in `app_secret`, never returned (`configured` or `not_set`), registered with the log redactor when read, and kept out of audit details, delivery errors and test results. A stored SMTP password is sent only to the host and username it was entered for.
+- **No personal data in messages.** Messages carry counts, project paths, rule IDs and links to Baluarte, never people's names or email addresses. A personal project's path names its owner, so it is shown as "personal project" with its GitLab ID. Audit events record the number of recipients, not their addresses.
+- **Audit.** Every settings change (`notifications.settings_changed`) and test (`notifications.test_sent`) is audited; every delivery is recorded in `notification_delivery`.
 
 ## GitLab credential
 

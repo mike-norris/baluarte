@@ -11,5 +11,6 @@
 - **M7 — Evidence trail:** change evidence for every change to a default branch (merge request, approvals, pipeline, tests, deployment, and direct pushes) (FR-013), a past-date view (FR-017) and auditor evidence packages with reproducible sampling (FR-018).
 - **M8 — Consistency:** a label taxonomy and drift across groups (FR-019), then approved label plans applied with a separate write token (FR-020, [ADR-0009](architecture/ADR-0009-label-writes.md)).
 - **M9 — Manager space:** a manager role, results by group or team, trends, time tracking including per person (FR-021, [ADR-0010](architecture/ADR-0010-time-tracking-personal-data.md)), and Baluarte tags (FR-022, FR-023).
+- **M10 — Notifications:** new findings, collection health, items waiting for review and a weekly digest sent to email and a chat webhook, once each, with recorded deliveries; off until an administrator configures a channel (FR-024, [NOTIFICATIONS.md](NOTIFICATIONS.md)).
 
 **v0.1** targets M0–M5 in read-only mode. No delivery dates are promised until GitLab edition/version, project scale, and contributor capacity are established. Milestone work is tracked in GitHub issues.
