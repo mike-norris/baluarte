@@ -105,12 +105,18 @@ export function baselineHref(name: string, version?: number): string {
   return version === undefined ? base : `${base}?version=${String(version)}`;
 }
 
-/** The baseline editor: empty, the recommended baseline, or a new version of an existing one. */
-export function editorHref(from?: { name: string; version: number } | "recommended"): string {
+/**
+ * The baseline editor: empty, the recommended baseline, or a new version of an existing one,
+ * optionally with the recommended rules it lacks switched on (``addRecommended``).
+ */
+export function editorHref(
+  from?: { name: string; version: number; addRecommended?: boolean } | "recommended",
+): string {
   const base = `${GOVERNANCE}/baselines/new`;
   if (!from) return base;
   if (from === "recommended") return `${base}?start=recommended`;
   const query = new URLSearchParams({ from: from.name, version: String(from.version) });
+  if (from.addRecommended) query.set("add", "recommended");
   return `${base}?${query.toString()}`;
 }
 

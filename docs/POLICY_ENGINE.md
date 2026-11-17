@@ -104,10 +104,50 @@ Saving a document whose name already exists adds the next version (2, 3, ...). S
 | `GET /api/v1/policies` | `findings:read` | Each policy name with its latest version and version count. |
 | `GET /api/v1/policies/{name}/versions?limit=` | `findings:read` | Versions newest first, without the source. Each carries `review`: the change that put it in force. |
 | `GET /api/v1/policies/{name}/versions/{version}` | `findings:read` | One version: the exact source, its digest and the parsed document. |
+| `GET /api/v1/policies/coverage` | `findings:read` | Which rule types the baselines in force use, and the controls left without automated evidence. See [Rule coverage](#rule-coverage). |
 
 Validation also needs `policy:write`, because it exists to support authoring.
 
 Reading needs `findings:read`, which every role holds. Every finding names the policy and rule that produced it, and an auditor must be able to see the exact baseline version in force. A separate `policy:read` permission would only ever be granted alongside `findings:read`.
+
+## Recommended baseline
+
+The editor's recommended baseline (`recommendedBaseline()` in `frontend/src/policies/yaml.ts`, `?start=recommended`) switches on every rule type that works on any GitLab tier, scoped to `["*"]`. Each value and why:
+
+| Rule `id` | Value | Why |
+| --- | --- | --- |
+| `project-visibility` | `allowed: [private, internal]`, severity high | A public project's code can be read by anyone who can reach GitLab; internal stays inside the instance. |
+| `protected-default-branch` | `required: true`, severity medium | The other change rules mean little if anyone can push to the default branch. |
+| `merge-request-approvals` | `min_approvals: 1`, `forbid_author_approval`, `reset_approvals_on_push`, `forbid_override`; committers may approve; severity high | One independent approval that a later push or a merge request's own rules can't bypass. Forbidding committer approval is left off: a reviewer who pushed a fix-up would block small teams. |
+| `privileged-members` | `max_privileged: 5`, `forbid_inactive_accounts`; severity medium | Few Maintainers and Owners per project, and no blocked or deactivated account keeps access. Raise the limit where inherited group owners make 5 too tight. |
+| `two-factor-required` | `max_grace_hours: 48`; severity high | Two-factor sign-in, with GitLab's default grace period. |
+| `access-token-lifetime` | `max_lifetime_days: 90`, no unused limit; severity medium | Project tokens expire within a quarter. An unused limit is left off: tokens used by monthly or quarterly jobs would fail it. |
+| `changes-reviewed` | `window_days: 90`, `min_approvals: 1`, self-approval doesn't count, no direct pushes; severity high | Every change in the last 90 days was approved by someone other than its author. |
+| `changes-pipeline-passed` | `window_days: 90`, tests not required; severity medium | Every merged change passed its pipeline. Requiring a test report would fail every project that doesn't publish one, so it is left to each organization. |
+| `deployments-reviewed` | `window_days: 90`; severity high | What reached production in the last 90 days was a reviewed change. |
+
+The two GitLab security policy rules need GitLab Ultimate. They are switched on only when the instance's detected capabilities report that security policies can be read (`security_policies.read` is `supported`); otherwise they stay off and the editor says why:
+
+| Rule `id` | Value | Why |
+| --- | --- | --- |
+| `required-scans` | `scans: [secret_detection, sast]`, `allow_skip_ci: true`; severity high | The two scans that apply to every project. A policy without a `skip_ci` setting can be skipped, so forbidding it would fail most instances. |
+| `required-approvals` | `min_approvals: 1`; severity medium | One approval required by a GitLab approval policy. |
+
+`gitlab.labels.consistent` follows the label taxonomy ([LABELS.md](LABELS.md)) and is not part of the recommended baseline. GitLab Free cannot require approvals on its own, so `merge-request-approvals` can fail on Free; set `min_approvals: 0` there to check only the approval settings.
+
+A saved baseline whose latest version lacks recommended rules offers **Add recommended rules** on the Baselines list (desktop, `policy:write`). It opens the editor with that version plus the missing recommended rules switched on, each marked **Added**; rules already in the version keep their settings, and a recommended rule whose `id` is already taken gets a numeric suffix. Saving proposes a new version like any other edit, under the same review rules. A version the form can't show (for example one with a label consistency rule) opens as YAML and nothing is added.
+
+## Rule coverage
+
+`GET /api/v1/policies/coverage` (`findings:read`) shows how much of what Baluarte can check is in force (`baluarte.policy.coverage`):
+
+- A baseline is in force where it is applied: the versions pinned by assignments, on any target and with any `spec.scope`, which are the versions evaluation judges. A proposed version or assignment, and a baseline that is saved but applied nowhere, do not count. A newer version that is not yet applied anywhere does not count until it is.
+- `rule_types`: every rule type, with `in_force`, the applied baseline versions that use it (`baselines`), and `supported`: `true` when it needs no capability or its capability probe answered, `false` only when detection could tell the instance lacks it (`unsupported`), and `null` when capabilities were never detected, detection failed, or the probe was refused or not found, since that does not prove the feature is missing. `capability` names the probe.
+- `controls`: every control the mapping in force ([CONTROL_MAPPING.md](CONTROL_MAPPING.md)) maps rule types to, none of which is in force, with its `title`, `area`, mapped `rule_types` and any active `not_applicable` or `manual` decision (`status_change`). Controls with no mapped rule type are not listed.
+- `baselines`: each baseline's latest version, whether it is applied, and its rule types, for **Add recommended rules**.
+- `label_taxonomy_version`: the label taxonomy in force, which the label consistency rule follows, or null.
+
+The Baselines page shows this as the **Rule coverage** card: "N of 11 rule types in force" (label consistency is shown separately, with the taxonomy), the missing rule types with what each proves, and the controls without automated evidence behind a disclosure, each linked to its control page. The card is read-only and the same on phones. See [COMPLIANCE.md](COMPLIANCE.md#rule-coverage) for what "no automated evidence" means.
 
 ## Assignment and inheritance
 

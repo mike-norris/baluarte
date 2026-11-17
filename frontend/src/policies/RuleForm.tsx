@@ -1,6 +1,6 @@
 import { useId } from "react";
 
-import { AccessRules } from "./AccessRules";
+import { AccessRules, AddedBadge } from "./AccessRules";
 import { ChangeRules } from "./ChangeRules";
 import {
   MAX_APPROVALS,
@@ -14,6 +14,7 @@ import {
   visibilities,
   visibilityLabels,
   type BaselineForm,
+  type RuleKey,
   type Severity,
 } from "./yaml";
 
@@ -59,10 +60,13 @@ export function RuleForm({
   form,
   onChange,
   nameLocked,
+  added = [],
 }: {
   form: BaselineForm;
   onChange: (form: BaselineForm) => void;
   nameLocked: boolean;
+  /** Rules "Add recommended rules" switched on, each marked so the reviewer sees the difference. */
+  added?: readonly RuleKey[];
 }) {
   const id = useId();
   const { visibility, branch, scan, approval } = form;
@@ -116,6 +120,7 @@ export function RuleForm({
               }}
             />
             Projects have an allowed visibility
+            {added.includes("visibility") && <AddedBadge />}
           </label>
           <fieldset disabled={!visibility.enabled} className="ps-4 stack-3">
             <legend className="visually-hidden">Project visibility settings</legend>
@@ -172,6 +177,7 @@ export function RuleForm({
               }}
             />
             Every default branch is protected
+            {added.includes("branch") && <AddedBadge />}
           </label>
           <fieldset disabled={!branch.enabled} className="ps-4 stack-3">
             <legend className="visually-hidden">Default branch protection settings</legend>
@@ -196,7 +202,10 @@ export function RuleForm({
         {scan.enabled && (
           <section aria-label="Required scans rule" className={ruleCard}>
             <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
-              <p className="fw-medium">Projects run scans through a GitLab scan execution policy</p>
+              <p className="fw-medium d-flex flex-wrap align-items-center gap-2">
+                Projects run scans through a GitLab scan execution policy
+                {added.includes("scan") && <AddedBadge />}
+              </p>
               <button
                 type="button"
                 onClick={() => {
@@ -277,8 +286,9 @@ export function RuleForm({
         {approval.enabled && (
           <section aria-label="Required approvals rule" className={ruleCard}>
             <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
-              <p className="fw-medium">
+              <p className="fw-medium d-flex flex-wrap align-items-center gap-2">
                 Merge requests need approval through a GitLab approval policy
+                {added.includes("approval") && <AddedBadge />}
               </p>
               <button
                 type="button"
@@ -403,8 +413,8 @@ export function RuleForm({
           </div>
         )}
 
-        <AccessRules form={form} onChange={onChange} />
-        <ChangeRules form={form} onChange={onChange} />
+        <AccessRules form={form} onChange={onChange} added={added} />
+        <ChangeRules form={form} onChange={onChange} added={added} />
       </fieldset>
 
       <fieldset className="stack-2">

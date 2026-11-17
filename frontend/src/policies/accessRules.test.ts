@@ -9,9 +9,10 @@ import {
   toDocument,
   toYaml,
 } from "./yaml";
+import { basicBaseline } from "./testForms";
 
 function withAccessRules() {
-  const form = recommendedBaseline();
+  const form = basicBaseline();
   form.projectApprovals.enabled = true;
   form.members.enabled = true;
   form.twoFactor.enabled = true;
@@ -20,16 +21,17 @@ function withAccessRules() {
 }
 
 describe("access-control and project approval rules", () => {
-  it("leaves them out of the recommended and blank baselines", () => {
-    for (const form of [recommendedBaseline(), emptyBaseline()]) {
-      expect(form.projectApprovals.enabled).toBe(false);
-      expect(form.members.enabled).toBe(false);
-      expect(form.twoFactor.enabled).toBe(false);
-      expect(form.tokens.enabled).toBe(false);
+  it("switches them on in the recommended baseline and leaves them out of a blank one", () => {
+    const recommended = recommendedBaseline();
+    const blank = emptyBaseline();
+    for (const key of ["projectApprovals", "members", "twoFactor", "tokens"] as const) {
+      expect(recommended[key].enabled).toBe(true);
+      expect(blank[key].enabled).toBe(false);
     }
     const yaml = toYaml(recommendedBaseline());
-    expect(yaml).not.toContain("merge_request_approvals");
-    expect(yaml).not.toContain("access_tokens");
+    expect(yaml).toContain("merge_request_approvals");
+    expect(yaml).toContain("access_tokens");
+    expect(toYaml({ ...blank, name: "blank" })).not.toContain("access_tokens");
   });
 
   it("writes them in the contract's shape, leaving out unset optional limits", () => {
@@ -77,7 +79,7 @@ describe("access-control and project approval rules", () => {
   });
 
   it("applies the contract's defaults when optional fields are left out", () => {
-    const document = toDocument(recommendedBaseline());
+    const document = toDocument(basicBaseline());
     (document.spec as { rules: unknown[] }).rules.push(
       { id: "approvals", type: "gitlab.project.merge_request_approvals", min_approvals: 2 },
       { id: "members", type: "gitlab.project.privileged_members", max_privileged: 3 },
@@ -117,7 +119,7 @@ describe("access-control and project approval rules", () => {
       },
     ];
     for (const rule of cases) {
-      const document = toDocument(recommendedBaseline());
+      const document = toDocument(basicBaseline());
       (document.spec as { rules: unknown[] }).rules.push(rule);
       expect(fromDocument(document)).toBeNull();
     }

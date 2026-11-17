@@ -8,6 +8,7 @@ import {
   offPipelineRule,
   offReviewedRule,
   type BaselineForm,
+  type RuleKey,
 } from "./yaml";
 
 function WindowDays({ value, onChange }: { value: number; onChange: (value: number) => void }) {
@@ -31,9 +32,12 @@ function WindowDays({ value, onChange }: { value: number; onChange: (value: numb
 export function ChangeRules({
   form,
   onChange,
+  added = [],
 }: {
   form: BaselineForm;
   onChange: (form: BaselineForm) => void;
+  /** Rules switched on by "Add recommended rules". */
+  added?: readonly RuleKey[];
 }) {
   const { reviewed, pipeline, deployed } = form;
   const add: { label: string; on: () => void }[] = [];
@@ -67,6 +71,7 @@ export function ChangeRules({
       {reviewed.enabled && (
         <Card
           label="Changes reviewed rule"
+          added={added.includes("reviewed")}
           title="Every change was approved by someone other than its author"
           onRemove={() => {
             onChange({ ...form, reviewed: offReviewedRule() });
@@ -119,6 +124,7 @@ export function ChangeRules({
       {pipeline.enabled && (
         <Card
           label="Change pipelines rule"
+          added={added.includes("pipeline")}
           title="Every merged change passed its pipeline"
           onRemove={() => {
             onChange({ ...form, pipeline: offPipelineRule() });
@@ -154,6 +160,7 @@ export function ChangeRules({
       {deployed.enabled && (
         <Card
           label="Deployments reviewed rule"
+          added={added.includes("deployed")}
           title="Every production deployment deployed a reviewed change"
           onRemove={() => {
             onChange({ ...form, deployed: offDeployedRule() });

@@ -18,6 +18,13 @@ import {
   findingsHref,
   SECURITY_POLICIES_VIEW,
 } from "../policies/format";
+import {
+  getCoverage,
+  missingRecommended,
+  securityPoliciesReadable,
+  type Coverage,
+} from "../policies/coverage";
+import { CoverageCard } from "../policies/CoverageCard";
 import { GovernanceHeader } from "../policies/GovernanceTabs";
 import { ResultLine, ResultsAsOf, total } from "../policies/results";
 import { readableRules, recommendedBaseline, severityLabels, toDocument } from "../policies/yaml";
@@ -81,14 +88,43 @@ function ResultsCell({
   );
 }
 
+/** "Add recommended rules" for a baseline whose latest version lacks some of them. */
+function AddRecommended({
+  policy,
+  coverage,
+}: {
+  policy: PolicySummary;
+  coverage: Coverage | undefined;
+}) {
+  const rules = coverage?.baselines.find((item) => item.name === policy.name);
+  if (!coverage || !rules || rules.latest_version !== policy.latest_version) return null;
+  const missing = missingRecommended(rules, securityPoliciesReadable(coverage));
+  if (missing.length === 0) return null;
+  return (
+    <span className="d-block mt-1 small fw-normal">
+      <Link
+        to={editorHref({ name: policy.name, version: policy.latest_version, addRecommended: true })}
+        aria-label={`Add recommended rules to ${policy.name}`}
+      >
+        Add recommended rules
+      </Link>
+      <span className="text-secondary">{` (${String(missing.length)} missing)`}</span>
+    </span>
+  );
+}
+
 function BaselineTable({
   policies,
   assignments,
   results,
+  coverage,
+  canWrite,
 }: {
   policies: PolicySummary[];
   assignments: Assignment[];
   results: Loaded<EvaluationSummary>;
+  coverage: Coverage | undefined;
+  canWrite: boolean;
 }) {
   return (
     <div className="card table-responsive">
@@ -113,6 +149,7 @@ function BaselineTable({
                   <span className="d-block small fw-normal text-secondary">
                     {`${String(policy.versions)} ${policy.versions === 1 ? "version" : "versions"}`}
                   </span>
+                  {canWrite && <AddRecommended policy={policy} coverage={coverage} />}
                 </th>
                 <td className={cell}>{`v${String(policy.latest_version)}`}</td>
                 <td className={cell}>
@@ -148,8 +185,9 @@ function FoundSecurityPolicies() {
 }
 
 /** The first-run state: what a baseline is, and the recommended one to start from. */
-function GetStarted({ canWrite }: { canWrite: boolean }) {
-  const recommended = readableRules(toDocument(recommendedBaseline()));
+function GetStarted({ canWrite, coverage }: { canWrite: boolean; coverage: Coverage | undefined }) {
+  const securityPolicies = securityPoliciesReadable(coverage);
+  const recommended = readableRules(toDocument(recommendedBaseline({ securityPolicies })));
   return (
     <section aria-labelledby="get-started" className="rounded border p-5">
       <h2 id="get-started" className="card-title">
@@ -207,6 +245,7 @@ export function BaselinesPage() {
   const assignments = useLoad("policy-assignments:all", (signal) => listAllAssignments(signal));
   // Counts are extra: without them the table still shows, with a link to findings.
   const results = useLoad("evaluation-summary", (signal) => getEvaluationSummary(null, signal));
+  const coverage = useLoad("policy-coverage", getCoverage);
 
   let body;
   if (policies.error) body = <ErrorMessage error={policies.error} retry={policies.retry} />;
@@ -219,7 +258,7 @@ export function BaselinesPage() {
       </p>
     );
   } else if (policies.data.length === 0) {
-    body = <GetStarted canWrite={canWrite} />;
+    body = <GetStarted canWrite={canWrite} coverage={coverage.data} />;
   } else {
     body = (
       <div className="stack-3">
@@ -228,7 +267,14 @@ export function BaselinesPage() {
             No baseline is applied anywhere, so nothing is checked. Open a baseline and apply it.
           </p>
         )}
-        <BaselineTable policies={policies.data} assignments={assignments.data} results={results} />
+        <CoverageCard coverage={coverage} />
+        <BaselineTable
+          policies={policies.data}
+          assignments={assignments.data}
+          results={results}
+          coverage={coverage.data}
+          canWrite={canWrite}
+        />
         {results.data && <ResultsAsOf summary={results.data} />}
       </div>
     );

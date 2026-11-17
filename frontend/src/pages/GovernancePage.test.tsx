@@ -13,6 +13,7 @@ import type {
   TreeEffect,
 } from "../api/policies";
 import type { CurrentUser } from "../auth/session";
+import { coverageFixture } from "../policies/testForms";
 import { recommendedBaseline, toDocument, toYaml } from "../policies/yaml";
 import { routes } from "../routes";
 import { analyst, json, mockApi, type Call } from "../test/api";
@@ -38,6 +39,7 @@ const VALIDATE = "POST /api/v1/policies/validate";
 const ASSIGN = "POST /api/v1/policy-assignments";
 const TREE = "GET /api/v1/policy-assignments/tree";
 const SUMMARY = "GET /api/v1/evaluations/summary";
+const COVERAGE = "GET /api/v1/policies/coverage";
 const BASELINE_SUMMARY = "GET /api/v1/evaluations/summary?policy=starter-baseline";
 const GROUP_SEARCH =
   "GET /api/v1/gitlab/groups?search=platform&state=active&monitoring=all&limit=100";
@@ -159,6 +161,7 @@ function api(user: CurrentUser, routes: Routes = {}): Call[] {
     [VERSION_2]: () => json(policyVersion(2)),
     [SUMMARY]: () => json(evaluationSummary()),
     [BASELINE_SUMMARY]: () => json(evaluationSummary()),
+    [COVERAGE]: () => json(coverageFixture()),
     ...routes,
   });
 }
@@ -328,7 +331,7 @@ describe("governance: the baseline editor", () => {
     expect(
       await screen.findByRole("heading", { name: "Use the recommended baseline" }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "Private" })).toBeChecked();
+    expect(await screen.findByRole("checkbox", { name: "Private" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "Internal" })).toBeChecked();
     expect(screen.getByRole("checkbox", { name: "Public" })).not.toBeChecked();
     expect(screen.getByRole("radio", { name: "Whole instance" })).toBeChecked();
@@ -430,11 +433,9 @@ describe("governance: the baseline editor", () => {
   it("adds the GitLab security policy rules only when asked", async () => {
     const calls = api(analyst, { [SAVE]: () => json(policyVersion(3), 201) });
     const user = userEvent.setup();
-    renderAt("/governance/baselines/new?start=recommended");
+    renderAt("/governance/baselines/new");
 
-    await screen.findByRole("heading", {
-      name: "Use the recommended baseline",
-    });
+    await user.type(await screen.findByRole("textbox", { name: "Name" }), "acme-baseline");
     expect(screen.queryByRole("region", { name: "Required scans rule" })).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Add rule: required scans" }));
     await user.click(screen.getByRole("button", { name: "Add rule: required approvals" }));
@@ -480,11 +481,9 @@ describe("governance: the baseline editor", () => {
   it("adds the access-control and project approval rules only when asked", async () => {
     const calls = api(analyst, { [SAVE]: () => json(policyVersion(3), 201) });
     const user = userEvent.setup();
-    renderAt("/governance/baselines/new?start=recommended");
+    renderAt("/governance/baselines/new");
 
-    await screen.findByRole("heading", {
-      name: "Use the recommended baseline",
-    });
+    await user.type(await screen.findByRole("textbox", { name: "Name" }), "acme-baseline");
     expect(
       screen.queryByRole("region", { name: "Privileged members rule" }),
     ).not.toBeInTheDocument();

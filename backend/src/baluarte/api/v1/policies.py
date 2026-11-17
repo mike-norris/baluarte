@@ -7,7 +7,7 @@ proposes the version instead, and it becomes a version once someone else approve
 """
 
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from fastapi.responses import JSONResponse
@@ -19,10 +19,13 @@ from baluarte import audit
 from baluarte.api.v1.policy_changes import PolicyChangeDetail, Review, change_detail, reviews
 from baluarte.auth.dependencies import Principal, database, require
 from baluarte.auth.roles import Permission
-from baluarte.db.models import Policy
+from baluarte.db.models import GitLabInstance, Policy
+from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_settings
+from baluarte.policy import coverage as rule_coverage
 from baluarte.policy.changes import Actor, ChangeConflict, propose_version
 from baluarte.policy.loader import MAX_SOURCE_BYTES, PolicyInvalid, parse_policy
 from baluarte.policy.schema import NAME_PATTERN
+from baluarte.settings import ConfigurationError
 
 router = APIRouter(prefix="/policies", tags=["policies"])
 
@@ -74,6 +77,45 @@ class PolicySummary(BaseModel):
     latest_version: int
     versions: int
     latest_effective_at: datetime
+
+
+class BaselineRef(BaseModel):
+    name: str
+    version: int
+
+
+class RuleTypeCoverage(BaseModel):
+    rule_type: str
+    # An applied baseline version has a rule of this type.
+    in_force: bool
+    baselines: list[BaselineRef]
+    # From detected capabilities: null when not known (never detected, or not provable).
+    supported: bool | None
+    capability: str | None
+
+
+class UncoveredControl(BaseModel):
+    framework: str
+    control_id: str
+    title: str
+    area: str
+    rule_types: list[str]
+    status_change: Literal["not_applicable", "manual"] | None
+
+
+class BaselineRules(BaseModel):
+    name: str
+    latest_version: int
+    applied: bool
+    rule_types: list[str]
+
+
+class CoverageOut(BaseModel):
+    rule_types: list[RuleTypeCoverage]
+    controls: list[UncoveredControl]
+    baselines: list[BaselineRules]
+    label_taxonomy_version: int | None
+    capabilities_checked_at: datetime | None
 
 
 def _errors(invalid: PolicyInvalid) -> list[ErrorOut]:
@@ -197,6 +239,37 @@ def list_policies(
         PolicySummary(name=name, latest_version=latest, versions=count, latest_effective_at=at)
         for name, latest, count, at in rows
     ]
+
+
+def _instance(db: Session) -> GitLabInstance | None:
+    settings: GitLabSettings | None
+    try:
+        settings = load_gitlab_settings()
+    except ConfigurationError:
+        return None
+    if settings is None:
+        return None
+    return db.scalars(select(GitLabInstance).where(GitLabInstance.base_url == settings.url)).first()
+
+
+@router.get(
+    "/coverage",
+    response_model=CoverageOut,
+    summary="Rule types in force, and the controls left without automated evidence",
+    description="In force means used by a baseline version applied anywhere (proposed versions "
+    "and assignments, and baselines not applied, do not count). `rule_types` lists every rule "
+    "type with the applied baselines that use it and whether the instance supports it "
+    "(`supported` is null when capabilities cannot tell). `controls` lists every control the "
+    "mapping in force maps rule types to, none of which is in force: Baluarte collects no "
+    "automated evidence for it. `baselines` gives each baseline's latest version and its rule "
+    "types.",
+)
+def read_coverage(
+    _: Annotated[Principal, Depends(require(Permission.FINDINGS_READ))],
+    db: Annotated[Session, Depends(database)],
+) -> CoverageOut:
+    found = rule_coverage.coverage(db, _instance(db))
+    return CoverageOut.model_validate(found, from_attributes=True)
 
 
 @router.get(
