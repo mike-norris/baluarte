@@ -3,6 +3,7 @@ that produce a message once each, and delivery with retries. Every server is loc
 
 import email
 import json
+import socket
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from email.message import Message as EmailMessage
@@ -258,12 +259,13 @@ def test_refused_recipients_are_a_rejection(pki: dict[str, Any]) -> None:
 
 
 def test_an_unreachable_server_is_a_connect_failure(pki: dict[str, Any]) -> None:
-    server = SmtpServer(pki)
-    port = server.port
-    server.close()
-
-    with pytest.raises(SendFailure) as failure:
-        EmailSender(target(port, pki["ca_pem"]), None, timeout=2).send(MESSAGE)
+    # A bound socket that never listens refuses connections, and holding it keeps the port from
+    # being handed to anything else while the test runs.
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as unused:
+        unused.bind(("127.0.0.1", 0))
+        port = unused.getsockname()[1]
+        with pytest.raises(SendFailure) as failure:
+            EmailSender(target(port, pki["ca_pem"]), None, timeout=2).send(MESSAGE)
 
     assert failure.value.stage == "connect"
 
