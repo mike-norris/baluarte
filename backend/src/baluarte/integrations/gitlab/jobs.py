@@ -28,6 +28,7 @@ from baluarte.integrations.gitlab.runs import RunKind, RunOutcome, finish_run, s
 from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_settings
 from baluarte.jobs import queue
 from baluarte.jobs.queue import ClaimedJob, JobError, PermanentJobError
+from baluarte.notifications.events import notify_collection_health
 from baluarte.policy.evaluation.runner import queue_after_collection
 from baluarte.settings import ConfigurationError
 from baluarte.timetracking import settings as time_settings
@@ -607,6 +608,9 @@ class CollectionHealth:
         with Session(self.engine) as db:
             instance_id = instance_id_for(db, settings.url) if settings is not None else None
             alert = freshness_report(db, instance_id, settings).alert
+        if settings is not None:
+            # Disconnecting GitLab is not a recovery.
+            self._notify(alert)
         if alert is not None and not self.unhealthy:
             self.unhealthy = True
             logger.warning(
@@ -625,6 +629,21 @@ class CollectionHealth:
         elif alert is None and self.unhealthy:
             self.unhealthy = False
             logger.warning("gitlab: collection recovered", extra={"event": self.RECOVERED})
+
+    def _notify(self, alert: Any) -> None:
+        """Record a notification for a transition (FR-024); never stops the worker loop.
+
+        The state is read from the notifications already recorded, not from this process, so
+        every worker agrees and each transition is notified once.
+        """
+        try:
+            with Session(self.engine) as db:
+                notify_collection_health(db, alert)
+                db.commit()
+        except Exception as exc:
+            logger.warning(
+                "gitlab: collection health notification not recorded (%s)", type(exc).__name__
+            )
 
 
 def ticks(*callables: Callable[[], None]) -> Callable[[], None]:

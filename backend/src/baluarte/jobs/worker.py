@@ -30,6 +30,7 @@ from baluarte.db.migrate import head_revisions, wait_for_database
 from baluarte.integrations.gitlab.jobs import CollectionHealth, ConfiguredSchedule, ticks
 from baluarte.jobs import queue
 from baluarte.jobs.handlers import HANDLERS, Handler
+from baluarte.notifications.delivery import NotificationSchedule
 from baluarte.settings import configure_logging_from_env
 
 logger = logging.getLogger(__name__)
@@ -220,6 +221,7 @@ def main(argv: list[str] | None = None) -> int:
             CollectionHealth(engine),
             RetentionSchedule(engine),
             ShippingSchedule(engine),
+            NotificationSchedule(engine),
         ),
     )
     # Healthy while waiting for the database and migrations; the --timeout bounds that wait.

@@ -16,7 +16,8 @@ The ``retention.expire`` job runs once a day (``RetentionSchedule``) and, in one
   which the application's database role may run although it cannot delete audit events itself;
   while audit shipping is on, never one the destination has not received
   (``baluarte.compliance.shipping``);
-* backup runs older than the evidence period, except the latest successful one.
+* backup runs older than the evidence period, except the latest successful one;
+* notifications and their deliveries older than the audit period, unless still being sent.
 
 Legal hold deletes nothing. Every run is audited as ``retention.expired`` with the cutoffs, the
 counts and, for audit events, the first and last IDs and a SHA-256 over their digests.
@@ -150,6 +151,19 @@ _DELETE: list[tuple[str, str, str]] = [
                SELECT l.id FROM backup_run l
                 WHERE l.status = 'succeeded' AND l.encrypted
                 ORDER BY l.finished_at DESC, l.id DESC LIMIT 1)
+        """,
+    ),
+    # Notifications and their deliveries (cascade) follow the audit period (FR-024); a delivery
+    # still pending is kept.
+    (
+        "notification",
+        "audit",
+        """
+        DELETE FROM notification n
+         WHERE n.created_at < :cutoff
+           AND NOT EXISTS (
+               SELECT 1 FROM notification_delivery d
+                WHERE d.notification_id = n.id AND d.status = 'pending')
         """,
     ),
     ("oidc_login", "sessions", "DELETE FROM oidc_login l WHERE l.expires_at < :cutoff"),
