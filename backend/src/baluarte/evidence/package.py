@@ -143,7 +143,7 @@ policies.csv           The exact policy versions referenced, with their YAML and
 exceptions.csv         Policy exceptions in force or pending at some point in the period.
 collection_errors.csv  Projects and groups in scope that are missing, inaccessible or failed.
 collection_runs.csv    Collection and evaluation runs started in the period.
-manifest.json          Every file with its SHA-256 and row count, and evidence_package: the
+{report}manifest.json          Every file with its SHA-256 and row count, and evidence_package: the
                        period, evaluation run, seed, sampling algorithm and sampled IDs.
 SHA256SUMS             SHA-256 of every file, including manifest.json.
 
@@ -171,6 +171,13 @@ Limitations
 """
 
 
+REPORT_LINE = (
+    "report.pdf             The auditor report: each control's status for the framework, as\n"
+    "                       of the period's end, with what supports it. A readable summary of\n"
+    "                       this package, not a replacement for it.\n"
+)
+
+
 class SampleRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -181,6 +188,17 @@ class SampleRequest(BaseModel):
         le=sampling.MAX_SEED,
         description="Draw with this seed to repeat an earlier sample; one is chosen when absent.",
     )
+
+
+def check_period(period_from: datetime, period_to: datetime, groups: list[str]) -> None:
+    """The period and group scope rules shared by packages and auditor reports."""
+    if period_from >= period_to:
+        raise ValueError("from must be before to")
+    for group in groups:
+        if not group or group.strip("/") != group or len(group) > 255:
+            raise ValueError("groups are full paths without leading or trailing slashes")
+    if len({group.lower() for group in groups}) != len(groups):
+        raise ValueError("groups must be distinct")
 
 
 class PackageRequest(BaseModel):
@@ -200,18 +218,17 @@ class PackageRequest(BaseModel):
         description="Group full paths: projects in these groups and their subgroups.",
     )
     sample: SampleRequest
+    report: FrameworkId | None = Field(
+        None,
+        description="Add report.pdf, the auditor report for this framework over the same period "
+        "and groups (docs/AUDIT_EVIDENCE.md#auditor-report).",
+    )
 
     @model_validator(mode="after")
     def _valid(self) -> "PackageRequest":
-        if self.period_from >= self.period_to:
-            raise ValueError("from must be before to")
+        check_period(self.period_from, self.period_to, self.groups)
         if (self.framework is None) != (self.control_id is None):
             raise ValueError("framework and control_id go together")
-        for group in self.groups:
-            if not group or group.strip("/") != group or len(group) > 255:
-                raise ValueError("groups are full paths without leading or trailing slashes")
-        if len({group.lower() for group in self.groups}) != len(self.groups):
-            raise ValueError("groups must be distinct")
         return self
 
     def described(self) -> dict[str, Any]:
@@ -326,6 +343,12 @@ class EvidencePackage(EvidenceExport):
             missing = [group for group in self.request.groups if group.lower() not in known]
             if missing:
                 raise ScopeError(f"Groups not in the inventory: {', '.join(missing[:10])}")
+
+    def check(self) -> None:
+        """The package's checks without counting rows (groups in the inventory, the period
+        over, an evaluation run by its end); raises :class:`PackageConflict` or
+        :class:`ScopeError`. The auditor report uses it to read the same snapshot."""
+        self._check_targets()
 
     def _evaluation_conditions(self) -> list[ColumnElement[bool]]:
         conditions = self._monitored_scope()
@@ -561,23 +584,43 @@ class EvidencePackage(EvidenceExport):
             population=len(self.population),
             seed=self.seed,
             population_statement=textwrap.fill(manifest.population(meta)["statement"], width=92),
+            report=REPORT_LINE if self.request.report is not None else "",
         )
+
+    def attachments(self) -> list[tuple[str, Callable[[], bytes]]]:
+        """``report.pdf`` when the request asks for the auditor report."""
+        framework = self.request.report
+        if framework is None:
+            return []
+        # Imported here: the report module builds on this one.
+        from baluarte.evidence.report import ReportBuilder
+
+        def build() -> bytes:
+            return ReportBuilder(self, framework, self.export_id).pdf()
+
+        return [("report.pdf", build)]
 
     def _control_mapping(self) -> dict[str, Any]:
         return mapping_summary(self.db, self.to)
 
+    def exclusions_at_end(self) -> list[ScopeExclusion]:
+        """The exclusions from monitoring in force at the period's end, oldest first."""
+        return list(
+            self.db.scalars(
+                select(ScopeExclusion)
+                .where(
+                    ScopeExclusion.instance_id == (self.instance_id or 0),
+                    ScopeExclusion.state.in_(("active", "ended")),
+                    ScopeExclusion.decided_at <= self.to,
+                    or_(ScopeExclusion.ended_at.is_(None), ScopeExclusion.ended_at > self.to),
+                )
+                .order_by(ScopeExclusion.id)
+            )
+        )
+
     def _monitoring_scope(self) -> dict[str, Any]:
         """The exclusions in force at the period's end."""
-        rows = self.db.scalars(
-            select(ScopeExclusion)
-            .where(
-                ScopeExclusion.instance_id == (self.instance_id or 0),
-                ScopeExclusion.state.in_(("active", "ended")),
-                ScopeExclusion.decided_at <= self.to,
-                or_(ScopeExclusion.ended_at.is_(None), ScopeExclusion.ended_at > self.to),
-            )
-            .order_by(ScopeExclusion.id)
-        ).all()
+        rows = self.exclusions_at_end()
         excluded = self._count(
             GitLabProject, [*self._project_scope(), self.coverage.project_excluded()]
         )

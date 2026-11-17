@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -188,10 +188,11 @@ describe("evidence export page", () => {
     const calls = api({ [EXPORT]: () => exported() });
     renderAt("/evidence?framework=nist_800_53_moderate&control=AC-6(5)");
 
-    expect(await screen.findByRole("combobox", { name: "Framework" })).toHaveValue(
+    const form = await screen.findByRole("form", { name: "Export evidence" });
+    expect(within(form).getByRole("combobox", { name: "Framework" })).toHaveValue(
       "nist_800_53_moderate",
     );
-    expect(screen.getByRole("textbox", { name: "Control ID" })).toHaveValue("AC-6(5)");
+    expect(within(form).getByRole("textbox", { name: "Control ID" })).toHaveValue("AC-6(5)");
     await user.click(screen.getByRole("button", { name: "Export" }));
 
     expect(await screen.findByText(/^Downloaded /)).toBeInTheDocument();

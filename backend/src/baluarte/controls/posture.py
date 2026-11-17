@@ -21,7 +21,7 @@ evidence, not a certification.
 
 import hashlib
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any, Literal
@@ -210,9 +210,13 @@ def latest_run(
 
 
 def _rule_counts(
-    db: Session, run: EvaluationRun | None, as_of: datetime | None = None
+    db: Session,
+    run: EvaluationRun | None,
+    as_of: datetime | None = None,
+    where: Sequence[ColumnElement[bool]] = (),
 ) -> dict[str, list[RuleCounts]]:
-    """Results of the run per rule type, then per (baseline, rule)."""
+    """Results of the run per rule type, then per (baseline, rule); ``where`` narrows the
+    projects (conditions on ``GitLabProject``)."""
     if run is None:
         return {}
     found: dict[tuple[str, str, int, str], Counts] = defaultdict(Counts)
@@ -231,6 +235,7 @@ def _rule_counts(
             Evaluation.evaluation_run_id == run.id,
             # Projects out of monitoring scope are not counted, even if the run judged them.
             coverage(db, run.instance_id, as_of).project_included(),
+            *where,
         )
     )
     for policy, version, rule_id, rule_type, outcome, project_id in rows:
@@ -267,11 +272,17 @@ def posture(
     framework: str | None = None,
     controls: Iterable[Control] | None = None,
     as_of: datetime | None = None,
+    run: EvaluationRun | None = None,
+    where: Sequence[ColumnElement[bool]] = (),
 ) -> Posture:
     """Each control's status now, or as it stood at ``as_of``: from the latest run that finished
-    by then, with the mapping and monitoring scope in force then."""
-    run = latest_run(db, instance_id, as_of)
-    by_type = _rule_counts(db, run, as_of)
+    by then, with the mapping and monitoring scope in force then.
+
+    ``run`` reads that evaluation run instead of looking one up (an evidence package's run), and
+    ``where`` counts only the projects it selects (conditions on ``GitLabProject``)."""
+    if run is None:
+        run = latest_run(db, instance_id, as_of)
+    by_type = _rule_counts(db, run, as_of, where)
     mapping = effective(db, as_of)
     today: date = (
         as_of.date() if as_of is not None else db.execute(select(func.current_date())).scalar_one()

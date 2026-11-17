@@ -44,6 +44,7 @@ function formValues(form: FormData): PackageForm {
     groups: text(form, "groups"),
     size: text(form, "size"),
     seed: text(form, "seed"),
+    report: frameworkIds.find((id) => id === text(form, "report")) ?? "",
   };
 }
 
@@ -173,7 +174,14 @@ function Outcome({ run, cancel }: { run: Run; cancel: () => void }) {
 }
 
 /** The auditor's package: a period, a scope, and a reproducible sample of the changes in it. */
-export function PackageForm({ csrfToken }: { csrfToken: string }) {
+export function PackageForm({
+  csrfToken,
+  canReport = false,
+}: {
+  csrfToken: string;
+  /** Whether the auditor report may be included (it needs evidence:export). */
+  canReport?: boolean;
+}) {
   const { refresh } = useAuth();
   const [errors, setErrors] = useState<string[]>([]);
   const [run, setRun] = useState<Run>({ status: "idle" });
@@ -315,6 +323,30 @@ export function PackageForm({ csrfToken }: { csrfToken: string }) {
             </p>
           </div>
         </fieldset>
+        {canReport && (
+          <div>
+            <label className="fw-medium">
+              Include the auditor report
+              <select
+                name="report"
+                defaultValue=""
+                aria-describedby="package-report-help"
+                className="form-select mt-1 mw-measure"
+              >
+                <option value="">Not included</option>
+                {frameworkIds.map((framework) => (
+                  <option key={framework} value={framework}>
+                    {`Yes, for ${frameworkLabels[framework]}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p id="package-report-help" className="mt-1 small text-secondary">
+              Adds report.pdf for the same period and groups, listed in the manifest and SHA256SUMS
+              like every other file.
+            </p>
+          </div>
+        )}
         <button type="submit" disabled={run.status === "running"} className="btn btn-primary">
           Create package
         </button>

@@ -12,12 +12,27 @@ export interface PackageForm {
   groups: string;
   size: string;
   seed: string;
+  /** The framework of the auditor report to include as report.pdf, or "" for none. */
+  report: FrameworkId | "";
 }
 
 export const DEFAULT_SAMPLE = 25;
 const MAX_GROUPS = 100;
 const MAX_CONTROL = 20;
 const MAX_GROUP = 255;
+
+/** Group paths separated by commas or spaces; problems are added to ``errors``. */
+export function readGroups(text: string, errors: string[]): string[] {
+  const groups = text
+    .split(/[\s,]+/)
+    .map((group) => group.trim())
+    .filter(Boolean);
+  if (groups.length > MAX_GROUPS) errors.push("Name at most 100 groups.");
+  if (groups.some((group) => group.length > MAX_GROUP)) {
+    errors.push("A group path is at most 255 characters.");
+  }
+  return groups;
+}
 
 /** The request the form describes, or the reasons it can't be sent. */
 export function validatePackage(
@@ -35,14 +50,8 @@ export function validatePackage(
   const framework = frameworkIds.find((id) => id === form.framework);
   if (control && !framework) errors.push("Choose the framework the control belongs to.");
   if (control.length > MAX_CONTROL) errors.push("A control ID is at most 20 characters.");
-  const groups = form.groups
-    .split(/[\s,]+/)
-    .map((group) => group.trim())
-    .filter(Boolean);
-  if (groups.length > MAX_GROUPS) errors.push("Name at most 100 groups.");
-  if (groups.some((group) => group.length > MAX_GROUP)) {
-    errors.push("A group path is at most 255 characters.");
-  }
+  const groups = readGroups(form.groups, errors);
+  const report = frameworkIds.find((id) => id === form.report);
   const size = Number(form.size.trim() || String(DEFAULT_SAMPLE));
   if (!Number.isInteger(size) || size < 1 || size > MAX_SAMPLE) {
     errors.push(`The sample size must be a whole number from 1 to ${String(MAX_SAMPLE)}.`);
@@ -61,6 +70,7 @@ export function validatePackage(
       ...(control ? { control_id: control } : {}),
       ...(groups.length > 0 ? { groups } : {}),
       sample: seedText ? { size, seed } : { size },
+      ...(report ? { report } : {}),
     },
   };
 }

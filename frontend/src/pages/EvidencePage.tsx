@@ -18,6 +18,7 @@ import { frameworkLabels } from "../controls/format";
 import { findingStateLabels, outcomeLabels } from "../findings/format";
 import { PACKAGE_PERMISSION } from "../api/packages";
 import { PackageForm } from "../evidence/PackageForm";
+import { ReportForm } from "../evidence/ReportForm";
 import { CollectionNote } from "../freshness/CollectionNote";
 import { PageHeader } from "../ui/PageHeader";
 import { useDeviceClass } from "../ui/device";
@@ -443,7 +444,10 @@ export function EvidencePage() {
           so ask an administrator if you need one.
         </p>
       )}
-      {user && packages && !phone && <PackageForm csrfToken={user.csrf_token} />}
+      {user && allowed && !phone && <ReportForm csrfToken={user.csrf_token} />}
+      {user && packages && !phone && (
+        <PackageForm csrfToken={user.csrf_token} canReport={allowed} />
+      )}
     </section>
   );
 }
