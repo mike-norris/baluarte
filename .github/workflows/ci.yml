@@ -72,7 +72,13 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
-      - run: npm audit --audit-level=high
+      # The web image ships only the built dist/, so only runtime dependencies block a merge.
+      - name: Audit runtime dependencies
+        run: npm audit --omit=dev --audit-level=high
+      # Build and test tools are audited too, but an advisory there (often with no fixed
+      # release yet) is reported as a warning instead of blocking every change.
+      - name: Audit all dependencies (advisory)
+        run: npm audit --audit-level=high || echo "::warning title=npm audit::Development dependencies have high-severity advisories; see this step's log."
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
