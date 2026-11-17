@@ -194,6 +194,10 @@ def test_email_over_starttls_is_verified_and_authenticated(
     assert parts["text/plain"].replace(b"\r\n", b"\n") == b"Plain text body.\n"
     assert b"<p>HTML body.</p>" in parts["text/html"]
     assert smtp.envelopes == [("baluarte@example.test", ["a@example.test", "b@example.test"])]
+    # Recipients are only in the envelope: none sees the others' addresses.
+    assert message["To"] == "undisclosed-recipients:;"
+    assert message["Cc"] is None and message["Bcc"] is None
+    assert b"a@example.test" not in raw and b"b@example.test" not in raw
 
 
 def test_email_over_implicit_tls(pki: dict[str, Any]) -> None:

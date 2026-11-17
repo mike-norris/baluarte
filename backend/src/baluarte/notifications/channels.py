@@ -70,11 +70,18 @@ def _context(ca_pem: str | None) -> ssl.SSLContext:
 
 
 def email_message(target: EmailTarget, message: Message) -> EmailMessage:
-    """Plain text with a simple HTML alternative, marked as automatically generated."""
+    """Plain text with a simple HTML alternative, marked as automatically generated.
+
+    With more than one recipient the To header is the empty group ``undisclosed-recipients:;``;
+    the recipients are named only in the SMTP envelope (``send`` passes them as ``to_addrs``).
+    """
     email = EmailMessage()
     email["Subject"] = message.subject
     email["From"] = target.from_address
-    email["To"] = ", ".join(target.recipients)
+    # Recipients go only in the SMTP envelope, so nobody sees the others' addresses.
+    email["To"] = (
+        target.recipients[0] if len(target.recipients) == 1 else "undisclosed-recipients:;"
+    )
     email["Date"] = formatdate(usegmt=True)
     domain = target.from_address.rpartition("@")[2] or "baluarte.invalid"
     email["Message-ID"] = make_msgid(domain=domain)
