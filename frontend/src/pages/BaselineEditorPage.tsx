@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
 
 import { ApiError } from "../api/client";
@@ -27,14 +27,23 @@ import {
   proposedMessage,
   utf8Bytes,
 } from "../policies/format";
+import {
+  getCoverage,
+  ruleTypeName,
+  securityPoliciesReadable,
+  SECURITY_POLICIES_OFF,
+} from "../policies/coverage";
 import { RuleForm } from "../policies/RuleForm";
 import {
   emptyBaseline,
   formProblems,
   fromDocument,
   recommendedBaseline,
+  ruleKeyTypes,
   toYaml,
+  withRecommendedRules,
   type BaselineForm,
+  type RuleKey,
 } from "../policies/yaml";
 import { PageHeader } from "../ui/PageHeader";
 import { useDeviceClass } from "../ui/device";
@@ -168,11 +177,17 @@ function Editor({
   initialForm,
   initialYaml,
   existing,
+  added = [],
+  notice,
 }: {
   initialForm: BaselineForm | null;
   initialYaml: string;
   /** The baseline a new version is being made of; its name is fixed. */
   existing: { name: string; version: number } | null;
+  /** Rules switched on by "Add recommended rules", marked in the form. */
+  added?: readonly RuleKey[];
+  /** Shown above the form: what was prefilled, and why. */
+  notice?: ReactNode;
 }) {
   const { session, refresh } = useAuth();
   const navigate = useNavigate();
@@ -278,6 +293,7 @@ function Editor({
 
   return (
     <div className="stack-6">
+      {notice}
       <div className="d-flex flex-wrap gap-2" role="group" aria-label="Editing mode">
         <button
           type="button"
@@ -314,7 +330,7 @@ function Editor({
       )}
 
       {yaml === null ? (
-        <RuleForm form={form} onChange={setForm} nameLocked={existing !== null} />
+        <RuleForm form={form} onChange={setForm} nameLocked={existing !== null} added={added} />
       ) : (
         <div className="stack-2">
           <label className="d-block fw-medium" htmlFor={`${id}-source`}>
@@ -395,24 +411,138 @@ function Editor({
   );
 }
 
-function FromVersion({ name, version }: { name: string; version: number }) {
+/**
+ * Whether the instance reports security policies, for the recommended rules. Undefined while
+ * loading; false when coverage can't be read, so the security policy rules stay off.
+ */
+function useSecurityPolicies(wanted: boolean): boolean | undefined {
+  const coverage = useLoad(wanted ? "policy-coverage" : "policy-coverage:unused", (signal) =>
+    wanted ? getCoverage(signal) : Promise.resolve(undefined),
+  );
+  if (!wanted) return false;
+  if (coverage.error) return false;
+  if (!coverage.data) return undefined;
+  return securityPoliciesReadable(coverage.data);
+}
+
+const noticeClass = "alert alert-info text-body";
+
+function SecurityPoliciesOff() {
+  return <p className="text-secondary">{SECURITY_POLICIES_OFF}</p>;
+}
+
+function AddedNotice({
+  added,
+  version,
+  securityPolicies,
+}: {
+  added: RuleKey[];
+  version: number;
+  securityPolicies: boolean;
+}) {
+  return (
+    <div className={`${noticeClass} stack-2`}>
+      {added.length === 0 ? (
+        <p>{`Version ${String(version)} already has every recommended rule.`}</p>
+      ) : (
+        <>
+          <p className="fw-medium">
+            {`Recommended rules added, marked Added: ${added
+              .map((key) => ruleTypeName(ruleKeyTypes[key]))
+              .join(", ")}.`}
+          </p>
+          <p>
+            {`The rules already in version ${String(version)} keep their settings. Saving proposes a new version, reviewed like any other edit.`}
+          </p>
+        </>
+      )}
+      {!securityPolicies && <SecurityPoliciesOff />}
+    </div>
+  );
+}
+
+function FromVersion({
+  name,
+  version,
+  addRecommended,
+}: {
+  name: string;
+  version: number;
+  addRecommended: boolean;
+}) {
   const loaded = useLoad(`policy:${name}@${String(version)}`, (signal) =>
     getVersion(name, version, signal),
   );
+  const securityPolicies = useSecurityPolicies(addRecommended);
   if (loaded.error) return <ErrorMessage error={loaded.error} retry={loaded.retry} />;
-  if (!loaded.data) {
+  if (!loaded.data || securityPolicies === undefined) {
     return (
       <p role="status" className="text-secondary">
         Loading version…
       </p>
     );
   }
+  const current = fromDocument(loaded.data.document);
+  if (!addRecommended) {
+    return (
+      <Editor
+        key={`${name}@${String(version)}`}
+        initialForm={current}
+        initialYaml={loaded.data.source_yaml}
+        existing={{ name, version }}
+      />
+    );
+  }
+  if (current === null) {
+    return (
+      <Editor
+        key={`${name}@${String(version)}+recommended`}
+        initialForm={null}
+        initialYaml={loaded.data.source_yaml}
+        existing={{ name, version }}
+        notice={
+          <p className={noticeClass}>
+            This version uses settings the form can&apos;t show, so recommended rules can&apos;t be
+            added for you. Add them in the YAML.
+          </p>
+        }
+      />
+    );
+  }
+  const { form, added } = withRecommendedRules(current, { securityPolicies });
   return (
     <Editor
-      key={`${name}@${String(version)}`}
-      initialForm={fromDocument(loaded.data.document)}
+      key={`${name}@${String(version)}+recommended`}
+      initialForm={form}
       initialYaml={loaded.data.source_yaml}
       existing={{ name, version }}
+      added={added}
+      notice={<AddedNotice added={added} version={version} securityPolicies={securityPolicies} />}
+    />
+  );
+}
+
+function FromRecommended() {
+  const securityPolicies = useSecurityPolicies(true);
+  if (securityPolicies === undefined) {
+    return (
+      <p role="status" className="text-secondary">
+        Loading the recommended baseline…
+      </p>
+    );
+  }
+  return (
+    <Editor
+      initialForm={recommendedBaseline({ securityPolicies })}
+      initialYaml=""
+      existing={null}
+      notice={
+        securityPolicies ? undefined : (
+          <div className={noticeClass}>
+            <SecurityPoliciesOff />
+          </div>
+        )
+      }
     />
   );
 }
@@ -427,9 +557,12 @@ export function BaselineEditorPage() {
   const editing = from !== null && Number.isInteger(version) && version > 0;
   const recommended = params.get("start") === "recommended";
   const yamlFirst = params.get("mode") === "yaml";
+  const addRecommended = editing && params.get("add") === "recommended";
 
   const title = editing
-    ? `Edit ${from}`
+    ? addRecommended
+      ? `Add recommended rules to ${from}`
+      : `Edit ${from}`
     : recommended
       ? "Use the recommended baseline"
       : yamlFirst
@@ -449,17 +582,13 @@ export function BaselineEditorPage() {
       </p>
     );
   } else if (editing) {
-    body = <FromVersion name={from} version={version} />;
+    body = <FromVersion name={from} version={version} addRecommended={addRecommended} />;
   } else if (yamlFirst) {
     body = <Editor initialForm={null} initialYaml="" existing={null} />;
+  } else if (recommended) {
+    body = <FromRecommended />;
   } else {
-    body = (
-      <Editor
-        initialForm={recommended ? recommendedBaseline() : emptyBaseline()}
-        initialYaml=""
-        existing={null}
-      />
-    );
+    body = <Editor initialForm={emptyBaseline()} initialYaml="" existing={null} />;
   }
 
   return (

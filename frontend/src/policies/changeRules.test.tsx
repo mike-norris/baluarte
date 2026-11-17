@@ -14,9 +14,10 @@ import {
   toYaml,
   type BaselineForm,
 } from "./yaml";
+import { basicBaseline } from "./testForms";
 
 function withChangeRules(): BaselineForm {
-  const form = recommendedBaseline();
+  const form = basicBaseline();
   form.reviewed = { ...form.reviewed, enabled: true, minApprovals: 2 };
   form.pipeline = { ...form.pipeline, enabled: true, windowDays: 30, requireTests: true };
   form.deployed = { ...form.deployed, enabled: true };
@@ -24,9 +25,15 @@ function withChangeRules(): BaselineForm {
 }
 
 describe("change rules in the baseline form", () => {
-  it("leaves them out of the recommended and blank baselines", () => {
-    expect(toYaml(recommendedBaseline())).not.toContain("gitlab.change");
+  it("switches them on in the recommended baseline and leaves them out of a blank one", () => {
+    const recommended = recommendedBaseline();
+    expect([recommended.reviewed, recommended.pipeline, recommended.deployed]).toEqual([
+      expect.objectContaining({ enabled: true, windowDays: 90, minApprovals: 1 }),
+      expect.objectContaining({ enabled: true, windowDays: 90, requireTests: false }),
+      expect.objectContaining({ enabled: true, windowDays: 90 }),
+    ]);
     expect(emptyBaseline().reviewed.enabled).toBe(false);
+    expect(toYaml(basicBaseline())).not.toContain("gitlab.change");
   });
 
   it("writes them in the contract's shape", () => {
@@ -60,7 +67,7 @@ describe("change rules in the baseline form", () => {
   });
 
   it("applies the contract's defaults when optional fields are left out", () => {
-    const document = toDocument(recommendedBaseline());
+    const document = toDocument(basicBaseline());
     (document.spec as { rules: unknown[] }).rules.push(
       { id: "reviewed", type: "gitlab.change.reviewed" },
       { id: "pipelines", type: "gitlab.change.pipeline_passed" },
@@ -85,7 +92,7 @@ describe("change rules in the baseline form", () => {
       type: "gitlab.change.reviewed",
     });
     expect(fromDocument(document)).toBeNull();
-    const odd = toDocument(recommendedBaseline());
+    const odd = toDocument(basicBaseline());
     (odd.spec as { rules: unknown[] }).rules.push({
       id: "odd",
       type: "gitlab.change.pipeline_passed",

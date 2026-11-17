@@ -1,15 +1,17 @@
 /**
  * The baseline form and its YAML.
  *
- * The form covers the rule types the API knows, one rule of each. Visibility and default-branch
- * protection are switches; the others are off unless added: the two GitLab security policy rules
- * (they need GitLab Ultimate), and the access-control and merge request approval rules (project
- * approval settings need GitLab Premium, access tokens a Maintainer token, and two-factor
- * enforcement may need an administrator token), and the change rules, which judge the changes
- * merged or pushed to each default branch over a window of days. A saved version with anything else (two rules of
- * one type, or a type this UI predates) opens as YAML instead, so the form never drops part of a
- * baseline. The API validates every save; these checks only catch mistakes before the round
- * trip.
+ * The form covers the rule types the API knows, one rule of each; label consistency, which follows
+ * the label taxonomy, is edited as YAML. Visibility and default-branch protection are switches.
+ * The others are cards, off in a blank baseline until added: the two GitLab security policy rules
+ * (they need GitLab Ultimate), the access-control and merge request approval rules (requiring
+ * approvals needs GitLab Premium, access tokens a Maintainer token, and two-factor enforcement
+ * may need an administrator token), and the change rules, which judge the changes merged or
+ * pushed to each default branch over a window of days. The recommended baseline switches on all
+ * but the security policy rules, and those too where the instance reports security policies.
+ * A saved version with anything else (two rules of one type, or a type this UI predates) opens
+ * as YAML instead, so the form never drops part of a baseline. The API validates every save;
+ * these checks only catch mistakes before the round trip.
  */
 
 import { NAME_PATTERN } from "../api/policies";
@@ -329,11 +331,59 @@ export function offDeployedRule(): DeployedRule {
   };
 }
 
-/** The recommended baseline: no public projects, and every default branch protected. */
-export function recommendedBaseline(): BaselineForm {
+/** The rule switches of the form, one per rule type the form can show. */
+export const ruleKeys = [
+  "visibility",
+  "branch",
+  "scan",
+  "approval",
+  "projectApprovals",
+  "members",
+  "twoFactor",
+  "tokens",
+  "reviewed",
+  "pipeline",
+  "deployed",
+] as const;
+export type RuleKey = (typeof ruleKeys)[number];
+
+export const ruleKeyTypes: Record<RuleKey, string> = {
+  visibility: VISIBILITY_TYPE,
+  branch: BRANCH_TYPE,
+  scan: SCAN_TYPE,
+  approval: APPROVAL_TYPE,
+  projectApprovals: PROJECT_APPROVALS_TYPE,
+  members: MEMBERS_TYPE,
+  twoFactor: TWO_FACTOR_TYPE,
+  tokens: TOKENS_TYPE,
+  reviewed: REVIEWED_TYPE,
+  pipeline: PIPELINE_TYPE,
+  deployed: DEPLOYED_TYPE,
+};
+
+/** Whether the recommended baseline also switches on the two GitLab security policy rules. */
+export interface RecommendedOptions {
+  /** The instance's detected capabilities say security policies can be read. */
+  securityPolicies: boolean;
+}
+
+const RECOMMENDED_DESCRIPTION =
+  "No public projects; default branches protected; merge requests approved; privileged access, two-factor and access tokens limited; changes reviewed, tested and deployed after review.";
+const RECOMMENDED_SECURITY_DESCRIPTION = " GitLab scan execution and approval policies in place.";
+
+/**
+ * The recommended baseline: every rule that works on any GitLab tier, with the values
+ * docs/POLICY_ENGINE.md explains, plus the two GitLab security policy rules when the instance
+ * reports security policies. Label consistency follows the label taxonomy and is not included.
+ */
+export function recommendedBaseline(
+  options: RecommendedOptions = { securityPolicies: false },
+): BaselineForm {
+  const on = <T extends { enabled: boolean }>(rule: T): T => ({ ...rule, enabled: true });
   return {
     name: "recommended-baseline",
-    description: "No public projects; every default branch protected.",
+    description:
+      RECOMMENDED_DESCRIPTION + (options.securityPolicies ? RECOMMENDED_SECURITY_DESCRIPTION : ""),
     scope: "all",
     groups: [],
     visibility: {
@@ -349,6 +399,64 @@ export function recommendedBaseline(): BaselineForm {
       severity: "medium",
       description: "The default branch must be covered by a protected-branch rule.",
     },
+    scan: options.securityPolicies ? on(offScanRule()) : offScanRule(),
+    approval: options.securityPolicies ? on(offApprovalRule()) : offApprovalRule(),
+    projectApprovals: on(offProjectApprovalsRule()),
+    members: on(offMembersRule()),
+    twoFactor: on(offTwoFactorRule()),
+    tokens: on(offTokensRule()),
+    reviewed: on(offReviewedRule()),
+    pipeline: on(offPipelineRule()),
+    deployed: on(offDeployedRule()),
+  };
+}
+
+/**
+ * ``form`` with every recommended rule it lacks switched on, and which those were. Rules already
+ * on keep their settings. A recommended rule whose ID another rule already uses gets a suffix,
+ * so the IDs stay unique.
+ */
+export function withRecommendedRules(
+  form: BaselineForm,
+  options: RecommendedOptions,
+): { form: BaselineForm; added: RuleKey[] } {
+  const recommended = recommendedBaseline(options);
+  const next: BaselineForm = { ...form };
+  const added: RuleKey[] = [];
+  const taken = new Set(ruleKeys.filter((key) => form[key].enabled).map((key) => form[key].id));
+  for (const key of ruleKeys) {
+    if (form[key].enabled || !recommended[key].enabled) continue;
+    const base = recommended[key].id;
+    let id = base;
+    for (let n = 2; taken.has(id); n += 1) id = `${base}-${String(n)}`;
+    taken.add(id);
+    // Every key holds its own rule shape, so copying the recommended one keeps it.
+    Object.assign(next, { [key]: { ...recommended[key], id } });
+    added.push(key);
+  }
+  return { form: next, added };
+}
+
+/** A blank baseline: the project rules offered, none switched on. */
+export function emptyBaseline(): BaselineForm {
+  return {
+    name: "",
+    description: "",
+    scope: "all",
+    groups: [],
+    visibility: {
+      enabled: false,
+      id: "project-visibility",
+      allowed: ["private", "internal"],
+      severity: "high",
+      description: "Projects must not be public.",
+    },
+    branch: {
+      enabled: false,
+      id: "protected-default-branch",
+      severity: "medium",
+      description: "The default branch must be covered by a protected-branch rule.",
+    },
     scan: offScanRule(),
     approval: offApprovalRule(),
     projectApprovals: offProjectApprovalsRule(),
@@ -358,18 +466,6 @@ export function recommendedBaseline(): BaselineForm {
     reviewed: offReviewedRule(),
     pipeline: offPipelineRule(),
     deployed: offDeployedRule(),
-  };
-}
-
-/** A blank baseline: the project rules offered, none switched on. */
-export function emptyBaseline(): BaselineForm {
-  const recommended = recommendedBaseline();
-  return {
-    ...recommended,
-    name: "",
-    description: "",
-    visibility: { ...recommended.visibility, enabled: false },
-    branch: { ...recommended.branch, enabled: false },
   };
 }
 

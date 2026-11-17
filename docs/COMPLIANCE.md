@@ -115,6 +115,12 @@ Reading needs `compliance:read` (admin and auditor); every change needs `setting
 
 The evidence manifest states the profile and posture at export time (`operations`, [AUDIT_EVIDENCE.md](AUDIT_EVIDENCE.md#manifest-and-verification)). Retention is described in [OPERATIONS.md](OPERATIONS.md#retention).
 
+## Rule coverage
+
+The controls above are about Baluarte itself. The SOC 2, ISO 27001 and NIST 800-53 controls that source code governance supports are mapped to baseline rule types ([CONTROL_MAPPING.md](CONTROL_MAPPING.md)), and Baluarte collects evidence for one only through rules of those types in a baseline that is applied. `GET /api/v1/policies/coverage` and the **Rule coverage** card on the Baselines page show which rule types are in force and list the mapped controls whose rule types are all out of force ([POLICY_ENGINE.md](POLICY_ENGINE.md#rule-coverage)).
+
+"No automated evidence" means only that Baluarte produces no results for that control: no applied baseline has a rule of a type mapped to it, so evaluation never checks it and, unless the organization recorded a decision for it, its control page shows `no_results`. It does not mean the control is unmet, and it is never reported as met. The control still needs evidence from somewhere: an attestation, a record kept outside GitLab, or a rule added to an applied baseline. A control recorded as met outside GitLab (`manual`) or scoped out (`not_applicable`) is still listed, marked with that decision, because the decision is not automated evidence either. **Add recommended rules** on a baseline proposes a new version with the missing recommended rules; once approved and applied, those rule types are in force.
+
 ## Audit log shipping
 
 The worker copies every audit event, in ID order, to one destination outside Baluarte:

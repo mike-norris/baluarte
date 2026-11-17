@@ -16,8 +16,10 @@ import {
   severities,
   severityLabels,
   type BaselineForm,
+  type RuleKey,
   type Severity,
 } from "./yaml";
+import { Badge } from "../ui/Badge";
 
 const ruleCard = "border rounded p-3 mb-3";
 
@@ -109,21 +111,36 @@ export function Check({
   );
 }
 
+/** Marks a rule that "Add recommended rules" switched on, so the reviewer sees the difference. */
+export function AddedBadge() {
+  return (
+    <Badge tone="info" title="Added by Add recommended rules; not in the current version">
+      Added
+    </Badge>
+  );
+}
+
 export function Card({
   label,
   title,
+  added = false,
   onRemove,
   children,
 }: {
   label: string;
   title: string;
+  /** Switched on by "Add recommended rules". */
+  added?: boolean;
   onRemove: () => void;
   children: ReactNode;
 }) {
   return (
     <section aria-label={label} className={ruleCard}>
       <div className="d-flex flex-wrap align-items-center justify-content-between gap-2">
-        <p className="fw-medium">{title}</p>
+        <p className="fw-medium d-flex flex-wrap align-items-center gap-2">
+          {title}
+          {added && <AddedBadge />}
+        </p>
         <button type="button" onClick={onRemove} className="btn btn-sm">
           Remove rule
         </button>
@@ -142,9 +159,12 @@ export const help = "form-hint";
 export function AccessRules({
   form,
   onChange,
+  added = [],
 }: {
   form: BaselineForm;
   onChange: (form: BaselineForm) => void;
+  /** Rules switched on by "Add recommended rules". */
+  added?: readonly RuleKey[];
 }) {
   const { projectApprovals, members, twoFactor, tokens } = form;
   const add: { label: string; on: () => void }[] = [];
@@ -186,6 +206,7 @@ export function AccessRules({
       {projectApprovals.enabled && (
         <Card
           label="Project approval settings rule"
+          added={added.includes("projectApprovals")}
           title="Merge requests need approval under the project's approval rules"
           onRemove={() => {
             onChange({ ...form, projectApprovals: offProjectApprovalsRule() });
@@ -267,6 +288,7 @@ export function AccessRules({
       {members.enabled && (
         <Card
           label="Privileged members rule"
+          added={added.includes("members")}
           title="Few members have Maintainer or Owner access"
           onRemove={() => {
             onChange({ ...form, members: offMembersRule() });
@@ -305,6 +327,7 @@ export function AccessRules({
       {twoFactor.enabled && (
         <Card
           label="Two-factor authentication rule"
+          added={added.includes("twoFactor")}
           title="A group above every project requires two-factor authentication"
           onRemove={() => {
             onChange({ ...form, twoFactor: offTwoFactorRule() });
@@ -337,6 +360,7 @@ export function AccessRules({
       {tokens.enabled && (
         <Card
           label="Access token lifetime rule"
+          added={added.includes("tokens")}
           title="Project access tokens expire"
           onRemove={() => {
             onChange({ ...form, tokens: offTokensRule() });
