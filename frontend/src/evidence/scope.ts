@@ -207,8 +207,8 @@ export function validateExport(form: ExportForm): Validated {
  * A safe file name from the server's ``Content-Disposition``: no path, only letters, digits,
  * dots, hyphens and underscores, and the extension of the requested format.
  */
-export function exportFilename(disposition: string | null, format: ExportFormat): string {
-  const extension = format === "json" ? ".json" : ".zip";
+export function exportFilename(disposition: string | null, format: ExportFormat | "pdf"): string {
+  const extension = format === "json" ? ".json" : format === "pdf" ? ".pdf" : ".zip";
   const quoted = /filename="([^"]*)"/i.exec(disposition ?? "");
   const bare = /filename=([^;\s]+)/i.exec(disposition ?? "");
   const raw = quoted?.[1] ?? bare?.[1] ?? "";

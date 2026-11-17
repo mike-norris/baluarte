@@ -115,24 +115,34 @@ class FreshnessReport(BaseModel):
 
 
 def _kind(
-    db: Session, instance_id: int, kind: str, now: datetime, limit: timedelta
+    db: Session,
+    instance_id: int,
+    kind: str,
+    now: datetime,
+    limit: timedelta,
+    as_of: datetime | None = None,
 ) -> KindFreshness:
+    """A kind's freshness now, or with ``as_of`` as it stood then (runs finished by then)."""
     scope = (CollectionRun.instance_id == instance_id) & (CollectionRun.kind == kind)
+    finished = CollectionRun.status != "running"
+    running_then = CollectionRun.status == "running"
+    if as_of is not None:
+        scope &= CollectionRun.started_at <= as_of
+        finished = CollectionRun.finished_at <= as_of
+        running_then = CollectionRun.finished_at.is_(None) | (CollectionRun.finished_at > as_of)
     latest = db.scalars(
         select(CollectionRun)
-        .where(scope, CollectionRun.status != "running")
+        .where(scope, finished)
         .order_by(CollectionRun.finished_at.desc(), CollectionRun.id.desc())
         .limit(1)
     ).first()
     last_success_at = db.execute(
         select(func.max(CollectionRun.finished_at)).where(
-            scope, CollectionRun.status.in_(("succeeded", "partial"))
+            scope, finished, CollectionRun.status.in_(("succeeded", "partial"))
         )
     ).scalar_one()
-    running = db.execute(
-        select(func.count()).where(scope, CollectionRun.status == "running")
-    ).scalar_one()
-    failures = scope & (CollectionRun.status == "failed")
+    running = db.execute(select(func.count()).where(scope, running_then)).scalar_one()
+    failures = scope & finished & (CollectionRun.status == "failed")
     if last_success_at is not None:
         failures &= CollectionRun.finished_at > last_success_at
     consecutive, failing_since = db.execute(
@@ -167,6 +177,21 @@ def kind_freshness(
         return KindFreshness(status="never", running=False, last_run=None, last_success_at=None)
     now: datetime = db.execute(select(func.now())).scalar_one()
     return _kind(db, instance_id, kind, now, stale_after(settings))
+
+
+def kinds_at(
+    db: Session, instance_id: int | None, settings: GitLabSettings, as_of: datetime
+) -> dict[str, KindFreshness]:
+    """The freshness of each inventory kind as it stood at ``as_of``, for a past period."""
+    limit = stale_after(settings)
+    return {
+        kind: (
+            _kind(db, instance_id, kind, as_of, limit, as_of)
+            if instance_id is not None
+            else KindFreshness(status="never", running=False, last_run=None, last_success_at=None)
+        )
+        for kind in INVENTORY_KINDS
+    }
 
 
 def population(snapshot: dict[str, Any] | None) -> Population:

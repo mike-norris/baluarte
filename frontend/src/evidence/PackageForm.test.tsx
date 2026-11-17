@@ -79,6 +79,7 @@ const blank: PackageForm = {
   groups: "",
   size: "",
   seed: "",
+  report: "",
 };
 
 describe("package request", () => {
@@ -110,6 +111,17 @@ describe("package request", () => {
         control_id: "CC8.1",
         groups: ["acme/payments", "acme/platform"],
         sample: { size: 40, seed: 123456 },
+      },
+    });
+  });
+
+  it("asks for the auditor report of a framework", () => {
+    expect(validatePackage({ ...blank, report: "iso27001" })).toEqual({
+      request: {
+        from: "2026-07-01T00:00:00Z",
+        to: "2026-10-01T00:00:00Z",
+        sample: { size: 25 },
+        report: "iso27001",
       },
     });
   });
@@ -195,6 +207,43 @@ describe("audit package form", () => {
     digest = "e".repeat(64);
     await user.click(screen.getByRole("button", { name: "Check again" }));
     expect(await screen.findByText("e".repeat(64))).toBeInTheDocument();
+  });
+
+  it("offers the auditor report only to users who may export", async () => {
+    api({});
+    renderAt();
+
+    const form = await screen.findByRole("form", { name: "Create an audit package" });
+    expect(within(form).queryByLabelText("Include the auditor report")).not.toBeInTheDocument();
+  });
+
+  it("includes the auditor report when asked", async () => {
+    const user = userEvent.setup();
+    const calls = api(
+      {
+        [PACKAGE]: () => zip({ "X-Baluarte-Sample-Seed": "7" }),
+        [RECORD]: () => json({ export_id: "pkg-1", seed: 7, manifest_sha256: null }),
+      },
+      { ...auditor, permissions: [...auditor.permissions, "evidence:export"] },
+    );
+    renderAt();
+
+    const form = await screen.findByRole("form", { name: "Create an audit package" });
+    await user.type(within(form).getByLabelText("From (UTC)"), "2026-07-01T00:00");
+    await user.type(within(form).getByLabelText("Up to (UTC)"), "2026-10-01T00:00");
+    await user.selectOptions(
+      within(form).getByLabelText("Include the auditor report"),
+      "Yes, for SOC 2",
+    );
+    await user.click(within(form).getByRole("button", { name: "Create package" }));
+
+    await screen.findByText(/Downloaded baluarte-package-20261105.zip/);
+    expect(body(calls)).toEqual({
+      from: "2026-07-01T00:00:00Z",
+      to: "2026-10-01T00:00:00Z",
+      sample: { size: 25 },
+      report: "soc2",
+    });
   });
 
   it("does not send a package the form says is invalid", async () => {

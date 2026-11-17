@@ -968,6 +968,10 @@ class EvidenceExport:
     def columns(self, name: str) -> tuple[str, ...]:
         return COLUMNS[name]
 
+    def attachments(self) -> list[tuple[str, Callable[[], bytes]]]:
+        """Files written into a ZIP after the sections, each built from the same snapshot."""
+        return []
+
     def readme(self, meta: dict[str, Any]) -> str:
         return README.format(
             export_id=self.export_id,
@@ -1059,6 +1063,8 @@ class EvidenceExport:
                     archive, sink, filename, _csv(self.columns(name), section)
                 )
                 self.result.rows[name] = self.result.files[filename].rows
+        for name, build in self.attachments():
+            yield from self._zip_file(archive, sink, name, iter([build()]), rows=False)
         contents = [
             {"name": name, "rows": record.rows, "bytes": record.bytes, "sha256": record.sha256}
             for name, record in self.result.files.items()
@@ -1076,7 +1082,7 @@ class EvidenceExport:
         archive: zipfile.ZipFile,
         sink: "_Sink",
         name: str,
-        parts: Iterable[str],
+        parts: Iterable[str | bytes],
         *,
         rows: bool = True,
     ) -> Iterator[bytes]:
@@ -1087,7 +1093,7 @@ class EvidenceExport:
         record = FileDigest()
         with archive.open(info, "w") as handle:
             for index, part in enumerate(parts):
-                data = part.encode()
+                data = part if isinstance(part, bytes) else part.encode()
                 digest.update(data)
                 record.bytes += len(data)
                 if rows and not (name.endswith(".csv") and index == 0):

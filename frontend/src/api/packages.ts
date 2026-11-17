@@ -20,6 +20,8 @@ export interface PackageRequest {
   /** Group full paths; every project in them and their subgroups. */
   groups?: string[];
   sample: { size: number; seed?: number };
+  /** Add report.pdf, the auditor report for this framework. */
+  report?: FrameworkId;
 }
 
 export interface PackageDownload extends ExportDownload {

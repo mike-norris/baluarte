@@ -9,8 +9,13 @@ ties a package back to this deployment. An export that stops part way has no com
 Audit-period packages (``baluarte.evidence.package``) need ``evidence:package`` (admin, analyst
 and auditor) and are audited the same way, as ``evidence.package_created`` (with the seed and
 the sampled change IDs) and ``evidence.package_completed``.
+
+Auditor reports (``baluarte.evidence.report``) are PDFs read from a package's snapshot. They need
+``evidence:export`` and are audited as ``evidence.report_created`` and
+``evidence.report_completed`` (the PDF's size and SHA-256); neither event holds report content.
 """
 
+import hashlib
 import logging
 import uuid
 from collections.abc import Callable
@@ -18,7 +23,7 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
@@ -37,6 +42,7 @@ from baluarte.evidence.export import (
     ScopeError,
 )
 from baluarte.evidence.package import EvidencePackage, PackageConflict, PackageRequest
+from baluarte.evidence.report import ReportBuilder, ReportRequest
 from baluarte.integrations.gitlab.instances import instance_id_for
 from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_settings
 from baluarte.manager.scopes import people_scope
@@ -249,6 +255,8 @@ def _package_conflict(code: str, message: str, reasons: list[str] | None = None)
         "`groups`. The sample is reproducible: send the same `sample.seed` (returned in the "
         "`X-Baluarte-Sample-Seed` header and the manifest) to draw it again. 409 with `code` "
         "`not_configured`, `nothing_collected`, `period_not_over` or `no_evaluation_run`. "
+        "`report` (a framework) adds `report.pdf`, the auditor report for the same period and "
+        "groups, which also needs `evidence:export`. "
         "Requires `evidence:package` and the `X-CSRF-Token` header. Audited."
     ),
     responses={
@@ -262,6 +270,11 @@ def create_package(
     principal: Annotated[Principal, Depends(require(Permission.EVIDENCE_PACKAGE))],
     engine: Annotated[Engine, Depends(database_engine)],
 ) -> StreamingResponse:
+    if request.report is not None and Permission.EVIDENCE_EXPORT not in principal.permissions:
+        # The report holds what only evidence:export may read on its own, such as attestations.
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Including the auditor report needs evidence:export"
+        )
     settings = _settings()
     if settings is None:
         raise _package_conflict("not_configured", "GitLab is not configured")
@@ -383,4 +396,92 @@ def read_package(
             "created_at": created.occurred_at,
             "completed_at": completed.occurred_at if completed else None,
         }
+    )
+
+
+REPORT = "evidence_report"
+
+
+@router.post(
+    "/reports",
+    response_class=Response,
+    summary="The auditor report (PDF) for one framework and audit period",
+    description=(
+        "A PDF for `framework` over the period `from` (inclusive) to `to` (exclusive), as of "
+        "`to` and read exactly as the evidence package reads it: the evaluation run that "
+        "finished last by then, the control mapping and monitoring scope in force then. It "
+        "holds each control's status and results, the failing projects of each not-met control "
+        "(at most 25 per control), exceptions, mapping decisions, attestations, exclusions, the "
+        "baseline versions and how to verify it against the evidence package. Narrow it with "
+        "`groups`. 409 with `code` `not_configured`, `nothing_collected`, `period_not_over` or "
+        "`no_evaluation_run`, as for packages. Requires `evidence:export` and the "
+        "`X-CSRF-Token` header. Audited."
+    ),
+    responses={
+        200: {"content": {"application/pdf": {}}, "description": "The report"},
+        409: {"description": "The report cannot be built for this period"},
+        422: {"description": "Invalid request, or a group not in the inventory"},
+    },
+)
+def create_report(
+    request: ReportRequest,
+    principal: Annotated[Principal, Depends(require(Permission.EVIDENCE_EXPORT))],
+    engine: Annotated[Engine, Depends(database_engine)],
+) -> Response:
+    settings = _settings()
+    if settings is None:
+        raise _package_conflict("not_configured", "GitLab is not configured")
+    report_id = uuid.uuid4().hex
+    snapshot = EvidencePackage(
+        engine, settings, request.package_request(), report_id, 0, requested_by=principal.actor
+    )
+    try:
+        if snapshot.instance_id is None:
+            raise _package_conflict("nothing_collected", "Nothing has been collected yet")
+        try:
+            snapshot.check()
+        except PackageConflict as error:
+            raise _package_conflict(error.code, error.message, error.reasons) from error
+        except ScopeError as error:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
+        described = request.described()
+        with Session(engine) as db:
+            audit.record(
+                db,
+                actor=principal.actor,
+                action="evidence.report_created",
+                resource_type=REPORT,
+                resource_id=report_id,
+                details={
+                    "framework": request.framework,
+                    "from": described["from"],
+                    "to": described["to"],
+                    "scope": {"groups": list(request.groups)},
+                    "evaluation_run_id": snapshot.run.id if snapshot.run else None,
+                    "instance": settings.url,
+                },
+            )
+            db.commit()
+        pdf = ReportBuilder(snapshot, request.framework, report_id).pdf()
+    finally:
+        snapshot.close()
+    with Session(engine) as db:
+        audit.record(
+            db,
+            actor=principal.actor,
+            action="evidence.report_completed",
+            resource_type=REPORT,
+            resource_id=report_id,
+            details={"bytes": len(pdf), "sha256": hashlib.sha256(pdf).hexdigest()},
+        )
+        db.commit()
+    return Response(
+        pdf,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{request.filename()}"',
+            "Cache-Control": "no-store",
+            "X-Content-Type-Options": "nosniff",
+            "X-Baluarte-Report-Id": report_id,
+        },
     )

@@ -115,6 +115,8 @@ Reading needs `compliance:read` (admin and auditor); every change needs `setting
 
 The evidence manifest states the profile and posture at export time (`operations`, [AUDIT_EVIDENCE.md](AUDIT_EVIDENCE.md#manifest-and-verification)). Retention is described in [OPERATIONS.md](OPERATIONS.md#retention).
 
+Auditors: the [auditor report](AUDIT_EVIDENCE.md#auditor-report) is a PDF for one framework and audit period, with each control's status, the failing projects, exceptions (including the operating-profile exceptions on this page), mapping decisions, the attestations current at the period's end, exclusions from monitoring and how to check it against the evidence package. It is supporting evidence, not a certification.
+
 ## Rule coverage
 
 The controls above are about Baluarte itself. The SOC 2, ISO 27001 and NIST 800-53 controls that source code governance supports are mapped to baseline rule types ([CONTROL_MAPPING.md](CONTROL_MAPPING.md)), and Baluarte collects evidence for one only through rules of those types in a baseline that is applied. `GET /api/v1/policies/coverage` and the **Rule coverage** card on the Baselines page show which rule types are in force and list the mapped controls whose rule types are all out of force ([POLICY_ENGINE.md](POLICY_ENGINE.md#rule-coverage)).

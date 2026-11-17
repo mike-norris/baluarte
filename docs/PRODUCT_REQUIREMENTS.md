@@ -46,6 +46,7 @@ Baluarte is self-hosted and works on every GitLab tier. Its distinguishing promi
 | FR-022 | A manager role and space: results by group or team, trends and time | M9 | Authorization tests |
 | FR-023 | Tags kept in Baluarte to group projects across the GitLab hierarchy | M9 | Tag scoping tests |
 | FR-024 | Notifications to email and a chat webhook, off by default, each event sent once with a recorded delivery and no personal data ([NOTIFICATIONS.md](NOTIFICATIONS.md)) | M10 | Dedup, retry, TLS and privacy tests against local SMTP and webhook servers |
+| FR-025 | Auditor report: a PDF of one framework's controls over an audit period, read as the evidence package reads it and verifiable against it ([AUDIT_EVIDENCE.md](AUDIT_EVIDENCE.md#auditor-report)) | M7 | Content, escaping, non-Latin text, caps, determinism and audit tests |
 
 ## Explicit exclusions from v0.1
 
@@ -57,4 +58,4 @@ Secure defaults, non-root containers, no mandatory internet egress, UTC timestam
 
 ## Open decisions
 
-Supported minimum GitLab version and edition; initial OIDC provider and authorization mapping; baseline inheritance precedence; retention period; webhook availability; preferred PDF export timing; expected GitLab instance/project scale.
+Supported minimum GitLab version and edition; initial OIDC provider and authorization mapping; baseline inheritance precedence; retention period; webhook availability; expected GitLab instance/project scale.

@@ -71,7 +71,7 @@ The JSON document also holds the scope, the export ID, `generated_at` (database 
 
 **Audit.** `evidence.exported` is recorded when the export is accepted: actor, format, scope, planned row counts and instance. `evidence.export_completed` is recorded once every byte has been produced: the response's size and SHA-256, `manifest_sha256`, row counts, and each ZIP file's (or JSON section's) rows and SHA-256. Neither holds exported data. An export interrupted part way has no completion event.
 
-Not yet: PDF reports.
+For a readable summary of one framework over a period, see the [auditor report](#auditor-report) (PDF).
 
 ### Manifest and verification
 
@@ -111,6 +111,40 @@ What verification does not show: rows changed in the database before the export 
 ## Evidence package for an audit period
 
 `POST /api/v1/evidence/packages` (`evidence:package`: admin, analyst and auditor) builds one ZIP for a period: results as of its end, every change that landed in it, a reproducible sample of merge requests and direct pushes (drawn with a recorded seed), every version of each sampled change, the control mapping and monitoring scope in force at the end, and a README on verifying it. Its manifest adds `evidence_package`; `baluarte-verify-export` also checks the change evidence digests and redraws the sample. Audited as `evidence.package_created` and `evidence.package_completed`; `GET /api/v1/evidence/packages/{export_id}` returns the seed and manifest hash. See [CHANGE_EVIDENCE.md](CHANGE_EVIDENCE.md#evidence-package).
+
+Set `report` to a framework (`"report": "soc2"`) to add the [auditor report](#auditor-report) for the same period and groups as `report.pdf`; this also needs `evidence:export`, as the report on its own does (403 otherwise). It is built from the package's own snapshot, with the package's export ID as its report ID, and is listed in `manifest.json` (with `rows` 0) and `SHA256SUMS` like every other file, so `baluarte-verify-export` and `sha256sum -c` cover it; the manifest's `scope` records `report`. The manifest's shape is unchanged, so its format stays `baluarte.evidence-manifest/v7`.
+
+## Auditor report
+
+`POST /api/v1/evidence/reports` (`evidence:export`: admin and auditor) returns a PDF for one framework (`soc2`, `iso27001` or `nist_800_53_moderate`) and a period, for an auditor or a manager who hands evidence to one:
+
+```json
+{"framework": "soc2", "from": "2026-07-01T00:00:00Z", "to": "2026-10-01T00:00:00Z", "groups": ["acme/payments"]}
+```
+
+`groups` is optional, as for the package. The report is read exactly as the [evidence package](#evidence-package-for-an-audit-period) reads the period, in the same kind of `REPEATABLE READ`, read-only snapshot: results come from the latest evaluation run that finished by `to` (none is 409 `no_evaluation_run`), with the control mapping and monitoring scope in force then, and each control's status is the [control posture](CONTROL_MAPPING.md) computed from that run over the projects in scope. Validation and refusals are the package's: 422 for an invalid period or a group not in the inventory, 409 `not_configured`, `nothing_collected`, `period_not_over` or `no_evaluation_run`. The response has `Content-Disposition: attachment; filename="baluarte-<framework>-<from>-<to>.pdf"` (UTC, as `20260701T000000Z`), `Cache-Control: no-store` and the report ID in `X-Baluarte-Report-Id`.
+
+| Section | Holds |
+|---|---|
+| Cover | Framework, period, scope, GitLab host (no path or credentials), the evaluation run used, report ID, generated at (database clock), Baluarte version, requester (`user:<id>`), the statement that the mapping is guidance and a met control is supporting evidence, not a certification, and the population statement. |
+| Summary | Controls by status (met, not met, unknown, manual, not applicable, review overdue, no results, not covered); rule types evaluated out of every rule type Baluarte checks; projects monitored and excluded; each collection kind's freshness at `to` (its status and last success by then). |
+| Controls | Every control of the framework: ID, title, status, mapped rule types, and pass, fail, unknown (including unsupported) and excepted counts. |
+| Not met | For each not-met control, the failing project, baseline version, rule and rule type: at most 25 per control, then "And N more; see the evidence package". |
+| Exceptions | Policy exceptions on rules mapped to the framework, and operating-profile exceptions on controls that support it, in force at some point in the period: scope, rule or control, state, justification, decision and expiry. |
+| Organization mapping decisions | Not-applicable and manual changes in force at `to` for the framework, with justification, evidence reference and review-by date. |
+| Attestations | Operating-profile attestations current at `to` for controls that support the framework: statement, attested and expiry dates. |
+| Monitoring scope | Exclusions from monitoring in force at `to`, with justification. |
+| Appendix | The baseline versions the run judged (name, version, `yaml_digest`), the control mapping version and how many organization changes were in force, and how to verify the report. |
+
+People appear only as `user:<id>`. Every free-text value (justifications, statements, project and group paths) passes through the same redactor as exports, and is escaped before layout, so markup in it is printed as text, never applied. Empty sections say "None.". Detail tables other than the failing projects stop at 200 rows with the same pointer to the package; the package remains the complete record.
+
+**Layout.** A4 with margins that also print on US Letter; a header with the framework and period and a footer with the report ID and "Page N of M" on every page; greys only, and status always written as text. Text is set in DejaVu Sans, embedded and shipped with Baluarte with its licence (`backend/src/baluarte/evidence/fonts/LICENSE_DEJAVU`). It covers Latin, Greek, Cyrillic and many other scripts; a character it lacks (Chinese, Japanese or Korean, for example) prints as an empty box rather than failing the report.
+
+**Reproducible.** The PDF is rendered with reportlab in invariant mode, which fixes the creation date and document ID. The same evidence, scope and period give the same PDF apart from the report ID and generated-at, which appear on the cover and in every footer.
+
+**Verifying.** The report is a summary. To check it, request the evidence package for the same period and groups (or request the package with `report` set, which holds this PDF as `report.pdf`), verify the package with `baluarte-verify-export`, and compare: `evaluations.csv` holds the run's results, `policies.csv` the baseline versions, `exceptions.csv` the policy exceptions, and the manifest's `control_mapping` and `monitoring_scope` the mapping and exclusions in force at `to`. Operating-profile attestations and exceptions are in the audit log (`compliance.attested`, `compliance.exception_requested`).
+
+**Audit.** `evidence.report_created` is recorded when the report is accepted (actor, framework, period, scope, the evaluation run and instance) and `evidence.report_completed` once the PDF is built, with its size and SHA-256. Neither holds report content. A report included in a package is covered by the package's events instead: `evidence.package_completed` lists `report.pdf` with its SHA-256.
 
 ## Audit language
 
