@@ -51,6 +51,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import (
+    CondPageBreak,
     Flowable,
     PageBreak,
     Paragraph,
@@ -122,7 +123,7 @@ STATEMENT = (
     "The mapping of GitLab rule types to controls is guidance for the organization and its "
     "auditor, reviewed by the organization's compliance owner. A met control is supporting "
     "evidence for an organization-defined control objective; it is not a SOC 2 certification, "
-    "an ISO/IEC 27001 certification or a NIST authorization. unknown results are neither "
+    "an ISO/IEC 27001 certification or a NIST authorization. Results that are unknown are neither "
     "compliant nor failing. The report covers only what the GitLab token can see."
 )
 VERIFY = (
@@ -230,6 +231,8 @@ class ReportData:
     rule_types_evaluated: int
     rule_types_total: int
     projects_monitored: int
+    projects_archived: int
+    projects_evaluated: int
     projects_excluded: int
     freshness: list[list[str]]
     controls: list[ControlRow]
@@ -365,6 +368,20 @@ class ReportBuilder:
             rule_types_evaluated=evaluated,
             rule_types_total=len(RULE_TYPES),
             projects_monitored=snapshot._count(GitLabProject, snapshot._monitored_scope()),
+            # Archived projects stay in the inventory but are never evaluated.
+            projects_archived=snapshot._count(
+                GitLabProject,
+                [
+                    *snapshot._monitored_scope(),
+                    GitLabProject.archived.is_(True),
+                    GitLabProject.state == "active",
+                ],
+            ),
+            projects_evaluated=self.db.execute(
+                select(func.count(func.distinct(Evaluation.project_id)))
+                .join(GitLabProject, GitLabProject.id == Evaluation.project_id)
+                .where(*self._run_results())
+            ).scalar_one(),
             projects_excluded=snapshot._count(
                 GitLabProject, [*snapshot._project_scope(), snapshot.coverage.project_excluded()]
             ),
@@ -650,7 +667,6 @@ def _styles() -> _Styles:
             leading=18,
             spaceBefore=10,
             spaceAfter=6,
-            keepWithNext=1,
         ),
         h2=ParagraphStyle(
             "h2",
@@ -660,7 +676,6 @@ def _styles() -> _Styles:
             leading=14,
             spaceBefore=8,
             spaceAfter=4,
-            keepWithNext=1,
         ),
         body=ParagraphStyle("p", parent=base, spaceAfter=6),
         small=ParagraphStyle("small", parent=base, fontSize=8.5, leading=11, textColor=MUTED),
@@ -677,17 +692,61 @@ BOTTOM = 24 * mm
 WIDTH = PAGE[0] - 2 * SIDE
 
 
+CELL_PADDING = 6.0
+BREAK_AFTER = "._-/"
+
+
+def _wrap_token(token: str, width: float, font: str, size: float) -> list[str]:
+    """Split a token too wide for its column after a ``.``, ``_``, ``-`` or ``/`` that fits.
+
+    reportlab breaks lines only at spaces, so an identifier such as
+    ``gitlab.project.merge_request_approvals`` would otherwise be cut mid-word.
+    """
+    lines: list[str] = []
+    rest = token
+    while pdfmetrics.stringWidth(rest, font, size) > width:
+        cut = 0
+        for index, char in enumerate(rest):
+            if (
+                char in BREAK_AFTER
+                and pdfmetrics.stringWidth(rest[: index + 1], font, size) <= width
+            ):
+                cut = index + 1
+        if cut == 0 or cut == len(rest):
+            break
+        lines.append(rest[:cut])
+        rest = rest[cut:]
+    lines.append(rest)
+    return lines
+
+
+def _fit_cell(value: str, width: float, style: ParagraphStyle) -> str:
+    """The cell's text with breaks added inside tokens wider than the column."""
+    out = []
+    for line in value.split("\n"):
+        words = []
+        for word in line.split(" "):
+            words.append("\n".join(_wrap_token(word, width, style.fontName, style.fontSize)))
+        out.append(" ".join(words))
+    return "\n".join(out)
+
+
 def _table(
     styles: _Styles,
     header: Sequence[str],
     rows: Sequence[Sequence[str]],
     widths: Sequence[float],
 ) -> Table:
-    data = [[Paragraph(text(h), styles.head) for h in header]] + [
-        [Paragraph(text(cell), styles.cell) for cell in row] for row in rows
-    ]
     total = sum(widths)
-    table = Table(data, colWidths=[WIDTH * w / total for w in widths], repeatRows=1)
+    columns = [WIDTH * w / total for w in widths]
+    data = [[Paragraph(text(h), styles.head) for h in header]] + [
+        [
+            Paragraph(text(_fit_cell(cell, column - CELL_PADDING, styles.cell)), styles.cell)
+            for cell, column in zip(row, columns, strict=True)
+        ]
+        for row in rows
+    ]
+    table = Table(data, colWidths=columns, repeatRows=1)
     table.setStyle(
         TableStyle(
             [
@@ -784,7 +843,9 @@ def _summary(data: ReportData, styles: _Styles) -> list[Flowable]:
             text(
                 f"Rule types evaluated: {data.rule_types_evaluated} of the "
                 f"{data.rule_types_total} rule types Baluarte can check. "
-                f"Projects monitored: {data.projects_monitored}. "
+                f"Projects in monitoring scope: {data.projects_monitored}, of which "
+                f"{data.projects_archived} archived (archived projects are not evaluated). "
+                f"Projects evaluated in this run: {data.projects_evaluated}. "
                 f"Projects excluded from monitoring: {data.projects_excluded}."
             ),
             styles.body,
@@ -961,16 +1022,36 @@ def _decorate(data: ReportData, total: int | None) -> Callable[[Canvas, Any], No
     return draw
 
 
+# Room a heading needs below it (its text, an intro line and a few table rows); with less, it
+# starts on the next page. keepWithNext is not used: it keeps a heading with the whole of the
+# table after it, so a long table jumps to a new page and leaves the previous one half empty.
+HEADING_ROOM = 110
+
+
+def _keep_headings(story: list[Flowable], styles: _Styles) -> list[Flowable]:
+    out: list[Flowable] = []
+    for flowable in story:
+        if isinstance(flowable, Paragraph) and flowable.style in (styles.h1, styles.h2):
+            out.append(CondPageBreak(HEADING_ROOM))
+        out.append(flowable)
+    return out
+
+
 def _build(data: ReportData, total: int | None) -> tuple[bytes, int]:
     styles = _styles()
     story: list[Flowable] = [
         *_cover(data, styles),
         PageBreak(),
-        *_summary(data, styles),
-        *_controls(data, styles),
-        *_not_met(data, styles),
-        *_detail_sections(data, styles),
-        *_appendix(data, styles),
+        *_keep_headings(
+            [
+                *_summary(data, styles),
+                *_controls(data, styles),
+                *_not_met(data, styles),
+                *_detail_sections(data, styles),
+                *_appendix(data, styles),
+            ],
+            styles,
+        ),
     ]
     buffer = io.BytesIO()
     document = SimpleDocTemplate(

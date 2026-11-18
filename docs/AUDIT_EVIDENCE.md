@@ -127,7 +127,7 @@ Set `report` to a framework (`"report": "soc2"`) to add the [auditor report](#au
 | Section | Holds |
 |---|---|
 | Cover | Framework, period, scope, GitLab host (no path or credentials), the evaluation run used, report ID, generated at (database clock), Baluarte version, requester (`user:<id>`), the statement that the mapping is guidance and a met control is supporting evidence, not a certification, and the population statement. |
-| Summary | Controls by status (met, not met, unknown, manual, not applicable, review overdue, no results, not covered); rule types evaluated out of every rule type Baluarte checks; projects monitored and excluded; each collection kind's freshness at `to` (its status and last success by then). |
+| Summary | Controls by status (met, not met, unknown, manual, not applicable, review overdue, no results, not covered); rule types evaluated out of every rule type Baluarte checks; projects in monitoring scope (and how many are archived, which are never evaluated), projects the run evaluated, and projects excluded; each collection kind's freshness at `to` (its status and last success by then). |
 | Controls | Every control of the framework: ID, title, status, mapped rule types, and pass, fail, unknown (including unsupported) and excepted counts. |
 | Not met | For each not-met control, the failing project, baseline version, rule and rule type: at most 25 per control, then "And N more; see the evidence package". |
 | Exceptions | Policy exceptions on rules mapped to the framework, and operating-profile exceptions on controls that support it, in force at some point in the period: scope, rule or control, state, justification, decision and expiry. |
