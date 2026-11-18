@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "baluarte"
-version = "0.1.0.dev0"
+version = "0.1.0"
 description = "Self-hosted governance and audit-evidence platform for self-managed GitLab"
 readme = "README.md"
 license = "MPL-2.0"

@@ -59,7 +59,7 @@ services:
   migrate:
     <<: *hardening
     build: ./backend
-    image: baluarte-app:dev
+    image: ${BALUARTE_IMAGE_PREFIX:-}baluarte-app:${BALUARTE_VERSION:-dev}
     command: ["baluarte-migrate", "--timeout", "60"]
     # Runs as the schema owner, then sets up baluarte_app.
     environment:
@@ -78,7 +78,7 @@ services:
 
   api:
     <<: [*hardening, *database]
-    image: baluarte-app:dev
+    image: ${BALUARTE_IMAGE_PREFIX:-}baluarte-app:${BALUARTE_VERSION:-dev}
     environment:
       <<: [*app-env, *secret-key-env]
       # OIDC sign-in, read from the shell or a .env file. Until it is configured, sign-in and
@@ -101,7 +101,7 @@ services:
   # Background jobs: same image as the API, different command. SIGTERM finishes the current job.
   worker:
     <<: [*hardening, *database]
-    image: baluarte-app:dev
+    image: ${BALUARTE_IMAGE_PREFIX:-}baluarte-app:${BALUARTE_VERSION:-dev}
     command: ["baluarte-worker"]
     environment:
       <<: [*app-env, *secret-key-env]
@@ -120,7 +120,7 @@ services:
   web:
     <<: *hardening
     build: ./frontend
-    image: baluarte-web:dev
+    image: ${BALUARTE_IMAGE_PREFIX:-}baluarte-web:${BALUARTE_VERSION:-dev}
     depends_on:
       api:
         condition: service_healthy
@@ -133,7 +133,7 @@ services:
     <<: *hardening
     profiles: [backup]
     build: ./deploy/backup
-    image: baluarte-backup:dev
+    image: ${BALUARTE_IMAGE_PREFIX:-}baluarte-backup:${BALUARTE_VERSION:-dev}
     environment:
       PGHOST: db
       BALUARTE_BACKUP_DATABASE_USER: baluarte_backup

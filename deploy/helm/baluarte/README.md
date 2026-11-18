@@ -6,16 +6,15 @@ Every install and upgrade runs a `baluarte-migrate` Job; the API reports ready o
 
 ## Install
 
-Images are not published yet; build them and push to a registry your cluster can pull from.
+Released charts and images are published to `ghcr.io/mike-norris` (see [releases](../../../docs/DEPLOYMENT.md#releases), including how to verify their signatures). The chart pulls the images of its own version from there; for a mirror or an air-gapped registry, set `global.imageRegistry`.
 
 Use an external PostgreSQL in production. Create Secrets holding the owner's password and a new password for the app role (`baluarte_app`, which the migration Job creates), then:
 
 ```sh
 kubectl -n baluarte create secret generic baluarte-database --from-file=password=./db-password
 kubectl -n baluarte create secret generic baluarte-app-database --from-file=password=./app-db-password
-helm install baluarte deploy/helm/baluarte \
+helm install baluarte oci://ghcr.io/mike-norris/charts/baluarte --version 0.1.0 \
   --namespace baluarte --create-namespace \
-  --set global.imageRegistry=registry.example.internal/baluarte \
   --set database.host=postgresql.example.internal \
   --set database.existingSecret=baluarte-database \
   --set database.app.existingSecret=baluarte-app-database \
@@ -49,7 +48,7 @@ For evaluation only, `--set devDatabase.enabled=true` runs a single PostgreSQL p
 
 | Value | Default | Purpose |
 |---|---|---|
-| `global.imageRegistry` | `""` | Registry prefix for both images (private or air-gapped registries) |
+| `global.imageRegistry` | `ghcr.io/mike-norris` | Registry prefix for the Baluarte images; set a mirror or air-gapped registry, or `""` for images loaded into the cluster by hand |
 | `api.image.tag`, `web.image.tag` | chart `appVersion` | Image tags |
 | `api.replicaCount`, `web.replicaCount`, `worker.replicaCount` | `1` | Replicas. Workers coordinate through PostgreSQL leases, so several can run safely |
 | `worker.pollSeconds`, `worker.leaseSeconds` | `5`, `300` | Idle poll interval; how long a silent worker keeps a job before it is retried elsewhere |

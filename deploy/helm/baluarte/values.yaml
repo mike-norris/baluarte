@@ -2,8 +2,10 @@
 # Set either database.host (external PostgreSQL, recommended) or devDatabase.enabled.
 
 global:
-  # Prefix applied to both images, e.g. "registry.example.internal/baluarte". Empty uses the bare repository.
-  imageRegistry: ""
+  # Prefix applied to the Baluarte images: the released images by default. For a mirror or an
+  # air-gapped registry use e.g. "registry.example.internal/baluarte"; empty uses the bare
+  # repository (images loaded into the cluster by hand).
+  imageRegistry: ghcr.io/mike-norris
 
 imagePullSecrets: []
 
