@@ -19,7 +19,13 @@ import { MappingReview } from "../controls/MappingReview";
 import { ScopeReview } from "../inventory/ScopeReview";
 import { TaxonomyReview } from "../labels/TaxonomyReview";
 import { lineDiff } from "../policies/diff";
-import { baselineHref, canWritePolicies, changeText, personText } from "../policies/format";
+import {
+  approvedMessage,
+  baselineHref,
+  canWritePolicies,
+  changeText,
+  personText,
+} from "../policies/format";
 import { GovernanceHeader } from "../policies/GovernanceTabs";
 import { formatTime } from "../time";
 import type { SavedState } from "./BaselineEditorPage";
@@ -112,8 +118,8 @@ function PendingChange({
     setFailure(null);
     try {
       if (decision === "approve") {
-        await approveChange(change.id, note.trim() || null, user.csrf_token);
-        onDecided(`Approved: ${summary}. It is in force now.`);
+        const decided = await approveChange(change.id, note.trim() || null, user.csrf_token);
+        onDecided(approvedMessage(decided));
       } else {
         await rejectChange(change.id, note.trim(), user.csrf_token);
         onDecided(`Rejected: ${summary}. Nothing changed.`);
