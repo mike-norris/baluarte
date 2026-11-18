@@ -22,6 +22,7 @@ the API or the database schema; the release notes say how to upgrade.
 ### Documentation
 
 - docs/HARDENING.md: what the defaults enforce and a production checklist.
+- docs/QUICKSTART.md: from the released images to findings and a verified evidence export.
 
 ## [0.1.0]
 
