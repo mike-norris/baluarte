@@ -16,9 +16,13 @@ Python 3.12+ / FastAPI / SQLAlchemy / Alembic / PostgreSQL; React / TypeScript /
 
 v0.1.0: read-only GitLab inventory, policy evaluation and findings, reviewed governance changes, control mapping, evidence export, audit packages and an auditor report, notifications, and dry-run remediation plans. See the [changelog](CHANGELOG.md) and the [roadmap](docs/ROADMAP.md). Released images and the Helm chart are published to `ghcr.io/mike-norris`; see [releases](docs/DEPLOYMENT.md#releases).
 
+## Try it
+
+To evaluate the released version, follow the [quickstart](docs/QUICKSTART.md): the released images, your identity provider and a read-only GitLab token give you findings and an evidence export in about fifteen minutes. For a server, use the [Helm chart](deploy/helm/baluarte/README.md) and the [hardening checklist](docs/HARDENING.md).
+
 ## Run locally
 
-Requires Docker with Compose v2. The stack is for development only; it binds to 127.0.0.1 and is not a production configuration.
+To build from source instead: requires Docker with Compose v2. The stack is for development only; it binds to 127.0.0.1 and is not a production configuration.
 
 ```sh
 mkdir -p secrets && (umask 022 && for name in postgres_password app_database_password backup_database_password secret_key; do
