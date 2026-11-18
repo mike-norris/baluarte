@@ -224,6 +224,19 @@ def test_groups_narrow_the_report(world: Changes) -> None:
                 default_branch="main",
             )
         )
+        db.add(
+            GitLabProject(
+                instance_id=world.instance_id,
+                gitlab_id=9002,
+                namespace_gitlab_id=5,
+                namespace_kind="group",
+                path_with_namespace="beta/old",
+                name="old",
+                visibility="private",
+                default_branch="main",
+                archived=True,
+            )
+        )
         db.commit()
     world.run()
     window = period()
@@ -232,8 +245,11 @@ def test_groups_narrow_the_report(world: Changes) -> None:
     narrowed_response = post_report(world.engine, framework="soc2", groups=["acme"], **window)
     narrowed = flat(pdf_text(narrowed_response.content))
 
-    assert "Projects monitored: 2." in everything
-    assert "Projects monitored: 1." in narrowed
+    # The archived project is counted in scope but never evaluated.
+    assert "Projects in monitoring scope: 3, of which 1 archived" in everything
+    assert "Projects evaluated in this run: 2." in everything
+    assert "Projects in monitoring scope: 1, of which 0 archived" in narrowed
+    assert "Projects evaluated in this run: 1." in narrowed
     assert "Scope acme" in narrowed
     assert "beta/api" not in narrowed
     with Session(world.engine) as db:
@@ -343,6 +359,23 @@ def test_render_escapes_every_value() -> None:
     # Every cell, heading and cover value shows the markup as text.
     assert content.count("<b>bold</b>") >= 10
     assert "<font size=40>big</font>" in content
+
+
+def test_long_identifiers_break_after_punctuation_not_mid_word() -> None:
+    report._register_fonts()
+    style = report._styles().cell
+    lines = report._wrap_token("gitlab.project.merge_request_approvals", 90, style.fontName, 7.5)
+
+    assert len(lines) > 1
+    assert "".join(lines) == "gitlab.project.merge_request_approvals"
+    assert all(line[-1] in report.BREAK_AFTER for line in lines[:-1])
+    # Short values, and tokens with nowhere to break, are left as they are.
+    assert report._wrap_token("pass", 90, style.fontName, 7.5) == ["pass"]
+    assert report._fit_cell("a b", 90, style) == "a b"
+
+
+def test_the_statement_starts_its_sentences_with_capitals() -> None:
+    assert ". unknown" not in report.STATEMENT
 
 
 def test_text_escapes_markup() -> None:
@@ -512,6 +545,8 @@ def sample_data(value: str) -> ReportData:
         rule_types_evaluated=1,
         rule_types_total=2,
         projects_monitored=1,
+        projects_archived=0,
+        projects_evaluated=1,
         projects_excluded=0,
         freshness=[["projects", "fresh", "2026-09-30T22:00:00Z"]],
         controls=[ControlRow("CC8.1", value, "not_met", [value], 1, 2, 3, 4)],
