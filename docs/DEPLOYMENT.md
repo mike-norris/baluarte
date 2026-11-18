@@ -44,6 +44,10 @@ cosign verify ghcr.io/mike-norris/baluarte-app:0.1.0 \
 
 Install the chart with `helm install baluarte oci://ghcr.io/mike-norris/charts/baluarte --version 0.1.0 -f values.yaml`; it pulls the images of the same version from `ghcr.io/mike-norris` (`global.imageRegistry`, which a mirror or air-gapped registry overrides). To run the Compose stack from released images instead of building them, set `BALUARTE_IMAGE_PREFIX=ghcr.io/mike-norris/` and `BALUARTE_VERSION=0.1.0`, then `docker compose pull` and `docker compose up -d --no-build --wait`.
 
+## Production
+
+See [HARDENING.md](HARDENING.md) for what the images and chart already enforce and the checklist for operators.
+
 ## Release validation
 
 CI builds images, tests Docker Compose startup, and installs chart into a disposable Kubernetes cluster (e.g. kind) for smoke tests. Verify schema migrations, worker scheduling, health, and graceful shutdown. Support air-gapped image loading and configurable registries.
