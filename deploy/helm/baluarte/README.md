@@ -79,6 +79,8 @@ For evaluation only, `--set devDatabase.enabled=true` runs a single PostgreSQL p
 | `gitlab.labelWrites` | `false` | Allow approved label plans to be applied to GitLab; the write token is entered in the web UI (docs/LABELS.md) |
 | `gitlab.issueWrites` | `false` | Allow approved issue plans (the "missing time" label and estimates on closed issues) to be applied with the same write token (docs/TIME_TRACKING.md) |
 | `timeTracking.perPerson` | `true` | Show time per person to managers and administrators; `false` shows only totals (docs/TIME_TRACKING.md) |
+| `networkPolicy.enabled` | `true` | NetworkPolicies so that only the web pod accepts connections from outside the release (needs a CNI that enforces them) |
+| `networkPolicy.webFrom` | `[]` | NetworkPolicy `from` peers allowed to reach the web pod; empty allows any source |
 | `ingress.enabled`, `ingress.className`, `ingress.host`, `ingress.tls` | disabled | Ingress to the web Service |
 | `imagePullSecrets` | `[]` | Registry credentials |
 
@@ -89,3 +91,5 @@ Pods run as non-root numeric UIDs with the `RuntimeDefault` seccomp profile, a r
 ## Smoke test
 
 `deploy/helm/smoke-test.sh` lints the chart with each `ci/*-values.yaml`, builds the images, installs into a throwaway kind cluster with the dev database, checks the migration Job, runs `helm test` and security checks, upgrades (re-running migrations and keeping the generated password), uninstalls and deletes the cluster. Requires Docker, kind, Helm and kubectl.
+
+For production settings beyond the chart's defaults, see [docs/HARDENING.md](../../../docs/HARDENING.md).

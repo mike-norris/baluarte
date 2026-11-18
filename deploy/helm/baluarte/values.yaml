@@ -259,6 +259,15 @@ backup:
   tolerations: []
 
 # Exposes the web Service; the web pod proxies /api to the API Service.
+# NetworkPolicies limiting which pods may connect to which (templates/networkpolicy.yaml).
+# Ingress only; enforced by CNIs that support NetworkPolicy and ignored by the rest.
+networkPolicy:
+  enabled: true
+  # Sources allowed to reach the web pod, as NetworkPolicy "from" peers; empty allows any source
+  # (the Ingress controller included). E.g. restrict to the controller's namespace:
+  # [{ namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ingress-nginx } } }]
+  webFrom: []
+
 ingress:
   enabled: false
   className: ""

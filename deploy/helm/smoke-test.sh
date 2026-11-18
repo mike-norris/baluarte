@@ -81,6 +81,17 @@ worker=$("${kubectl[@]}" get pod -l app.kubernetes.io/component=worker -o jsonpa
 "${kubectl[@]}" exec "$worker" -- baluarte-worker healthcheck || fail "worker heartbeat is stale"
 echo "ok  worker healthy (heartbeat)"
 
+# NetworkPolicies (kind's kindnet enforces them): the web pod reaches the API, the worker may not.
+web=$("${kubectl[@]}" get pod -l app.kubernetes.io/component=web -o jsonpath='{.items[0].metadata.name}')
+"${kubectl[@]}" exec "$web" -- wget -q -T 5 -O /dev/null "http://$release-api:8000/api/v1/health" \
+  || fail "web pod cannot reach the API"
+if "${kubectl[@]}" exec "$worker" -- python -c \
+  "import urllib.request; urllib.request.urlopen('http://$release-api:8000/api/v1/health', timeout=5)" \
+  2>/dev/null; then
+  fail "worker pod reached the API despite the NetworkPolicy"
+fi
+echo "ok  NetworkPolicies: web reaches the API, the worker does not"
+
 for component in api worker; do
   logs=$("${kubectl[@]}" logs -l "app.kubernetes.io/component=$component" --tail=50)
   grep -q '"logger": "baluarte' <<<"$logs" || fail "$component logs are not structured JSON: $logs"
@@ -114,7 +125,7 @@ echo "ok  helm upgrade (re-ran migrations, kept database password and secret key
 helm uninstall "$release" --kube-context "kind-$cluster" --namespace "$namespace" --wait >/dev/null
 # The secret key is kept on purpose (helm.sh/resource-policy: keep); remove it to check the rest.
 "${kubectl[@]}" delete secret "$release-secret-key" >/dev/null || fail "secret key was not kept on uninstall"
-[[ -z $("${kubectl[@]}" get deploy,sts,svc,cm,sa,secret,job -l "app.kubernetes.io/instance=$release" -o name) ]] \
+[[ -z $("${kubectl[@]}" get deploy,sts,svc,cm,sa,secret,job,networkpolicy -l "app.kubernetes.io/instance=$release" -o name) ]] \
   || fail "resources left after uninstall"
 echo "ok  helm uninstall"
 

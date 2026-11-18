@@ -1,0 +1,92 @@
+{{- /*
+Ingress rules between this release's pods. Only the web pod accepts connections from outside the
+release; the API accepts them only from the web pod (and the chart's test pod), the database only
+from the pods that use it, and the worker, migration and backup pods from nothing. Egress is left
+open: the API and worker reach GitLab, the identity provider, an external database, SMTP and
+webhooks at addresses only the operator knows. Needs a CNI that enforces NetworkPolicy.
+*/ -}}
+{{- if .Values.networkPolicy.enabled }}
+{{- $ctx := . }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "baluarte.fullname" . }}-web
+  labels:
+    {{- include "baluarte.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "baluarte.selectorLabels" (dict "ctx" . "component" "web") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - port: 8080
+          protocol: TCP
+      {{- with .Values.networkPolicy.webFrom }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "baluarte.fullname" . }}-api
+  labels:
+    {{- include "baluarte.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "baluarte.selectorLabels" (dict "ctx" . "component" "api") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - port: 8000
+          protocol: TCP
+      from:
+        {{- range list "web" "test" }}
+        - podSelector:
+            matchLabels:
+              {{- include "baluarte.selectorLabels" (dict "ctx" $ctx "component" .) | nindent 14 }}
+        {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "baluarte.fullname" . }}-no-ingress
+  labels:
+    {{- include "baluarte.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/instance
+        operator: In
+        values: [{{ .Release.Name | quote }}]
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [worker, migrate, backup]
+  policyTypes: [Ingress]
+{{- if .Values.devDatabase.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "baluarte.fullname" . }}-database
+  labels:
+    {{- include "baluarte.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "baluarte.selectorLabels" (dict "ctx" . "component" "database") | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - port: 5432
+          protocol: TCP
+      from:
+        {{- range list "api" "worker" "migrate" "backup" }}
+        - podSelector:
+            matchLabels:
+              {{- include "baluarte.selectorLabels" (dict "ctx" $ctx "component" .) | nindent 14 }}
+        {{- end }}
+{{- end }}
+{{- end }}

@@ -5,6 +5,24 @@ All notable changes to Baluarte are recorded here. The format follows
 [Semantic Versioning](https://semver.org/). Before 1.0, a minor version may change behaviour,
 the API or the database schema; the release notes say how to upgrade.
 
+## [Unreleased]
+
+### Security
+
+- Behind a TLS-terminating Ingress or proxy, the web server now passes on the proxy's
+  `X-Forwarded-Proto` instead of replacing it with `http`, so the setup session cookie is marked
+  `Secure`.
+- Strict-Transport-Security on responses served over HTTPS; Permissions-Policy,
+  Cross-Origin-Opener-Policy, Cross-Origin-Resource-Policy and `object-src 'none'` on all.
+- Sign-in and setup requests are rate limited per client address; request bodies are limited to
+  2 MB.
+- The Helm chart adds NetworkPolicies (on by default, `networkPolicy.enabled`): only the web pod
+  accepts connections from outside the release.
+
+### Documentation
+
+- docs/HARDENING.md: what the defaults enforce and a production checklist.
+
 ## [0.1.0]
 
 The first release: governance and audit evidence for one self-managed GitLab instance, read-only
@@ -77,4 +95,5 @@ by default.
   chart, or put Compose behind a TLS reverse proxy as described in docs/DEPLOYMENT.md.
 - The control mapping is guidance for an organization and its auditor, not a certification.
 
+[Unreleased]: https://github.com/mike-norris/baluarte/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/mike-norris/baluarte/releases/tag/v0.1.0

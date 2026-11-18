@@ -46,7 +46,7 @@ Exceptions separate duties: the user who requests one cannot approve or reject i
 
 Baseline changes can separate duties too: with "Require a second person to approve baseline changes" on (Settings, off by default), a new version, assignment or unassignment waits until another user with `policy:write` approves it, enforced by the API and the database. While it is off, each change is still recorded, marked self-approved ([POLICY_ENGINE.md](POLICY_ENGINE.md#reviewing-baseline-changes)).
 
-Sign-in, failed sign-in (with a reason code) and sign-out are written to `audit_event`. Callbacks that do not match a sign-in started by the same browser are logged but not audited, so anonymous requests cannot grow the append-only audit table. Rate limiting of the sign-in endpoints is not built yet; apply it at the ingress.
+Sign-in, failed sign-in (with a reason code) and sign-out are written to `audit_event`. Callbacks that do not match a sign-in started by the same browser are logged but not audited, so anonymous requests cannot grow the append-only audit table. The bundled web server rate limits the sign-in and setup endpoints per client address (5 requests a second, bursts of 20; 429 beyond that). Behind a proxy all clients share the proxy's address, so add a per-client limit at the ingress if sign-in floods are a concern. Production settings: [HARDENING.md](HARDENING.md).
 
 ## Secrets and logs
 
