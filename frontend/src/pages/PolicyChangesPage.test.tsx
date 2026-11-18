@@ -152,7 +152,7 @@ describe("baseline changes", () => {
 
     expect(
       await screen.findByText(
-        "Approved: New version of default-gitlab-baseline (replaces v1). It is in force now.",
+        "Approved: New version of default-gitlab-baseline v2 (replaces v1). Places that use v1 keep it until v2 is applied: use Review and apply on the baseline's page.",
       ),
     ).toBeInTheDocument();
     const [post] = sent(calls, "POST");

@@ -90,6 +90,21 @@ export function proposedMessage(change: PolicyChange): string {
   return `Proposed: ${changeText(change)}. It takes effect when someone else approves it under Governance → Changes.`;
 }
 
+/**
+ * Told to whoever approved a change. Approving a version only saves it: places keep the version
+ * they were applied with until the new one is applied, so only assignments take effect at once.
+ */
+export function approvedMessage(change: PolicyChange): string {
+  const summary = changeText(change);
+  if (change.kind === "assign") return `Approved: ${summary}. It is in force now.`;
+  if (change.kind === "unassign") return `Approved: ${summary}. It is no longer checked there.`;
+  const version = change.version !== null ? `v${String(change.version)}` : "the new version";
+  if (change.base_version === null) {
+    return `Approved: ${summary}. Nothing checks it until it is applied: use Apply on the baseline's page.`;
+  }
+  return `Approved: ${summary}. Places that use v${String(change.base_version)} keep it until ${version} is applied: use Review and apply on the baseline's page.`;
+}
+
 /** How a version or assignment in force was reviewed, for its details. */
 export function reviewText(review: Review | null | undefined): string {
   if (!review) return "No change record";
