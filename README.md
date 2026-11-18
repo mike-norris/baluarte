@@ -14,7 +14,7 @@ Python 3.12+ / FastAPI / SQLAlchemy / Alembic / PostgreSQL; React / TypeScript /
 
 ## Status
 
-Pre-release (v0.1 in development): read-only GitLab inventory, policy evaluation, findings, exceptions, evidence export and dry-run remediation plans. See the [roadmap](docs/ROADMAP.md).
+v0.1.0: read-only GitLab inventory, policy evaluation and findings, reviewed governance changes, control mapping, evidence export, audit packages and an auditor report, notifications, and dry-run remediation plans. See the [changelog](CHANGELOG.md) and the [roadmap](docs/ROADMAP.md). Released images and the Helm chart are published to `ghcr.io/mike-norris`; see [releases](docs/DEPLOYMENT.md#releases).
 
 ## Run locally
 

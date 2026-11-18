@@ -24,6 +24,26 @@ Web, API, worker, and PostgreSQL for development, plus an optional `backup` prof
 
 Maintained Helm chart with web/API/worker Deployments, Services, Ingress configuration, optional external PostgreSQL, Secrets references, ConfigMaps, resource requests/limits, non-root security contexts, probes, migration Job, and PodDisruptionBudget as appropriate. Namespace-scoped RBAC only where necessary. `gitlab.labelWrites` (default `false`) sets `BALUARTE_LABEL_WRITES` and `BALUARTE_ISSUE_WRITES` for the API and worker. `auth.oidc.managerGroups` sets `BALUARTE_OIDC_MANAGER_GROUPS`, and `timeTracking.perPerson` (default `true`) sets `BALUARTE_TIME_PER_PERSON` for the API and worker. The chart's optional development database has no backups; production uses an external PostgreSQL with its own backups and point-in-time recovery ([OPERATIONS.md](OPERATIONS.md#kubernetes-helm)).
 
+## Releases
+
+A release is a tag `vX.Y.Z` on `main`; `.github/workflows/release.yml` publishes it. The tag must match the version in `backend/pyproject.toml`, `frontend/package.json` and `deploy/helm/baluarte/Chart.yaml`, and `CHANGELOG.md` must have a section for it. A tag with a pre-release suffix (`v0.2.0-rc.1`) is published as a pre-release with only its exact image tags.
+
+| Artifact | Where |
+|---|---|
+| Images (linux/amd64, linux/arm64) | `ghcr.io/mike-norris/baluarte-app`, `ghcr.io/mike-norris/baluarte-web`, `ghcr.io/mike-norris/baluarte-backup`, tagged `X.Y.Z` and `X.Y` |
+| Helm chart | `oci://ghcr.io/mike-norris/charts/baluarte`, version `X.Y.Z` |
+| Release notes and the packaged chart with `SHA256SUMS` | the GitHub release for the tag |
+
+Each image is scanned with Trivy (fixable HIGH and CRITICAL vulnerabilities fail the release) before it is pushed, carries an SBOM and build provenance, and is signed with cosign using the release workflow's identity, as is the chart. Pin images by version or digest, never by a moving tag. To verify a signature:
+
+```sh
+cosign verify ghcr.io/mike-norris/baluarte-app:0.1.0 \
+  --certificate-identity-regexp '^https://github.com/mike-norris/baluarte/\.github/workflows/release\.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+Install the chart with `helm install baluarte oci://ghcr.io/mike-norris/charts/baluarte --version 0.1.0 -f values.yaml`; it pulls the images of the same version from `ghcr.io/mike-norris` (`global.imageRegistry`, which a mirror or air-gapped registry overrides). To run the Compose stack from released images instead of building them, set `BALUARTE_IMAGE_PREFIX=ghcr.io/mike-norris/` and `BALUARTE_VERSION=0.1.0`, then `docker compose pull` and `docker compose up -d --no-build --wait`.
+
 ## Release validation
 
 CI builds images, tests Docker Compose startup, and installs chart into a disposable Kubernetes cluster (e.g. kind) for smoke tests. Verify schema migrations, worker scheduling, health, and graceful shutdown. Support air-gapped image loading and configurable registries.

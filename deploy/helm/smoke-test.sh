@@ -41,6 +41,7 @@ helm install "$release" "$chart" \
   --kube-context "kind-$cluster" \
   --namespace "$namespace" --create-namespace \
   -f "$chart/ci/dev-database-values.yaml" -f "$chart/ci/backup-values.yaml" \
+  --set global.imageRegistry="" \
   --set api.image.tag="$tag" --set web.image.tag="$tag" --set backup.image.tag="$tag" \
   --set api.podDisruptionBudget.enabled=true --set web.podDisruptionBudget.enabled=true \
   --set worker.podDisruptionBudget.enabled=true \
