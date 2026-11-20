@@ -1,8 +1,8 @@
-"""Dry-run remediation plans: the GitLab changes that would fix open findings (BAL-031).
+"""Remediation plans: the GitLab changes that would fix open findings (BAL-031, BAL-032).
 
 A plan is built from stored evidence, never from a call to GitLab: nothing here uses an HTTP
-client, so planning cannot change GitLab. Execution, with a separate write credential, is
-BAL-032 (docs/architecture/ADR-0007-remediation-constraints.md).
+client, so planning cannot change GitLab. Applying an approved plan is done by the worker
+(``baluarte.remediation.execute``) with a separate write token (ADR-0012).
 
 Only findings that are ``open`` with a latest outcome of ``fail`` are planned, and only when
 the failure is backed by the latest observation of its kind with a valid digest. ``unknown``,
@@ -25,6 +25,12 @@ Lifecycle (enforced again by a database trigger): ``draft`` -> ``submitted`` by 
 clock); reads count a plan past its expiry as expired whether or not its row says so yet.
 Approval names the plan digest the approver reviewed and is refused when the plan is stale:
 a finding no longer open and failing, or evidence that is no longer the latest.
+
+An approved plan is applied with ``start_apply``: ``approved`` -> ``applying``, then the
+``gitlab.apply_remediation_plan`` job sets ``applied`` or ``failed``. Applying is refused unless
+``BALUARTE_REMEDIATION_WRITES`` is true, a remediation write token is stored, the plan is
+approved, unexpired and still not stale, the projects collection is current, and no other plan
+is applying a step with the same idempotency key.
 """
 
 from collections.abc import Sequence
@@ -50,12 +56,17 @@ from baluarte.db.models import (
 )
 from baluarte.evidence.observations import latest, verify
 from baluarte.integrations.gitlab.projects import PROJECT_SOURCES
+from baluarte.jobs import queue
 from baluarte.policy.loader import parse_policy
 from baluarte.policy.schema import DefaultBranchProtectedRule, ProjectVisibilityRule, Rule
+from baluarte.remediation.write_token import TOKEN as WRITE_TOKEN
 from baluarte.scope.exclusions import exclusion_for
-from baluarte.settings import own_decision_refused
+from baluarte.settings import ConfigurationError, own_decision_refused
 
-PlanState = Literal["draft", "submitted", "approved", "rejected", "expired"]
+PlanState = Literal[
+    "draft", "submitted", "approved", "rejected", "expired", "applying", "applied", "failed"
+]
+APPLY_REMEDIATION_PLAN = "gitlab.apply_remediation_plan"
 FORMAT = "baluarte.remediation-plan/v1"
 SYSTEM_ACTOR = "system:remediation-plans"
 MAX_TTL = timedelta(hours=MAX_PLAN_HOURS)
@@ -456,8 +467,9 @@ def create(
         "steps": built.steps,
         "skipped": built.skipped,
         "excluded_actions": EXCLUDED_ACTIONS,
-        "execution": "Not available: executing a plan needs a separate write credential and "
-        "is BAL-032. Approving this plan changes nothing in GitLab.",
+        "execution": "Approving this plan changes nothing in GitLab. Once approved it can be "
+        "applied from Baluarte, only while BALUARTE_REMEDIATION_WRITES is true and a remediation "
+        "write token is stored, or by hand (docs/REMEDIATION.md).",
     }
     digest = plan_digest(plan)
     row = RemediationPlan(
@@ -629,3 +641,108 @@ def summary(plan: dict[str, Any]) -> list[str]:
             f"skipped ({skipped['reason_code']}): {skipped['reason']}"
         )
     return lines
+
+
+# Applying.
+
+
+APPLY_REFUSALS = {
+    "remediation_writes_disabled": "Remediation writes are off for this deployment "
+    "(BALUARTE_REMEDIATION_WRITES).",
+    "write_token_missing": "No remediation write token is stored.",
+    "expired": "The plan has expired.",
+    "not_approved": "Only an approved plan can be applied.",
+    "stale": "The plan no longer matches its findings and evidence.",
+    "projects_not_current": "The projects collection is not current; plans are applied only on "
+    "current evidence.",
+    "already_applying": "Another plan is applying the same change.",
+}
+
+
+def _keys(row: RemediationPlan) -> set[str]:
+    return {str(step.get("idempotency_key")) for step in row.plan.get("steps", [])}
+
+
+def apply_refusals(
+    db: Session, row: RemediationPlan, projects_freshness: str | None
+) -> tuple[list[str], list[str]]:
+    """Why the plan cannot be applied now: reason codes, and the stale reasons if any."""
+    reasons: list[str] = []
+    try:
+        enabled = WRITE_TOKEN.writes_enabled()
+    except ConfigurationError:
+        enabled = False
+    if not enabled:
+        reasons.append("remediation_writes_disabled")
+    if not WRITE_TOKEN.status(db).set:
+        reasons.append("write_token_missing")
+    state = _current(db, row)
+    if state == "expired":
+        reasons.append("expired")
+    elif state != "approved":
+        reasons.append("not_approved")
+    stale: list[str] = []
+    if state == "approved":
+        stale = stale_reasons(db, row)
+        if stale:
+            reasons.append("stale")
+        if projects_freshness not in CURRENT:
+            reasons.append("projects_not_current")
+        others = db.scalars(
+            select(RemediationPlan).where(
+                RemediationPlan.instance_id == row.instance_id,
+                RemediationPlan.state == "applying",
+                RemediationPlan.id != row.id,
+            )
+        )
+        if any(_keys(other) & _keys(row) for other in others):
+            reasons.append("already_applying")
+    return reasons, stale
+
+
+class ApplyRefused(Exception):
+    """The plan cannot be applied now; ``reasons`` lists every code."""
+
+    def __init__(self, reasons: list[str], stale: list[str]) -> None:
+        super().__init__(" ".join(APPLY_REFUSALS[reason] for reason in reasons))
+        self.reasons = reasons
+        self.stale = stale
+
+
+def start_apply(
+    db: Session,
+    row: RemediationPlan,
+    user_id: int,
+    actor: str,
+    *,
+    projects_freshness: str | None,
+) -> RemediationPlan:
+    """Mark an approved plan ``applying`` and queue the applier. The caller commits."""
+    reasons, stale = apply_refusals(db, row, projects_freshness)
+    if reasons:
+        raise ApplyRefused(reasons, stale)
+    now = db.execute(select(func.now())).scalar_one()
+    row.state = "applying"
+    row.applied_by_user_id = user_id
+    row.apply_started_at = now
+    row.progress = [
+        {"step": step["step"], "status": "pending"} for step in row.plan.get("steps", [])
+    ]
+    db.flush()
+    # Applied at most once: a failed attempt is recorded on the plan, never retried.
+    queue.enqueue(
+        db,
+        APPLY_REMEDIATION_PLAN,
+        f"{APPLY_REMEDIATION_PLAN}:{row.id}",
+        {"plan_id": row.id},
+        max_attempts=1,
+    )
+    audit.record(
+        db,
+        actor=actor,
+        action="remediation_plan.applying",
+        resource_type="remediation_plan",
+        resource_id=str(row.id),
+        details=_details(row, idempotency_keys=sorted(_keys(row))),
+    )
+    return row

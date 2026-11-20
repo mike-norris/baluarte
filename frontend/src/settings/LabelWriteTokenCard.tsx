@@ -1,193 +1,31 @@
-import { useId, useState, type FormEvent, type ReactNode } from "react";
+import { getWriteToken, putWriteToken, removeWriteToken } from "../api/labels";
+import { WriteTokenCard, type WriteTokenKind } from "./WriteTokenCard";
 
-import {
-  getWriteToken,
-  putWriteToken,
-  removeWriteToken,
-  type WriteTokenStatus,
-} from "../api/labels";
-import { errorReasons } from "../api/send";
-import { useLoad } from "../api/useLoad";
-import { useAuth } from "../auth/context";
-import { ErrorMessage } from "../components/ErrorMessage";
-import { formatTime } from "../time";
-import { asApiError, cardClass, noteClass, Problems, SecretKeyNotice, Values } from "./parts";
+export { MAX_TOKEN } from "./WriteTokenCard";
 
-/** At most this many characters; the API refuses longer tokens. */
-export const MAX_TOKEN = 1024;
-
-function StatusValues({ status }: { status: WriteTokenStatus }) {
-  const rows: [string, ReactNode][] = [
-    [
-      "Label writes",
-      status.writes_enabled ? "Enabled for this deployment" : "Turned off for this deployment",
-    ],
-    ["Write token", status.set ? "Set (hidden)" : "Not set"],
-  ];
-  if (status.set) {
-    rows.push(["Token name", status.token_name ?? "Not reported"]);
-    rows.push([
-      "Scopes",
-      status.scopes === null
-        ? "Not reported"
-        : status.scopes.length > 0
-          ? status.scopes.join(", ")
-          : "None",
-    ]);
-    rows.push(["Expires", status.expires_at ? formatTime(status.expires_at) : "Not reported"]);
-    rows.push(["Last checked", formatTime(status.checked_at)]);
-  }
-  return <Values rows={rows} />;
-}
-
-function TokenForm({
-  csrf,
-  status,
-  secretKey,
-  onSaved,
-}: {
-  csrf: string;
-  status: WriteTokenStatus;
-  secretKey: boolean | null;
-  onSaved: (message: string) => void;
-}) {
-  const { refresh } = useAuth();
-  const id = useId();
-  const [token, setToken] = useState("");
-  const [problems, setProblems] = useState<string[]>([]);
-  const [sending, setSending] = useState<"save" | "remove" | null>(null);
-  const [confirmRemove, setConfirmRemove] = useState(false);
-  const canStore = secretKey !== false;
-
-  function failed(error: unknown) {
-    const apiError = asApiError(error);
-    setProblems([apiError.message, ...errorReasons(apiError)]);
-    if (apiError.status === 401) void refresh();
-  }
-
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const value = token.trim();
-    const found: string[] = [];
-    if (!value) found.push("Enter the write token.");
-    else if (value.length > MAX_TOKEN) {
-      found.push(`The token is longer than ${String(MAX_TOKEN)} characters.`);
-    } else if (/\s/.test(value)) found.push("The token cannot contain spaces or line breaks.");
-    setProblems(found);
-    if (found.length > 0) return;
-    setSending("save");
-    try {
-      const saved = await putWriteToken(value, csrf);
-      setToken("");
-      onSaved(
-        saved.check_error
-          ? `Write token saved, but GitLab could not confirm it: ${saved.check_error}`
-          : `Write token ${status.set ? "replaced" : "saved"} and checked with GitLab.`,
-      );
-    } catch (error) {
-      failed(error);
-    } finally {
-      setSending(null);
-    }
-  }
-
-  async function remove() {
-    setSending("remove");
-    setProblems([]);
-    try {
-      await removeWriteToken(csrf);
-      setConfirmRemove(false);
-      onSaved("Write token removed. Label plans cannot be applied until a new one is set.");
-    } catch (error) {
-      failed(error);
-    } finally {
-      setSending(null);
-    }
-  }
-
-  return (
-    <div className="stack-4">
-      <Problems messages={problems} />
-      <form
-        className="stack-3"
-        onSubmit={(event) => void save(event)}
-        aria-label="Label write token"
-        noValidate
-      >
-        <label className="d-block fw-medium">
-          {status.set ? "Replace the write token" : "Write token"}
-          <input
-            name="token"
-            type="password"
-            value={token}
-            onChange={(event) => {
-              setToken(event.target.value);
-            }}
-            autoComplete="new-password"
-            disabled={!canStore}
-            aria-describedby={`${id}-help`}
-            className="form-control mt-1"
-          />
-        </label>
-        <p id={`${id}-help`} className="small text-secondary">
-          Never shown again once saved. Use a group access token with the Maintainer role and the{" "}
-          <code>api</code> scope, limited to the groups whose labels Baluarte should fix, with an
-          expiry date. It is used only to apply approved label plans; every other read keeps using
-          the read-only token.
-        </p>
-        {!canStore && <SecretKeyNotice />}
-        <div className="d-flex flex-wrap gap-2">
-          <button
-            type="submit"
-            disabled={!canStore || sending !== null}
-            className="btn btn-primary"
-          >
-            {sending === "save"
-              ? "Checking and saving…"
-              : status.set
-                ? "Replace token"
-                : "Save token"}
-          </button>
-          {status.set && !confirmRemove && (
-            <button
-              type="button"
-              onClick={() => {
-                setConfirmRemove(true);
-              }}
-              className="btn"
-            >
-              Remove token
-            </button>
-          )}
-        </div>
-      </form>
-      {confirmRemove && (
-        <div className={noteClass}>
-          <p>Remove the write token? Approved label plans cannot be applied without one.</p>
-          <div className="mt-2 d-flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={sending !== null}
-              onClick={() => void remove()}
-              className="btn btn-primary"
-            >
-              {sending === "remove" ? "Removing…" : "Remove the token"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setConfirmRemove(false);
-              }}
-              className="btn"
-            >
-              Keep it
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+const LABEL_TOKEN: WriteTokenKind = {
+  id: "label-token",
+  title: "Label write token",
+  intro:
+    "Used only to create, rename or update labels from an approved label plan, and to set " +
+    "labels and estimates from an approved issue plan. It never deletes. Setting, replacing " +
+    "and removing it are recorded in the audit log.",
+  writes: "Label writes",
+  switchName: "BALUARTE_LABEL_WRITES",
+  help: (
+    <>
+      Never shown again once saved. Use a group access token with the Maintainer role and the{" "}
+      <code>api</code> scope, limited to the groups whose labels Baluarte should fix, with an expiry
+      date. It is used only to apply approved label plans; every other read keeps using the
+      read-only token.
+    </>
+  ),
+  removed: "Write token removed. Label plans cannot be applied until a new one is set.",
+  removeQuestion: "Remove the write token? Approved label plans cannot be applied without one.",
+  get: getWriteToken,
+  put: putWriteToken,
+  remove: removeWriteToken,
+};
 
 /** The separate, write-capable token that applies approved label plans (ADR-0009). */
 export function LabelWriteTokenCard({
@@ -197,58 +35,5 @@ export function LabelWriteTokenCard({
   csrf: string;
   secretKey: boolean | null;
 }) {
-  const [version, setVersion] = useState(0);
-  const [message, setMessage] = useState<string | null>(null);
-  const loaded = useLoad(`settings-label-write-token#${String(version)}`, (signal) =>
-    getWriteToken(signal),
-  );
-
-  return (
-    <section aria-labelledby="label-token-title" className={cardClass}>
-      <h2 id="label-token-title" className="card-title">
-        Label write token
-      </h2>
-      <p className="text-secondary">
-        The only credential Baluarte writes to GitLab with, and only to create, rename or update
-        labels from an approved plan. It never deletes. Setting, replacing and removing it are
-        recorded in the audit log.
-      </p>
-      {loaded.error ? (
-        <ErrorMessage error={loaded.error} retry={loaded.retry} />
-      ) : loaded.data ? (
-        <>
-          <StatusValues status={loaded.data} />
-          {loaded.data.check_error && (
-            <p
-              className={noteClass}
-            >{`GitLab could not confirm the token: ${loaded.data.check_error}`}</p>
-          )}
-          {!loaded.data.writes_enabled && (
-            <p className={noteClass}>
-              Label writes are turned off for this deployment, so plans cannot be applied even with
-              a token. Set <code>BALUARTE_LABEL_WRITES=true</code> in the deployment and restart
-              Baluarte to allow them.
-            </p>
-          )}
-          <TokenForm
-            key={String(version)}
-            csrf={csrf}
-            status={loaded.data}
-            secretKey={secretKey}
-            onSaved={(text) => {
-              setMessage(text);
-              setVersion((value) => value + 1);
-            }}
-          />
-        </>
-      ) : (
-        <p role="status" className="text-secondary">
-          Loading the label write token…
-        </p>
-      )}
-      <p role="status" className="text-success-emphasis">
-        {message ?? ""}
-      </p>
-    </section>
-  );
+  return <WriteTokenCard kind={LABEL_TOKEN} csrf={csrf} secretKey={secretKey} />;
 }

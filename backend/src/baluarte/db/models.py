@@ -82,7 +82,16 @@ MAX_EVIDENCE_REF = 500
 MAX_COMPLIANCE_EXCEPTION_DAYS = 365
 MIN_STATEMENT = 10
 MAX_STATEMENT = 2000
-PLAN_STATES = ("draft", "submitted", "approved", "rejected", "expired")
+PLAN_STATES = (
+    "draft",
+    "submitted",
+    "approved",
+    "rejected",
+    "expired",
+    "applying",
+    "applied",
+    "failed",
+)
 # Longest a remediation plan stays valid, from its creation, and the most steps it may hold.
 MAX_PLAN_HOURS = 72
 MAX_PLAN_STEPS = 100
@@ -97,6 +106,7 @@ SETTING_KEYS = (
     "label_write_token",
     "time_tracking",
     "notifications",
+    "remediation_write_token",
 )
 SECRET_NAMES = (
     "oidc_client_secret",
@@ -106,6 +116,7 @@ SECRET_NAMES = (
     "label_write_token",
     "notifications_smtp_password",
     "notifications_webhook_url",
+    "remediation_write_token",
 )
 NOTIFICATION_EVENTS = (
     "new_findings",
@@ -1224,14 +1235,15 @@ class ComplianceAttestation(Base):
 
 
 class RemediationPlan(Base):
-    """A dry-run remediation plan (BAL-031): the GitLab changes that would fix open findings.
+    """A remediation plan (BAL-031, BAL-032): the GitLab changes that would fix open findings.
 
     The plan document and its digest never change. ``draft`` becomes ``submitted`` (by its
     creator), then ``approved`` or ``rejected`` by someone else; ``draft``, ``submitted`` or
     ``approved`` becomes ``expired`` once ``expires_at`` has passed. Approval records the digest
-    the approver reviewed, which must equal the plan's. A trigger enforces the transitions,
-    keeps the plan unchanged and rejects ``DELETE``. Nothing here changes GitLab: execution is
-    BAL-032.
+    the approver reviewed, which must equal the plan's. An approved plan becomes ``applying``
+    when someone applies it before it expires, then ``applied`` or ``failed``; ``progress``
+    holds each step's outcome. A trigger enforces the transitions, keeps the plan and the
+    decision unchanged and rejects ``DELETE``.
     """
 
     __tablename__ = "remediation_plan"
@@ -1259,15 +1271,19 @@ class RemediationPlan(Base):
             "(decided_at IS NULL) = (decided_by_user_id IS NULL)", name="decision_complete"
         ),
         CheckConstraint(
-            "state NOT IN ('approved', 'rejected') OR decided_at IS NOT NULL",
+            "state NOT IN ('approved', 'rejected', 'applying', 'applied', 'failed') "
+            "OR decided_at IS NOT NULL",
             name="decided_has_decision",
         ),
         CheckConstraint(
-            "state NOT IN ('submitted', 'approved', 'rejected') OR submitted_at IS NOT NULL",
+            "state NOT IN ('submitted', 'approved', 'rejected', 'applying', 'applied', 'failed') "
+            "OR submitted_at IS NOT NULL",
             name="submitted_has_time",
         ),
         CheckConstraint(
-            "state <> 'approved' OR approved_digest IS NOT NULL", name="approved_has_digest"
+            "state NOT IN ('approved', 'applying', 'applied', 'failed') "
+            "OR approved_digest IS NOT NULL",
+            name="approved_has_digest",
         ),
         CheckConstraint(
             "state NOT IN ('draft', 'submitted', 'rejected') OR approved_digest IS NULL",
@@ -1278,6 +1294,16 @@ class RemediationPlan(Base):
             name="approval_binds_digest",
         ),
         CheckConstraint("(state = 'expired') = (ended_at IS NOT NULL)", name="expired_has_time"),
+        CheckConstraint(
+            "state NOT IN ('applying', 'applied', 'failed') "
+            "OR (apply_started_at IS NOT NULL AND applied_by_user_id IS NOT NULL)",
+            name="applying_has_start",
+        ),
+        CheckConstraint(
+            "(state IN ('applied', 'failed')) = (finished_at IS NOT NULL)",
+            name="finished_has_time",
+        ),
+        CheckConstraint("(state = 'failed') = (failure IS NOT NULL)", name="failure_explained"),
     )
 
     id: Mapped[int] = pk()
@@ -1300,6 +1326,15 @@ class RemediationPlan(Base):
     # The digest the approver reviewed; equal to ``plan_digest`` when approved.
     approved_digest: Mapped[str | None] = mapped_column(Text)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    applied_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    apply_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    failed_step: Mapped[int | None] = mapped_column(Integer)
+    failure: Mapped[str | None] = mapped_column(Text)
+    # One entry per step: its status, the write's HTTP status and the verification.
+    progress: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, server_default=text("'[]'::jsonb")
+    )
 
 
 class LabelTaxonomy(Base):

@@ -7,12 +7,15 @@ import {
   CAN_PLAN,
   MAX_NOTE,
   PlanError,
+  applyBlocks,
+  applyPlan,
   approvePlan,
   getPlan,
   rejectPlan,
   submitPlan,
   type Plan,
   type PlanStep,
+  type StepProgress,
 } from "../api/remediation";
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
@@ -28,9 +31,12 @@ import {
   planStateLabels,
   planStateMeaning,
   requestText,
+  stepStatusLabels,
+  stepStatusTone,
   userLabel,
 } from "../remediation/format";
 import { formatTime } from "../time";
+import { Badge } from "../ui/Badge";
 import { DecisionBar } from "../ui/DecisionBar";
 import { useDeviceClass } from "../ui/device";
 import { Dialog } from "../ui/Dialog";
@@ -38,6 +44,8 @@ import { Loading } from "../ui/Loading";
 import { PageHeader } from "../ui/PageHeader";
 
 const codeClass = "mb-0 small";
+/** How often a plan being applied is read again. */
+export const APPLY_POLL_MS = 3000;
 
 function Field({ term, children }: { term: string; children: ReactNode }) {
   return (
@@ -62,18 +70,57 @@ function Lines({ lines }: { lines: string[] }) {
   );
 }
 
-function Step({ step }: { step: PlanStep }) {
+function outcomeLines(progress: StepProgress): string[] {
+  const lines: string[] = [];
+  if (progress.message) lines.push(progress.message);
+  if (progress.request_status !== undefined && progress.request_status !== null) {
+    lines.push(`GitLab answered the write with ${String(progress.request_status)}.`);
+  }
+  if (progress.verified === true)
+    lines.push("A read with the read-only token showed the intended value.");
+  if (progress.verified === false) {
+    lines.push("A read with the read-only token did not show the intended value.");
+  }
+  if (progress.finished_at) lines.push(`Finished ${formatTime(progress.finished_at)}.`);
+  return lines;
+}
+
+function sentNote(progress: StepProgress | undefined): string {
+  if (!progress || progress.status === "pending") {
+    return "Sent once, with the remediation write token, only when the approved plan is applied.";
+  }
+  if (progress.request_status !== undefined && progress.request_status !== null) {
+    return `Sent once; GitLab answered ${String(progress.request_status)}.`;
+  }
+  return "Not sent.";
+}
+
+function Step({ step, progress }: { step: PlanStep; progress: StepProgress | undefined }) {
   const label = actionLabels[step.action] ?? step.action;
   const headingId = `step-${String(step.step)}`;
   return (
     <li>
       <article aria-labelledby={headingId} className="card card-sm">
-        <div className="card-header">
-          <h3 id={headingId} className="card-title">
+        <div className="card-header d-flex flex-wrap gap-2 align-items-center">
+          <h3 id={headingId} className="card-title me-auto">
             {`Step ${String(step.step)}: ${label} for ${step.target.project_path}`}
           </h3>
+          {progress && (
+            <Badge tone={stepStatusTone[progress.status]}>
+              {stepStatusLabels[progress.status]}
+            </Badge>
+          )}
         </div>
         <dl className="card-body mb-0 py-0">
+          {progress && progress.status !== "pending" && (
+            <Field term="Outcome">
+              <ul className="list-unstyled mb-0 stack-1">
+                {outcomeLines(progress).map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            </Field>
+          )}
           <Field term="Change">
             <div className="row g-2">
               <div className="col-sm-6">
@@ -89,11 +136,11 @@ function Step({ step }: { step: PlanStep }) {
           <Field term="Policy expects">
             <Lines lines={describeValues(step.expected)} />
           </Field>
-          <Field term="Request that would be sent">
+          <Field term="Request">
             <pre aria-label={`Request for step ${String(step.step)}`} className={codeClass}>
               {requestText(step.request)}
             </pre>
-            <p className="mt-1 mb-0 text-secondary">Not sent: execution is not available.</p>
+            <p className="mt-1 mb-0 text-secondary">{sentNote(progress)}</p>
           </Field>
           <Field term="Verified by reading">
             <pre
@@ -103,7 +150,7 @@ function Step({ step }: { step: PlanStep }) {
               {`${step.verify.method} ${step.verify.path}\nexpect ${JSON.stringify(step.verify.expect ?? {})}`}
             </pre>
           </Field>
-          <Field term="Preconditions to re-check">
+          <Field term="Preconditions, checked again first">
             <ul className="mb-0 ps-3 stack-1">
               {step.preconditions.map((item) => (
                 <li key={item}>{item}</li>
@@ -146,7 +193,7 @@ function Step({ step }: { step: PlanStep }) {
   );
 }
 
-type Action = "submit" | "approve" | "reject";
+type Action = "submit" | "approve" | "reject" | "apply";
 
 const actionText: Record<Action, { open: string; heading: string; confirm: string; done: string }> =
   {
@@ -168,6 +215,12 @@ const actionText: Record<Action, { open: string; heading: string; confirm: strin
       confirm: "Confirm rejection",
       done: "rejected",
     },
+    apply: {
+      open: "Apply to GitLab…",
+      heading: "Apply this plan to GitLab?",
+      confirm: "Apply to GitLab",
+      done: "is being applied",
+    },
   };
 
 function effect(action: Action, plan: Plan): string {
@@ -178,7 +231,16 @@ function effect(action: Action, plan: Plan): string {
     return (
       `Your approval binds to plan digest ${plan.plan_digest}: it covers exactly the steps ` +
       "shown, and is refused if the plan's findings or evidence have changed. Approving " +
-      "changes nothing in GitLab; execution is not available in this version."
+      "changes nothing in GitLab; applying the plan is a separate step."
+    );
+  }
+  if (action === "apply") {
+    return (
+      `This changes GitLab: ${String(plan.steps)} step${plan.steps === 1 ? "" : "s"}, as shown. ` +
+      "Each step is first checked with a fresh read; a change already made, or a project " +
+      "changed since the plan, is left alone. Otherwise the request is sent once with the " +
+      "remediation write token and read back with the read-only token. The plan stops at the " +
+      "first step that fails, and nothing is retried."
     );
   }
   return "Nothing will be done with it; a new plan can be built.";
@@ -215,6 +277,7 @@ function Confirm({
   async function send(note: string): Promise<Plan> {
     if (action === "submit") return submitPlan(plan.id, csrfToken);
     if (action === "approve") return approvePlan(plan.id, plan.plan_digest, note, csrfToken);
+    if (action === "apply") return applyPlan(plan.id, csrfToken);
     return rejectPlan(plan.id, note, csrfToken);
   }
 
@@ -222,7 +285,10 @@ function Confirm({
     event.preventDefault();
     const note = String(new FormData(event.currentTarget).get("note") ?? "");
     if (action === "reject" && !note.trim()) {
-      setFailure({ message: "Give a reason; it is recorded with the rejection.", reasons: [] });
+      setFailure({
+        message: "Give a reason; it is recorded with the rejection.",
+        reasons: [],
+      });
       return;
     }
     setSending(true);
@@ -232,9 +298,10 @@ function Confirm({
     } catch (error) {
       const apiError =
         error instanceof ApiError ? error : new ApiError(0, "The response could not be read.");
+      const reasons = apiError instanceof PlanError ? apiError.reasons : [];
       setFailure({
         message: apiError.message,
-        reasons: apiError instanceof PlanError ? apiError.reasons : [],
+        reasons: action === "apply" ? applyBlocks(reasons) : reasons,
       });
       if (apiError.status === 401) void refresh();
     } finally {
@@ -257,7 +324,7 @@ function Confirm({
           )}
         </div>
       )}
-      {action !== "submit" && (
+      {(action === "approve" || action === "reject") && (
         <label className="form-label w-100 mb-3">
           {action === "reject" ? "Reason" : "Note (optional)"}
           <textarea name="note" rows={3} maxLength={MAX_NOTE} className="form-control mt-1" />
@@ -303,19 +370,26 @@ function Actions({
   if (mayDecide && !plan.digest_valid) {
     notes.push("The stored plan no longer matches its digest, so it cannot be approved.");
   }
+  const mayApply = plan.state === "approved" && hasPermission(user, CAN_PLAN);
+  if (mayApply && plan.can_apply.allowed) available.push("apply");
+  if (mayApply && !plan.can_apply.allowed) {
+    notes.push(
+      `It cannot be applied from here now. ${applyBlocks(plan.can_apply.reasons).join(" ")}`,
+    );
+  }
   if (available.length === 0 && notes.length === 0) return null;
   // Phones offer decisions only.
-  const shown = device === "phone" ? available.filter((item) => item !== "submit") : available;
+  const shown =
+    device === "phone"
+      ? available.filter((item) => item !== "submit" && item !== "apply")
+      : available;
+  const summary = available.includes("apply")
+    ? "Applying changes GitLab: each step is checked, written once and read back."
+    : "Approving binds to the plan digest shown; nothing is changed in GitLab.";
 
   return (
     <>
-      <DecisionBar
-        summary={
-          notes.length > 0
-            ? notes.join(" ")
-            : "Approving binds to the plan digest shown; nothing is changed in GitLab."
-        }
-      >
+      <DecisionBar summary={notes.length > 0 ? notes.join(" ") : summary}>
         {shown.map((item) => (
           <button
             key={item}
@@ -355,31 +429,64 @@ function Actions({
   );
 }
 
-function Detail({ initial, created }: { initial: Plan; created: boolean }) {
+function Detail({
+  initial,
+  created,
+  reload,
+}: {
+  initial: Plan;
+  created: boolean;
+  reload: () => void;
+}) {
   const { session } = useAuth();
   const user = session.status === "signed_in" ? session.user : null;
-  const [changed, setChanged] = useState<{ plan: Plan; action: Action }>();
+  const [changed, setChanged] = useState<{
+    plan: Plan;
+    action: Action;
+    base: Plan;
+  }>();
   const status = useRef<HTMLParagraphElement>(null);
-  const plan = changed?.plan ?? initial;
+  // An action's response is shown until the next read of the plan arrives.
+  const plan = changed && changed.base === initial ? changed.plan : initial;
   const doc = plan.plan;
   const pending = plan.state === "draft" || plan.state === "submitted";
+  const applying = plan.state === "applying";
+  const progress = new Map(plan.progress.map((entry) => [entry.step, entry]));
 
   useEffect(() => {
     if (changed || created) status.current?.focus();
   }, [changed, created]);
 
+  useEffect(() => {
+    if (!applying) return;
+    const timer = window.setInterval(reload, APPLY_POLL_MS);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [applying, reload]);
+
   let message: string | null = null;
-  if (changed) message = `Plan ${String(plan.id)} ${actionText[changed.action].done}.`;
-  else if (created) {
-    message = `Plan ${String(plan.id)} created as a draft. Review it, then submit it for approval.`;
+  if (changed) {
+    message = `Plan ${String(plan.id)} ${actionText[changed.action].done}.`;
+    if (changed.action !== "apply") message += " Nothing was changed in GitLab.";
+  } else if (created) {
+    message =
+      `Plan ${String(plan.id)} created as a draft. Review it, then submit it for approval. ` +
+      "Nothing was changed in GitLab.";
   }
 
   return (
     <>
       {message && (
         <p ref={status} role="status" tabIndex={-1} className="alert alert-success text-body">
-          {`${message} Nothing was changed in GitLab.`}
+          {message}
         </p>
+      )}
+      {plan.state === "failed" && (
+        <div role="alert" className="alert alert-danger text-body">
+          <p className="fw-medium mb-1">{`Applying stopped at step ${String(plan.failed_step ?? "?")}.`}</p>
+          <p className="mb-0">{plan.failure}</p>
+        </div>
       )}
       {!plan.digest_valid && (
         <p role="alert" className="alert alert-danger text-body">
@@ -438,6 +545,14 @@ function Detail({ initial, created }: { initial: Plan; created: boolean }) {
                 <code className="text-break bg-transparent p-0">{plan.approved_digest}</code>
               </Field>
             )}
+            {plan.apply_started_at && (
+              <Field term="Applied">
+                {`Started ${formatTime(plan.apply_started_at)} by ${userLabel(plan.applied_by_user_id, user)}`}
+                {plan.finished_at && (
+                  <span className="d-block">{`Finished ${formatTime(plan.finished_at)}`}</span>
+                )}
+              </Field>
+            )}
             <Field term="Instance">{doc.instance}</Field>
             <Field term="Execution">{doc.execution}</Field>
           </dl>
@@ -453,7 +568,7 @@ function Detail({ initial, created }: { initial: Plan; created: boolean }) {
         </h2>
         <ol className="list-unstyled d-grid gap-3 mb-0 stack-4">
           {doc.steps.map((step) => (
-            <Step key={step.step} step={step} />
+            <Step key={step.step} step={step} progress={progress.get(step.step)} />
           ))}
         </ol>
       </section>
@@ -491,7 +606,7 @@ function Detail({ initial, created }: { initial: Plan; created: boolean }) {
           plan={plan}
           user={user}
           onChanged={(updated, action) => {
-            setChanged({ plan: updated, action });
+            setChanged({ plan: updated, action, base: initial });
           }}
         />
       )}
@@ -508,16 +623,20 @@ export function RemediationPlanPage() {
   const loaded = useLoad(`plan:${planId}`, (signal) =>
     valid ? getPlan(id, signal) : Promise.reject(new ApiError(404, "No such plan")),
   );
+  // Keep the last plan on screen while it is read again (polling while it is applied).
+  const [shown, setShown] = useState<Plan | undefined>(undefined);
+  const data = loaded.data ?? shown;
+  if (loaded.data && loaded.data !== shown) setShown(loaded.data);
 
   let body: ReactNode;
   if (loaded.error?.status === 404) {
     body = <p className="text-secondary">{`There is no remediation plan with ID ${planId}.`}</p>;
-  } else if (loaded.error) {
+  } else if (loaded.error && !data) {
     body = <ErrorMessage error={loaded.error} retry={loaded.retry} />;
-  } else if (!loaded.data) {
+  } else if (!data) {
     body = <Loading label="Loading plan…" />;
   } else {
-    body = <Detail key={loaded.data.id} initial={loaded.data} created={created} />;
+    body = <Detail key={data.id} initial={data} created={created} reload={loaded.retry} />;
   }
 
   return (

@@ -10,11 +10,12 @@ Record a decision here when it changes or establishes a foundational choice: run
 | [ADR-0004](ADR-0004-single-gitlab-instance.md) | One GitLab instance per deployment for v0.1 | Accepted |
 | [ADR-0005](ADR-0005-no-cloud-dependency.md) | No cloud or internet dependency at runtime | Accepted |
 | [ADR-0006](ADR-0006-server-side-oidc-sessions.md) | API is the OIDC client; sessions in PostgreSQL | Accepted |
-| [ADR-0007](ADR-0007-remediation-constraints.md) | Constraints for GitLab remediation (M6) | Proposed (plans implemented in BAL-031) |
+| [ADR-0007](ADR-0007-remediation-constraints.md) | Constraints for GitLab remediation (M6) | Accepted (plans in BAL-031, applying in BAL-032 under ADR-0012) |
 | [ADR-0008](ADR-0008-settings-in-the-database.md) | Settings and sealed secrets entered in the web UI; one-time setup code | Accepted |
 | [ADR-0009](ADR-0009-label-writes.md) | Write access to GitLab for approved label plans only | Accepted |
 | [ADR-0010](ADR-0010-time-tracking-personal-data.md) | Time tracking, including time per person | Accepted |
 | [ADR-0011](ADR-0011-issue-time-writes.md) | Approved issue plans for time rules on closed issues | Accepted |
+| [ADR-0012](ADR-0012-remediation-writes.md) | Applying approved remediation plans with a separate write token | Accepted |
 
 ## Template
 

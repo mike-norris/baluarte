@@ -54,7 +54,10 @@ you, is in [COMPLIANCE.md](COMPLIANCE.md).
    access tokens, need Maintainer. The capability report on the GitLab page shows what the token is
    refused, and those checks report unknown, never compliant. Only turn on label
    or issue writes (`BALUARTE_LABEL_WRITES`, `BALUARTE_ISSUE_WRITES`) with a separate write token,
-   and only if you use those plans ([GITLAB_INTEGRATION.md](GITLAB_INTEGRATION.md)).
+   and only if you use those plans ([GITLAB_INTEGRATION.md](GITLAB_INTEGRATION.md)). Remediation
+   writes (`BALUARTE_REMEDIATION_WRITES`) use a third token, which needs Owner on the projects it
+   fixes. Limit it to those groups, give it an expiry, and turn the switch on only while you apply
+   plans from Baluarte ([REMEDIATION.md](REMEDIATION.md#applying-a-plan)).
 6. **Map roles to dedicated identity provider groups**, and keep the admin group small. Review its
    membership at least quarterly; the operating profile's `access-review` attestation records it.
 7. **Leave development mode off.** `BALUARTE_DEVELOPMENT_MODE=true` lets one person decide their

@@ -298,12 +298,15 @@ https://{{ .Values.ingress.host }}
 {{- end }}
 {{- end }}
 
-{{/* API and worker: whether approved label plans may be applied (docs/LABELS.md). */}}
+{{/* API and worker: whether approved label, issue and remediation plans may be applied
+(docs/LABELS.md, docs/TIME_TRACKING.md, docs/REMEDIATION.md). */}}
 {{- define "baluarte.labelWritesEnv" -}}
 - name: BALUARTE_LABEL_WRITES
   value: {{ ternary "true" "false" (eq (toString .Values.gitlab.labelWrites) "true") | quote }}
 - name: BALUARTE_ISSUE_WRITES
   value: {{ ternary "true" "false" (eq (toString (dig "issueWrites" false .Values.gitlab)) "true") | quote }}
+- name: BALUARTE_REMEDIATION_WRITES
+  value: {{ ternary "true" "false" (eq (toString (dig "remediationWrites" false .Values.gitlab)) "true") | quote }}
 {{- end }}
 
 {{/* API and worker: whether time per person is shown (docs/TIME_TRACKING.md). */}}

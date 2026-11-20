@@ -73,7 +73,11 @@ type Routes = Record<string, (init?: RequestInit) => Response>;
 const socProfile = profile({
   frameworks: ["soc2"],
   configured: true,
-  settings: { ...profile().settings, session_idle_minutes: 30, require_review: true },
+  settings: {
+    ...profile().settings,
+    session_idle_minutes: 30,
+    require_review: true,
+  },
   sources: { ...profile().sources, session_lifetime_minutes: "deployment" },
   updated_by: "user:1",
   updated_at: "2026-11-02T09:00:00Z",
@@ -159,7 +163,9 @@ describe("settings page", () => {
     const gitlab = await card("GitLab connection");
     await user.click(await within(gitlab).findByRole("button", { name: "Edit connection" }));
     expect(within(gitlab).getByLabelText("Access token")).toHaveValue("");
-    const interval = within(gitlab).getByRole("spinbutton", { name: "Collect every (minutes)" });
+    const interval = within(gitlab).getByRole("spinbutton", {
+      name: "Collect every (minutes)",
+    });
     await user.clear(interval);
     await user.type(interval, "0");
     await user.click(within(gitlab).getByRole("button", { name: "Save GitLab connection" }));
@@ -235,12 +241,18 @@ describe("settings page", () => {
   });
 
   it("warns about lockout when editing the identity provider", async () => {
-    const calls = api(admin, { "PUT /api/v1/settings/oidc": () => json(oidcConfig) });
+    const calls = api(admin, {
+      "PUT /api/v1/settings/oidc": () => json(oidcConfig),
+    });
     const user = userEvent.setup();
 
     renderSettings();
     const oidc = await card("Identity provider");
-    await user.click(await within(oidc).findByRole("button", { name: "Edit identity provider" }));
+    await user.click(
+      await within(oidc).findByRole("button", {
+        name: "Edit identity provider",
+      }),
+    );
 
     expect(within(oidc).getByText(/can lock every administrator out/)).toBeInTheDocument();
     await user.click(within(oidc).getByRole("button", { name: "Save identity provider" }));
@@ -266,7 +278,9 @@ describe("settings page", () => {
       <RouterProvider router={createMemoryRouter(routes, { initialEntries: ["/settings"] })} />,
     );
 
-    const card = await screen.findByRole("region", { name: "Baseline change review" });
+    const card = await screen.findByRole("region", {
+      name: "Baseline change review",
+    });
     const toggle = await within(card).findByRole("checkbox", {
       name: "Require a second person to approve baseline changes",
     });
@@ -300,7 +314,9 @@ describe("change evidence settings", () => {
     renderSettings();
 
     const section = await card("Change evidence");
-    const form = await within(section).findByRole("form", { name: "Change evidence settings" });
+    const form = await within(section).findByRole("form", {
+      name: "Change evidence settings",
+    });
     const lookback = within(form).getByLabelText("Lookback (days)");
     expect(lookback).toHaveValue(90);
     await user.clear(lookback);
@@ -308,7 +324,11 @@ describe("change evidence settings", () => {
     const environments = within(form).getByLabelText("Production environments");
     await user.clear(environments);
     await user.type(environments, "production, production-eu\nproduction");
-    await user.click(within(form).getByRole("button", { name: "Save change evidence settings" }));
+    await user.click(
+      within(form).getByRole("button", {
+        name: "Save change evidence settings",
+      }),
+    );
 
     expect(
       await within(section).findByText(
@@ -328,12 +348,18 @@ describe("change evidence settings", () => {
     renderSettings();
 
     const section = await card("Change evidence");
-    const form = await within(section).findByRole("form", { name: "Change evidence settings" });
+    const form = await within(section).findByRole("form", {
+      name: "Change evidence settings",
+    });
     const redeploy = within(form).getByLabelText("Read again for (days)");
     await user.clear(redeploy);
     await user.type(redeploy, "31");
     await user.clear(within(form).getByLabelText("Production environments"));
-    await user.click(within(form).getByRole("button", { name: "Save change evidence settings" }));
+    await user.click(
+      within(form).getByRole("button", {
+        name: "Save change evidence settings",
+      }),
+    );
 
     const alert = await within(form).findByRole("alert");
     expect(alert).toHaveTextContent("Choose a re-read period of 1 to 30 days.");
@@ -349,7 +375,12 @@ describe("change evidence settings", () => {
             detail: {
               code: "invalid_settings",
               message: "the settings were refused",
-              reasons: [{ code: "environment_name", message: "an environment name is not valid" }],
+              reasons: [
+                {
+                  code: "environment_name",
+                  message: "an environment name is not valid",
+                },
+              ],
             },
           },
           409,
@@ -359,8 +390,14 @@ describe("change evidence settings", () => {
     renderSettings();
 
     const section = await card("Change evidence");
-    const form = await within(section).findByRole("form", { name: "Change evidence settings" });
-    await user.click(within(form).getByRole("button", { name: "Save change evidence settings" }));
+    const form = await within(section).findByRole("form", {
+      name: "Change evidence settings",
+    });
+    await user.click(
+      within(form).getByRole("button", {
+        name: "Save change evidence settings",
+      }),
+    );
 
     const alert = await within(form).findByRole("alert");
     expect(alert).toHaveTextContent("Not possible now: the settings were refused.");
@@ -421,7 +458,9 @@ describe("compliance profile in settings", () => {
     await user.click(await within(section).findByRole("button", { name: "Edit profile" }));
     expect(within(section).getByRole("checkbox", { name: "SOC 2 Type II" })).toBeChecked();
     expect(
-      within(section).getByRole("textbox", { name: "Sign out after at most (minutes)" }),
+      within(section).getByRole("textbox", {
+        name: "Sign out after at most (minutes)",
+      }),
     ).toBeDisabled();
     const idle = within(section).getByRole("textbox", {
       name: "Sign out after inactivity of (minutes)",
@@ -441,7 +480,9 @@ describe("compliance profile in settings", () => {
     });
 
     await user.click(within(section).getByRole("button", { name: /Request an exception/ }));
-    const form = within(section).getByRole("form", { name: "Request an exception" });
+    const form = within(section).getByRole("form", {
+      name: "Request an exception",
+    });
     expect(within(form).getByRole("combobox", { name: "Control" })).toBeDisabled();
     await user.type(
       within(form).getByRole("textbox", { name: "Justification" }),
@@ -463,7 +504,11 @@ describe("compliance profile in settings", () => {
 
     const section = await card("Compliance profile");
     await user.click(await within(section).findByRole("button", { name: "Edit profile" }));
-    await user.click(within(section).getByRole("checkbox", { name: "Legal hold: delete nothing" }));
+    await user.click(
+      within(section).getByRole("checkbox", {
+        name: "Legal hold: delete nothing",
+      }),
+    );
 
     expect(within(section).getByText(/the retention job deletes nothing/)).toBeVisible();
   });
@@ -507,7 +552,9 @@ describe("audit log shipping in settings", () => {
     const section = await card("Audit log shipping");
     expect(await within(section).findByText("https://logs.example.test:9200")).toBeVisible();
     expect(section).toHaveTextContent("API key: Configured (hidden)");
-    const status = within(section).getByRole("group", { name: "Shipping status" });
+    const status = within(section).getByRole("group", {
+      name: "Shipping status",
+    });
     expect(status).toHaveTextContent("2 events waiting");
     expect(status).toHaveTextContent("(up to event 40)");
     expect(status).toHaveTextContent("connection refused (3 failed attempts in a row)");
@@ -521,7 +568,12 @@ describe("audit log shipping in settings", () => {
         json(
           shippingConfig({
             enabled: true,
-            syslog: { host: "logs.example.test", port: 6514, server_name: null, ca_pem: null },
+            syslog: {
+              host: "logs.example.test",
+              port: 6514,
+              server_name: null,
+              ca_pem: null,
+            },
           }),
         ),
     });
@@ -530,10 +582,14 @@ describe("audit log shipping in settings", () => {
 
     const section = await card("Audit log shipping");
     await user.click(
-      await within(section).findByRole("button", { name: "Edit audit log shipping" }),
+      await within(section).findByRole("button", {
+        name: "Edit audit log shipping",
+      }),
     );
     await user.click(
-      within(section).getByRole("checkbox", { name: "Ship audit events to this destination" }),
+      within(section).getByRole("checkbox", {
+        name: "Ship audit events to this destination",
+      }),
     );
     await user.click(within(section).getByRole("button", { name: "Save" }));
     expect(within(section).getByRole("alert")).toHaveTextContent(
@@ -552,7 +608,12 @@ describe("audit log shipping in settings", () => {
     const expected = {
       enabled: true,
       type: "syslog_tls",
-      syslog: { host: "logs.example.test", port: 6514, server_name: null, ca_pem: null },
+      syslog: {
+        host: "logs.example.test",
+        port: 6514,
+        server_name: null,
+        ca_pem: null,
+      },
       elasticsearch: {
         url: "",
         index: "baluarte-audit",
@@ -591,7 +652,9 @@ describe("audit log shipping in settings", () => {
 
     const section = await card("Audit log shipping");
     await user.click(
-      await within(section).findByRole("button", { name: "Edit audit log shipping" }),
+      await within(section).findByRole("button", {
+        name: "Edit audit log shipping",
+      }),
     );
     const address = within(section).getByRole("textbox", { name: "Address" });
     await user.clear(address);
@@ -604,7 +667,9 @@ describe("audit log shipping in settings", () => {
     await user.clear(address);
     await user.type(address, "https://other.example.test:9200");
     await user.type(
-      within(section).getByLabelText("API key", { selector: "input[type=password]" }),
+      within(section).getByLabelText("API key", {
+        selector: "input[type=password]",
+      }),
       "new-key-value",
     );
     await user.click(within(section).getByRole("button", { name: "Save" }));
@@ -708,5 +773,48 @@ describe("label write token in settings", () => {
     await user.click(within(section).getByRole("button", { name: "Save token" }));
     expect(await within(section).findByRole("alert")).toHaveTextContent("Enter the write token.");
     expect(calls.some((call) => call.init?.method === "PUT")).toBe(false);
+  });
+});
+
+describe("remediation write token in settings", () => {
+  const REMEDIATION_TOKEN = "GET /api/v1/settings/remediation-write-token";
+
+  it("is a separate card that saves its own token and names its own switch", async () => {
+    let status = tokenStatus({ writes_enabled: false });
+    const calls = api(admin, {
+      [WRITE_TOKEN]: () => json(tokenStatus({ set: true, scopes: ["api"] })),
+      [REMEDIATION_TOKEN]: () => json(status),
+      "PUT /api/v1/settings/remediation-write-token": () => {
+        status = tokenStatus({
+          set: true,
+          writes_enabled: false,
+          scopes: ["api"],
+        });
+        return json(status);
+      },
+    });
+    const user = userEvent.setup();
+    renderSettings();
+
+    const section = await card("Remediation write token");
+    expect(await within(section).findByText("Not set")).toBeInTheDocument();
+    expect(section).toHaveTextContent("Remediation writesTurned off for this deployment");
+    expect(section).toHaveTextContent("BALUARTE_REMEDIATION_WRITES=true");
+    expect(section).toHaveTextContent("It never widens access, unprotects or deletes anything.");
+    await user.type(within(section).getByLabelText("Write token"), "glpat-example-remediation");
+    await user.click(within(section).getByRole("button", { name: "Save token" }));
+
+    expect(
+      await within(section).findByText("Write token saved and checked with GitLab."),
+    ).toBeInTheDocument();
+    expect(within(section).queryByText("glpat-example-remediation")).not.toBeInTheDocument();
+    expect(bodyOf(calls, "PUT", "/api/v1/settings/remediation-write-token")).toEqual({
+      token: "glpat-example-remediation",
+    });
+    expect(
+      calls.filter(
+        (call) => call.url.endsWith("/label-write-token") && call.init?.method === "PUT",
+      ),
+    ).toHaveLength(0);
   });
 });

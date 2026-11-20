@@ -1,10 +1,12 @@
-/** Types and calls for dry-run remediation plans (docs/REMEDIATION.md). */
+/** Types and calls for remediation plans and applying them (docs/REMEDIATION.md). */
 
 import { ApiError, getJson } from "./client";
-import { changeFailure, detailText } from "./send";
+import type { WriteTokenStatus } from "./labels";
+import { changeFailure, detailText, sendJson } from "./send";
 
 /** ``expired`` once ``expires_at`` has passed, whether or not the row says so yet. */
-export type PlanState = "draft" | "submitted" | "approved" | "rejected" | "expired";
+export type PlanState =
+  "draft" | "submitted" | "approved" | "rejected" | "expired" | "applying" | "applied" | "failed";
 
 export const planStates: readonly PlanState[] = [
   "draft",
@@ -12,7 +14,25 @@ export const planStates: readonly PlanState[] = [
   "approved",
   "rejected",
   "expired",
+  "applying",
+  "applied",
+  "failed",
 ];
+
+/** A step's outcome while and after the plan is applied. */
+export type StepStatus = "pending" | "skipped" | "out_of_date" | "applied" | "failed" | "not_run";
+
+export interface StepProgress {
+  step: number;
+  status: StepStatus;
+  /** The write's HTTP status; null when nothing was written. */
+  request_status?: number | null;
+  /** Whether a read with the read-only token showed the intended value. */
+  verified?: boolean | null;
+  observed?: Record<string, unknown> | null;
+  message?: string | null;
+  finished_at?: string | null;
+}
 
 // Limits the API enforces (backend/src/baluarte/db/models.py, remediation/plans.py).
 export const MAX_PLAN_STEPS = 100;
@@ -92,15 +112,41 @@ export interface PlanSummary {
   decided_at: string | null;
   decision_note: string | null;
   approved_digest: string | null;
+  applied_by_user_id: number | null;
+  apply_started_at: string | null;
+  finished_at: string | null;
+  failed_step: number | null;
+  failure: string | null;
 }
 
 export interface Plan extends PlanSummary {
   /** Recomputed from the stored plan on every read. */
   digest_valid: boolean;
-  /** Why approval would be refused now; empty when the plan still matches its evidence. */
+  /** Why approval or applying would be refused now; empty when the plan matches its evidence. */
   stale_reasons: string[];
   summary: string[];
   plan: PlanDocument;
+  can_apply: { allowed: boolean; reasons: string[] };
+  progress: StepProgress[];
+}
+
+/** Why a plan can't be applied now, as sentences. */
+export const applyBlockText: Record<string, string> = {
+  remediation_writes_disabled:
+    "Remediation writes are turned off for this deployment (BALUARTE_REMEDIATION_WRITES is not true).",
+  write_token_missing:
+    "No remediation write token is set. An administrator can add one in Settings.",
+  expired: "The plan has expired. Create a new plan from current findings.",
+  not_approved: "The plan must be approved before it can be applied.",
+  stale: "The plan no longer matches its findings and evidence. Create a new plan.",
+  projects_not_current:
+    "The projects collection is not current. Run project discovery, then try again.",
+  already_applying: "Another plan is applying the same change. Wait for it to finish.",
+};
+
+/** A sentence for each reason the plan can't be applied; unknown codes read as words. */
+export function applyBlocks(reasons: readonly string[]): string[] {
+  return reasons.map((code) => applyBlockText[code] ?? `${code.replace(/_/g, " ")}.`);
 }
 
 export interface PlanPage {
@@ -223,4 +269,29 @@ export function approvePlan(
 
 export function rejectPlan(id: number, note: string, csrfToken: string): Promise<Plan> {
   return post(`/api/v1/remediation/plans/${String(id)}/reject`, { note: note.trim() }, csrfToken);
+}
+
+/** Queues the applier; the plan comes back ``applying``. */
+export function applyPlan(id: number, csrfToken: string): Promise<Plan> {
+  return post(`/api/v1/remediation/plans/${String(id)}/apply`, {}, csrfToken);
+}
+
+const TOKEN_PATH = "/api/v1/settings/remediation-write-token";
+
+/** ``writes_enabled`` is ``BALUARTE_REMEDIATION_WRITES`` for this deployment. */
+export function getRemediationWriteToken(signal?: AbortSignal): Promise<WriteTokenStatus> {
+  return getJson<WriteTokenStatus>(TOKEN_PATH, {}, signal);
+}
+
+export async function putRemediationWriteToken(
+  token: string,
+  csrfToken: string,
+): Promise<WriteTokenStatus> {
+  const status = await sendJson<WriteTokenStatus>("PUT", TOKEN_PATH, { token }, csrfToken);
+  if (status === null) throw new Error("The API returned no content.");
+  return status;
+}
+
+export async function removeRemediationWriteToken(csrfToken: string): Promise<void> {
+  await sendJson("DELETE", TOKEN_PATH, undefined, csrfToken);
 }

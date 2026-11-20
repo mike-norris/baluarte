@@ -95,9 +95,14 @@ Baluarte needs no internet access. [Notifications](NOTIFICATIONS.md) are off unt
 
 ## Remediation plans
 
-Dry-run plans (BAL-031, [REMEDIATION.md](REMEDIATION.md)) describe GitLab changes that would fix open findings; **creating, submitting or approving one changes nothing in GitLab**. Baluarte still sends only `GET` requests with the `read_api` token, and no write credential exists. Tests run every planning path with network requests forbidden, and check that the GitLab client can only send `GET`.
+Plans (BAL-031, [REMEDIATION.md](REMEDIATION.md)) describe GitLab changes that would fix open findings; **creating, submitting or approving one changes nothing in GitLab**. Tests run every planning path with network requests forbidden, and check that the GitLab client can only send `GET`.
 
-When execution is built (BAL-032), it must use a separate write credential: its own secret file and setting, mounted only into the executing worker, and absent unless remediation is enabled ([ADR-0007](architecture/ADR-0007-remediation-constraints.md)). The read token must never gain write scopes. On GitLab Free, GitLab keeps no audit record of such changes, so Baluarte's audit trail would be the only one.
+Applying an approved plan (BAL-032, [ADR-0012](architecture/ADR-0012-remediation-writes.md)) is the only remediation write.
+- **Off by default:** it needs `BALUARTE_REMEDIATION_WRITES=true` and a remediation write token. That token is separate from the read token and the label write token, sealed, never returned or logged, and decrypted only by the worker's applier.
+- **Two requests only:** the writer can restrict a project's visibility (never widen it) and create a Maintainer-only protection for a default branch. It cannot delete, unprotect or change an existing protection.
+- **Checked, sent once, verified:** each step is checked with a fresh read first, sent once and never retried, and verified by reading back with the read-only token. Every request and outcome is audited.
+
+The read token never gains write scopes. On GitLab Free, GitLab keeps no audit record of these changes, so Baluarte's audit trail is the only one.
 
 Plans separate duties like exceptions: the creator cannot approve or reject their own plan (API and database constraint). Approval names the plan digest the approver reviewed and is refused when the plan is stale.
 

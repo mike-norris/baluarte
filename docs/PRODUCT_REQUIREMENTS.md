@@ -36,7 +36,7 @@ Baluarte is self-hosted and works on every GitLab tier. Its distinguishing promi
 | FR-012 | Deploy identical OCI images via Docker Compose and Helm | v0.1 | Deployment smoke tests |
 | FR-013 | Record MR approval, pipeline, deployment, and test evidence | Next (M7) | GitLab version/tier feasibility spike |
 | FR-014 | Control mapping to SOC 2, ISO 27001, NIST | Later | Reviewed mapping documentation |
-| FR-015 | Approved, dry-run-first, verified remediation | Later | Isolated integration tests |
+| FR-015 | Approved, dry-run-first, verified remediation ([REMEDIATION.md](REMEDIATION.md), [ADR-0012](architecture/ADR-0012-remediation-writes.md)) | M6 | Isolated integration tests against a fake GitLab |
 | FR-016 | Multi-instance GitLab inventory | Later | Separate-tenant isolation tests |
 | FR-017 | Show posture, findings and evidence as they stood on a past date | Next (M7) | Point-in-time reproducibility tests |
 | FR-018 | Auditor evidence package: a period, a reproducible sample of changes, and each item's evidence | Next (M7) | Export reproducibility and seed tests |

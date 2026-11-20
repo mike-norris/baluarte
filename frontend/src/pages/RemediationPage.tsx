@@ -30,6 +30,9 @@ const stateTone: Record<PlanState, Tone> = {
   approved: "primary",
   rejected: "danger",
   expired: "secondary",
+  applying: "primary",
+  applied: "success",
+  failed: "danger",
 };
 
 function columns(user: CurrentUser | null): readonly Column<PlanSummary>[] {
