@@ -77,6 +77,7 @@ const pages: Partial<Record<string, ReactNode>> = {
   "/compliance": page(() => import("./pages/CompliancePage"), "CompliancePage"),
   "/audit-log": page(() => import("./pages/AuditLogPage"), "AuditLogPage"),
   "/settings": page(() => import("./pages/SettingsPage"), "SettingsPage"),
+  "/help": page(() => import("./pages/HelpPage"), "HelpPage"),
 };
 
 export const routes: RouteObject[] = [
@@ -166,6 +167,10 @@ export const routes: RouteObject[] = [
           {
             path: "/exceptions/:exceptionId",
             element: page(() => import("./pages/ExceptionDetailPage"), "ExceptionDetailPage"),
+          },
+          {
+            path: "/help/:topic",
+            element: page(() => import("./pages/HelpPage"), "HelpTopicPage"),
           },
           {
             path: "/remediation/new",

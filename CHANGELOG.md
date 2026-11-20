@@ -20,11 +20,20 @@ the API or the database schema; the release notes say how to upgrade.
   - Every request and outcome is audited.
 - `POST /api/v1/remediation/plans/{id}/apply` and `/api/v1/settings/remediation-write-token`.
   Plans now report `can_apply`, `progress`, and where a failed plan stopped.
+- In-app help under **Help** in the sidebar, with a help button in the header that opens the
+  topic for the current page. It walks through each part of Baluarte step by step, and a
+  **Gaps in GitLab that Baluarte covers** topic sets out what GitLab leaves to each tier and how
+  Baluarte covers it.
 
 ### Changed
 
 - Database migration `0028`: remediation plans gain the `applying`, `applied` and `failed`
   states and their progress. Upgrading runs it in the migration Job, as usual.
+
+### Fixed
+
+- The Remediation page description and the policy engine docs still said plans never change
+  GitLab.
 
 ## [0.1.1]
 

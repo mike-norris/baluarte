@@ -6,6 +6,7 @@ import {
   IconClockCheck,
   IconFileExport,
   IconGitMerge,
+  IconHelp,
   IconHistoryToggle,
   IconInbox,
   IconLayoutDashboard,
@@ -19,7 +20,7 @@ import {
   type Icon,
 } from "@tabler/icons-react";
 
-export type NavGroup = "Overview" | "Observe" | "Act" | "Govern" | "Evidence" | "Admin";
+export type NavGroup = "Overview" | "Observe" | "Act" | "Govern" | "Evidence" | "Admin" | "Help";
 
 export interface NavItem {
   path: string;
@@ -46,6 +47,7 @@ export const navGroups: readonly NavGroup[] = [
   "Govern",
   "Evidence",
   "Admin",
+  "Help",
 ];
 
 /** The page heading for a navigation item. */
@@ -121,7 +123,7 @@ export const navItems: readonly NavItem[] = [
     path: "/remediation",
     label: "Remediation plans",
     title: "Remediation",
-    description: "Dry-run plans to fix failing findings; nothing is changed in GitLab.",
+    description: "Reviewed plans to fix failing findings, applied to GitLab only once approved.",
     group: "Act",
     icon: IconTool,
   },
@@ -198,6 +200,13 @@ export const navItems: readonly NavItem[] = [
     group: "Admin",
     icon: IconSettings,
     permission: "settings:manage",
+  },
+  {
+    path: "/help",
+    label: "Help",
+    description: "How to use Baluarte, and the gaps in GitLab it covers.",
+    group: "Help",
+    icon: IconHelp,
   },
 ];
 

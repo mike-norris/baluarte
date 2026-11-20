@@ -16,6 +16,7 @@ import { useTheme } from "../ui/theme";
 import { ThemeProvider } from "../ui/ThemeProvider";
 import { AccountMenu } from "./AccountMenu";
 import { DevelopmentModeBanner } from "./DevelopmentModeBanner";
+import { HelpButton } from "../help/HelpButton";
 import { JumpSearch } from "./JumpSearch";
 import { Shortcuts } from "./Shortcuts";
 
@@ -255,6 +256,7 @@ function Shell() {
                 <div className="navbar-nav flex-row align-items-center gap-2 ms-auto">
                   {user && <AsOfPicker />}
                   <FreshnessIndicator />
+                  {user && !phone && <HelpButton />}
                   <ThemeToggle />
                   <AccountMenu />
                 </div>
