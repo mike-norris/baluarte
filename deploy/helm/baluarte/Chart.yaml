@@ -2,8 +2,8 @@ apiVersion: v2
 name: baluarte
 description: Governance and audit evidence for self-managed GitLab
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 0.1.1
+appVersion: "0.1.1"
 home: https://github.com/mike-norris/baluarte
 sources:
   - https://github.com/mike-norris/baluarte

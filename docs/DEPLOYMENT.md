@@ -37,12 +37,12 @@ A release is a tag `vX.Y.Z` on `main`; `.github/workflows/release.yml` publishes
 Each image is scanned with Trivy (fixable HIGH and CRITICAL vulnerabilities fail the release) before it is pushed, carries an SBOM and build provenance, and is signed with cosign using the release workflow's identity, as is the chart. Pin images by version or digest, never by a moving tag. To verify a signature:
 
 ```sh
-cosign verify ghcr.io/mike-norris/baluarte-app:0.1.0 \
+cosign verify ghcr.io/mike-norris/baluarte-app:0.1.1 \
   --certificate-identity-regexp '^https://github.com/mike-norris/baluarte/\.github/workflows/release\.yml@refs/tags/v' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
-Install the chart with `helm install baluarte oci://ghcr.io/mike-norris/charts/baluarte --version 0.1.0 -f values.yaml`; it pulls the images of the same version from `ghcr.io/mike-norris` (`global.imageRegistry`, which a mirror or air-gapped registry overrides). To run the Compose stack from released images instead of building them, set `BALUARTE_IMAGE_PREFIX=ghcr.io/mike-norris/` and `BALUARTE_VERSION=0.1.0`, then `docker compose pull` and `docker compose up -d --no-build --wait`.
+Install the chart with `helm install baluarte oci://ghcr.io/mike-norris/charts/baluarte --version 0.1.1 -f values.yaml`; it pulls the images of the same version from `ghcr.io/mike-norris` (`global.imageRegistry`, which a mirror or air-gapped registry overrides). To run the Compose stack from released images instead of building them, set `BALUARTE_IMAGE_PREFIX=ghcr.io/mike-norris/` and `BALUARTE_VERSION=0.1.0`, then `docker compose pull` and `docker compose up -d --no-build --wait`.
 
 ## Production
 

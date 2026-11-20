@@ -16,11 +16,11 @@ server, use the [Helm chart](../deploy/helm/baluarte/README.md) and [HARDENING.m
 ## 1. Start Baluarte
 
 ```sh
-git clone --depth 1 --branch v0.1.0 https://github.com/mike-norris/baluarte.git
+git clone --depth 1 --branch v0.1.1 https://github.com/mike-norris/baluarte.git
 cd baluarte
 mkdir -p secrets && (umask 022 && for name in postgres_password app_database_password backup_database_password secret_key; do
   [ -f secrets/$name ] || openssl rand -base64 32 > secrets/$name; done)
-export BALUARTE_IMAGE_PREFIX=ghcr.io/mike-norris/ BALUARTE_VERSION=0.1.0
+export BALUARTE_IMAGE_PREFIX=ghcr.io/mike-norris/ BALUARTE_VERSION=0.1.1
 docker compose pull
 docker compose up -d --no-build --wait
 docker compose logs api | grep 'setup code'
