@@ -7,6 +7,25 @@ the API or the database schema; the release notes say how to upgrade.
 
 ## [Unreleased]
 
+### Added
+
+- Approved remediation plans can be applied from Baluarte ([ADR-0012](docs/architecture/ADR-0012-remediation-writes.md),
+  [REMEDIATION.md](docs/REMEDIATION.md#applying-a-plan)). This is off by default. It needs
+  `BALUARTE_REMEDIATION_WRITES=true` (Helm: `gitlab.remediationWrites`) and a remediation write
+  token, separate from the read and label write tokens, entered under Settings.
+  - Each step is checked with a fresh read, skipped when already as intended, and left alone when
+    the project changed since the plan.
+  - Otherwise the step is sent once and verified by reading back with the read-only token. A plan
+    stops at the first failed step.
+  - Every request and outcome is audited.
+- `POST /api/v1/remediation/plans/{id}/apply` and `/api/v1/settings/remediation-write-token`.
+  Plans now report `can_apply`, `progress`, and where a failed plan stopped.
+
+### Changed
+
+- Database migration `0028`: remediation plans gain the `applying`, `applied` and `failed`
+  states and their progress. Upgrading runs it in the migration Job, as usual.
+
 ## [0.1.1]
 
 A security release. Upgrade with `helm upgrade … --version 0.1.1`, or with

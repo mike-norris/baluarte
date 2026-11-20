@@ -5,13 +5,15 @@ import {
   type PlanScope,
   type PlanState,
   type PlanSummary,
+  type StepStatus,
 } from "../api/remediation";
 import type { CurrentUser } from "../auth/session";
+import type { Tone } from "../ui/Badge";
 
 export const DRY_RUN_NOTICE =
-  "Dry run: Baluarte makes no change to GitLab. A plan describes the changes that would fix " +
-  "failing findings; executing a plan is not available in this version, so approving one " +
-  "changes nothing in GitLab.";
+  "A plan describes the changes that would fix failing findings. Creating, submitting and " +
+  "approving one change nothing in GitLab. An approved plan changes GitLab only when someone " +
+  "applies it, and only while this deployment allows remediation writes with its own write token.";
 
 export const planStateLabels: Record<PlanState, string> = {
   draft: "Draft",
@@ -19,17 +21,45 @@ export const planStateLabels: Record<PlanState, string> = {
   approved: "Approved",
   rejected: "Rejected",
   expired: "Expired",
+  applying: "Applying",
+  applied: "Applied",
+  failed: "Failed",
+};
+
+export const stepStatusLabels: Record<StepStatus, string> = {
+  pending: "Waiting",
+  skipped: "Already as intended",
+  out_of_date: "Out of date, not changed",
+  applied: "Applied and verified",
+  failed: "Failed",
+  not_run: "Not run",
+};
+
+export const stepStatusTone: Record<StepStatus, Tone> = {
+  pending: "secondary",
+  skipped: "info",
+  out_of_date: "warning",
+  applied: "success",
+  failed: "danger",
+  not_run: "warning",
 };
 
 export const planStateMeaning: Record<PlanState, string> = {
   draft: "Only its creator can see it change; the creator submits it for approval.",
   submitted: "Waiting for someone other than its creator to approve or reject it.",
   approved:
-    "Approved for the digest shown. Nothing has been changed in GitLab: execution is not " +
-    "available in this version. Apply the steps by hand in GitLab, then run project discovery " +
+    "Approved for the digest shown. Nothing has been changed in GitLab yet. Apply it from " +
+    "here before it expires, or apply the steps by hand in GitLab and run project discovery " +
     "to verify them.",
   rejected: "Rejected; nothing will be done with it.",
-  expired: "Past its expiry; it can no longer be submitted or approved.",
+  expired: "Past its expiry; it can no longer be submitted, approved or applied.",
+  applying: "Being applied: each step is checked, written once and read back.",
+  applied:
+    "Applied. Each step was written and read back as intended, already as intended, or out " +
+    "of date and left unchanged. Findings resolve after the next project discovery.",
+  failed:
+    "Stopped at a step that failed; later steps were not run. Nothing is retried: create a " +
+    "new plan from current findings.",
 };
 
 export const actionLabels: Record<string, string> = {
@@ -147,7 +177,10 @@ export function findingsPlanLink(filters: FindingFilters): PlanLink | null {
   if (filters.state) dropped.push("state");
   if (filters.outcome) dropped.push("outcome");
   if (filters.severity) dropped.push("severity");
-  return { href: `/remediation/new?${writePlanScope(scope).toString()}`, dropped };
+  return {
+    href: `/remediation/new?${writePlanScope(scope).toString()}`,
+    dropped,
+  };
 }
 
 /** Values of a plan step's ``current``, ``intended`` or ``expected`` as "key: value" lines. */

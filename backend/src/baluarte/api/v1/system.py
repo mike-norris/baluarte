@@ -35,10 +35,11 @@ from baluarte.configuration.schemas import (
     Source,
 )
 from baluarte.configuration.service import CANNOT_STORE
+from baluarte.configuration.write_tokens import TokenInvalid, TokenStatus, WriteToken
 from baluarte.integrations.gitlab.settings import load_gitlab_settings
 from baluarte.labels import write_token
-from baluarte.labels.write_token import TokenInvalid, TokenStatus
 from baluarte.policy import changes
+from baluarte.remediation import write_token as remediation_token
 from baluarte.settings import ConfigurationError, load_logging_settings
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -292,16 +293,48 @@ def write_change_evidence(
     return change_settings.load(db)
 
 
-class LabelWriteTokenIn(BaseModel):
-    # Checked by ``write_token.checked``, which answers 422 ``token_invalid``.
+class WriteTokenIn(BaseModel):
+    # Checked by ``write_tokens.checked``, which answers 422 ``token_invalid``.
     token: str = Field(max_length=4096)
 
 
-def _token_status(db: Session) -> TokenStatus:
+def _token_status(db: Session, kind: WriteToken) -> TokenStatus:
     try:
-        return write_token.status(db)
+        return kind.status(db)
     except ConfigurationError as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+
+
+def _save_token(
+    kind: WriteToken,
+    body: WriteTokenIn,
+    principal: Principal,
+    db: Session,
+    transport: httpx.BaseTransport | None,
+) -> TokenStatus:
+    try:
+        box = load_secret_box()
+        gitlab = load_gitlab_settings()
+    except ConfigurationError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    if box is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, CANNOT_STORE)
+    try:
+        kind.save(db, body.token, box, gitlab, principal.actor, transport)
+    except TokenInvalid as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            {"code": "token_invalid", "message": str(exc), "reasons": []},
+        ) from None
+    db.commit()
+    return _token_status(db, kind)
+
+
+def _remove_token(kind: WriteToken, principal: Principal, db: Session, missing: str) -> Response:
+    if not kind.remove(db, principal.actor):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, missing)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get(
@@ -313,7 +346,7 @@ def _token_status(db: Session) -> TokenStatus:
     "stored. Issue plans use the same token behind `BALUARTE_ISSUE_WRITES`.",
 )
 def read_label_write_token(_: Admin, db: Database) -> TokenStatus:
-    return _token_status(db)
+    return _token_status(db, write_token.TOKEN)
 
 
 @router.put(
@@ -328,27 +361,12 @@ def read_label_write_token(_: Admin, db: Database) -> TokenStatus:
     "`_replaced`, without the token.",
 )
 def write_label_write_token(
-    body: LabelWriteTokenIn,
+    body: WriteTokenIn,
     principal: Admin,
     db: Database,
     transport: Annotated[httpx.BaseTransport | None, Depends(gitlab_transport)],
 ) -> TokenStatus:
-    try:
-        box = load_secret_box()
-        gitlab = load_gitlab_settings()
-    except ConfigurationError as exc:
-        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
-    if box is None:
-        raise HTTPException(status.HTTP_409_CONFLICT, CANNOT_STORE)
-    try:
-        write_token.save(db, body.token, box, gitlab, principal.actor, transport)
-    except TokenInvalid as exc:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            {"code": "token_invalid", "message": str(exc), "reasons": []},
-        ) from None
-    db.commit()
-    return _token_status(db)
+    return _save_token(write_token.TOKEN, body, principal, db, transport)
 
 
 @router.delete(
@@ -359,7 +377,49 @@ def write_label_write_token(
     "`settings.label_write_token_removed`; 404 when none is stored.",
 )
 def delete_label_write_token(principal: Admin, db: Database) -> Response:
-    if not write_token.remove(db, principal.actor):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No label write token is stored")
-    db.commit()
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    return _remove_token(write_token.TOKEN, principal, db, "No label write token is stored")
+
+
+@router.get(
+    "/remediation-write-token",
+    response_model=TokenStatus,
+    summary="Whether a remediation write token is stored, and what GitLab reported about it",
+    description="Never returns the token. `writes_enabled` is the deployment's "
+    "`BALUARTE_REMEDIATION_WRITES`; remediation plans are applied only while it is true and a "
+    "token is stored.",
+)
+def read_remediation_write_token(_: Admin, db: Database) -> TokenStatus:
+    return _token_status(db, remediation_token.TOKEN)
+
+
+@router.put(
+    "/remediation-write-token",
+    response_model=TokenStatus,
+    summary="Store or replace the remediation write token",
+    description="Separate from the read token and the label write token. The token is sealed "
+    "(ADR-0008) and used only to apply approved remediation plans (ADR-0012). It is checked "
+    "with `GET /personal_access_tokens/self` and stored even when the check fails; "
+    "`check_error` then says why. 422 `token_invalid` for an empty or overlong token; 409 when "
+    "secrets cannot be stored. Audited as `settings.remediation_write_token_set` or "
+    "`_replaced`, without the token.",
+)
+def write_remediation_write_token(
+    body: WriteTokenIn,
+    principal: Admin,
+    db: Database,
+    transport: Annotated[httpx.BaseTransport | None, Depends(gitlab_transport)],
+) -> TokenStatus:
+    return _save_token(remediation_token.TOKEN, body, principal, db, transport)
+
+
+@router.delete(
+    "/remediation-write-token",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove the remediation write token",
+    description="Remediation plans cannot be applied until a token is stored again. Audited as "
+    "`settings.remediation_write_token_removed`; 404 when none is stored.",
+)
+def delete_remediation_write_token(principal: Admin, db: Database) -> Response:
+    return _remove_token(
+        remediation_token.TOKEN, principal, db, "No remediation write token is stored"
+    )

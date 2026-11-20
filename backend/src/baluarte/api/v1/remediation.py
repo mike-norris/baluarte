@@ -1,10 +1,12 @@
-"""Dry-run remediation plans: create, submit, approve, reject and read (BAL-031).
+"""Remediation plans: create, submit, approve, reject, apply and read (BAL-031, BAL-032).
 
-Plans only. No endpoint here, or anywhere in Baluarte, changes GitLab: executing an approved
-plan needs a separate write credential and is BAL-032. Creating and submitting need
-``remediation:plan``; approving and rejecting need ``remediation:approve`` and must be done by
-someone other than the plan's creator; reading needs ``findings:read``. Every change is audited
-and needs the ``X-CSRF-Token`` header.
+Creating, submitting and applying need ``remediation:plan``; approving and rejecting need
+``remediation:approve`` and must be done by someone other than the plan's creator; reading needs
+``findings:read``. Every change is audited and needs the ``X-CSRF-Token`` header.
+
+No endpoint here sends anything to GitLab. Applying only queues the worker's applier
+(``baluarte.remediation.execute``), and only while ``BALUARTE_REMEDIATION_WRITES`` is true and
+a remediation write token is stored.
 """
 
 from datetime import datetime, timedelta
@@ -22,6 +24,7 @@ from baluarte.integrations.gitlab import freshness
 from baluarte.integrations.gitlab.settings import load_gitlab_settings
 from baluarte.remediation import plans
 from baluarte.remediation.plans import (
+    ApplyRefused,
     NothingToPlan,
     PlanConflict,
     PlanStale,
@@ -84,15 +87,39 @@ class PlanSummary(BaseModel):
     decided_at: datetime | None
     decision_note: str | None
     approved_digest: str | None
+    applied_by_user_id: int | None
+    apply_started_at: datetime | None
+    finished_at: datetime | None
+    failed_step: int | None
+    failure: str | None
+
+
+class CanApply(BaseModel):
+    allowed: bool
+    # Every reason code applying would be refused with now; see ``plans.APPLY_REFUSALS``.
+    reasons: list[str]
+
+
+class StepProgress(BaseModel):
+    step: int
+    # pending, skipped (already as intended), out_of_date, applied, failed or not_run.
+    status: str
+    request_status: int | None = None
+    verified: bool | None = None
+    observed: dict[str, Any] | None = None
+    message: str | None = None
+    finished_at: str | None = None
 
 
 class PlanOut(PlanSummary):
     # Recomputed from the stored plan on every read.
     digest_valid: bool
-    # Why approval would be refused now; empty when the plan still matches its evidence.
+    # Why approval or applying would be refused now; empty when the plan matches its evidence.
     stale_reasons: list[str]
     summary: list[str]
     plan: dict[str, Any]
+    can_apply: CanApply
+    progress: list[StepProgress]
 
 
 class PlanPage(BaseModel):
@@ -135,6 +162,11 @@ def _summary(row: RemediationPlan, state: str) -> dict[str, Any]:
         "decided_at": row.decided_at,
         "decision_note": row.decision_note,
         "approved_digest": row.approved_digest,
+        "applied_by_user_id": row.applied_by_user_id,
+        "apply_started_at": row.apply_started_at,
+        "finished_at": row.finished_at,
+        "failed_step": row.failed_step,
+        "failure": row.failure,
     }
 
 
@@ -152,13 +184,17 @@ def _read(db: Session, plan_id: int) -> PlanOut:
     if found is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No such remediation plan")
     row, state = found
-    pending = state in ("draft", "submitted")
+    reasons, stale = plans.apply_refusals(db, row, _projects_freshness(db, row.instance_id))
+    if state in ("draft", "submitted"):
+        stale = plans.stale_reasons(db, row)
     return PlanOut(
         **_summary(row, state),
         digest_valid=plans.digest_valid(row),
-        stale_reasons=plans.stale_reasons(db, row) if pending else [],
+        stale_reasons=stale,
         summary=plans.summary(row.plan),
         plan=row.plan,
+        can_apply=CanApply(allowed=not reasons, reasons=reasons),
+        progress=[StepProgress.model_validate(entry) for entry in row.progress],
     )
 
 
@@ -267,7 +303,7 @@ def _transition(
     db: Session,
     plan_id: int,
     principal: Principal,
-    action: Literal["submitted", "approved", "rejected"],
+    action: Literal["submitted", "approved", "rejected", "apply"],
     note: str | None = None,
     digest: str | None = None,
 ) -> PlanOut:
@@ -278,6 +314,14 @@ def _transition(
     try:
         if action == "submitted":
             plans.submit(db, row, principal.user_id, principal.actor)
+        elif action == "apply":
+            plans.start_apply(
+                db,
+                row,
+                principal.user_id,
+                principal.actor,
+                projects_freshness=_projects_freshness(db, row.instance_id),
+            )
         else:
             plans.decide(
                 db,
@@ -289,6 +333,16 @@ def _transition(
                 digest,
                 projects_freshness=_projects_freshness(db, row.instance_id),
             )
+    except ApplyRefused as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            {
+                "code": exc.reasons[0],
+                "message": str(exc),
+                "reasons": exc.reasons,
+                "stale": exc.stale,
+            },
+        ) from exc
     except PlanConflict as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except PlanStale as exc:
@@ -330,8 +384,8 @@ def submit_plan(
     summary="Approve a submitted plan",
     description="Only someone other than its creator, before `expires_at`, naming the "
     "`plan_digest` they reviewed. Refused (409) when the plan is stale or the projects "
-    "collection is not current. Approval changes nothing in GitLab: execution is not "
-    "implemented. Requires the `X-CSRF-Token` header.",
+    "collection is not current. Approval changes nothing in GitLab; applying is a separate "
+    "step. Requires the `X-CSRF-Token` header.",
     responses=_TRANSITION_RESPONSES,
 )
 def approve_plan(
@@ -358,3 +412,28 @@ def reject_plan(
     db: Annotated[Session, Depends(database)],
 ) -> PlanOut:
     return _transition(db, plan_id, principal, "rejected", body.note)
+
+
+@router.post(
+    "/remediation/plans/{plan_id}/apply",
+    response_model=PlanOut,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Apply an approved plan to GitLab",
+    description="Queues the applier and returns the plan `applying`; follow `progress`. "
+    "Refused (409, `reasons` lists every code, `stale` the stale reasons) unless "
+    "`BALUARTE_REMEDIATION_WRITES` is true, a remediation write token is stored, the plan is "
+    "approved, unexpired and not stale, the projects collection is current, and no other plan "
+    "is applying the same change. Each step is checked with a fresh read, written once with "
+    "the remediation write token, and read back with the read-only token; the plan stops at "
+    "the first failed step. Requires the `X-CSRF-Token` header. Audited.",
+    responses={
+        **_TRANSITION_RESPONSES,
+        409: {"description": "Not allowed now; `reasons` lists every reason code"},
+    },
+)
+def apply_plan(
+    plan_id: Annotated[int, Path(gt=0)],
+    principal: Annotated[Principal, Depends(require(Permission.REMEDIATION_PLAN))],
+    db: Annotated[Session, Depends(database)],
+) -> PlanOut:
+    return _transition(db, plan_id, principal, "apply")

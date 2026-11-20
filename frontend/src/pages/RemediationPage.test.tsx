@@ -47,12 +47,24 @@ const visibilityStep: PlanStep = {
   observation_digest: "e".repeat(64),
   observed_at: "2026-10-29T06:00:00+00:00",
   policy: { name: "corporate-default", version: 2, policy_id: 1 },
-  rule: { id: "project-visibility", type: "gitlab.project.visibility", severity: "high" },
+  rule: {
+    id: "project-visibility",
+    type: "gitlab.project.visibility",
+    severity: "high",
+  },
   current: { visibility: "public" },
   intended: { visibility: "private" },
   expected: ["private"],
-  request: { method: "PUT", path: "/projects/105", body: { visibility: "private" } },
-  verify: { method: "GET", path: "/projects/105", expect: { visibility: "private" } },
+  request: {
+    method: "PUT",
+    path: "/projects/105",
+    body: { visibility: "private" },
+  },
+  verify: {
+    method: "GET",
+    path: "/projects/105",
+    expect: { visibility: "private" },
+  },
   preconditions: ["GET /projects/105 still reports visibility public"],
   effects: ["Non-members lose access at once."],
   requires: { role: "Owner", tier: "all" },
@@ -83,6 +95,13 @@ function plan(extra: Partial<Plan> = {}): Plan {
     decided_at: null,
     decision_note: null,
     approved_digest: null,
+    applied_by_user_id: null,
+    apply_started_at: null,
+    finished_at: null,
+    failed_step: null,
+    failure: null,
+    can_apply: { allowed: false, reasons: ["not_approved"] },
+    progress: [],
     digest_valid: true,
     stale_reasons: [],
     summary: ["~ platform/api: visibility public -> private (PUT /projects/105; finding 5)"],
@@ -99,7 +118,7 @@ function plan(extra: Partial<Plan> = {}): Plan {
       excluded_actions: {
         "group visibility": "left as a manual change",
       },
-      execution: "Not available: executing a plan needs a separate write credential.",
+      execution: "Approving this plan changes nothing in GitLab.",
     },
     ...extra,
   };
@@ -134,7 +153,7 @@ function headerOf(call: Call | undefined, name: string): string | undefined {
   return (call?.init?.headers as Record<string, string> | undefined)?.[name];
 }
 
-const dryRun = /Baluarte makes no change to GitLab/;
+const dryRun = /changes GitLab only when someone applies it/;
 
 describe("remediation plans list", () => {
   afterEach(() => {
@@ -151,8 +170,14 @@ describe("remediation plans list", () => {
     });
     renderAt("/remediation");
 
-    const table = await screen.findByRole("table", { name: "Remediation plans" });
-    expect(screen.getByRole("region", { name: "Dry run only" })).toHaveTextContent(dryRun);
+    const table = await screen.findByRole("table", {
+      name: "Remediation plans",
+    });
+    expect(
+      screen.getByRole("region", {
+        name: "Plans change GitLab only when applied",
+      }),
+    ).toHaveTextContent(dryRun);
     const rows = within(table).getAllByRole("row");
     expect(rows[1]).toHaveTextContent("Submitted");
     expect(rows[1]).toHaveTextContent("User 1 (you)");
@@ -208,12 +233,20 @@ describe("a remediation plan", () => {
     const step = await screen.findByRole("article", {
       name: "Step 1: Restrict project visibility for platform/api",
     });
-    expect(screen.getByRole("region", { name: "Dry run only" })).toHaveTextContent(dryRun);
+    expect(
+      screen.getByRole("region", {
+        name: "Plans change GitLab only when applied",
+      }),
+    ).toHaveTextContent(dryRun);
     expect(within(step).getByText("visibility: public")).toBeInTheDocument();
     expect(within(step).getByText("visibility: private")).toBeInTheDocument();
     const request = within(step).getByLabelText("Request for step 1");
     expect(request.textContent).toBe('PUT /projects/105\n{\n  "visibility": "private"\n}');
-    expect(within(step).getByText("Not sent: execution is not available.")).toBeInTheDocument();
+    expect(
+      within(step).getByText(
+        "Sent once, with the remediation write token, only when the approved plan is applied.",
+      ),
+    ).toBeInTheDocument();
     expect(
       within(step).getByText("GET /projects/105 still reports visibility public"),
     ).toBeInTheDocument();
@@ -227,7 +260,9 @@ describe("a remediation plan", () => {
       "~ platform/api: visibility public -> private",
     );
 
-    const skippedTable = screen.getByRole("table", { name: "Skipped findings" });
+    const skippedTable = screen.getByRole("table", {
+      name: "Skipped findings",
+    });
     expect(skippedTable).toHaveTextContent("Latest result unknown");
     expect(skippedTable).toHaveTextContent("only a known failure is planned");
     expect(screen.getByRole("region", { name: "Never planned" })).toHaveTextContent(
@@ -242,7 +277,13 @@ describe("a remediation plan", () => {
     const calls = api(approver, {
       [PLAN]: () => json(plan()),
       "POST /api/v1/remediation/plans/7/approve": () =>
-        json(plan({ state: "approved", approved_digest: DIGEST, decided_by_user_id: 2 })),
+        json(
+          plan({
+            state: "approved",
+            approved_digest: DIGEST,
+            decided_by_user_id: 2,
+          }),
+        ),
     });
     renderAt("/remediation/7");
 
@@ -260,6 +301,117 @@ describe("a remediation plan", () => {
     expect(bodyOf(call)).toEqual({ plan_digest: DIGEST, note: "ok" });
     expect(headerOf(call, "X-CSRF-Token")).toBe(approver.csrf_token);
     expect(screen.getByText(/^Approved: Approved for the digest shown/)).toBeInTheDocument();
+  });
+
+  it("applies an approved plan after confirmation and follows its progress", async () => {
+    const user = userEvent.setup();
+    const approved = plan({
+      state: "approved",
+      approved_digest: DIGEST,
+      decided_by_user_id: 2,
+      decided_at: "2026-10-29T09:00:00Z",
+      can_apply: { allowed: true, reasons: [] },
+    });
+    const applying = {
+      ...approved,
+      state: "applying" as const,
+      applied_by_user_id: 1,
+      apply_started_at: "2026-10-29T09:10:00Z",
+      progress: [{ step: 1, status: "pending" as const }],
+    };
+    const calls = api(planner, {
+      [PLAN]: () => json(approved),
+      "POST /api/v1/remediation/plans/7/apply": () => json(applying, 202),
+    });
+    renderAt("/remediation/7");
+
+    await user.click(await screen.findByRole("button", { name: "Apply to GitLab…" }));
+    const confirm = screen.getByRole("form", {
+      name: "Apply this plan to GitLab?",
+    });
+    expect(confirm).toHaveTextContent("This changes GitLab: 1 step, as shown.");
+    expect(confirm).toHaveTextContent("nothing is retried");
+    expect(within(confirm).queryByRole("textbox")).not.toBeInTheDocument();
+    await user.click(within(confirm).getByRole("button", { name: "Apply to GitLab" }));
+
+    const status = await screen.findByText("Plan 7 is being applied.");
+    expect(status).toHaveFocus();
+    const [call] = posts(calls);
+    expect(call?.url).toBe("/api/v1/remediation/plans/7/apply");
+    expect(headerOf(call, "X-CSRF-Token")).toBe(planner.csrf_token);
+    const step = screen.getByRole("article", {
+      name: "Step 1: Restrict project visibility for platform/api",
+    });
+    expect(within(step).getByText("Waiting")).toBeInTheDocument();
+  });
+
+  it("says why an approved plan cannot be applied", async () => {
+    api(planner, {
+      [PLAN]: () =>
+        json(
+          plan({
+            state: "approved",
+            approved_digest: DIGEST,
+            decided_by_user_id: 2,
+            decided_at: "2026-10-29T09:00:00Z",
+            can_apply: {
+              allowed: false,
+              reasons: ["remediation_writes_disabled", "write_token_missing"],
+            },
+          }),
+        ),
+    });
+    renderAt("/remediation/7");
+
+    expect(
+      await screen.findByText(
+        /It cannot be applied from here now\. Remediation writes are turned off/,
+      ),
+    ).toHaveTextContent("No remediation write token is set.");
+    expect(screen.queryByRole("button", { name: "Apply to GitLab…" })).not.toBeInTheDocument();
+  });
+
+  it("shows each step's outcome and where a failed plan stopped", async () => {
+    api(auditor, {
+      [PLAN]: () =>
+        json(
+          plan({
+            state: "failed",
+            approved_digest: DIGEST,
+            decided_by_user_id: 2,
+            decided_at: "2026-10-29T09:00:00Z",
+            applied_by_user_id: 1,
+            apply_started_at: "2026-10-29T09:10:00Z",
+            finished_at: "2026-10-29T09:10:05Z",
+            failed_step: 1,
+            failure: "PUT /projects/105 failed: GitLab answered 403.",
+            progress: [
+              {
+                step: 1,
+                status: "failed",
+                request_status: 403,
+                verified: false,
+                message: "PUT /projects/105 failed: GitLab answered 403.",
+                finished_at: "2026-10-29T09:10:05Z",
+              },
+            ],
+          }),
+        ),
+    });
+    renderAt("/remediation/7");
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Applying stopped at step 1.");
+    expect(alert).toHaveTextContent("GitLab answered 403");
+    const step = screen.getByRole("article", {
+      name: "Step 1: Restrict project visibility for platform/api",
+    });
+    expect(within(step).getByText("Failed")).toBeInTheDocument();
+    expect(within(step).getByText("GitLab answered the write with 403.")).toBeInTheDocument();
+    expect(
+      within(step).getByText("A read with the read-only token did not show the intended value."),
+    ).toBeInTheDocument();
+    expect(within(step).getByText("Sent once; GitLab answered 403.")).toBeInTheDocument();
   });
 
   it("explains a stale plan when approval is refused", async () => {
@@ -386,7 +538,9 @@ describe("a remediation plan", () => {
   });
 
   it("says when a plan does not exist", async () => {
-    api(auditor, { [PLAN]: () => json({ detail: "No such remediation plan" }, 404) });
+    api(auditor, {
+      [PLAN]: () => json({ detail: "No such remediation plan" }, 404),
+    });
     renderAt("/remediation/7");
 
     expect(await screen.findByText("There is no remediation plan with ID 7.")).toBeInTheDocument();
@@ -406,9 +560,15 @@ describe("creating a remediation plan", () => {
     });
     const router = renderAt("/remediation/new?project=105&policy=corporate-default&rule=r1");
 
-    const project = await screen.findByRole("textbox", { name: "Project GitLab ID" });
+    const project = await screen.findByRole("textbox", {
+      name: "Project GitLab ID",
+    });
     expect(project).toHaveValue("105");
-    expect(screen.getByRole("region", { name: "Dry run only" })).toHaveTextContent(dryRun);
+    expect(
+      screen.getByRole("region", {
+        name: "Plans change GitLab only when applied",
+      }),
+    ).toHaveTextContent(dryRun);
 
     await user.type(screen.getByRole("textbox", { name: /Finding IDs/ }), "5, 6");
     await user.click(screen.getByRole("button", { name: "Build dry-run plan" }));
@@ -428,7 +588,11 @@ describe("creating a remediation plan", () => {
     expect(router.state.location.pathname).toBe("/remediation/7");
     const [call] = posts(calls);
     expect(bodyOf(call)).toEqual({
-      scope: { project_gitlab_id: 105, policy: "corporate-default", rule: "r1" },
+      scope: {
+        project_gitlab_id: 105,
+        policy: "corporate-default",
+        rule: "r1",
+      },
       expires_in_hours: 24,
     });
     expect(headerOf(call, "X-CSRF-Token")).toBe(planner.csrf_token);
@@ -439,7 +603,12 @@ describe("creating a remediation plan", () => {
     api(planner, {
       "POST /api/v1/remediation/plans": () =>
         json(
-          { detail: { message: "No finding in scope can be remediated", skipped: [skipped] } },
+          {
+            detail: {
+              message: "No finding in scope can be remediated",
+              skipped: [skipped],
+            },
+          },
           422,
         ),
     });
@@ -450,7 +619,9 @@ describe("creating a remediation plan", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("Refused: No finding in scope can be remediated");
-    const table = within(alert).getByRole("table", { name: "Findings that cannot be planned" });
+    const table = within(alert).getByRole("table", {
+      name: "Findings that cannot be planned",
+    });
     expect(table).toHaveTextContent("Latest result unknown");
     expect(alert).toHaveFocus();
   });
@@ -478,7 +649,9 @@ describe("planning from findings", () => {
     });
     renderAt("/findings?state=open&project=105&rule=r1");
 
-    const link = await screen.findByRole("link", { name: "Plan a dry-run fix for this view" });
+    const link = await screen.findByRole("link", {
+      name: "Plan a dry-run fix for this view",
+    });
     expect(link).toHaveAttribute("href", "/remediation/new?project=105&rule=r1");
     expect(link.parentElement).toHaveTextContent("A plan cannot filter by state");
   });
@@ -511,7 +684,9 @@ describe("planning from findings", () => {
     renderAt("/findings/5");
 
     expect(
-      await screen.findByRole("link", { name: "Plan a dry-run fix for this finding" }),
+      await screen.findByRole("link", {
+        name: "Plan a dry-run fix for this finding",
+      }),
     ).toHaveAttribute("href", "/remediation/new?finding=5");
   });
 });

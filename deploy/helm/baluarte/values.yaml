@@ -188,6 +188,10 @@ gitlab:
   # Allow approved issue plans (labels and estimates on closed issues) to be applied with the
   # same write token (docs/TIME_TRACKING.md).
   issueWrites: false
+  # Allow approved remediation plans (restrict project visibility, protect the default branch)
+  # to be applied to GitLab (docs/REMEDIATION.md). They use their own write token, entered in
+  # the web UI, never here; while this is false no remediation plan is applied.
+  remediationWrites: false
 
 # Time tracking (docs/TIME_TRACKING.md). perPerson false hides time per person everywhere:
 # only totals are shown.

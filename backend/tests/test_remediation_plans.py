@@ -330,7 +330,7 @@ def test_a_stored_plan_is_digested_and_audited(world: World, people: dict[str, i
     assert plans.digest_valid(row)
     assert row.plan["dry_run"] is True
     assert row.plan["format"] == "baluarte.remediation-plan/v1"
-    assert "BAL-032" in row.plan["execution"]
+    assert "BALUARTE_REMEDIATION_WRITES" in row.plan["execution"]
     assert "group visibility" in row.plan["excluded_actions"]
     assert audit_actions(world.engine, plan_id) == ["remediation_plan.created"]
     assert plans.summary(row.plan) == [
@@ -671,15 +671,19 @@ def test_unknown_plan_is_404(world: World, people: dict[str, int]) -> None:
     assert client.post(f"{PLANS}/999/submit").status_code == 404
 
 
-def test_there_is_no_execution_endpoint(world: World, people: dict[str, int]) -> None:
+def test_the_only_remediation_endpoints(world: World, people: dict[str, int]) -> None:
     paths = client_as(world.engine, people["ana"], Role.ADMIN).get("/openapi.json").json()["paths"]
 
+    # Applying is the only endpoint that leads to a GitLab write, through the worker
+    # (test_remediation_execution.py).
     assert {path for path in paths if "remediation" in path} == {
         "/api/v1/remediation/plans",
         "/api/v1/remediation/plans/{plan_id}",
         "/api/v1/remediation/plans/{plan_id}/submit",
         "/api/v1/remediation/plans/{plan_id}/approve",
         "/api/v1/remediation/plans/{plan_id}/reject",
+        "/api/v1/remediation/plans/{plan_id}/apply",
+        "/api/v1/settings/remediation-write-token",
     }
 
 

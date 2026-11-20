@@ -1,6 +1,6 @@
 # ADR-0007: Constraints for GitLab remediation (M6)
 
-- Status: Proposed. The plan and approval constraints are implemented (BAL-031). Execution (BAL-032) is deferred past v0.1 (decided 2026-10-30): v0.1 stays read-only and approved plans are applied by hand
+- Status: Accepted (2026-11-20). The plan and approval constraints are implemented (BAL-031); applying approved plans is implemented under [ADR-0012](ADR-0012-remediation-writes.md) (BAL-032). v0.1 stayed read-only
 - Date: 2026-10-29
 
 ## Context
@@ -47,13 +47,14 @@ BAL-031 implements the planning half ([REMEDIATION.md](../REMEDIATION.md)):
 - **Per-step records:** idempotency keys, preconditions, effects and prior values.
 - **Audit:** of every transition.
 
-Not yet implemented:
-- the write credential
-- execution
-- verification after a write
-- rollback plans
+BAL-032 implements execution under [ADR-0012](ADR-0012-remediation-writes.md):
+- **The write credential:** a remediation write token separate from the read and label write tokens, behind `BALUARTE_REMEDIATION_WRITES`. It is sealed in the database like the label write token (ADR-0008, ADR-0009) rather than mounted as a file, and only the worker's applier decrypts it.
+- **Execution:** each step is checked with a fresh read, skipped when already as intended, sent once, and never deleted and recreated.
+- **Verification:** a step succeeds only when a read with the read token shows the intended value.
 
-Baluarte remains read-only in v0.1, so this ADR stays Proposed until the open questions are answered and BAL-032 is designed against them. Accepting it for execution would also need a decision record superseding [ADR-0003](ADR-0003-read-only-v0-1.md) for that feature.
+Not yet implemented: rollback plans.
+
+The open questions in the research are still unanswered by live tests. ADR-0012 records how applying avoids depending on them. ADR-0012 also stands in for the decision record [ADR-0003](ADR-0003-read-only-v0-1.md) asked for: v0.1 stayed read-only, and remediation writes are off unless a deployment turns them on.
 
 ## Revisit when
 
