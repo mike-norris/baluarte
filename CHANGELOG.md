@@ -7,6 +7,19 @@ the API or the database schema; the release notes say how to upgrade.
 
 ## [Unreleased]
 
+## [0.1.1]
+
+A security release. Upgrade with `helm upgrade … --version 0.1.1`, or with
+`BALUARTE_VERSION=0.1.1` for Compose. There is no database migration.
+
+### Upgrading
+
+- The Helm chart now creates NetworkPolicies by default. Where the CNI enforces them, only the web
+  pod accepts connections from outside the release. If anything outside the release calls the API
+  Service directly, such as a monitoring probe or an Ingress routed to the API, allow it or set
+  `networkPolicy.enabled=false`.
+- `global.imageRegistry` is unchanged (`ghcr.io/mike-norris`).
+
 ### Security
 
 - Behind a TLS-terminating Ingress or proxy, the web server now passes on the proxy's
@@ -96,5 +109,6 @@ by default.
   chart, or put Compose behind a TLS reverse proxy as described in docs/DEPLOYMENT.md.
 - The control mapping is guidance for an organization and its auditor, not a certification.
 
-[Unreleased]: https://github.com/mike-norris/baluarte/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/mike-norris/baluarte/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/mike-norris/baluarte/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/mike-norris/baluarte/releases/tag/v0.1.0

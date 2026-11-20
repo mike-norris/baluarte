@@ -13,7 +13,7 @@ Use an external PostgreSQL in production. Create Secrets holding the owner's pas
 ```sh
 kubectl -n baluarte create secret generic baluarte-database --from-file=password=./db-password
 kubectl -n baluarte create secret generic baluarte-app-database --from-file=password=./app-db-password
-helm install baluarte oci://ghcr.io/mike-norris/charts/baluarte --version 0.1.0 \
+helm install baluarte oci://ghcr.io/mike-norris/charts/baluarte --version 0.1.1 \
   --namespace baluarte --create-namespace \
   --set database.host=postgresql.example.internal \
   --set database.existingSecret=baluarte-database \
