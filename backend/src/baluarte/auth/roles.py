@@ -28,7 +28,8 @@ class Permission(StrEnum):
     EXCEPTION_REQUEST = "exception:request"
     # Approve, reject or revoke one; never one's own request (enforced separately).
     EXCEPTION_APPROVE = "exception:approve"
-    # Draft and submit dry-run remediation plans; never changes GitLab.
+    # Draft and submit remediation plans, and apply approved ones while remediation writes are
+    # switched on (ADR-0012).
     REMEDIATION_PLAN = "remediation:plan"
     # Approve or reject a submitted plan; never one's own (enforced separately).
     REMEDIATION_APPROVE = "remediation:approve"
