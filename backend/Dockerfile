@@ -3,10 +3,15 @@
 # Shared image for the API and (from BAL-009) the worker; they differ only by command.
 FROM python:3.15-slim AS build
 WORKDIR /src
-COPY pyproject.toml README.md ./
+COPY pyproject.toml README.md requirements.txt ./
 COPY src ./src
-# pip is only needed to build the environment, so it is removed from it afterwards.
-RUN python -m venv /opt/venv && /opt/venv/bin/pip install --no-cache-dir . \
+# Dependencies come only from the hash-pinned lock file (requirements.txt); the package itself is
+# installed without resolving anything else. pip is only needed to build the environment, so it
+# is removed from it afterwards.
+RUN python -m venv /opt/venv \
+    && /opt/venv/bin/pip install --no-cache-dir --require-hashes --no-deps -r requirements.txt \
+    && /opt/venv/bin/pip install --no-cache-dir --no-deps . \
+    && /opt/venv/bin/pip check \
     && /opt/venv/bin/pip uninstall -y pip
 
 FROM python:3.15-slim
