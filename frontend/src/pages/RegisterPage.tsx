@@ -39,6 +39,7 @@ import { PageHeader } from "../ui/PageHeader";
 import { Pagination } from "../ui/Pagination";
 import { SectionTabs } from "../ui/SectionTabs";
 
+import { ExportButton, useCanExport } from "./RegisterExport";
 import { REGISTER_TABS } from "./registerTabs";
 
 const TABS = REGISTER_TABS;
@@ -90,7 +91,10 @@ function WhyList({ why }: { why: Reason[] }) {
   );
 }
 
-type Deciding = { issue: RegisterIssue; decision: "include" | "exclude" } | null;
+type Deciding = {
+  issue: RegisterIssue;
+  decision: "include" | "exclude";
+} | null;
 
 function DecisionDialog({
   deciding,
@@ -208,6 +212,9 @@ export function RegisterPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [problems, setProblems] = useState<string[]>([]);
   const [deciding, setDeciding] = useState<Deciding>(null);
+  // Issues chosen for an export, kept across pages and filters.
+  const [chosen, setChosen] = useState<{ project_id: number; iid: number; name: string }[]>([]);
+  const canExport = useCanExport();
   const loaded = useLoad(`register:${JSON.stringify(filters)}:${String(offset)}`, (signal) =>
     listRegister(filters, offset, signal),
   );
@@ -322,6 +329,32 @@ export function RegisterPage() {
               </button>
             )}
           </div>
+          {canExport && page.active && (
+            <div className="d-flex flex-wrap align-items-start gap-2">
+              <ExportButton
+                label={
+                  chosen.length === 0
+                    ? "Choose issues to export"
+                    : `Export ${String(chosen.length)} ${chosen.length === 1 ? "issue" : "issues"}`
+                }
+                request={
+                  chosen.length === 0
+                    ? null
+                    : {
+                        issues: chosen.map(({ project_id, iid }) => ({
+                          project_id,
+                          iid,
+                        })),
+                      }
+                }
+              />
+              {chosen.length > 0 && (
+                <button type="button" className="btn btn-sm" onClick={() => setChosen([])}>
+                  Clear the choice
+                </button>
+              )}
+            </div>
+          )}
           {!page.active ? (
             <EmptyState title="No register yet">
               {
@@ -336,6 +369,11 @@ export function RegisterPage() {
                 <table className="table table-vcenter card-table">
                   <thead>
                     <tr>
+                      {canExport && (
+                        <th className="w-1">
+                          <span className="visually-hidden">Export</span>
+                        </th>
+                      )}
                       <th>Issue</th>
                       <th>Category</th>
                       <th>State</th>
@@ -349,6 +387,39 @@ export function RegisterPage() {
                       const decision = issue.why.find((w) => w.kind !== "rule");
                       return (
                         <tr key={`${String(issue.project_id)}-${String(issue.iid)}`}>
+                          {canExport && (
+                            <td>
+                              {!issue.excluded && (
+                                <input
+                                  type="checkbox"
+                                  className="form-check-input"
+                                  aria-label={`Export ${name}`}
+                                  checked={chosen.some(
+                                    (c) => c.project_id === issue.project_id && c.iid === issue.iid,
+                                  )}
+                                  onChange={(event) => {
+                                    const { checked } = event.target;
+                                    setChosen((current) =>
+                                      checked
+                                        ? [
+                                            ...current,
+                                            {
+                                              project_id: issue.project_id,
+                                              iid: issue.iid,
+                                              name,
+                                            },
+                                          ]
+                                        : current.filter(
+                                            (c) =>
+                                              c.project_id !== issue.project_id ||
+                                              c.iid !== issue.iid,
+                                          ),
+                                    );
+                                  }}
+                                />
+                              )}
+                            </td>
+                          )}
                           <td>
                             <div>
                               <Link to={issueHref(issue.project_id, issue.iid)}>{name}</Link>

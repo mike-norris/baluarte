@@ -1009,6 +1009,13 @@ export const helpTopics: readonly HelpTopic[] = [
             it and which is later remediation.
           </li>
           <li>
+            <strong>Export</strong> a package for one issue (on its page), the issues you tick in
+            the register, or the controls you tick on the Controls tab, against the chosen period.
+            It holds a summary, the issue-to-control index, the cited evidence, each attachment
+            once, gaps and redactions. Check it with <code>baluarte-verify-export</code> and the
+            manifest hash from the <code>register.export_completed</code> audit event.
+          </li>
+          <li>
             &ldquo;Open between&rdquo; keeps issues open at any time in the period. Closing an issue
             is never taken as proof that a control works.
           </li>

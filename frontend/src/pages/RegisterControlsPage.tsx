@@ -24,6 +24,7 @@ import { PageHeader } from "../ui/PageHeader";
 import { SectionTabs } from "../ui/SectionTabs";
 
 import { REGISTER_TABS } from "./registerTabs";
+import { ExportButton, useCanExport } from "./RegisterExport";
 import { MappingCard, PeriodSelect } from "./RegisterMappings";
 
 function useUser() {
@@ -73,6 +74,8 @@ function ControlMappings({
 function Coverage({ periodId }: { periodId: number | null }) {
   const [version, setVersion] = useState(0);
   const [open, setOpen] = useState<string | null>(null);
+  const [chosen, setChosen] = useState<string[]>([]);
+  const canExport = useCanExport();
   const coverage = useLoad(`register-coverage:${String(periodId)}:${String(version)}`, (signal) =>
     getCoverage(periodId, signal),
   );
@@ -86,12 +89,32 @@ function Coverage({ periodId }: { periodId: number | null }) {
       </EmptyState>
     );
   }
+  const controls = rows
+    .filter((row) => chosen.includes(`${row.framework}:${row.control_id}`))
+    .map((row) => ({ framework: row.framework, control_id: row.control_id }));
   return (
     <section aria-label="Coverage" className="card">
+      {canExport && (
+        <div className="card-body border-bottom">
+          <ExportButton
+            label={
+              controls.length === 0
+                ? "Choose controls to export"
+                : `Export ${String(controls.length)} ${controls.length === 1 ? "control" : "controls"}${periodId !== null ? " for the period" : ""}`
+            }
+            request={controls.length === 0 ? null : { controls, period_id: periodId }}
+          />
+        </div>
+      )}
       <div className="table-responsive">
         <table className="table table-vcenter card-table">
           <thead>
             <tr>
+              {canExport && (
+                <th className="w-1">
+                  <span className="visually-hidden">Export</span>
+                </th>
+              )}
               <th>Control</th>
               <th>Issues in force</th>
               <th>Awaiting review</th>
@@ -108,6 +131,22 @@ function Coverage({ periodId }: { periodId: number | null }) {
               const expanded = open === key;
               return [
                 <tr key={key}>
+                  {canExport && (
+                    <td>
+                      <input
+                        type="checkbox"
+                        className="form-check-input"
+                        aria-label={`Export ${frameworkLabel(row.framework)} ${row.control_id}`}
+                        checked={chosen.includes(key)}
+                        onChange={(event) => {
+                          const { checked } = event.target;
+                          setChosen((current) =>
+                            checked ? [...current, key] : current.filter((k) => k !== key),
+                          );
+                        }}
+                      />
+                    </td>
+                  )}
                   <td>
                     <div>
                       {frameworkLabel(row.framework)} {row.control_id}
@@ -141,7 +180,7 @@ function Coverage({ periodId }: { periodId: number | null }) {
                 </tr>,
                 expanded && (
                   <tr key={`${key}-issues`}>
-                    <td colSpan={periodId !== null ? 6 : 5}>
+                    <td colSpan={(periodId !== null ? 6 : 5) + (canExport ? 1 : 0)}>
                       <ControlMappings
                         row={row}
                         periodId={periodId}

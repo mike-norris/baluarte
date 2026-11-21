@@ -9,6 +9,12 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Issue register exports (roadmap M12.4): a ZIP for one issue, a selection, or every issue
+  mapped to chosen controls, optionally against an audit period, with a readable summary, the
+  issue-to-control index with framework editions, cited evidence and rationales, decisions,
+  each capture and attachment stored once, gaps, redactions and a manifest. Checked offline by
+  `baluarte-verify-export`, which now also checks register exports. Audited as
+  `register.export_created` and `register.export_completed`.
 - Issue-to-control mappings (roadmap M12.3): map an auditable issue to a framework control,
   citing items of its captured evidence each with a rationale; reviewed like control mapping
   changes and shown in the review queue; pinned to the capture they cite. Audit periods keep

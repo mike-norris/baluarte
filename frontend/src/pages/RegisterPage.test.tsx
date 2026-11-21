@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RouterProvider, createMemoryRouter } from "react-router";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RegisterIssue, RegisterPage, Rule } from "../api/register";
 import type { CurrentUser } from "../auth/session";
@@ -109,8 +109,22 @@ function api(user: CurrentUser, extra: Routes = {}): Call[] {
   return calls;
 }
 
+let saved: string[] = [];
+
+beforeEach(() => {
+  saved = [];
+  URL.createObjectURL = vi.fn(() => "blob:package");
+  URL.revokeObjectURL = vi.fn();
+  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+    this: HTMLAnchorElement,
+  ) {
+    saved.push(this.download);
+  });
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 function renderAt(path: string) {
@@ -134,6 +148,32 @@ describe("RegisterPage", () => {
     expect(screen.getByText("1–2 of 2")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Exclude" })).not.toBeInTheDocument();
     expect(screen.queryByRole("form", { name: "Include an issue" })).not.toBeInTheDocument();
+  });
+
+  it("exports the chosen issues as a package", async () => {
+    const packager = { ...reader, permissions: [...reader.permissions, "evidence:package"] };
+    const calls = api(packager, {
+      "POST /api/v1/register/exports": () =>
+        new Response("PK", {
+          status: 200,
+          headers: {
+            "Content-Type": "application/zip",
+            "Content-Disposition": 'attachment; filename="baluarte-register-issue-x.zip"',
+            "X-Baluarte-Export-Id": "f".repeat(32),
+          },
+        }),
+    });
+    renderAt("/register");
+
+    const choose = await screen.findByRole("button", { name: "Choose issues to export" });
+    expect(choose).toBeDisabled();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Export acme/api#1" }));
+    await userEvent.click(screen.getByRole("button", { name: "Export 1 issue" }));
+
+    expect(await screen.findByText(/Downloaded baluarte-register-issue-x.zip/)).toBeInTheDocument();
+    expect(saved).toEqual(["baluarte-register-issue-x.zip"]);
+    const sent = calls.find((c) => c.url === "/api/v1/register/exports");
+    expect(body(sent)).toEqual({ issues: [{ project_id: 5, iid: 1 }] });
   });
 
   it("explains an empty register", async () => {

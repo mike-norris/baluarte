@@ -21,6 +21,7 @@ import { Notice } from "../ui/Notice";
 import { PageHeader } from "../ui/PageHeader";
 
 import { IssueControls } from "./RegisterMappings";
+import { ExportButton } from "./RegisterExport";
 
 const SOURCE_LABELS: Record<string, string> = {
   issue: "Issue",
@@ -381,6 +382,12 @@ export function RegisterIssuePage() {
           <p className="small text-secondary mb-0">
             Closing an issue is never taken as proof that a control works.
           </p>
+          {detail.data.auditable && (
+            <ExportButton
+              label="Export this issue"
+              request={{ issues: [{ project_id: projectId, iid }] }}
+            />
+          )}
         </section>
       )}
       {evidence.loading && <Loading label="Loading the captured evidence…" />}

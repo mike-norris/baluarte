@@ -19,6 +19,12 @@ from baluarte.compliance.catalogue import ISO27001, NIST, SOC2, FrameworkId
 from baluarte.policy.schema import RULE_TYPES
 
 MAPPING_VERSION = "2026.11.1"
+# The edition of each framework the catalogue's controls are taken from.
+EDITIONS: dict[str, str] = {
+    "soc2": "AICPA Trust Services Criteria (2017, points of focus revised 2022)",
+    "iso27001": "ISO/IEC 27001:2022 Annex A",
+    "nist_800_53_moderate": "NIST SP 800-53 Rev. 5, moderate baseline",
+}
 # Rule types with no default pair: which control they support is the organization's choice
 # (label consistency is configuration management for some, process hygiene for others).
 UNMAPPED_BY_DEFAULT = ("gitlab.labels.consistent",)
