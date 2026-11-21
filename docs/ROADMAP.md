@@ -95,7 +95,7 @@ Acceptance: the audit workflow in [PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS
 
 ### M13 — GitHub
 
-GitHub at parity with GitLab, through the common provider layer ([ADR-0014](architecture/ADR-0014-provider-integrations.md)).
+GitHub at parity with GitLab, through the common provider layer ([ADR-0014](architecture/ADR-0014-provider-integrations.md)). Steps, findings and status: [GITHUB_INTEGRATION.md](GITHUB_INTEGRATION.md). GitHub.com first; GitHub Enterprise Server later.
 
 - A feasibility spike against GitHub's official documentation first: authentication (GitHub App, fine-grained tokens), GitHub.com and GitHub Enterprise Server versions, endpoints, permissions, plan requirements and rate limits for each collection and rule. Results go in a capability matrix like the GitLab one.
 - Discovery of organizations, teams, repositories and memberships; settings including branch protection and rulesets, required reviews, visibility and security features; pull requests, reviews, workflow runs, deployments and releases; issues for the register.
