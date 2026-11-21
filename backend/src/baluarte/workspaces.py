@@ -283,9 +283,11 @@ def _criteria(workspace_id: int, default_id: int) -> list[Any]:
         ),
         with_loader_criteria(
             CollectionJob,
+            # The key is written out, not CONNECTION_PAYLOAD: SQLAlchemy binds a global read in
+            # this lambda as a parameter, and on Python 3.15 typed it JSONB (``jsonb ->> jsonb``).
             lambda c: (
-                (c.payload[CONNECTION_PAYLOAD].as_integer().in_(_in_workspace(workspace_id)))
-                | (~c.payload.has_key(CONNECTION_PAYLOAD) & (workspace_id == default_id))
+                (c.payload["connection_id"].as_integer().in_(_in_workspace(workspace_id)))
+                | (~c.payload.has_key("connection_id") & (workspace_id == default_id))
             ),
             include_aliases=True,
         ),
