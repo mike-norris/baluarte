@@ -162,7 +162,7 @@ function DecisionDialog({
             </select>
           </label>
         )}
-        <label className="fw-medium">
+        <label className="fw-medium d-block">
           Reason
           <textarea name="reason" rows={3} maxLength={2000} className="form-control mt-1" />
         </label>
@@ -523,7 +523,7 @@ function IncludeForm({ onDone }: { onDone: (message: string) => void }) {
           </select>
         </label>
       </div>
-      <label className="fw-medium">
+      <label className="fw-medium d-block">
         Reason
         <textarea name="reason" rows={2} maxLength={2000} className="form-control mt-1" />
       </label>
