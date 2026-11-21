@@ -50,6 +50,7 @@ RUN_KINDS = (
     "changes",
     "labels",
     "time",
+    "issues",
 )
 SECURITY_POLICY_TYPES = (
     "scan_execution",
@@ -149,6 +150,11 @@ MAX_LABEL_PLAN_STEPS = 1000
 ISSUE_PLAN_HOURS = 24
 MAX_ISSUE_PLAN_STEPS = 5000
 CLOSED_ISSUE_COMMITS = ("merge_request", "mention", "none", "unknown", "not_checked")
+# The auditable issue register (roadmap M12, ADR-0015).
+REGISTER_CATEGORIES = ("engineering", "security_finding", "exception", "remediation")
+REGISTER_DECISIONS = ("include", "exclude")
+MIN_REGISTER_REASON = 20
+MAX_REGISTER_REASON = 2000
 MAX_TAXONOMY_JUSTIFICATION = 2000
 
 
@@ -1603,6 +1609,139 @@ class ClosedIssue(Base):
     commits_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     observation_id: Mapped[int] = mapped_column(ForeignKey("observation.id"))
     read_at: Mapped[datetime] = utc_now()
+
+
+class RegisterIssue(Base):
+    """A project issue as last read, for the auditable issue register (ADR-0015).
+
+    Every issue type GitLab lists (issues, incidents, tasks, test cases) is kept, in any state, for
+    the projects of workspaces that have a register. ``opened_at``, ``source_updated_at`` and
+    ``closed_at`` are GitLab's timestamps; ``read_at`` is when Baluarte read it, and
+    ``observation_id`` the read that recorded it.
+    """
+
+    __tablename__ = "register_issue"
+    __table_args__ = (
+        Index("ix_register_issue_instance", "instance_id"),
+        Index("ix_register_issue_observation", "observation_id"),
+        Index("ix_register_issue_labels", "labels", postgresql_using="gin"),
+    )
+
+    project_id: Mapped[int] = mapped_column(ForeignKey("gitlab_project.id"), primary_key=True)
+    issue_iid: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    gitlab_id: Mapped[int | None] = mapped_column(BigInteger)
+    issue_type: Mapped[str | None] = mapped_column(Text)
+    title: Mapped[str | None] = mapped_column(Text)
+    state: Mapped[str | None] = mapped_column(Text)
+    labels: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'::text[]"))
+    author: Mapped[str | None] = mapped_column(Text)
+    assignees: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'::text[]"))
+    milestone: Mapped[str | None] = mapped_column(Text)
+    web_url: Mapped[str | None] = mapped_column(Text)
+    confidential: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    opened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    source_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    observation_id: Mapped[int] = mapped_column(ForeignKey("observation.id"))
+    read_at: Mapped[datetime] = utc_now()
+
+
+class RegisterCursor(Base):
+    """How far a project's issues have been read: ``read_through`` is GitLab's ``updated_at`` of
+    the latest change seen, so the next read lists only what changed since."""
+
+    __tablename__ = "register_cursor"
+
+    project_id: Mapped[int] = mapped_column(ForeignKey("gitlab_project.id"), primary_key=True)
+    read_through: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    read_at: Mapped[datetime] = utc_now()
+
+
+class RegisterRule(Base):
+    """A selection rule: issues matching all its non-empty criteria are auditable.
+
+    ``labels`` matches an issue with any of them, ``project_ids`` (``gitlab_project.id``) one of
+    the projects, ``issue_types`` one of the types. Rules are not edited: one is ended and another
+    created, and a trigger allows only setting ``ended_at`` and ``ended_by`` once, and rejects
+    ``DELETE``.
+    """
+
+    __tablename__ = "register_rule"
+    __table_args__ = (
+        Index(
+            "uq_register_rule_active_name",
+            "workspace_id",
+            text("lower(name)"),
+            unique=True,
+            postgresql_where=text("ended_at IS NULL"),
+        ),
+        one_of("category", REGISTER_CATEGORIES),
+        CheckConstraint(
+            "cardinality(labels) + cardinality(project_ids) + cardinality(issue_types) > 0",
+            name="has_criteria",
+        ),
+        CheckConstraint("length(name) BETWEEN 1 AND 200", name="name_length"),
+        CheckConstraint("(ended_at IS NULL) = (ended_by IS NULL)", name="ended_together"),
+    )
+
+    id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"))
+    name: Mapped[str] = mapped_column(Text)
+    category: Mapped[str] = mapped_column(Text)
+    labels: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'::text[]"))
+    project_ids: Mapped[list[int]] = mapped_column(
+        ARRAY(BigInteger), server_default=text("'{}'::bigint[]")
+    )
+    issue_types: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'::text[]"))
+    created_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = utc_now()
+    ended_by: Mapped[str | None] = mapped_column(Text)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class RegisterDecision(Base):
+    """An explicit decision on one issue: ``include`` it, whatever the rules say, or ``exclude``
+    one the rules select. Both need a reason; an excluded issue stays listed with it, so nothing
+    leaves the register unseen. One open decision per issue; it is ended, not edited or deleted
+    (enforced by a trigger, like ``register_rule``)."""
+
+    __tablename__ = "register_decision"
+    __table_args__ = (
+        Index(
+            "uq_register_decision_open",
+            "project_id",
+            "issue_iid",
+            unique=True,
+            postgresql_where=text("ended_at IS NULL"),
+        ),
+        Index("ix_register_decision_workspace", "workspace_id"),
+        one_of("decision", REGISTER_DECISIONS),
+        CheckConstraint(
+            "category IS NULL OR (decision = 'include' AND category IN "
+            + "("
+            + ", ".join(f"'{value}'" for value in REGISTER_CATEGORIES)
+            + "))",
+            name="category_for_inclusions",
+        ),
+        CheckConstraint(
+            f"length(reason) BETWEEN {MIN_REGISTER_REASON} AND {MAX_REGISTER_REASON}",
+            name="reason_length",
+        ),
+        CheckConstraint("(ended_at IS NULL) = (ended_by IS NULL)", name="ended_together"),
+    )
+
+    id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"))
+    project_id: Mapped[int] = mapped_column(ForeignKey("gitlab_project.id"))
+    issue_iid: Mapped[int] = mapped_column(BigInteger)
+    decision: Mapped[str] = mapped_column(Text)
+    category: Mapped[str | None] = mapped_column(Text)
+    reason: Mapped[str] = mapped_column(Text)
+    decided_by: Mapped[str] = mapped_column(Text)
+    decided_at: Mapped[datetime] = utc_now()
+    ended_by: Mapped[str | None] = mapped_column(Text)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class IssuePlan(Base):

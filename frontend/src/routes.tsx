@@ -76,6 +76,7 @@ const pages: Partial<Record<string, ReactNode>> = {
   [GOVERNANCE]: page(() => import("./pages/BaselinesPage"), "BaselinesPage"),
   "/compliance": page(() => import("./pages/CompliancePage"), "CompliancePage"),
   "/audit-log": page(() => import("./pages/AuditLogPage"), "AuditLogPage"),
+  "/register": page(() => import("./pages/RegisterPage"), "RegisterPage"),
   "/workspaces": page(() => import("./pages/WorkspacesPage"), "WorkspacesPage"),
   "/connections": page(() => import("./pages/ConnectionsPage"), "ConnectionsPage"),
   "/settings": page(() => import("./pages/SettingsPage"), "SettingsPage"),
@@ -117,6 +118,10 @@ export const routes: RouteObject[] = [
           {
             path: "/changes/:changeId",
             element: page(() => import("./pages/ChangeDetailPage"), "ChangeDetailPage"),
+          },
+          {
+            path: "/register/rules",
+            element: page(() => import("./pages/RegisterPage"), "RegisterRulesPage"),
           },
           {
             path: "/manager/trends",

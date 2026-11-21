@@ -10,6 +10,7 @@ import {
   IconHistoryToggle,
   IconInbox,
   IconLayoutDashboard,
+  IconListDetails,
   IconScale,
   IconBuildingCommunity,
   IconPlugConnected,
@@ -169,6 +170,14 @@ export const navItems: readonly NavItem[] = [
       "One label taxonomy for every group, where groups and projects drift from it, and reviewed fixes.",
     group: "Govern",
     icon: IconTag,
+  },
+  {
+    path: "/register",
+    label: "Issue register",
+    description:
+      "Auditable issues: selection rules, inclusions and exclusions, and why each is listed.",
+    group: "Evidence",
+    icon: IconListDetails,
   },
   {
     path: "/evidence",

@@ -82,7 +82,7 @@ Acceptance:
 
 ### M12 — Auditable issue register
 
-Auditors list auditable issues and export their evidence against controls.
+Auditors list auditable issues and export their evidence against controls. Delivered in four steps; progress is tracked in [ISSUE_REGISTER.md](ISSUE_REGISTER.md).
 
 - Issues and epics (or their equivalents) are collected with descriptions, comments, attachments, status history and links to merge requests, reviews, pipelines and releases, each with source IDs, URLs, original and collection timestamps, and checksums for captured files.
 - Selection rules (labels, projects, types) and explicit inclusion decide what is auditable; each issue says why it is.

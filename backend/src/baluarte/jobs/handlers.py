@@ -15,6 +15,7 @@ from baluarte.compliance.retention import RETENTION_EXPIRE, handle_expire
 from baluarte.compliance.shipping import AUDIT_SHIP, handle_ship
 from baluarte.integrations.gitlab.jobs import (
     COLLECT_CHANGES,
+    COLLECT_ISSUES,
     COLLECT_LABELS,
     COLLECT_TIME,
     DETECT_CAPABILITIES,
@@ -22,6 +23,7 @@ from baluarte.integrations.gitlab.jobs import (
     DISCOVER_PROJECTS,
     DISCOVER_SECURITY_POLICIES,
     make_collect_changes,
+    make_collect_issues,
     make_collect_labels,
     make_collect_time,
     make_detect_capabilities,
@@ -47,6 +49,7 @@ HANDLERS: Mapping[str, Handler] = {
     COLLECT_CHANGES: make_collect_changes(),
     COLLECT_LABELS: make_collect_labels(),
     COLLECT_TIME: make_collect_time(),
+    COLLECT_ISSUES: make_collect_issues(),
     APPLY_LABEL_PLAN: make_apply_label_plan(),
     APPLY_ISSUE_PLAN: make_apply_issue_plan(),
     APPLY_REMEDIATION_PLAN: make_apply_remediation_plan(),

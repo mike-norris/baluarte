@@ -27,7 +27,13 @@ from baluarte.connections import (
 )
 from baluarte.db.models import GitLabInstance
 from baluarte.evidence.observations import Provenance
-from baluarte.integrations.gitlab import changes, labels, security_policies, timelogs
+from baluarte.integrations.gitlab import (
+    changes,
+    labels,
+    register_issues,
+    security_policies,
+    timelogs,
+)
 from baluarte.integrations.gitlab.capabilities import detect, observe_snapshot, record_snapshot
 from baluarte.integrations.gitlab.client import GitLabClient, GitLabError
 from baluarte.integrations.gitlab.discovery import Discovery
@@ -54,6 +60,7 @@ DISCOVER_SECURITY_POLICIES = "gitlab.discover_security_policies"
 COLLECT_CHANGES = "gitlab.collect_changes"
 COLLECT_LABELS = "gitlab.collect_labels"
 COLLECT_TIME = "gitlab.collect_time"
+COLLECT_ISSUES = "gitlab.collect_issues"
 
 # Scheduled each interval, in this order. Security policy discovery and change, label and time
 # collection are queued by each finished project discovery instead, so they always read the
@@ -200,6 +207,7 @@ def _make_discovery(
                 queue_changes(db, run_id, follow_up)
                 queue_labels(db, f"after-run:{run_id}", follow_up)
                 queue_time(db, run_id, follow_up)
+                queue_issues(db, f"after-run:{run_id}", follow_up)
                 db.commit()
         logger.info(
             "gitlab %s: %s listed (%s new, %s known, %s restored); %s not listed: %s still "
@@ -490,6 +498,58 @@ def make_collect_time(transport: httpx.BaseTransport | None = None) -> GitLabHan
         )
         if outcome == "failed":
             raise JobError("time collection read no project's time logs")
+
+    return collect
+
+
+def queue_issues(db: Session, key: str, payload: dict[str, Any] | None = None) -> int:
+    """Queue the issue register's collection; ``key`` makes it once per run or per request."""
+    return queue.enqueue(db, COLLECT_ISSUES, f"{COLLECT_ISSUES}:{key}", payload, max_attempts=3)
+
+
+def make_collect_issues(transport: httpx.BaseTransport | None = None) -> GitLabHandler:
+    def collect(job: ClaimedJob, engine: Engine) -> None:
+        settings = _settings(job, engine)
+        with Session(engine) as db:
+            instance_id = instance_for(db, settings.url).id
+            active = register_issues.has_register(db, instance_id)
+            db.commit()
+        if not active:
+            # No register in this connection's workspace: nothing to read, and no run recorded.
+            logger.info("gitlab issues: no register, skipped", extra={"job_id": job.id})
+            return
+        run_id = start_run(engine, settings.url, "issues", job)
+        try:
+            with GitLabClient(settings, transport=transport) as client:
+                result = register_issues.collect(
+                    client, engine, instance_id, Provenance(run_id, job.id)
+                )
+        except Exception as exc:
+            _unexpected(engine, run_id, exc)
+            raise
+        unread = sum(count for status, count in result.reads.items() if status != "ok")
+        problems = [f"issues of {unread} projects could not be read"] if unread else []
+        if result.rejected or (result.projects and result.reads.get("ok", 0) == 0):
+            outcome: RunOutcome = "failed"
+        else:
+            outcome = "partial" if problems else "succeeded"
+        finish_run(
+            engine,
+            run_id,
+            outcome,
+            seen=result.projects,
+            counts=result.as_counts(),
+            error="; ".join(problems) or None,
+        )
+        logger.info(
+            "gitlab issues: %s projects read, %s issues recorded: %s",
+            result.projects,
+            result.issues,
+            dict(result.reads),
+            extra={"job_id": job.id},
+        )
+        if outcome == "failed":
+            raise JobError("issue collection read no project")
 
     return collect
 

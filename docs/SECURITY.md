@@ -39,6 +39,7 @@ Roles come from the identity provider's groups claim (`BALUARTE_OIDC_ADMIN_GROUP
 | `time:read` (time summaries, never naming a person) | yes | yes | yes | yes |
 | `time:read_people` (time per person, within the manager's scope; administrators everywhere) | yes | no | no | yes |
 | `tags:write` (create, edit, assign and unassign tags) | yes | yes | no | yes |
+| `register:write` (selection rules, and including or excluding an issue with a reason, in the [issue register](ISSUE_REGISTER.md)) | yes | yes | yes | no |
 
 Time per person is personal data ([ADR-0010](architecture/ADR-0010-time-tracking-personal-data.md)). Besides `time:read_people`, a manager sees it only for the groups an administrator assigned them ([MANAGER_SPACE.md](MANAGER_SPACE.md#manager-scopes)); `BALUARTE_TIME_PER_PERSON=false` turns it off for everyone; every read is audited as `time.people_viewed` with the filters only; and the text written with a time log is never stored ([TIME_TRACKING.md](TIME_TRACKING.md)).
 
