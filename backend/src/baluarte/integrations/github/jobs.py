@@ -1,10 +1,11 @@
-"""The GitHub collection job (roadmap M13.2).
+"""The GitHub collection job (roadmap M13.2, M13.3).
 
 ``github.collect`` collects one GitHub connection in order: capability detection, the
-organization, then its repositories, teams and memberships. Each part is a collection run of the
-same kinds as GitLab's (``capabilities``, ``groups``, ``projects``), so freshness and the
-Connections page report GitHub connections the same way. Evaluation is not queued for GitHub
-connections yet: rules declare the providers they support in M13.3.
+organization, then its repositories, teams and memberships, then each repository's default-branch
+settings. Each part is a collection run of the same kinds as GitLab's (``capabilities``,
+``groups``, ``projects``), so freshness and the Connections page report GitHub connections the
+same way. An evaluation is queued after each collection; each rule type declares the providers
+it evaluates (``baluarte.policy.evaluation.project``).
 """
 
 import logging
@@ -15,8 +16,9 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from baluarte.configuration.crypto import SecretUnavailable, load_secret_box
-from baluarte.connections import ConnectionRefused, connection_of, github_connection
+from baluarte.connections import ConnectionRefused, connection_of, github_connection, payload_for
 from baluarte.evidence.observations import Provenance
+from baluarte.integrations.github.branches import read_branches, unconfirmed
 from baluarte.integrations.github.capabilities import detect
 from baluarte.integrations.github.client import GitHubClient, organization_of
 from baluarte.integrations.github.discovery import discover_organization
@@ -26,6 +28,7 @@ from baluarte.integrations.gitlab.jobs import GITHUB_COLLECT as COLLECT
 from baluarte.integrations.gitlab.jobs import SNAPSHOT_OUTCOMES
 from baluarte.integrations.gitlab.runs import finish_run, start_run
 from baluarte.jobs.queue import ClaimedJob, JobError, PermanentJobError
+from baluarte.policy.evaluation.runner import queue_after_collection
 from baluarte.settings import ConfigurationError
 
 logger = logging.getLogger(__name__)
@@ -79,9 +82,9 @@ def make_collect(transport: httpx.BaseTransport | None = None) -> Handler:
             groups_run = start_run(engine, url, "groups", job)
             projects_run = start_run(engine, url, "projects", job)
             try:
-                result = discover_organization(
-                    client, engine, connection, Provenance(projects_run, job.id)
-                )
+                provenance = Provenance(projects_run, job.id)
+                result = discover_organization(client, engine, connection, provenance)
+                branches = read_branches(client, engine, connection, provenance)
             except GitLabError as error:
                 message = f"GitHub discovery failed: {error}"
                 finish_run(engine, groups_run, "failed", error=message)
@@ -94,20 +97,30 @@ def make_collect(transport: httpx.BaseTransport | None = None) -> Handler:
                 raise
         finish_run(engine, groups_run, "succeeded", seen=1, counts={"organization": organization})
         repos = result.repositories
-        unconfirmed = repos.reconciled["unchanged"]
+        problems = []
+        if repos.reconciled["unchanged"]:
+            problems.append(f"{repos.reconciled['unchanged']} repositories could not be confirmed")
+        unread = unconfirmed(branches.items())
+        if unread:
+            problems.append(f"the default-branch settings of {unread} repositories were not read")
         finish_run(
             engine,
             projects_run,
-            "partial" if unconfirmed else "succeeded",
+            "partial" if problems else "succeeded",
             seen=repos.seen,
             counts={
                 **repos.reconciled,
                 "listed": dict(repos.listed),
                 "teams": result.teams,
                 "members": result.members,
+                "branches": branches,
             },
-            error=f"{unconfirmed} repositories could not be confirmed" if unconfirmed else None,
+            error="; ".join(problems) or None,
         )
+        # The repositories and their settings are new evidence: evaluate, once per run.
+        with Session(engine) as db:
+            queue_after_collection(db, projects_run, payload_for(connection.id))
+            db.commit()
         logger.info(
             "github %s: %s repositories, %s teams, %s memberships",
             organization,

@@ -10,7 +10,7 @@ Each fact names its source page on docs.github.com (REST API version `2022-11-28
 |---|---|---|
 | M13.1 Feasibility spike | This page: authentication, versions, endpoints, permissions, plans and rate limits per collection and rule, and the step plan | Done |
 | M13.2 Provider layer and connection | Provider on connections and normalized records; GitHub App and fine-grained token connections for GitHub.com (Enterprise Server later); capability probes; rate limits and retries; organization, team, repository and membership discovery | Done |
-| M13.3 Settings and rules | Repository settings, branch protection and rulesets, required reviews, visibility, security features; each rule type declares the providers it supports, and GitHub results carry their evidence | Planned |
+| M13.3 Settings and rules | Repository settings, branch protection and rulesets, required reviews, visibility, security features; each rule type declares the providers it supports, and GitHub results carry their evidence | In progress: provider-aware evaluation, branch settings, visibility, protection, reviews and two-factor done (M13.3a); security features and labels next |
 | M13.4 Change evidence and webhooks | Pull requests, reviews, workflow runs, deployments and releases; signed webhooks processed once per delivery and de-duplicated against scheduled collection | Planned |
 | M13.5 Issue register and acceptance | GitHub issues in the register (pull requests left out); one workspace with a GitLab and a GitHub connection evaluated by one baseline | Planned |
 
@@ -75,14 +75,14 @@ A 403 or 404 caused by plan or licensing is recorded as a capability (`unsupport
 
 ## Rule types
 
-The current rule types are GitLab's. During M13.3 each one declares the providers it supports, and GitHub equivalents are added with their own names where the concepts differ.
+A rule type keeps its name on every provider. Each one declares the providers it is judged on (`baluarte.policy.evaluation.project.PROVIDER_EVALUATORS`); on any other provider its result is `unsupported`, never `pass`. GitHub equivalents get their own names only where the concepts differ. Implemented in M13.3a: the first four rows below.
 
 | GitLab rule type | GitHub equivalent | Basis |
 |---|---|---|
-| `gitlab.project.visibility` | Repository `visibility` | **To verify** the field in M13.2 |
-| `gitlab.branch.default_protected` | Default branch protected by branch protection or by a ruleset rule | Protected branches and Rules pages. `unsupported` for private repositories on GitHub Free |
-| `gitlab.project.merge_request_approvals` | `required_approving_review_count` from branch protection, or the `pull_request` rule's parameters in the branch's rules | Protected branches. The rule parameters are **to verify** |
-| `gitlab.group.two_factor_required` | Organization `two_factor_requirement_enabled` | Organizations. Owner visibility is **to verify**; null gives `unknown` |
+| `gitlab.project.visibility` | Repository `visibility` | **Done (M13.3a).** Read from the repository listing (`GET /orgs/:org/repos`) |
+| `gitlab.branch.default_protected` | Default branch protected by branch protection or by a ruleset rule | **Done (M13.3a).** Classic protection (404: none) or any active rule from `GET /repos/:owner/:repo/rules/branches/:branch`. `unsupported` when GitHub refuses protection for the plan (a 403 asking for an upgrade) |
+| `gitlab.project.merge_request_approvals` | `required_approving_review_count` from branch protection, or the `pull_request` rule's parameters in the branch's rules | **Done (M13.3a).** The larger count of the two. `reset_approvals_on_push`: classic `dismiss_stale_reviews` or the rule's `dismiss_stale_reviews_on_push`. `forbid_author_approval` always holds (authors cannot approve their own pull requests). `forbid_committer_approval` and `forbid_override` have no equivalent: `unsupported`. Rule parameter names are **to verify** against a live organization |
+| `gitlab.group.two_factor_required` | Organization `two_factor_requirement_enabled` | **Done (M13.3a).** Null (shown only to owners) gives `unknown`. GitHub removes members without two-factor authentication when it is required, so there is no grace period and `max_grace_hours` holds. Owner visibility is **to verify** |
 | `gitlab.project.privileged_members` | Collaborators with admin or maintain permission | **To verify** |
 | `gitlab.project.access_tokens` | Fine-grained tokens with access to the organization | **To verify**; `unsupported` until confirmed |
 | `gitlab.security_policy.scan_execution` | Secret scanning and code scanning enabled | Secret and Code scanning pages; GitHub Advanced Security licensing applies |
@@ -100,7 +100,9 @@ Implemented in M13.2 (migration `0036`). Everything below is tested against a sc
 - **One job, `github.collect`**, per connection: capability detection, then discovery. Its parts are recorded as collection runs of the kinds GitLab uses (`capabilities`, `groups`, `projects`), so health and freshness read the same way. It is scheduled on the connection's interval and by *Collect now*.
 - **Capability probes**: `org.read`, `org.two_factor`, `repos.list`, `repos.visibility`, `repos.default_branch`, `teams.list`, `members.list`, `branch_protection.read` and `rules.read` on the first repository listed, and with a token `user.read` and `membership.read`. A 404 for branch protection means the branch is unprotected, so the read counts as supported; a 403 asking for a plan upgrade is `unsupported`. The organization, the repository listing and both repository fields are the core probes: without them the snapshot is `partial`.
 - **Normalized inventory** ([ADR-0014](architecture/ADR-0014-provider-integrations.md)). The organization is a `gitlab_group` row and each repository a `gitlab_project` row, with GitHub's IDs, and observations record allowlisted fields. Repositories are reconciled like GitLab projects: one not listed again is looked up at `/repositories/{id}`, and becomes `missing` on 404 or `inaccessible` on 403. Teams are `provider_team` rows; organization members (roles `admin`, `member`) and team members (`maintainer`, `member`) are `provider_membership` rows. Teams and memberships not listed again become `missing`.
-- **Not yet.** GitHub connections are not evaluated until rules declare their providers (M13.3), their issues do not join the register until M13.5, and the GitLab diagnostics (*Test connection*) are not offered for them.
+- **Default-branch settings** (M13.3a). After discovery, each active, unarchived repository with a default branch gets one observation (`GET /repos/:owner/:repo/branches/:branch (protection and rules)`): whether the branch is protected and by what, classic protection's review settings, and each active ruleset rule's type and review parameters. People, teams and bypass actors are not kept. A 403 asking for a plan upgrade is recorded as `unsupported`; any other failure leaves the settings unread and the run partial.
+- **Evaluation** (M13.3a). Every collection queues an evaluation of the connection, judged as in [Rule types](#rule-types). Repository listings are recorded as `GET /orgs/:org/repos` for every organization.
+- **Not yet.** Their issues do not join the register until M13.5, and the GitLab diagnostics (*Test connection*) are not offered for them.
 
 ## Open questions
 

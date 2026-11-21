@@ -13,8 +13,17 @@ from typing import get_args
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from baluarte.db.models import ChangeRecord, GitLabInstance, GitLabProject, Observation, Policy
+from baluarte.db.models import (
+    ChangeRecord,
+    GitLabGroup,
+    GitLabInstance,
+    GitLabProject,
+    Observation,
+    Policy,
+)
 from baluarte.evidence.observations import latest
+from baluarte.integrations.github.branches import BRANCH_SOURCE as GITHUB_BRANCH_SOURCE
+from baluarte.integrations.github.discovery import ORG_SOURCE as GITHUB_ORG_SOURCE
 from baluarte.integrations.gitlab.access import (
     ACCESS_TOKENS_SOURCE,
     APPROVALS_SOURCE,
@@ -46,6 +55,8 @@ from baluarte.policy.evaluation.engine import (
     SecurityPolicies,
     evaluate_rule,
 )
+from baluarte.policy.evaluation.github import EVALUATORS as GITHUB_EVALUATORS
+from baluarte.policy.evaluation.github import not_on
 from baluarte.policy.evaluation.labels import LABELS_CONSISTENT
 from baluarte.policy.evaluation.labels import RULE_TYPE as LABELS_RULE_TYPE
 from baluarte.policy.evaluation.labels import facts as label_facts
@@ -74,6 +85,29 @@ EVALUATORS: Mapping[str, RuleEvaluator] = {
         LABELS_CONSISTENT,
     )
 }
+
+# Each provider's evaluators (ADR-0014): a rule type a provider has no evaluator for is
+# ``unsupported`` on that provider's projects, never left out and never passed.
+PROVIDER_EVALUATORS: Mapping[str, Mapping[str, RuleEvaluator]] = {
+    "gitlab": EVALUATORS,
+    "github": {
+        rule_type: next(
+            (found for found in GITHUB_EVALUATORS if found.rule_type == rule_type),
+            not_on(evaluator, "GitHub"),
+        )
+        for rule_type, evaluator in EVALUATORS.items()
+    },
+}
+
+
+def providers_of(rule_type: str) -> tuple[str, ...]:
+    """The providers whose projects ``rule_type`` is evaluated on (not ``unsupported``)."""
+    github = {evaluator.rule_type for evaluator in GITHUB_EVALUATORS}
+    found = ["gitlab"] if rule_type in EVALUATORS else []
+    if rule_type in github:
+        found.append("github")
+    return tuple(found)
+
 
 # Only a probe that answered is "supported". Capability detection cannot prove a feature is
 # missing (a 404 may mean a hidden sample project, a 403 a token limit), so every other probe
@@ -225,6 +259,37 @@ def project_facts(
     )
 
 
+def github_observations(
+    db: Session, project: GitLabProject
+) -> dict[str, ProjectObservation | None]:
+    """A GitHub repository's default-branch settings and its organization, as last read."""
+    organization = db.scalars(
+        select(GitLabGroup.id).where(
+            GitLabGroup.instance_id == project.instance_id,
+            GitLabGroup.gitlab_id == project.namespace_gitlab_id,
+        )
+    ).first()
+    org_observation = (
+        latest(db, project.instance_id, "group_id", organization, sources=(GITHUB_ORG_SOURCE,))
+        if organization is not None
+        else None
+    )
+    return {
+        GITHUB_BRANCH_SOURCE: project_observation(db, project, GITHUB_BRANCH_SOURCE),
+        GITHUB_ORG_SOURCE: (
+            ProjectObservation(
+                observation_id=org_observation.id,
+                status=org_observation.collection_status,
+                collected_at=org_observation.collected_at,
+                payload=org_observation.payload,
+                error=org_observation.error,
+            )
+            if org_observation is not None
+            else None
+        ),
+    }
+
+
 def evaluate_project(
     db: Session,
     project: GitLabProject,
@@ -232,6 +297,7 @@ def evaluate_project(
     collections: Mapping[str, CollectionContext],
     capabilities: Mapping[str, CapabilityStatus] | None = None,
     evaluated_at: datetime | None = None,
+    provider: str = "gitlab",
 ) -> list[RuleResult]:
     """Results for every rule with an evaluator in the project's effective policies.
 
@@ -260,6 +326,14 @@ def evaluate_project(
         evaluated_at=evaluated_at,
         capabilities=capabilities,
     )
+    if provider == "github" and context.project is not None:
+        context = replace(
+            context,
+            project=replace(
+                context.project, provider=provider, github=github_observations(db, project)
+            ),
+        )
+    evaluators = PROVIDER_EVALUATORS[provider]
     in_force = []
     for resolved in sorted(resolution.policies, key=lambda entry: entry.name):
         policy = db.get(Policy, resolved.policy_id)
@@ -272,16 +346,20 @@ def evaluate_project(
             yaml_digest=policy.yaml_digest,
         )
         in_force.append((ref, parse_policy(policy.source_yaml).document.spec.rules))
-    if context.project is not None and any(
-        rule.type in CHANGE_RULE_TYPES for _, rules in in_force for rule in rules
+    if (
+        provider == "gitlab"
+        and context.project is not None
+        and any(rule.type in CHANGE_RULE_TYPES for _, rules in in_force for rule in rules)
     ):
         # Changes are read only for a project a change rule is in force for.
         context = replace(
             context,
             project=replace(context.project, changes=change_history(db, project, evaluated_at)),
         )
-    if context.project is not None and any(
-        rule.type == LABELS_RULE_TYPE for _, rules in in_force for rule in rules
+    if (
+        provider == "gitlab"
+        and context.project is not None
+        and any(rule.type == LABELS_RULE_TYPE for _, rules in in_force for rule in rules)
     ):
         # Label drift is read only for a project a label rule is in force for.
         context = replace(
@@ -291,7 +369,7 @@ def evaluate_project(
     results: list[RuleResult] = []
     for ref, rules in in_force:
         for rule in rules:
-            evaluator = EVALUATORS.get(rule.type)
+            evaluator = evaluators.get(rule.type)
             if evaluator is not None:
                 results.append(evaluate_rule(evaluator, ref, rule, context))
     return results

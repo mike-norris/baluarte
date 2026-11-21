@@ -22,9 +22,9 @@ from sqlalchemy.orm import Session
 from baluarte.configuration.store import secret_stored
 from baluarte.connections import (
     CONNECTION,
+    evaluation_settings_for_job,
     is_primary,
     payload_for,
-    settings_for_job,
     token_name,
 )
 from baluarte.connections import active as active_connections
@@ -205,7 +205,14 @@ def evaluate_all(
                         continue
                     projects += 1
                     resolution = resolve_project(db, instance, project)
-                    results = evaluate_project(db, project, resolution, collections, capabilities)
+                    results = evaluate_project(
+                        db,
+                        project,
+                        resolution,
+                        collections,
+                        capabilities,
+                        provider=instance.provider,
+                    )
                     store_project(db, instance_id, project, resolution, results, run_id, tally)
                 db.commit()
                 after_id = page[-1].id
@@ -245,8 +252,7 @@ def _notify_new_findings(engine: Engine, run_id: int, instance_id: int, before: 
 
 
 def evaluate(job: ClaimedJob, engine: Engine) -> None:
-
-    settings = settings_for_job(engine, job.payload)
+    settings = evaluation_settings_for_job(engine, job.payload)
     run_id, tally = evaluate_all(engine, settings, job)
     logger.info("policy evaluation run %s: %s", run_id, tally.counts(), extra={"job_id": job.id})
 
@@ -304,8 +310,6 @@ def request_evaluation(db: Session, reason: str) -> int | None:
     for connection in active_connections(db):
         if (
             connection.paused
-            # Rules declare the providers they support in M13.3; until then only GitLab.
-            or connection.provider != "gitlab"
             or is_primary(connection, primary)
             or not secret_stored(db, token_name(connection.id))
         ):

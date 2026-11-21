@@ -6,7 +6,8 @@ before any evaluator judges a value:
 
 1. Reasons that apply to the whole target or its collection (see ``UNKNOWN_PRECEDENCE``) make
    the result ``unknown``, whatever the value says.
-2. Otherwise a capability the instance does not support makes it ``unsupported``.
+2. Otherwise a capability the instance does not support, or a rule the target's provider or
+   plan cannot meet (``RuleEvaluator.unsupported``), makes it ``unsupported``.
 3. Otherwise an undetected capability, or a value GitLab did not report (including a part of
    it that only some rules check), makes it ``unknown``.
 4. Only then does the evaluator decide ``pass`` or ``fail``.
@@ -157,6 +158,10 @@ class ProjectFacts:
     changes: ChangeHistory | None = None
     # Loaded only when a label rule is in force; None otherwise.
     labels: LabelFacts | None = None
+    # The connection's provider, and for GitHub its observations by source (each None when
+    # never read): the repository's default-branch settings and the organization.
+    provider: str = "gitlab"
+    github: Mapping[str, ProjectObservation | None] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -197,6 +202,9 @@ class RuleEvaluator:
     undecided: Callable[[Rule, Any], str | None] = lambda _rule, _observed: None
     # For a value that depends on the rule (a window of changes): used instead of ``observe``.
     observe_rule: Callable[[Rule, ProjectFacts], Any] | None = None
+    # Why the target's provider or plan cannot meet this rule, making the result
+    # ``unsupported`` (never ``pass``); None when it can be judged.
+    unsupported: Callable[[Rule, ProjectFacts], str | None] = lambda _rule, _project: None
 
     def value(self, rule: Rule, project: ProjectFacts) -> Any:
         if self.observe_rule is not None:
@@ -213,6 +221,13 @@ def _collection(context: EvaluationContext, kind: str) -> CollectionContext:
 
 def _when(moment: datetime | None) -> str:
     return "never" if moment is None else moment.strftime("%Y-%m-%d %H:%M UTC")
+
+
+def _connection(context: EvaluationContext) -> str:
+    """How results name the connection: a GitLab instance or a GitHub organization."""
+    if context.project is not None and context.project.provider == "github":
+        return "this GitHub organization"
+    return "this GitLab instance"
 
 
 def _message(
@@ -246,7 +261,7 @@ def _message(
             "version may apply."
         ),
         "capability_unknown": (
-            f"Whether this GitLab instance supports {evaluator.capability} has not been detected."
+            f"Whether {_connection(context)} supports {evaluator.capability} has not been detected."
         ),
     }
     return messages[reason]
@@ -297,13 +312,22 @@ def evaluate_rule(
     outcome: Outcome
     observed: Any = None
     observed_at: datetime | None = None
-    if reasons and (reasons[0] in _TARGET_REASONS or capability.status != "unsupported"):
+    not_met = evaluator.unsupported(rule, context.project) if context.project is not None else None
+    if reasons and reasons[0] in _TARGET_REASONS:
+        outcome = "unknown"
+        reason = _message(reasons[0], context, collection, evaluator)
+    elif not_met is not None:
+        outcome = "unsupported"
+        reasons = ()
+        reason = not_met
+    elif reasons and capability.status != "unsupported":
         outcome = "unknown"
         reason = _message(reasons[0], context, collection, evaluator)
     elif capability.status == "unsupported":
         outcome = "unsupported"
         reasons = ()
-        reason = f"This GitLab instance does not support {evaluator.capability}."
+        where = _connection(context)
+        reason = f"{where[0].upper()}{where[1:]} does not support {evaluator.capability}."
     elif context.project is None:  # always reported above; narrows the type
         raise AssertionError("a target outside the inventory is always unknown")
     else:

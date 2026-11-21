@@ -9,6 +9,12 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- GitHub repositories are evaluated (roadmap M13.3a): each rule type declares the providers it is
+  judged on, and on any other its result is `unsupported`, never `pass`. On GitHub, visibility,
+  default-branch protection (classic protection or ruleset rules), required reviews and the
+  organization's two-factor requirement are judged from new evidence: each repository's
+  default-branch settings, read after discovery. A plan without branch protection gives
+  `unsupported`. Capability messages name the provider.
 - GitHub.com organizations as connections (roadmap M13.2): added on the Connections page with a
   fine-grained token or a GitHub App installation, and collected by one `github.collect` job:
   capability probes, then the organization, repositories, teams and memberships, normalized into
