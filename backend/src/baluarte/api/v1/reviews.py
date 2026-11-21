@@ -19,6 +19,7 @@ from baluarte.api.v1 import exceptions as exceptions_api
 from baluarte.api.v1 import issue_plans as issue_plans_api
 from baluarte.api.v1 import labels as labels_api
 from baluarte.api.v1 import policy_changes as policy_changes_api
+from baluarte.api.v1 import register_mappings as register_mappings_api
 from baluarte.api.v1 import remediation as remediation_api
 from baluarte.api.v1 import scope as scope_api
 from baluarte.auth.dependencies import Principal, current_principal, database
@@ -38,6 +39,7 @@ ReviewKind = Literal[
     "scope_exclusion",
     "mapping_change",
     "control_exception",
+    "issue_mapping",
 ]
 
 # One page per kind; a kind with more waiting is listed in ``partial``.
@@ -53,6 +55,7 @@ READ: dict[ReviewKind, Permission] = {
     "scope_exclusion": Permission.INVENTORY_READ,
     "mapping_change": Permission.FINDINGS_READ,
     "control_exception": Permission.COMPLIANCE_READ,
+    "issue_mapping": Permission.EVIDENCE_READ,
 }
 
 DECIDE: dict[ReviewKind, Permission] = {
@@ -65,6 +68,7 @@ DECIDE: dict[ReviewKind, Permission] = {
     "scope_exclusion": Permission.POLICY_WRITE,
     "mapping_change": Permission.POLICY_WRITE,
     "control_exception": Permission.SETTINGS_MANAGE,
+    "issue_mapping": Permission.POLICY_WRITE,
 }
 
 
@@ -85,6 +89,9 @@ class ReviewItem(BaseModel):
     # Set for a control mapping change, whose page is the control's.
     framework: str | None = None
     control_id: str | None = None
+    # Set for an issue-to-control mapping, whose page is the issue's.
+    project_id: int | None = None
+    iid: int | None = None
 
 
 class ReviewQueue(BaseModel):
@@ -103,6 +110,8 @@ class _Draft(BaseModel):
     expires_at: datetime | None
     framework: str | None = None
     control_id: str | None = None
+    project_id: int | None = None
+    iid: int | None = None
 
 
 Reader = Callable[[Principal, Session], tuple[list[_Draft], bool]]
@@ -256,6 +265,35 @@ def _mapping_changes(principal: Principal, db: Session) -> tuple[list[_Draft], b
     ], page.next_before_id is not None
 
 
+def _issue_mappings(principal: Principal, db: Session) -> tuple[list[_Draft], bool]:
+    page = register_mappings_api.list_mappings(
+        principal,
+        db,
+        state="proposed",
+        framework=None,
+        control_id=None,
+        period_id=None,
+        before_id=None,
+        limit=PAGE,
+    )
+    return [
+        _Draft(
+            id=item.id,
+            title=f"{item.project}#{item.iid} for {item.framework.upper()} {item.control_id}",
+            proposed_by=Proposer(
+                user_id=item.proposed_by.user_id, display_name=item.proposed_by.display_name
+            ),
+            proposed_at=item.proposed_at,
+            expires_at=None,
+            framework=item.framework,
+            control_id=item.control_id,
+            project_id=item.project_id,
+            iid=item.iid,
+        )
+        for item in page.items
+    ], page.next_before_id is not None
+
+
 def _control_exceptions(principal: Principal, db: Session) -> tuple[list[_Draft], bool]:
     del principal  # the caller has checked compliance:read, which guards this list
     rows = [row for row in compliance_exceptions.listing(db) if row.state == "proposed"]
@@ -287,6 +325,7 @@ SOURCES: dict[ReviewKind, Reader] = {
     "scope_exclusion": _scope_exclusions,
     "mapping_change": _mapping_changes,
     "control_exception": _control_exceptions,
+    "issue_mapping": _issue_mappings,
 }
 
 # Unexpiring items sort after any that expire.
@@ -325,9 +364,10 @@ def queue(principal: Principal, db: Session, kinds: Iterable[ReviewKind]) -> Rev
     response_model=ReviewQueue,
     summary="Everything waiting for a second person's decision",
     description="Baseline changes, label taxonomies, label, issue and remediation plans, "
-    "exceptions, monitoring exclusions, control mapping changes and compliance exceptions that "
-    "wait for review, soonest to expire first, then oldest. Only kinds the caller may read are "
-    "included. `mine=true` keeps the caller's own proposals; `can_decide` says whether the "
+    "exceptions, monitoring exclusions, control mapping changes, compliance exceptions and "
+    "issue-to-control mappings that wait for review, soonest to expire first, then oldest. "
+    "Only kinds the caller may read are included. `mine=true` keeps the caller's own "
+    "proposals; `can_decide` says whether the "
     "caller may decide each item. Kinds with more than one page waiting are listed in `partial`.",
 )
 def list_reviews(

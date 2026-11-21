@@ -156,6 +156,22 @@ REGISTER_DECISIONS = ("include", "exclude")
 MIN_REGISTER_REASON = 20
 MAX_REGISTER_REASON = 2000
 ISSUE_EVIDENCE_STATUSES = ("complete", "partial", "failed")
+ISSUE_MAPPING_STATES = ("proposed", "active", "rejected", "withdrawn")
+ISSUE_EVIDENCE_KINDS = (
+    "description",
+    "note",
+    "event",
+    "link",
+    "merge_request",
+    "pipeline",
+    "release",
+    "attachment",
+)
+MIN_MAPPING_RATIONALE = 20
+MAX_MAPPING_RATIONALE = 2000
+MIN_ITEM_RATIONALE = 10
+MAX_ITEM_RATIONALE = 1000
+MAX_PERIOD_NAME = 120
 MAX_TAXONOMY_JUSTIFICATION = 2000
 
 
@@ -1693,6 +1709,125 @@ class CapturedFile(Base):
     content_type: Mapped[str | None] = mapped_column(Text)
     content: Mapped[bytes] = mapped_column(LargeBinary)
     captured_at: Mapped[datetime] = utc_now()
+
+
+class IssueControlMapping(Base):
+    """An auditable issue mapped to a framework control (roadmap M12.3,
+    ``baluarte.register.mapping``), with a rationale and the capture it rests on.
+
+    Review follows the ``governance`` setting like ``control_mapping_change``: ``proposed`` until
+    someone other than the proposer approves it (``active``) or rejects it, or ``active`` at once
+    with ``self_approved``. A revision supersedes an active mapping, which is ``withdrawn`` when
+    the revision takes effect; an active mapping may also be withdrawn with a reason. A trigger
+    allows only those transitions, changes nothing that was proposed, and rejects ``DELETE``.
+    """
+
+    __tablename__ = "issue_control_mapping"
+    __table_args__ = (
+        Index(
+            "uq_issue_control_mapping_open",
+            "workspace_id",
+            "project_id",
+            "issue_iid",
+            "framework",
+            "control_id",
+            unique=True,
+            postgresql_where=text("state IN ('proposed', 'active') AND supersedes_id IS NULL"),
+        ),
+        Index(
+            "uq_issue_control_mapping_revision",
+            "supersedes_id",
+            unique=True,
+            postgresql_where=text("state IN ('proposed', 'active') AND supersedes_id IS NOT NULL"),
+        ),
+        Index("ix_issue_control_mapping_issue", "project_id", "issue_iid"),
+        Index("ix_issue_control_mapping_control", "framework", "control_id"),
+        Index("ix_issue_control_mapping_workspace", "workspace_id", "state"),
+        one_of("state", ISSUE_MAPPING_STATES),
+        one_of("framework", MAPPING_FRAMEWORKS),
+        CheckConstraint(
+            f"length(rationale) BETWEEN {MIN_MAPPING_RATIONALE} AND {MAX_MAPPING_RATIONALE}",
+            name="rationale_length",
+        ),
+        CheckConstraint(
+            "(state = 'withdrawn') = (withdrawn_at IS NOT NULL)", name="withdrawn_when_ended"
+        ),
+    )
+
+    id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"))
+    project_id: Mapped[int] = mapped_column(ForeignKey("gitlab_project.id"))
+    issue_iid: Mapped[int] = mapped_column(BigInteger)
+    framework: Mapped[str] = mapped_column(Text)
+    control_id: Mapped[str] = mapped_column(Text)
+    rationale: Mapped[str] = mapped_column(Text)
+    observation_id: Mapped[int] = mapped_column(ForeignKey("observation.id"))
+    supersedes_id: Mapped[int | None] = mapped_column(ForeignKey("issue_control_mapping.id"))
+    state: Mapped[str] = mapped_column(Text)
+    review_required: Mapped[bool] = mapped_column(Boolean)
+    self_approved: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    development_decision: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    mapping_version: Mapped[str] = mapped_column(Text)
+    proposed_by: Mapped[str] = mapped_column(Text)
+    proposed_by_user_id: Mapped[int] = mapped_column(BigInteger)
+    proposed_at: Mapped[datetime] = utc_now()
+    decided_by: Mapped[str | None] = mapped_column(Text)
+    decided_by_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_note: Mapped[str | None] = mapped_column(Text)
+    withdrawn_by: Mapped[str | None] = mapped_column(Text)
+    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    withdraw_reason: Mapped[str | None] = mapped_column(Text)
+
+
+class IssueControlEvidence(Base):
+    """One captured item a mapping cites, with its own rationale. ``item_key`` names it in the
+    pinned capture; its kind, label and the time it happened are copied from the capture, so
+    the mapping reads the same whatever is captured later. Rows are written with their mapping
+    and never changed or deleted (a trigger)."""
+
+    __tablename__ = "issue_control_evidence"
+    __table_args__ = (
+        one_of("item_kind", ISSUE_EVIDENCE_KINDS),
+        CheckConstraint(
+            f"length(rationale) BETWEEN {MIN_ITEM_RATIONALE} AND {MAX_ITEM_RATIONALE}",
+            name="rationale_length",
+        ),
+        UniqueConstraint("mapping_id", "item_key", name="uq_issue_control_evidence_item"),
+    )
+
+    mapping_id: Mapped[int] = mapped_column(
+        ForeignKey("issue_control_mapping.id"), primary_key=True
+    )
+    position: Mapped[int] = mapped_column(Integer, primary_key=True)
+    item_key: Mapped[str] = mapped_column(Text)
+    item_kind: Mapped[str] = mapped_column(Text)
+    item_label: Mapped[str] = mapped_column(Text)
+    occurred_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rationale: Mapped[str] = mapped_column(Text)
+
+
+class AuditPeriod(Base):
+    """A named audit period: evidence dated inside it is kept apart from later remediation.
+    Periods may overlap (one per framework, say). Ended, never edited or deleted (a trigger)."""
+
+    __tablename__ = "audit_period"
+    __table_args__ = (
+        Index("ix_audit_period_workspace", "workspace_id"),
+        CheckConstraint("ends_on >= starts_on", name="ends_after_start"),
+        CheckConstraint(f"length(name) BETWEEN 1 AND {MAX_PERIOD_NAME}", name="name_length"),
+        CheckConstraint("(ended_at IS NULL) = (ended_by IS NULL)", name="ended_together"),
+    )
+
+    id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"))
+    name: Mapped[str] = mapped_column(Text)
+    starts_on: Mapped[date] = mapped_column(Date)
+    ends_on: Mapped[date] = mapped_column(Date)
+    created_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = utc_now()
+    ended_by: Mapped[str | None] = mapped_column(Text)
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class RegisterCursor(Base):

@@ -1,6 +1,7 @@
 import { getJson } from "../api/client";
 import { controlPath } from "../api/controls";
 import { issuePlanHref } from "../api/issuePlans";
+import { issueHref } from "../api/register";
 import type { CurrentUser } from "../auth/session";
 import { CHANGES_VIEW } from "../policies/format";
 
@@ -14,7 +15,8 @@ export type ReviewKind =
   | "exception"
   | "scope_exclusion"
   | "mapping_change"
-  | "control_exception";
+  | "control_exception"
+  | "issue_mapping";
 
 export const kindLabels: Record<ReviewKind, string> = {
   baseline_change: "Baseline change",
@@ -26,6 +28,7 @@ export const kindLabels: Record<ReviewKind, string> = {
   scope_exclusion: "Monitoring exclusion",
   mapping_change: "Control mapping change",
   control_exception: "Compliance exception",
+  issue_mapping: "Issue-to-control mapping",
 };
 
 export interface ReviewItem {
@@ -58,6 +61,8 @@ interface ReviewItemOut {
   can_decide: boolean;
   framework: string | null;
   control_id: string | null;
+  project_id?: number | null;
+  iid?: number | null;
 }
 
 function href(item: ReviewItemOut): string {
@@ -84,6 +89,10 @@ function href(item: ReviewItemOut): string {
         : "/controls";
     case "control_exception":
       return "/compliance";
+    case "issue_mapping":
+      return item.project_id && item.iid
+        ? issueHref(item.project_id, item.iid)
+        : "/register/controls";
   }
 }
 

@@ -20,6 +20,8 @@ import { Loading } from "../ui/Loading";
 import { Notice } from "../ui/Notice";
 import { PageHeader } from "../ui/PageHeader";
 
+import { IssueControls } from "./RegisterMappings";
+
 const SOURCE_LABELS: Record<string, string> = {
   issue: "Issue",
   notes: "Comments",
@@ -388,6 +390,9 @@ export function RegisterIssuePage() {
           The evidence of auditable issues is captured after their issues are read; this one has not
           been captured yet.
         </EmptyState>
+      )}
+      {detail.data && evidence.data?.captured && (
+        <IssueControls projectId={projectId} iid={iid} auditable={detail.data.auditable} />
       )}
       {evidence.data?.captured && (
         <>
