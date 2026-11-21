@@ -27,6 +27,7 @@ from baluarte.integrations.gitlab import security_policies as discovery
 from baluarte.integrations.gitlab.freshness import KindFreshness, kind_freshness
 from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_settings
 from baluarte.settings import ConfigurationError
+from baluarte.workspaces import current_connection
 
 router = APIRouter(prefix="/gitlab/security-policies", tags=["gitlab"])
 
@@ -153,9 +154,7 @@ def _configured() -> GitLabSettings | None:
 
 
 def _instance(db: Session, settings: GitLabSettings | None) -> GitLabInstance | None:
-    if settings is None:
-        return None
-    return db.scalars(select(GitLabInstance).where(GitLabInstance.base_url == settings.url)).first()
+    return current_connection(db, settings) if settings is not None else None
 
 
 def _discovery(

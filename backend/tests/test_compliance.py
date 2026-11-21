@@ -38,6 +38,7 @@ from baluarte.db.models import (
 )
 from baluarte.main import create_app
 from baluarte.settings import ConfigurationError, development_mode
+from baluarte.workspaces import default_workspace_id
 
 CSRF = {"X-CSRF-Token": "csrf"}
 
@@ -732,7 +733,9 @@ def test_retention_deletes_only_what_has_expired(engine: Engine) -> None:
     with Session(engine) as db:
         expired = [old_event(db, 400), old_event(db, 380)]
         kept_event = old_event(db, 300)
-        instance = GitLabInstance(base_url="https://gitlab.example.test")
+        instance = GitLabInstance(
+            base_url="https://gitlab.example.test", workspace_id=default_workspace_id(db)
+        )
         db.add(instance)
         db.flush()
         project = GitLabProject(

@@ -168,10 +168,42 @@ def utc_now() -> Mapped[datetime]:
     return mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
-class GitLabInstance(Base):
-    __tablename__ = "gitlab_instance"
+class Workspace(Base):
+    """The isolation boundary: an organization's connections and everything built on them
+    (ADR-0013)."""
+
+    __tablename__ = "workspace"
+    __table_args__ = (
+        CheckConstraint("slug ~ '^[a-z0-9][a-z0-9-]{0,62}$'", name="slug_format"),
+        CheckConstraint("char_length(name) BETWEEN 1 AND 200", name="name_length"),
+    )
 
     id: Mapped[int] = pk()
+    slug: Mapped[str] = mapped_column(Text, unique=True)
+    name: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = utc_now()
+
+
+PROVIDERS = ("gitlab", "github")
+
+
+class GitLabInstance(Base):
+    """A provider connection in a workspace (ADR-0013). Named for its first provider; GitHub
+    connections follow in roadmap M13."""
+
+    __tablename__ = "gitlab_instance"
+    __table_args__ = (
+        one_of("provider", PROVIDERS),
+        CheckConstraint("name IS NULL OR char_length(name) BETWEEN 1 AND 200", name="name_length"),
+    )
+
+    id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"), index=True)
+    provider: Mapped[str] = mapped_column(Text, server_default="gitlab")
+    # A display name; the URL is shown when it is not set.
+    name: Mapped[str | None] = mapped_column(Text)
+    # A paused connection is not collected; its data stays.
+    paused: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     base_url: Mapped[str] = mapped_column(Text, unique=True)
     version: Mapped[str | None] = mapped_column(Text)
     edition: Mapped[str | None] = mapped_column(Text)

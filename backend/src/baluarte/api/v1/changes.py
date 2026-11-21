@@ -22,12 +22,11 @@ from baluarte.auth.dependencies import Principal, database, require
 from baluarte.auth.roles import Permission
 from baluarte.changes import assess
 from baluarte.changes.records import history, outcome_at, versions_at
-from baluarte.db.models import ChangeRecord, GitLabInstance, GitLabProject, Observation
+from baluarte.db.models import ChangeRecord, GitLabProject, Observation
 from baluarte.evidence.as_of import RunRef, run_at, run_ref
 from baluarte.evidence.observations import verify
-from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_settings
 from baluarte.scope.exclusions import coverage
-from baluarte.settings import ConfigurationError
+from baluarte.workspaces import current_connection_id
 
 router = APIRouter(tags=["changes"])
 
@@ -152,16 +151,7 @@ class ChangePage(BaseModel):
 
 
 def _instance_id(db: Session) -> int | None:
-    settings: GitLabSettings | None
-    try:
-        settings = load_gitlab_settings()
-    except ConfigurationError:
-        settings = None
-    if settings is None:
-        return None
-    return db.scalars(
-        select(GitLabInstance.id).where(GitLabInstance.base_url == settings.url)
-    ).first()
+    return current_connection_id(db)
 
 
 def _why(part: Mapping[str, Any], what: str) -> Unknown:

@@ -57,6 +57,7 @@ TABLES = {
     "time_cursor",
     "time_entry",
     "user_session",
+    "workspace",
 }
 
 

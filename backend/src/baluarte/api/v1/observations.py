@@ -8,13 +8,12 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from baluarte.api.v1.gitlab import _configured_url
 from baluarte.auth.dependencies import Principal, database, require
 from baluarte.auth.roles import Permission
 from baluarte.db.models import GitLabGroup, GitLabProject, Observation
 from baluarte.evidence.observations import TargetColumn, verify
 from baluarte.integrations.gitlab.capabilities import CAPABILITY_SOURCE
-from baluarte.integrations.gitlab.instances import instance_id_for
+from baluarte.workspaces import current_connection_id
 
 router = APIRouter(prefix="/gitlab", tags=["evidence"])
 
@@ -85,8 +84,7 @@ def _page(
 
 
 def _instance_id(db: Session) -> int | None:
-    url = _configured_url()
-    return instance_id_for(db, url) if url else None
+    return current_connection_id(db)
 
 
 Before = Annotated[int | None, Query(gt=0)]

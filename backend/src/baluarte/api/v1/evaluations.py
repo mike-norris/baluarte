@@ -22,7 +22,6 @@ from baluarte.db.models import (
     Evaluation,
     EvaluationRun,
     Finding,
-    GitLabInstance,
     GitLabProject,
     Policy,
     PolicyException,
@@ -36,6 +35,7 @@ from baluarte.policy.evaluation.runner import EVALUATE, MAX_ATTEMPTS
 from baluarte.policy.exceptions import in_force
 from baluarte.scope.exclusions import coverage
 from baluarte.settings import ConfigurationError
+from baluarte.workspaces import current_connection_id
 
 router = APIRouter(tags=["evaluations"])
 
@@ -184,11 +184,7 @@ def _settings() -> GitLabSettings | None:
 
 
 def _instance_id(db: Session, settings: GitLabSettings | None) -> int | None:
-    if settings is None:
-        return None
-    return db.scalars(
-        select(GitLabInstance.id).where(GitLabInstance.base_url == settings.url)
-    ).first()
+    return current_connection_id(db, settings) if settings is not None else None
 
 
 def _evaluations() -> Select[Evaluation, int, int, str, str]:

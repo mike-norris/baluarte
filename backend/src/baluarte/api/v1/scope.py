@@ -21,10 +21,8 @@ from baluarte.db.models import (
     MAX_JUSTIFICATION,
     MIN_JUSTIFICATION,
     AppUser,
-    GitLabInstance,
     ScopeExclusion,
 )
-from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_settings
 from baluarte.policy.changes import review_required
 from baluarte.policy.evaluation.runner import request_evaluation
 from baluarte.scope import exclusions
@@ -38,7 +36,7 @@ from baluarte.scope.exclusions import (
     Target,
     TargetType,
 )
-from baluarte.settings import ConfigurationError
+from baluarte.workspaces import current_connection_id
 
 router = APIRouter(prefix="/scope", tags=["scope"])
 
@@ -104,16 +102,7 @@ class EndOut(BaseModel):
 
 
 def _instance_id(db: Session) -> int | None:
-    settings: GitLabSettings | None
-    try:
-        settings = load_gitlab_settings()
-    except ConfigurationError:
-        settings = None
-    if settings is None:
-        return None
-    return db.scalars(
-        select(GitLabInstance.id).where(GitLabInstance.base_url == settings.url)
-    ).first()
+    return current_connection_id(db)
 
 
 def _required_instance(db: Session) -> int:

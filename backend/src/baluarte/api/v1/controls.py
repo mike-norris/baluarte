@@ -36,12 +36,10 @@ from baluarte.db.models import (
     AppUser,
     ControlMappingChange,
     EvaluationRun,
-    GitLabInstance,
 )
 from baluarte.evidence.as_of import RunRef, run_ref
-from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_settings
 from baluarte.policy.changes import MAX_NOTE, review_required
-from baluarte.settings import ConfigurationError
+from baluarte.workspaces import current_connection_id
 
 router = APIRouter(tags=["controls"])
 
@@ -216,16 +214,7 @@ class RejectIn(BaseModel):
 
 
 def _instance_id(db: Session) -> int | None:
-    settings: GitLabSettings | None
-    try:
-        settings = load_gitlab_settings()
-    except ConfigurationError:
-        settings = None
-    if settings is None:
-        return None
-    return db.scalars(
-        select(GitLabInstance.id).where(GitLabInstance.base_url == settings.url)
-    ).first()
+    return current_connection_id(db)
 
 
 def counts_out(counts: Counts) -> CountsOut:
