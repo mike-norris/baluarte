@@ -14,6 +14,7 @@ from oidc_fake import PUBLIC_URL, FakeIdP, make_settings
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
+from baluarte import workspaces
 from baluarte.auth.dependencies import (
     CONNECTION_HEADER,
     CSRF_HEADER,
@@ -22,9 +23,17 @@ from baluarte.auth.dependencies import (
     database_engine,
     oidc_client,
 )
-from baluarte.db.models import AuditEvent, GitLabInstance, GitLabProject, Tag, Workspace
+from baluarte.db.models import (
+    AuditEvent,
+    CollectionJob,
+    GitLabInstance,
+    GitLabProject,
+    Tag,
+    Workspace,
+)
+from baluarte.jobs import queue
 from baluarte.main import create_app
-from baluarte.workspaces import default_workspace_id
+from baluarte.workspaces import CONNECTION_PAYLOAD, default_workspace_id
 
 pytestmark = pytest.mark.db
 
@@ -324,3 +333,26 @@ def test_people_listed_for_manager_scopes_are_the_workspace_s(
 
     assert {tuple(person["roles"]) for person in acme} == {("analyst",), ("auditor",), ("admin",)}
     assert len(acme) == 3  # acme analyst, the auditor holding both, the acme admin
+
+
+def test_jobs_are_scoped_by_the_connection_in_their_payload(world: World) -> None:
+    with Session(world.engine) as db:
+        for name, connection in (
+            ("home", world.default_connection),
+            ("acme", world.acme_connection),
+        ):
+            queue.enqueue(db, "policy.evaluate", name, {CONNECTION_PAYLOAD: connection})
+        queue.enqueue(db, "policy.evaluate", "unnamed", {})
+        db.commit()
+    for workspace_id, expected in (
+        (world.default_id, {"home", "unnamed"}),
+        (world.acme_id, {"acme"}),
+    ):
+        with Session(world.engine) as db:
+            workspaces.use(db, workspace_id)
+            keys = db.scalars(
+                select(CollectionJob.idempotency_key).where(
+                    CollectionJob.kind == "policy.evaluate", CollectionJob.state == "queued"
+                )
+            ).all()
+            assert set(keys) == expected
