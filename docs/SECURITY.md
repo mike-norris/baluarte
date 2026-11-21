@@ -8,7 +8,7 @@ Protect GitLab API tokens, OIDC sessions, organization policies, inventory, audi
 
 - OIDC authorization-code flow with PKCE where applicable; validate issuer, audience, signatures, expiration; CSRF-safe session handling.
 - Server-side RBAC: admin, analyst, auditor, manager. Deny by default.
-- Read-only GitLab token for v0.1; minimize scopes and document required permissions.
+- Collection uses read-only provider credentials; minimize scopes and document required permissions per provider. Every write path has its own credential, deployment switch and allowlist ([ADR-0007](architecture/ADR-0007-remediation-constraints.md)).
 - TLS to GitLab and web clients; no disabled certificate verification.
 - Secrets through mounted files or external secret systems; never in repository, logs, or exports.
 - API rate limiting, input validation, request timeouts, pagination bounds, retry/backoff.

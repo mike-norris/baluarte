@@ -1,6 +1,6 @@
 # ADR-0004: One GitLab instance per deployment for v0.1
 
-- Status: Accepted
+- Status: Superseded by [ADR-0013](ADR-0013-workspaces-and-connections.md)
 - Date: 2026-10-28
 
 ## Context
