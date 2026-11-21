@@ -9,6 +9,11 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Auditable issue register (roadmap M12.1): selection rules by label, project and issue type,
+  including or excluding one issue with a reason (excluded issues stay listed), categories, and
+  a register page with filters and why each issue is listed (`/register`, `/api/v1/register`).
+  Issues are read only for workspaces with a register. New permission `register:write`.
+  Database migration `0033`.
 - Several workspaces (roadmap M11.4): a Workspaces page and `/api/v1/workspaces`; roles per
   workspace from identity provider groups; a workspace and connection switcher, with every page
   working on the chosen connection; every query and export scoped to the request's workspace

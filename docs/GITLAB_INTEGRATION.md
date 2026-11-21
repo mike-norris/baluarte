@@ -280,6 +280,10 @@ After every project discovery, `gitlab.collect_time` reads each monitored, unarc
 
 Applying an approved remediation plan is the third write path, with its own write token behind `BALUARTE_REMEDIATION_WRITES`. It uses only `PUT /projects/:id` with `visibility` set to `private` or `internal`, and `POST /projects/:id/protected_branches` with push, merge and unprotect at Maintainer. Before and after each write it reads `GET /projects/:id` and `GET /projects/:id/protected_branches` with the read-only token ([REMEDIATION.md](REMEDIATION.md#applying-a-plan), [ADR-0012](architecture/ADR-0012-remediation-writes.md)). Windows, re-reads, removed logs and the API notes behind them are in [TIME_TRACKING.md](TIME_TRACKING.md).
 
+## Issue register
+
+After every project discovery, `gitlab.collect_issues` reads the issues of each monitored project, any type and state, with `GET /projects/:id/issues?scope=all&order_by=updated_at&sort=asc`, and then only those changed since (`updated_after`). It runs only for connections whose workspace has an auditable issue register, and records no run otherwise. See [ISSUE_REGISTER.md](ISSUE_REGISTER.md#collection).
+
 ## Scheduling and freshness
 
 - **Security policies:** each finished project discovery queues `gitlab.discover_security_policies` (once per run), but only when the latest capability snapshot has `security_policies.read` and at least one policy type `supported`.

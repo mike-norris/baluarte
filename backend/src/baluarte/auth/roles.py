@@ -46,6 +46,9 @@ class Permission(StrEnum):
     TIME_READ_PEOPLE = "time:read_people"
     # Create Baluarte tags and assign them to groups and projects; never changes GitLab.
     TAGS_WRITE = "tags:write"
+    # Change the auditable issue register: selection rules, and including or excluding an issue
+    # with a reason. Reading it needs only evidence:read.
+    REGISTER_WRITE = "register:write"
 
 
 _READ = frozenset({Permission.INVENTORY_READ, Permission.FINDINGS_READ, Permission.EVIDENCE_READ})
@@ -61,6 +64,7 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = {
         Permission.MANAGER_READ,
         Permission.TIME_READ,
         Permission.TAGS_WRITE,
+        Permission.REGISTER_WRITE,
     },
     Role.AUDITOR: _READ
     | {
@@ -70,6 +74,7 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = {
         Permission.COMPLIANCE_READ,
         Permission.MANAGER_READ,
         Permission.TIME_READ,
+        Permission.REGISTER_WRITE,
     },
     Role.MANAGER: _READ
     | {

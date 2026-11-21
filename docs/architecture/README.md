@@ -18,6 +18,7 @@ Record a decision here when it changes or establishes a foundational choice: run
 | [ADR-0012](ADR-0012-remediation-writes.md) | Applying approved remediation plans with a separate write token | Accepted |
 | [ADR-0013](ADR-0013-workspaces-and-connections.md) | Workspaces and several provider connections per deployment | Accepted |
 | [ADR-0014](ADR-0014-provider-integrations.md) | A common provider layer for GitLab and GitHub | Accepted |
+| [ADR-0015](ADR-0015-auditable-issue-register.md) | The auditable issue register: selection, visible exclusion, append-only decisions | Accepted |
 
 ## Template
 

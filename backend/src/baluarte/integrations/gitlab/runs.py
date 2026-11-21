@@ -16,7 +16,7 @@ from baluarte.integrations.gitlab.instances import instance_for
 from baluarte.jobs.queue import ClaimedJob
 
 RunKind = Literal[
-    "capabilities", "groups", "projects", "security_policies", "changes", "labels", "time"
+    "capabilities", "groups", "projects", "security_policies", "changes", "labels", "time", "issues"
 ]
 # The kinds inventory and the visibility and branch rules depend on. Overall freshness is
 # decided by these; security policy discovery reports its own freshness.

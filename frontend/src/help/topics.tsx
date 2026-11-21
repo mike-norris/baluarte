@@ -959,6 +959,49 @@ export const helpTopics: readonly HelpTopic[] = [
     ),
   },
   {
+    slug: "issue-register",
+    title: "Issue register",
+    summary: "Which issues are auditable, why, and how to change that.",
+    group: "Evidence and audits",
+    paths: ["/register", "/register/rules"],
+    body: (
+      <>
+        <p>
+          The register lists the issues an auditor should look at. An issue is in it when a
+          selection rule matches it or someone included it, and each row says which.
+        </p>
+        <ul>
+          <li>
+            <strong>Selection rules</strong> match issues by label (any of the rule&apos;s labels),
+            project and issue type; an issue must meet every criterion a rule sets. Each rule gives
+            its issues a category: engineering, security finding, exception or remediation. When
+            several rules match, the oldest one&apos;s category counts.
+          </li>
+          <li>
+            <strong>Including</strong> an issue makes it auditable whatever the rules say, and can
+            set its category. <strong>Excluding</strong> one takes a rule-selected issue out. Both
+            need a reason of at least 20 characters. Excluded issues stay listed, with the reason,
+            under &ldquo;Show excluded issues&rdquo;, so nothing leaves the register unseen.
+          </li>
+          <li>
+            Rules and decisions are ended, never edited or deleted, and every change is in the{" "}
+            <Link to="/audit-log">audit log</Link>. Administrators, analysts and auditors can change
+            the register; everyone can read it.
+          </li>
+          <li>
+            Issues are read from GitLab after each project discovery, and only for workspaces with a
+            register. &ldquo;Read issues now&rdquo; reads them at once. Only the issue itself is
+            read so far: comments, history and linked merge requests follow.
+          </li>
+          <li>
+            &ldquo;Open between&rdquo; keeps issues open at any time in the period. Closing an issue
+            is never taken as proof that a control works.
+          </li>
+        </ul>
+      </>
+    ),
+  },
+  {
     slug: "evidence",
     title: "Evidence for audits",
     summary: "Exports, audit packages with change samples, the auditor report, and verifying them.",
