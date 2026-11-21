@@ -9,6 +9,11 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Issue-to-control mappings (roadmap M12.3): map an auditable issue to a framework control,
+  citing items of its captured evidence each with a rationale; reviewed like control mapping
+  changes and shown in the review queue; pinned to the capture they cite. Audit periods keep
+  evidence inside the period apart from later remediation, and gaps are listed per mapping and
+  counted per control on the register's new Controls tab. Migration `0035`.
 - Issue evidence (roadmap M12.2): for auditable issues, the description, comments, status
   history, linked issues, merge requests with approvals and pipelines, releases and attachments
   are captured as one observation, with every unread source listed as a gap. Attachments are

@@ -963,7 +963,7 @@ export const helpTopics: readonly HelpTopic[] = [
     title: "Issue register",
     summary: "Which issues are auditable, why, and how to change that.",
     group: "Evidence and audits",
-    paths: ["/register", "/register/rules", "/register/issues"],
+    paths: ["/register", "/register/rules", "/register/issues", "/register/controls"],
     body: (
       <>
         <p>
@@ -995,6 +995,18 @@ export const helpTopics: readonly HelpTopic[] = [
             with approvals and pipelines, releases and attachments; open an issue to see them.
             Anything it could not read is listed as a gap, and attachments are kept with their
             SHA-256 and only offered as downloads.
+          </li>
+          <li>
+            <strong>Controls</strong>: on an issue&apos;s page, map it to a framework control and
+            cite the captured items that show the control working, each with why. While review is
+            required someone else with permission to change baselines approves the mapping, from the
+            issue or the review queue. Mappings are revised or withdrawn, never edited, and rest on
+            the capture they cite.
+          </li>
+          <li>
+            The <strong>Controls</strong> tab counts the issues mapped to each control and their
+            gaps. Choose an <strong>audit period</strong> to see which cited evidence falls inside
+            it and which is later remediation.
           </li>
           <li>
             &ldquo;Open between&rdquo; keeps issues open at any time in the period. Closing an issue

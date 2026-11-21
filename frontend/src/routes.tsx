@@ -124,6 +124,10 @@ export const routes: RouteObject[] = [
             element: page(() => import("./pages/RegisterIssuePage"), "RegisterIssuePage"),
           },
           {
+            path: "/register/controls",
+            element: page(() => import("./pages/RegisterControlsPage"), "RegisterControlsPage"),
+          },
+          {
             path: "/register/rules",
             element: page(() => import("./pages/RegisterPage"), "RegisterRulesPage"),
           },

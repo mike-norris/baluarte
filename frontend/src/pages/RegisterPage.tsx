@@ -39,10 +39,9 @@ import { PageHeader } from "../ui/PageHeader";
 import { Pagination } from "../ui/Pagination";
 import { SectionTabs } from "../ui/SectionTabs";
 
-const TABS = [
-  { to: "/register", label: "Issues", end: true },
-  { to: "/register/rules", label: "Selection rules" },
-] as const;
+import { REGISTER_TABS } from "./registerTabs";
+
+const TABS = REGISTER_TABS;
 
 const SUBTITLE =
   "Issues a selection rule matches or someone included, with why. Closing an issue is never " +

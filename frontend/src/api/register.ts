@@ -326,3 +326,230 @@ export function fileHref(sha256: string): string {
 export function issueHref(projectId: number, iid: number): string {
   return `/register/issues/${String(projectId)}/${String(iid)}`;
 }
+
+// Issue-to-control mappings and audit periods (roadmap M12.3).
+
+export type Framework = "soc2" | "iso27001" | "nist_800_53_moderate";
+export type MappingState = "proposed" | "active" | "rejected" | "withdrawn";
+export type Timing = "before" | "in_period" | "after" | "undated";
+
+export const timingLabels: Record<Timing, string> = {
+  before: "Before the period",
+  in_period: "In the period",
+  after: "Later remediation",
+  undated: "Undated",
+};
+
+export interface MappingPerson {
+  actor: string;
+  user_id: number | null;
+  display_name: string | null;
+}
+
+export interface CitedEvidence {
+  key: string;
+  kind: string;
+  label: string;
+  occurred_at: string | null;
+  rationale: string;
+  timing: Timing | null;
+}
+
+export interface IssueMapping {
+  id: number;
+  project_id: number;
+  project: string;
+  iid: number;
+  issue_title: string | null;
+  framework: Framework;
+  control_id: string;
+  control_title: string | null;
+  rationale: string;
+  state: MappingState;
+  observation_id: number;
+  supersedes_id: number | null;
+  mapping_version: string;
+  review_required: boolean;
+  self_approved: boolean;
+  development_decision: boolean;
+  proposed_by: MappingPerson;
+  proposed_at: string;
+  decided_by: MappingPerson | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  withdrawn_by: string | null;
+  withdrawn_at: string | null;
+  withdraw_reason: string | null;
+  evidence: CitedEvidence[];
+  gaps: { code: string; message: string }[];
+  can_decide: boolean;
+}
+
+export interface Citable {
+  key: string;
+  kind: string;
+  label: string;
+  occurred_at: string | null;
+}
+
+export interface IssueMappings {
+  project_id: number;
+  iid: number;
+  review_required: boolean;
+  observation_id: number | null;
+  citable: Citable[];
+  items: IssueMapping[];
+}
+
+function periodQuery(periodId: number | null | undefined): string {
+  return periodId ? `?period_id=${String(periodId)}` : "";
+}
+
+export function getIssueMappings(
+  projectId: number,
+  iid: number,
+  periodId?: number | null,
+  signal?: AbortSignal,
+): Promise<IssueMappings> {
+  return getJson(
+    `/api/v1/register/issues/${String(projectId)}/${String(iid)}/mappings${periodQuery(periodId)}`,
+    undefined,
+    signal,
+  );
+}
+
+export interface MappingPage {
+  review_required: boolean;
+  items: IssueMapping[];
+  next_before_id: number | null;
+}
+
+export function listMappings(
+  framework: string,
+  controlId: string,
+  periodId?: number | null,
+  signal?: AbortSignal,
+): Promise<MappingPage> {
+  const params = new URLSearchParams({ framework, control_id: controlId, limit: "200" });
+  if (periodId) params.set("period_id", String(periodId));
+  return getJson(`/api/v1/register/mappings?${params.toString()}`, undefined, signal);
+}
+
+export interface MappingRequest {
+  project_id: number;
+  iid: number;
+  framework: Framework;
+  control_id: string;
+  rationale: string;
+  items: { key: string; rationale: string }[];
+  supersedes_id?: number;
+}
+
+export const mappingRefusals: Record<string, string> = {
+  control_unknown: "The control is not in the catalogue.",
+  issue_not_auditable: "The issue is not in the register, or it is excluded.",
+  not_captured: "The issue's evidence has not been captured yet.",
+  item_unknown: "An evidence item is not in the issue's latest capture.",
+  item_repeated: "An evidence item is cited twice.",
+  no_items: "Cite at least one evidence item.",
+  too_many_items: "Cite fewer evidence items.",
+  duplicate: "The issue is already mapped to the control, or a mapping is waiting for review.",
+  supersedes_not_active: "The mapping to revise is not in force.",
+  supersedes_other_pair: "The mapping to revise is for another issue or control.",
+  supersede_pending: "A revision of it is already waiting for review.",
+  own_change: "Someone other than the proposer must decide it.",
+};
+
+export async function proposeMapping(body: MappingRequest, csrf: string): Promise<IssueMapping> {
+  return (await sendJson<IssueMapping>(
+    "POST",
+    "/api/v1/register/mappings",
+    body,
+    csrf,
+    mappingRefusals,
+  )) as IssueMapping;
+}
+
+export async function decideMapping(
+  id: number,
+  decision: "approve" | "reject" | "withdraw",
+  text: string,
+  csrf: string,
+): Promise<IssueMapping> {
+  const body =
+    decision === "withdraw"
+      ? { reason: text }
+      : { note: text || (decision === "reject" ? "" : null) };
+  return (await sendJson<IssueMapping>(
+    "POST",
+    `/api/v1/register/mappings/${String(id)}/${decision}`,
+    body,
+    csrf,
+    mappingRefusals,
+  )) as IssueMapping;
+}
+
+export interface CoverageRow {
+  framework: Framework;
+  control_id: string;
+  control_title: string | null;
+  issues: number;
+  proposed: number;
+  in_period: number | null;
+  gaps: Record<string, number>;
+}
+
+export function getCoverage(
+  periodId?: number | null,
+  signal?: AbortSignal,
+): Promise<{ period_id: number | null; rows: CoverageRow[] }> {
+  return getJson(`/api/v1/register/coverage${periodQuery(periodId)}`, undefined, signal);
+}
+
+export interface AuditPeriod {
+  id: number;
+  name: string;
+  starts_on: string;
+  ends_on: string;
+  created_by: string;
+  created_at: string;
+  ended_by: string | null;
+  ended_at: string | null;
+}
+
+export function listPeriods(signal?: AbortSignal): Promise<{ items: AuditPeriod[] }> {
+  return getJson("/api/v1/register/periods", undefined, signal);
+}
+
+export async function createPeriod(
+  body: { name: string; starts_on: string; ends_on: string },
+  csrf: string,
+): Promise<AuditPeriod> {
+  return (await sendJson<AuditPeriod>(
+    "POST",
+    "/api/v1/register/periods",
+    body,
+    csrf,
+  )) as AuditPeriod;
+}
+
+export async function endPeriod(id: number, csrf: string): Promise<AuditPeriod> {
+  return (await sendJson<AuditPeriod>(
+    "POST",
+    `/api/v1/register/periods/${String(id)}/end`,
+    undefined,
+    csrf,
+  )) as AuditPeriod;
+}
+
+export const gapLabels: Record<string, string> = {
+  awaiting_review: "Awaiting review",
+  not_auditable: "Not auditable",
+  capture_partial: "Partial capture",
+  capture_failed: "Capture failed",
+  recaptured: "Recaptured since",
+  closure_only: "Closure only",
+  nothing_in_period: "Nothing in the period",
+  only_later_remediation: "Only later remediation",
+  undated_items: "Undated items",
+};
