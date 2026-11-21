@@ -194,3 +194,135 @@ export async function collectRegister(csrf: string): Promise<{ job_ids: number[]
     csrf,
   )) as { job_ids: number[] };
 }
+
+export interface IssueDetail {
+  project_id: number;
+  project: string;
+  iid: number;
+  issue: RegisterIssue | null;
+  auditable: boolean;
+  decisions: Decision[];
+}
+
+export function getIssue(
+  projectId: number,
+  iid: number,
+  signal?: AbortSignal,
+): Promise<IssueDetail> {
+  return getJson(`/api/v1/register/issues/${String(projectId)}/${String(iid)}`, undefined, signal);
+}
+
+export interface CapturedNote {
+  id: number | null;
+  author: string | null;
+  body: string | null;
+  system: boolean;
+  internal: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface HistoryEvent {
+  kind: "state" | "label" | "milestone";
+  id: number | null;
+  user: string | null;
+  created_at: string | null;
+  action: string | null;
+  state: string | null;
+  label: string | null;
+  milestone: string | null;
+  merge_request: string | null;
+}
+
+export interface CapturedMergeRequest {
+  project_id: number | null;
+  iid: number | null;
+  relation: "closes" | "related";
+  title: string | null;
+  state: string | null;
+  web_url: string | null;
+  author: string | null;
+  reviewers: string[];
+  target_branch: string | null;
+  merged_at: string | null;
+  merged_by: string | null;
+  merge_commit_sha: string | null;
+  approvals: { approved: boolean; approved_by: string[]; approvals_required: number | null } | null;
+  pipelines:
+    | { id: number | null; status: string | null; ref: string | null; web_url: string | null }[]
+    | null;
+}
+
+export interface CapturedAttachment {
+  secret: string;
+  filename: string;
+  referenced_in: string[];
+  status: string;
+  sha256: string | null;
+  size_bytes: number | null;
+  content_type: string | null;
+  error: string | null;
+}
+
+export interface Capture {
+  issue?: {
+    title: string | null;
+    description: string | null;
+    state: string | null;
+    closed_by: string | null;
+    web_url: string | null;
+  };
+  notes?: CapturedNote[];
+  history?: HistoryEvent[];
+  links?: {
+    project_id: number | null;
+    iid: number | null;
+    title: string | null;
+    state: string | null;
+    web_url: string | null;
+    link_type: string | null;
+  }[];
+  merge_requests?: CapturedMergeRequest[];
+  releases?: {
+    tag_name: string | null;
+    name: string | null;
+    released_at: string | null;
+    web_url: string | null;
+  }[];
+  attachments?: CapturedAttachment[];
+  sources: Record<string, string>;
+}
+
+export interface IssueEvidence {
+  project_id: number;
+  iid: number;
+  captured: boolean;
+  status: "complete" | "partial" | "failed" | null;
+  gaps: string[];
+  captured_at: string | null;
+  captured_for: string | null;
+  observation_id: number | null;
+  payload_digest: string | null;
+  digest_verified: boolean | null;
+  capture: Capture | null;
+}
+
+export function getIssueEvidence(
+  projectId: number,
+  iid: number,
+  signal?: AbortSignal,
+): Promise<IssueEvidence> {
+  return getJson(
+    `/api/v1/register/issues/${String(projectId)}/${String(iid)}/evidence`,
+    undefined,
+    signal,
+  );
+}
+
+export function fileHref(sha256: string): string {
+  return `/api/v1/register/files/${sha256}`;
+}
+
+export function issueHref(projectId: number, iid: number): string {
+  return `/register/issues/${String(projectId)}/${String(iid)}`;
+}

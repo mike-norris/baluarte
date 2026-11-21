@@ -19,6 +19,7 @@ import logging
 import ssl
 import time
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlencode
 
@@ -84,6 +85,24 @@ class ServerError(GitLabError):
 
 class InvalidResponse(GitLabError):
     reason = "invalid_response"
+
+
+class TooLarge(GitLabError):
+    """A download exceeded the size allowed for it; nothing of it is kept."""
+
+    reason = "too_large"
+
+
+class Redirected(GitLabError):
+    """GitLab answered a download with a redirect (object storage); it is not followed."""
+
+    reason = "redirected"
+
+
+@dataclass(frozen=True)
+class Download:
+    content: bytes
+    content_type: str | None
 
 
 class GraphQLError(InvalidResponse):
@@ -205,6 +224,41 @@ class GitLabClient:
                 continue
             return self._check(response, endpoint)
         raise AssertionError("unreachable")  # pragma: no cover
+
+    def download(self, path: str, max_bytes: int) -> Download:
+        """GET a file (relative to /api/v4), reading at most ``max_bytes``.
+
+        One attempt, no redirects: a redirect raises Redirected and a larger body TooLarge.
+        Other failures raise as ``get`` does.
+        """
+        endpoint = path.split("?", 1)[0]
+        try:
+            with self._http.stream("GET", path, headers={"Accept": "*/*"}) as response:
+                if 300 <= response.status_code < 400:
+                    raise Redirected(
+                        f"GitLab redirected {endpoint} ({response.status_code}); not followed",
+                        response.status_code,
+                    )
+                if not 200 <= response.status_code < 300:
+                    response.read()
+                    self._check(response, endpoint)
+                declared = response.headers.get("Content-Length")
+                if declared and declared.isdigit() and int(declared) > max_bytes:
+                    raise TooLarge(f"{endpoint} is larger than {max_bytes} bytes")
+                chunks: list[bytes] = []
+                size = 0
+                for chunk in response.iter_bytes():
+                    size += len(chunk)
+                    if size > max_bytes:
+                        raise TooLarge(f"{endpoint} is larger than {max_bytes} bytes")
+                    chunks.append(chunk)
+                return Download(b"".join(chunks), response.headers.get("Content-Type"))
+        except httpx.TransportError as exc:
+            if _is_tls_failure(exc):
+                raise TlsError(
+                    "TLS verification failed; check the certificate chain or SSL_CERT_FILE"
+                ) from exc
+            raise Unreachable(f"could not reach GitLab ({type(exc).__name__})") from exc
 
     def get_json(self, path: str, params: dict[str, Any] | None = None) -> Any:
         return self._json(self.get(path, params), path)

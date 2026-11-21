@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { Link } from "react-router";
 
 import { getJson } from "../api/client";
 import type { Page, Project } from "../api/gitlab";
@@ -10,6 +11,7 @@ import {
   createRule,
   endDecision,
   endRule,
+  issueHref,
   issueTypeLabels,
   listRegister,
   listRules,
@@ -350,13 +352,7 @@ export function RegisterPage() {
                         <tr key={`${String(issue.project_id)}-${String(issue.iid)}`}>
                           <td>
                             <div>
-                              {issue.web_url ? (
-                                <a href={issue.web_url} target="_blank" rel="noreferrer">
-                                  {name}
-                                </a>
-                              ) : (
-                                name
-                              )}
+                              <Link to={issueHref(issue.project_id, issue.iid)}>{name}</Link>
                               {issue.excluded && (
                                 <>
                                   {" "}

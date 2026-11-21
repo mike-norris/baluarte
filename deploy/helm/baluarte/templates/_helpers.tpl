@@ -309,6 +309,12 @@ https://{{ .Values.ingress.host }}
   value: {{ ternary "true" "false" (eq (toString (dig "remediationWrites" false .Values.gitlab)) "true") | quote }}
 {{- end }}
 
+{{/* Worker: the largest issue attachment captured as evidence (docs/ISSUE_REGISTER.md). */}}
+{{- define "baluarte.issueRegisterEnv" -}}
+- name: BALUARTE_ISSUE_ATTACHMENT_MAX_BYTES
+  value: {{ dig "attachmentMaxBytes" 20971520 (.Values.issueRegister | default dict) | int64 | toString | quote }}
+{{- end }}
+
 {{/* API and worker: whether time per person is shown (docs/TIME_TRACKING.md). */}}
 {{- define "baluarte.timeTrackingEnv" -}}
 - name: BALUARTE_TIME_PER_PERSON

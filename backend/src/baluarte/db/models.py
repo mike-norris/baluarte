@@ -155,6 +155,7 @@ REGISTER_CATEGORIES = ("engineering", "security_finding", "exception", "remediat
 REGISTER_DECISIONS = ("include", "exclude")
 MIN_REGISTER_REASON = 20
 MAX_REGISTER_REASON = 2000
+ISSUE_EVIDENCE_STATUSES = ("complete", "partial", "failed")
 MAX_TAXONOMY_JUSTIFICATION = 2000
 
 
@@ -1645,6 +1646,53 @@ class RegisterIssue(Base):
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     observation_id: Mapped[int] = mapped_column(ForeignKey("observation.id"))
     read_at: Mapped[datetime] = utc_now()
+
+
+class IssueEvidence(Base):
+    """The latest evidence capture of an auditable issue (roadmap M12.2, ADR-0015).
+
+    ``observation_id`` is the capture itself: one observation holding the issue, its comments,
+    history, links, merge requests, releases and attachments, with a status per source.
+    ``captured_for`` is the issue's ``source_updated_at`` it was taken for; ``status`` is
+    ``complete`` when every source was read, ``partial`` when some were not (``gaps`` says which),
+    and ``failed`` when the issue itself could not be read.
+    """
+
+    __tablename__ = "issue_evidence"
+    __table_args__ = (
+        Index("ix_issue_evidence_instance", "instance_id"),
+        Index("ix_issue_evidence_observation", "observation_id"),
+        one_of("status", ISSUE_EVIDENCE_STATUSES),
+    )
+
+    project_id: Mapped[int] = mapped_column(ForeignKey("gitlab_project.id"), primary_key=True)
+    issue_iid: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    observation_id: Mapped[int] = mapped_column(ForeignKey("observation.id"))
+    status: Mapped[str] = mapped_column(Text)
+    gaps: Mapped[list[str]] = mapped_column(ARRAY(Text), server_default=text("'{}'::text[]"))
+    captured_for: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    captured_at: Mapped[datetime] = utc_now()
+
+
+class CapturedFile(Base):
+    """A file captured as evidence, stored once by its SHA-256 however many records cite it.
+
+    Rows are never updated or deleted by the application. The content type is the one GitLab
+    sent, kept for the record; files are always served as downloads.
+    """
+
+    __tablename__ = "captured_file"
+    __table_args__ = (
+        sha256_hex("sha256"),
+        CheckConstraint("size_bytes = octet_length(content)", name="size_matches"),
+    )
+
+    sha256: Mapped[str] = mapped_column(Text, primary_key=True)
+    size_bytes: Mapped[int] = mapped_column(BigInteger)
+    content_type: Mapped[str | None] = mapped_column(Text)
+    content: Mapped[bytes] = mapped_column(LargeBinary)
+    captured_at: Mapped[datetime] = utc_now()
 
 
 class RegisterCursor(Base):

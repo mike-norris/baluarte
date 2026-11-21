@@ -963,7 +963,7 @@ export const helpTopics: readonly HelpTopic[] = [
     title: "Issue register",
     summary: "Which issues are auditable, why, and how to change that.",
     group: "Evidence and audits",
-    paths: ["/register", "/register/rules"],
+    paths: ["/register", "/register/rules", "/register/issues"],
     body: (
       <>
         <p>
@@ -990,8 +990,11 @@ export const helpTopics: readonly HelpTopic[] = [
           </li>
           <li>
             Issues are read from GitLab after each project discovery, and only for workspaces with a
-            register. &ldquo;Read issues now&rdquo; reads them at once. Only the issue itself is
-            read so far: comments, history and linked merge requests follow.
+            register. &ldquo;Read issues now&rdquo; reads them at once. For auditable issues
+            Baluarte then captures the description, comments, history, linked issues, merge requests
+            with approvals and pipelines, releases and attachments; open an issue to see them.
+            Anything it could not read is listed as a gap, and attachments are kept with their
+            SHA-256 and only offered as downloads.
           </li>
           <li>
             &ldquo;Open between&rdquo; keeps issues open at any time in the period. Closing an issue
