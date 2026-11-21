@@ -44,6 +44,7 @@ from baluarte.policy.changes import Actor, ChangeConflict, NotAllowed, review_re
 from baluarte.policy.loader import PolicyInvalid
 from baluarte.policy.schema import GROUP_PATTERN
 from baluarte.settings import ConfigurationError
+from baluarte.workspaces import current_connection
 
 router = APIRouter(prefix="/labels", tags=["labels"])
 
@@ -72,10 +73,7 @@ def _settings() -> GitLabSettings | None:
 
 
 def _instance(db: Session) -> GitLabInstance | None:
-    settings = _settings()
-    if settings is None:
-        return None
-    return db.scalars(select(GitLabInstance).where(GitLabInstance.base_url == settings.url)).first()
+    return current_connection(db, _settings())
 
 
 def _instance_id(db: Session) -> int | None:

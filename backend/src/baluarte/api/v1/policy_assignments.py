@@ -36,6 +36,7 @@ from baluarte.policy.changes import Actor, ChangeConflict, propose_assignment, p
 from baluarte.policy.evaluation.runner import not_evaluated, request_evaluation
 from baluarte.policy.schema import NAME_PATTERN
 from baluarte.settings import ConfigurationError
+from baluarte.workspaces import current_connection
 
 router = APIRouter(tags=["policies"])
 
@@ -89,10 +90,7 @@ def _configured_url() -> str | None:
 
 
 def _instance(db: Session) -> GitLabInstance | None:
-    url = _configured_url()
-    if url is None:
-        return None
-    return db.scalars(select(GitLabInstance).where(GitLabInstance.base_url == url)).first()
+    return current_connection(db)
 
 
 def _assignments() -> Any:

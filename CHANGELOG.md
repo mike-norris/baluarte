@@ -34,6 +34,10 @@ the API or the database schema; the release notes say how to upgrade.
   [ADR-0013](docs/architecture/ADR-0013-workspaces-and-connections.md) (workspaces and several
   connections) supersedes ADR-0004, and
   [ADR-0014](docs/architecture/ADR-0014-provider-integrations.md) sets the common provider layer.
+- Database migration `0029` (roadmap M11.1, [WORKSPACES.md](docs/WORKSPACES.md)): a `workspace`
+  table with a `default` workspace, and GitLab instances become connections in it (`workspace_id`,
+  `provider`, `name`, `paused`). Existing data joins the default workspace unchanged; nothing
+  else changes for an install with one GitLab.
 - Database migration `0028`: remediation plans gain the `applying`, `applied` and `failed`
   states and their progress. Upgrading runs it in the migration Job, as usual.
 

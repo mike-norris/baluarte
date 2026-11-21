@@ -44,6 +44,7 @@ from baluarte.policy.assignments import Gap, group_ancestry
 from baluarte.policy.evaluation.runner import not_evaluated
 from baluarte.scope.exclusions import Coverage, Covering, coverage
 from baluarte.settings import ConfigurationError
+from baluarte.workspaces import current_connection
 
 logger = logging.getLogger(__name__)
 
@@ -131,11 +132,7 @@ def read_instance(
 ) -> InstanceOut:
     settings = _configured()
     url = settings.url if settings else None
-    instance = (
-        db.scalars(select(GitLabInstance).where(GitLabInstance.base_url == url)).first()
-        if url
-        else None
-    )
+    instance = current_connection(db, settings) if settings else None
     if instance is None:
         return InstanceOut(
             configured=url is not None,
@@ -587,9 +584,7 @@ def _instance_row(db: Session) -> tuple[GitLabSettings, GitLabInstance] | None:
     settings = _configured()
     if settings is None:
         return None
-    instance = db.scalars(
-        select(GitLabInstance).where(GitLabInstance.base_url == settings.url)
-    ).first()
+    instance = current_connection(db, settings)
     return (settings, instance) if instance is not None else None
 
 

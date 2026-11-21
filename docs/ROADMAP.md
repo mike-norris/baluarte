@@ -68,7 +68,7 @@ In this order. The first usable vertical slice (connect, synchronize, evaluate, 
 
 ### M11 — Workspaces and connections
 
-Several provider connections per workspace, and several workspaces per deployment ([ADR-0013](architecture/ADR-0013-workspaces-and-connections.md)).
+Several provider connections per workspace, and several workspaces per deployment ([ADR-0013](architecture/ADR-0013-workspaces-and-connections.md)). Delivered in four steps; progress is tracked in [WORKSPACES.md](WORKSPACES.md).
 
 - A `workspace` and a `connection` model. Existing data moves into a default workspace and its GitLab connection; nothing is re-keyed and every digest still verifies.
 - Every API query, job, export and file is scoped to the caller's workspace. Roles are granted per workspace.

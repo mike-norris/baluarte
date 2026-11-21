@@ -21,6 +21,7 @@ from baluarte.db.models import (
     PolicyException,
     UserSession,
 )
+from baluarte.workspaces import default_workspace_id
 
 pytestmark = pytest.mark.db
 
@@ -37,7 +38,9 @@ def session(migrated_engine: Engine) -> Iterator[Session]:
 
 @pytest.fixture
 def instance(session: Session) -> GitLabInstance:
-    instance = GitLabInstance(base_url="https://gitlab.example.internal")
+    instance = GitLabInstance(
+        base_url="https://gitlab.example.internal", workspace_id=default_workspace_id(session)
+    )
     session.add(instance)
     session.commit()
     return instance
@@ -84,7 +87,9 @@ def test_project_identity_is_unique_per_instance(
 def test_same_gitlab_id_on_another_instance_is_allowed(
     session: Session, instance: GitLabInstance
 ) -> None:
-    other = GitLabInstance(base_url="https://gitlab-2.example.internal")
+    other = GitLabInstance(
+        base_url="https://gitlab-2.example.internal", workspace_id=default_workspace_id(session)
+    )
     session.add(other)
     session.commit()
 

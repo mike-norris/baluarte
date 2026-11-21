@@ -20,12 +20,11 @@ from baluarte.api.v1.policy_changes import PolicyChangeDetail, Review, change_de
 from baluarte.auth.dependencies import Principal, database, require
 from baluarte.auth.roles import Permission
 from baluarte.db.models import GitLabInstance, Policy
-from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_settings
 from baluarte.policy import coverage as rule_coverage
 from baluarte.policy.changes import Actor, ChangeConflict, propose_version
 from baluarte.policy.loader import MAX_SOURCE_BYTES, PolicyInvalid, parse_policy
 from baluarte.policy.schema import NAME_PATTERN
-from baluarte.settings import ConfigurationError
+from baluarte.workspaces import current_connection
 
 router = APIRouter(prefix="/policies", tags=["policies"])
 
@@ -242,14 +241,7 @@ def list_policies(
 
 
 def _instance(db: Session) -> GitLabInstance | None:
-    settings: GitLabSettings | None
-    try:
-        settings = load_gitlab_settings()
-    except ConfigurationError:
-        return None
-    if settings is None:
-        return None
-    return db.scalars(select(GitLabInstance).where(GitLabInstance.base_url == settings.url)).first()
+    return current_connection(db)
 
 
 @router.get(

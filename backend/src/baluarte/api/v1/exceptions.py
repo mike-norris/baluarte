@@ -23,14 +23,13 @@ from baluarte.db.models import (
     GitLabProject,
     PolicyException,
 )
-from baluarte.integrations.gitlab.settings import load_gitlab_settings
 from baluarte.policy import exceptions
 from baluarte.policy.evaluation.runner import request_evaluation
 from baluarte.policy.exceptions import ExceptionConflict, ExceptionState, Requested
 from baluarte.policy.loader import parse_policy
 from baluarte.policy.schema import NAME_PATTERN
 from baluarte.policy.store import latest_version
-from baluarte.settings import ConfigurationError
+from baluarte.workspaces import current_connection
 
 router = APIRouter(tags=["exceptions"])
 
@@ -100,13 +99,7 @@ class ExceptionPage(BaseModel):
 
 
 def _instance(db: Session) -> GitLabInstance | None:
-    try:
-        settings = load_gitlab_settings()
-    except ConfigurationError:
-        return None
-    if settings is None:
-        return None
-    return db.scalars(select(GitLabInstance).where(GitLabInstance.base_url == settings.url)).first()
+    return current_connection(db)
 
 
 def _rows() -> Select[PolicyException, str, GitLabProject]:

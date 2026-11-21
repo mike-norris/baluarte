@@ -33,6 +33,7 @@ from baluarte.remediation.plans import (
     ScopeTooLarge,
 )
 from baluarte.settings import ConfigurationError
+from baluarte.workspaces import current_connection
 
 router = APIRouter(tags=["remediation"])
 
@@ -128,13 +129,7 @@ class PlanPage(BaseModel):
 
 
 def _instance(db: Session) -> GitLabInstance | None:
-    try:
-        settings = load_gitlab_settings()
-    except ConfigurationError:
-        return None
-    if settings is None:
-        return None
-    return db.scalars(select(GitLabInstance).where(GitLabInstance.base_url == settings.url)).first()
+    return current_connection(db)
 
 
 def _projects_freshness(db: Session, instance_id: int) -> str | None:
