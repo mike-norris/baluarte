@@ -21,7 +21,6 @@ from baluarte.auth.dependencies import Principal, database, require
 from baluarte.auth.roles import Permission
 from baluarte.db.models import GitLabGroup, GitLabInstance, GitLabProject, Policy, PolicyAssignment
 from baluarte.integrations.gitlab.instances import instance_for
-from baluarte.integrations.gitlab.settings import load_gitlab_settings
 from baluarte.policy.assignments import (
     AssignmentTree,
     Resolution,
@@ -35,8 +34,7 @@ from baluarte.policy.assignments import (
 from baluarte.policy.changes import Actor, ChangeConflict, propose_assignment, propose_unassignment
 from baluarte.policy.evaluation.runner import not_evaluated, request_evaluation
 from baluarte.policy.schema import NAME_PATTERN
-from baluarte.settings import ConfigurationError
-from baluarte.workspaces import current_connection
+from baluarte.workspaces import current_connection, current_settings
 
 router = APIRouter(tags=["policies"])
 
@@ -81,11 +79,8 @@ class AssignmentPage(BaseModel):
     next_after_id: int | None
 
 
-def _configured_url() -> str | None:
-    try:
-        settings = load_gitlab_settings()
-    except ConfigurationError:
-        return None
+def _configured_url(db: Session) -> str | None:
+    settings = current_settings(db)
     return settings.url if settings else None
 
 
@@ -256,7 +251,7 @@ def create_assignment(
     principal: Annotated[Principal, Depends(require(Permission.POLICY_WRITE))],
     db: Annotated[Session, Depends(database)],
 ) -> Any:
-    url = _configured_url()
+    url = _configured_url(db)
     if url is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "GitLab is not configured")
     policy = db.scalars(

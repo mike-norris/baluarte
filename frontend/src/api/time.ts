@@ -6,6 +6,7 @@
 
 import { ApiError, getJson, withQuery } from "./client";
 import { changeFailure, detailMessage, readDetail, sendJson } from "./send";
+import { scopeHeaders } from "./workspaceChoice";
 
 export type TimeGrouping = "group" | "project" | "label" | "milestone" | "week" | `tag:${string}`;
 
@@ -161,7 +162,7 @@ async function getPeopleUrl<T>(url: string, signal?: AbortSignal): Promise<T> {
   try {
     response = await fetch(url, {
       credentials: "same-origin",
-      headers: { Accept: "application/json" },
+      headers: { ...scopeHeaders(), Accept: "application/json" },
       signal: signal ?? null,
     });
   } catch (error) {

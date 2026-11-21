@@ -11,7 +11,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from baluarte.auth.dependencies import Principal, database, require
+from baluarte.auth.dependencies import Principal, database, require_deployment
 from baluarte.auth.roles import Permission
 from baluarte.compliance import shipping
 from baluarte.compliance.schemas import (
@@ -22,7 +22,7 @@ from baluarte.compliance.schemas import (
 
 router = APIRouter(prefix="/settings/audit-shipping", tags=["settings"])
 
-Admin = Annotated[Principal, Depends(require(Permission.SETTINGS_MANAGE))]
+Admin = Annotated[Principal, Depends(require_deployment(Permission.SETTINGS_MANAGE))]
 Database = Annotated[Session, Depends(database)]
 
 

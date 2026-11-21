@@ -6,6 +6,7 @@ stored, so a database read does not yield a usable cookie.
 
 import hashlib
 import secrets
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
@@ -74,8 +75,14 @@ def upsert_user(
 
 
 def create_session(
-    db: Session, user: AppUser, roles: frozenset[Role], settings: AuthSettings
+    db: Session,
+    user: AppUser,
+    roles: frozenset[Role],
+    settings: AuthSettings,
+    workspace_roles: Mapping[int, frozenset[Role]] | None = None,
 ) -> str:
+    """Start a session. ``roles`` is the union of ``workspace_roles``, the roles per workspace;
+    without them, the roles are held in the default workspace."""
     token = secrets.token_urlsafe(32)
     now = utcnow()
     db.add(
@@ -83,6 +90,10 @@ def create_session(
             token_digest=sha256_hex(token),
             user_id=user.id,
             roles=sorted(roles),
+            workspace_roles={
+                str(workspace_id): sorted(held)
+                for workspace_id, held in (workspace_roles or {}).items()
+            },
             created_at=now,
             last_seen_at=now,
             expires_at=now + settings.session_lifetime,

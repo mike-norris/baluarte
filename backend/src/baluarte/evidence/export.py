@@ -44,14 +44,14 @@ import io
 import json
 import textwrap
 import zipfile
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, PositiveInt, model_validator
 from sqlalchemy import ColumnElement, Engine, and_, case, exists, func, or_, select, text
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import aliased
 
 from baluarte import __version__, tags
 from baluarte.audit import details_digest
@@ -83,6 +83,7 @@ from baluarte.policy import changes as policy_changes
 from baluarte.policy.evaluation import freshness as evaluation_freshness
 from baluarte.policy.exceptions import effective_state
 from baluarte.scope.exclusions import coverage, justification_sha256
+from baluarte.workspaces import scoped_session
 
 # v2 (exceptions): adds the exceptions section and exception_id on evaluations and findings.
 # v3 (monitoring scope): adds monitoring_excluded, exclusion_id and excluded_via to inventory;
@@ -282,6 +283,7 @@ class EvidenceExport:
         export_id: str,
         requested_by: str | None = None,
         people_projects: frozenset[int] | None = None,
+        workspace: Mapping[str, Any] | None = None,
     ) -> None:
         self.settings = settings
         # With include_people: the project row IDs whose time per person may be exported; None
@@ -291,7 +293,8 @@ class EvidenceExport:
         self.scope = scope
         self.format = fmt
         self.export_id = export_id
-        self.db = Session(engine)
+        # The requesting session's workspace and connection (``baluarte.workspaces``).
+        self.db = scoped_session(engine, workspace)
         try:
             # The first statement of the transaction, so every later read uses one snapshot.
             self.db.execute(text("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY"))

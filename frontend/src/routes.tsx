@@ -76,6 +76,7 @@ const pages: Partial<Record<string, ReactNode>> = {
   [GOVERNANCE]: page(() => import("./pages/BaselinesPage"), "BaselinesPage"),
   "/compliance": page(() => import("./pages/CompliancePage"), "CompliancePage"),
   "/audit-log": page(() => import("./pages/AuditLogPage"), "AuditLogPage"),
+  "/workspaces": page(() => import("./pages/WorkspacesPage"), "WorkspacesPage"),
   "/connections": page(() => import("./pages/ConnectionsPage"), "ConnectionsPage"),
   "/settings": page(() => import("./pages/SettingsPage"), "SettingsPage"),
   "/help": page(() => import("./pages/HelpPage"), "HelpPage"),

@@ -18,7 +18,7 @@ from baluarte import audit
 from baluarte.api.v1.manager import unprocessable
 from baluarte.api.v1.scope import _instance_id
 from baluarte.api.v1.tags import tag_filters
-from baluarte.auth.dependencies import Principal, database, require
+from baluarte.auth.dependencies import Principal, database, require, require_deployment
 from baluarte.auth.roles import Permission
 from baluarte.manager.scopes import PeopleScope, people_scope
 from baluarte.settings import ConfigurationError
@@ -554,7 +554,7 @@ def read_time_settings(
     description="Audited as `settings.time_tracking_updated`.",
 )
 def update_time_settings(
-    principal: Annotated[Principal, Depends(require(Permission.SETTINGS_MANAGE))],
+    principal: Annotated[Principal, Depends(require_deployment(Permission.SETTINGS_MANAGE))],
     db: Annotated[Session, Depends(database)],
     body: Annotated[TimeTrackingSettings, Body()],
 ) -> TimeSettingsOut:

@@ -12,8 +12,9 @@ from sqlalchemy.orm import Session
 
 from baluarte import audit, tags
 from baluarte.api.v1.tags import TagFilter, tag_filters
-from baluarte.auth.dependencies import Principal, database, require
+from baluarte.auth.dependencies import Principal, database, require, require_deployment
 from baluarte.auth.roles import Permission
+from baluarte.connections import payload_for
 from baluarte.db.models import CollectionRun, GitLabGroup, GitLabInstance, GitLabProject
 from baluarte.evidence.as_of import RunRef, run_at, run_ref
 from baluarte.integrations.gitlab.capabilities import CapabilitySnapshot
@@ -44,7 +45,7 @@ from baluarte.policy.assignments import Gap, group_ancestry
 from baluarte.policy.evaluation.runner import not_evaluated
 from baluarte.scope.exclusions import Coverage, Covering, coverage
 from baluarte.settings import ConfigurationError
-from baluarte.workspaces import current_connection
+from baluarte.workspaces import configured_settings, current_connection, current_settings
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +66,7 @@ def gitlab_transport() -> httpx.BaseTransport | None:
     "`X-CSRF-Token` header.",
 )
 def diagnose(
-    principal: Annotated[Principal, Depends(require(Permission.SETTINGS_MANAGE))],
+    principal: Annotated[Principal, Depends(require_deployment(Permission.SETTINGS_MANAGE))],
     db: Annotated[Session, Depends(database)],
     transport: Annotated[httpx.BaseTransport | None, Depends(gitlab_transport)],
 ) -> DiagnosticsReport:
@@ -106,15 +107,12 @@ class InstanceOut(BaseModel):
     capabilities: CapabilitySnapshot | None
 
 
-def _configured() -> GitLabSettings | None:
-    try:
-        return load_gitlab_settings()
-    except ConfigurationError:
-        return None
+def _configured(db: Session) -> GitLabSettings | None:
+    return current_settings(db)
 
 
-def _configured_url() -> str | None:
-    settings = _configured()
+def _configured_url(db: Session) -> str | None:
+    settings = _configured(db)
     return settings.url if settings else None
 
 
@@ -130,7 +128,7 @@ def read_instance(
     _: Annotated[Principal, Depends(require(Permission.INVENTORY_READ))],
     db: Annotated[Session, Depends(database)],
 ) -> InstanceOut:
-    settings = _configured()
+    settings = _configured(db)
     url = settings.url if settings else None
     instance = current_connection(db, settings) if settings else None
     if instance is None:
@@ -167,11 +165,20 @@ class JobQueued(BaseModel):
 
 def _queue(db: Session, principal: Principal, kind: str, action: str, attempts: int) -> JobQueued:
     """Queue a GitLab job once per minute and audit the request."""
-    url = _configured_url()
+    url = _configured_url(db)
     if url is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "GitLab is not configured")
     minute = datetime.now(UTC).strftime("%Y%m%dT%H%M")
-    job_id = queue.enqueue(db, kind, f"{kind}:{minute}", max_attempts=attempts)
+    # The connection the request works on; the primary connection's jobs carry none, as before.
+    connection = current_connection(db)
+    primary = configured_settings()
+    payload = (
+        payload_for(connection.id)
+        if connection is not None and (primary is None or connection.base_url != primary.url)
+        else None
+    )
+    suffix = f":connection-{connection.id}" if payload is not None and connection else ""
+    job_id = queue.enqueue(db, kind, f"{kind}{suffix}:{minute}", payload, max_attempts=attempts)
     audit.record(
         db,
         actor=principal.actor,
@@ -374,7 +381,7 @@ def list_groups(
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> GroupPage:
     wanted = tag_filters(tag)
-    url = _configured_url()
+    url = _configured_url(db)
     if url is None:
         return GroupPage(items=[], next_after_id=None, excluded_hidden=0)
     scope = _scope(db, url)
@@ -481,7 +488,7 @@ def list_projects(
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> ProjectPage:
     wanted = tag_filters(tag)
-    url = _configured_url()
+    url = _configured_url(db)
     if url is None:
         return ProjectPage(items=[], next_after_id=None, excluded_hidden=0)
     scope = _scope(db, url)
@@ -581,7 +588,7 @@ def _ancestry_out(db: Session, instance_id: int, start: int | None, seen: set[in
 
 
 def _instance_row(db: Session) -> tuple[GitLabSettings, GitLabInstance] | None:
-    settings = _configured()
+    settings = _configured(db)
     if settings is None:
         return None
     instance = current_connection(db, settings)
@@ -702,7 +709,7 @@ def read_freshness(
     _: Annotated[Principal, Depends(require(Permission.INVENTORY_READ))],
     db: Annotated[Session, Depends(database)],
 ) -> FreshnessReport:
-    settings = _configured()
+    settings = _configured(db)
     instance_id = instance_id_for(db, settings.url) if settings else None
     return report(db, instance_id, settings)
 
@@ -730,7 +737,7 @@ def list_runs(
     before_id: Annotated[int | None, Query(gt=0)] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> RunPage:
-    url = _configured_url()
+    url = _configured_url(db)
     instance_id = instance_id_for(db, url) if url else None
     if instance_id is None:
         return RunPage(items=[], next_before_id=None)

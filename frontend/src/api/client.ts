@@ -1,5 +1,6 @@
 /** Read-only JSON client for the Baluarte API. The server enforces access; errors carry status. */
 
+import { scopeHeaders } from "./workspaceChoice";
 export class ApiError extends Error {
   readonly status: number;
 
@@ -33,7 +34,7 @@ export async function getJson<T>(path: string, params?: Params, signal?: AbortSi
   try {
     response = await fetch(withQuery(path, params), {
       credentials: "same-origin",
-      headers: { Accept: "application/json" },
+      headers: { ...scopeHeaders(), Accept: "application/json" },
       signal: signal ?? null,
     });
   } catch (error) {

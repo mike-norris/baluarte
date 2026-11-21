@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 
 from baluarte.db.models import AuditEvent
 from baluarte.logs import redact_value
+from baluarte.workspaces import WORKSPACE
 
 audit_logger = logging.getLogger("baluarte.audit")
 
@@ -45,6 +46,7 @@ def record(
         resource_id=resource_id,
         details=safe_details,
         details_digest=details_digest(safe_details),
+        workspace_id=db.info.get(WORKSPACE),
     )
     db.add(row)
     entry = {
@@ -54,6 +56,7 @@ def record(
         "resource_id": resource_id,
         "details": safe_details,
         "details_digest": row.details_digest,
+        "workspace_id": row.workspace_id,
     }
     db.info.setdefault(_PENDING, []).append((row, entry))
 

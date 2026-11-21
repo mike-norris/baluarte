@@ -177,11 +177,18 @@ class Workspace(Base):
     __table_args__ = (
         CheckConstraint("slug ~ '^[a-z0-9][a-z0-9-]{0,62}$'", name="slug_format"),
         CheckConstraint("char_length(name) BETWEEN 1 AND 200", name="name_length"),
+        CheckConstraint(
+            "group_roles IS NULL OR jsonb_typeof(group_roles) = 'object'",
+            name="group_roles_object",
+        ),
     )
 
     id: Mapped[int] = pk()
     slug: Mapped[str] = mapped_column(Text, unique=True)
     name: Mapped[str] = mapped_column(Text)
+    # Identity provider groups per role, {"admin": ["group", ...]}; NULL for the default
+    # workspace, which uses the sign-in settings' mapping.
+    group_roles: Mapped[dict[str, list[str]] | None] = mapped_column(JSONB)
     created_at: Mapped[datetime] = utc_now()
 
 
@@ -1713,6 +1720,9 @@ class AuditEvent(Base):
     details: Mapped[dict[str, Any]] = mapped_column(JSONB, server_default=text("'{}'::jsonb"))
     details_digest: Mapped[str] = mapped_column(Text)
     occurred_at: Mapped[datetime] = utc_now()
+    # The workspace the request or job acted in; NULL for events before migration 0032 and for
+    # actions outside any workspace (sign-in, deployment settings).
+    workspace_id: Mapped[int | None] = mapped_column(ForeignKey("workspace.id"), index=True)
 
 
 class AuditShipment(Base):
@@ -1895,6 +1905,10 @@ class UserSession(Base):
     token_digest: Mapped[str] = mapped_column(Text, unique=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), index=True)
     roles: Mapped[list[str]] = mapped_column(ARRAY(Text))
+    # Roles per workspace, {"<workspace id>": ["admin", ...]}; ``roles`` is their union.
+    workspace_roles: Mapped[dict[str, list[str]]] = mapped_column(
+        JSONB, server_default=text("'{}'::jsonb")
+    )
     created_at: Mapped[datetime] = utc_now()
     last_seen_at: Mapped[datetime] = utc_now()
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

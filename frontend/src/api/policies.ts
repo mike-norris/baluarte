@@ -2,6 +2,7 @@
 
 import { ApiError, getJson } from "./client";
 import { changeFailure, sendJson, sendJsonWithStatus } from "./send";
+import { scopeHeaders } from "./workspaceChoice";
 
 // Limits the API enforces (backend/src/baluarte/policy/loader.py and schema.py).
 export const MAX_SOURCE_BYTES = 64 * 1024;
@@ -223,6 +224,7 @@ export async function savePolicy(
       method: "POST",
       credentials: "same-origin",
       headers: {
+        ...scopeHeaders(),
         Accept: "application/json",
         "Content-Type": "application/json",
         "X-CSRF-Token": csrfToken,

@@ -1,5 +1,6 @@
 /** Client for the API's session endpoints. The server enforces access; this only reflects it. */
 
+import { choose, chosenWorkspace, scopeHeaders } from "../api/workspaceChoice";
 export interface CurrentUser {
   /** The internal ID the audit log and exceptions name; the signed-in user's own. */
   user_id: number;
@@ -12,6 +13,9 @@ export interface CurrentUser {
   csrf_token: string;
   /** The deployment runs in development mode; absent from older servers. */
   development_mode?: boolean;
+  /** The workspace this session works in, and every workspace the person has a role in. */
+  workspace?: string | null;
+  workspaces?: { slug: string; name: string; roles: string[] }[];
 }
 
 /**
@@ -36,11 +40,16 @@ export async function fetchSession(signal?: AbortSignal): Promise<Session> {
   try {
     const response = await fetch("/api/v1/auth/me", {
       credentials: "same-origin",
-      headers: { Accept: "application/json" },
+      headers: { ...scopeHeaders(), Accept: "application/json" },
       signal: signal ?? null,
     });
     if (response.ok) {
       return { status: "signed_in", user: (await response.json()) as CurrentUser };
+    }
+    // The chosen workspace or connection is no longer open to this person: forget it and retry.
+    if ((response.status === 403 || response.status === 404) && chosenWorkspace() !== null) {
+      choose(null);
+      return await fetchSession(signal);
     }
     if (response.status === 401) return { status: "signed_out" };
     if (response.status === 503) return { status: "not_configured" };

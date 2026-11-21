@@ -11,6 +11,7 @@ import {
   IconInbox,
   IconLayoutDashboard,
   IconScale,
+  IconBuildingCommunity,
   IconPlugConnected,
   IconSettings,
   IconShieldHalf,
@@ -193,6 +194,14 @@ export const navItems: readonly NavItem[] = [
     group: "Evidence",
     icon: IconCertificate,
     permission: "compliance:read",
+  },
+  {
+    path: "/workspaces",
+    label: "Workspaces",
+    description: "Separate organizations' connections and data, and who works in each.",
+    group: "Admin",
+    icon: IconBuildingCommunity,
+    permission: "settings:manage",
   },
   {
     path: "/connections",

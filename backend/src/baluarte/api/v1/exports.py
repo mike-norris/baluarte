@@ -18,9 +18,9 @@ Auditor reports (``baluarte.evidence.report``) are PDFs read from a package's sn
 import hashlib
 import logging
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from fastapi.responses import Response, StreamingResponse
@@ -44,10 +44,11 @@ from baluarte.evidence.export import (
 from baluarte.evidence.package import EvidencePackage, PackageConflict, PackageRequest
 from baluarte.evidence.report import ReportBuilder, ReportRequest
 from baluarte.integrations.gitlab.instances import instance_id_for
-from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_settings
+from baluarte.integrations.gitlab.settings import GitLabSettings
 from baluarte.manager.scopes import people_scope
 from baluarte.settings import ConfigurationError
 from baluarte.timetracking.settings import per_person_enabled
+from baluarte.workspaces import current_settings, request_scope, scoped_session
 
 logger = logging.getLogger(__name__)
 
@@ -63,11 +64,8 @@ class ExportRequest(BaseModel):
     scope: ExportScope
 
 
-def _settings() -> GitLabSettings | None:
-    try:
-        return load_gitlab_settings()
-    except ConfigurationError:
-        return None
+def _settings(db: Session) -> GitLabSettings | None:
+    return current_settings(db)
 
 
 def _completed(
@@ -76,10 +74,11 @@ def _completed(
     export_id: str,
     action: str = "evidence.export_completed",
     resource_type: str = "evidence_export",
+    workspace: Mapping[str, Any] | None = None,
 ) -> Callable[[ExportResult], None]:
     def record(result: ExportResult) -> None:
         try:
-            with Session(engine) as db:
+            with scoped_session(engine, workspace) as db:
                 audit.record(
                     db,
                     actor=actor,
@@ -138,11 +137,17 @@ def export_evidence(
     request: ExportRequest,
     principal: Annotated[Principal, Depends(require(Permission.EVIDENCE_EXPORT))],
     engine: Annotated[Engine, Depends(database_engine)],
+    db: Annotated[Session, Depends(database)],
 ) -> StreamingResponse:
-    settings = _settings()
+    workspace = request_scope(db)
+    settings = _settings(db)
     if settings is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "GitLab is not configured")
-    people = _people_projects(engine, principal, settings) if request.scope.include_people else None
+    people = (
+        _people_projects(engine, principal, settings, workspace)
+        if request.scope.include_people
+        else None
+    )
     export_id = uuid.uuid4().hex
     export = EvidenceExport(
         engine,
@@ -152,6 +157,7 @@ def export_evidence(
         export_id,
         requested_by=principal.actor,
         people_projects=people,
+        workspace=workspace,
     )
     try:
         if export.instance_id is None:
@@ -160,7 +166,7 @@ def export_evidence(
             planned = export.plan()
         except ScopeError as error:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
-        with Session(engine) as db:
+        with scoped_session(engine, workspace) as db:
             audit.record(
                 db,
                 actor=principal.actor,
@@ -192,7 +198,7 @@ def export_evidence(
         export.close()
         raise
     return StreamingResponse(
-        export.stream(_completed(engine, principal.actor, export_id)),
+        export.stream(_completed(engine, principal.actor, export_id, workspace=workspace)),
         media_type=MEDIA_TYPES[request.format],
         headers={
             "Content-Disposition": f'attachment; filename="{export.filename()}"',
@@ -204,7 +210,10 @@ def export_evidence(
 
 
 def _people_projects(
-    engine: Engine, principal: Principal, settings: GitLabSettings
+    engine: Engine,
+    principal: Principal,
+    settings: GitLabSettings,
+    workspace: Mapping[str, Any] | None = None,
 ) -> frozenset[int] | None:
     """The projects whose time per person this export may hold; None for every project.
 
@@ -222,7 +231,7 @@ def _people_projects(
         raise refused("per_person_disabled", str(error)) from error
     if not enabled:
         raise refused("per_person_disabled", "Time per person is turned off for this deployment")
-    with Session(engine) as db:
+    with scoped_session(engine, workspace) as db:
         instance_id = instance_id_for(db, settings.url)
         found = people_scope(db, instance_id, principal.user_id, principal.roles)
     if found.all:
@@ -269,19 +278,27 @@ def create_package(
     request: PackageRequest,
     principal: Annotated[Principal, Depends(require(Permission.EVIDENCE_PACKAGE))],
     engine: Annotated[Engine, Depends(database_engine)],
+    db: Annotated[Session, Depends(database)],
 ) -> StreamingResponse:
+    workspace = request_scope(db)
     if request.report is not None and Permission.EVIDENCE_EXPORT not in principal.permissions:
         # The report holds what only evidence:export may read on its own, such as attestations.
         raise HTTPException(
             status.HTTP_403_FORBIDDEN, "Including the auditor report needs evidence:export"
         )
-    settings = _settings()
+    settings = _settings(db)
     if settings is None:
         raise _package_conflict("not_configured", "GitLab is not configured")
     export_id = uuid.uuid4().hex
     seed = request.sample.seed if request.sample.seed is not None else sampling.new_seed()
     package = EvidencePackage(
-        engine, settings, request, export_id, seed, requested_by=principal.actor
+        engine,
+        settings,
+        request,
+        export_id,
+        seed,
+        requested_by=principal.actor,
+        workspace=workspace,
     )
     try:
         if package.instance_id is None:
@@ -293,7 +310,7 @@ def create_package(
         except ScopeError as error:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
         period = request.model_dump(mode="json", by_alias=True)
-        with Session(engine) as db:
+        with scoped_session(engine, workspace) as db:
             audit.record(
                 db,
                 actor=principal.actor,
@@ -327,6 +344,7 @@ def create_package(
                 export_id,
                 action="evidence.package_completed",
                 resource_type=PACKAGE,
+                workspace=workspace,
             )
         ),
         media_type="application/zip",
@@ -427,13 +445,21 @@ def create_report(
     request: ReportRequest,
     principal: Annotated[Principal, Depends(require(Permission.EVIDENCE_EXPORT))],
     engine: Annotated[Engine, Depends(database_engine)],
+    db: Annotated[Session, Depends(database)],
 ) -> Response:
-    settings = _settings()
+    workspace = request_scope(db)
+    settings = _settings(db)
     if settings is None:
         raise _package_conflict("not_configured", "GitLab is not configured")
     report_id = uuid.uuid4().hex
     snapshot = EvidencePackage(
-        engine, settings, request.package_request(), report_id, 0, requested_by=principal.actor
+        engine,
+        settings,
+        request.package_request(),
+        report_id,
+        0,
+        requested_by=principal.actor,
+        workspace=workspace,
     )
     try:
         if snapshot.instance_id is None:
@@ -445,7 +471,7 @@ def create_report(
         except ScopeError as error:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
         described = request.described()
-        with Session(engine) as db:
+        with scoped_session(engine, workspace) as db:
             audit.record(
                 db,
                 actor=principal.actor,
@@ -465,7 +491,7 @@ def create_report(
         pdf = ReportBuilder(snapshot, request.framework, report_id).pdf()
     finally:
         snapshot.close()
-    with Session(engine) as db:
+    with scoped_session(engine, workspace) as db:
         audit.record(
             db,
             actor=principal.actor,

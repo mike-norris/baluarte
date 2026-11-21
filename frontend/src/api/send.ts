@@ -1,6 +1,7 @@
 /** Requests that change state: JSON bodies, the CSRF header, and the API's reason on failure. */
 
 import { ApiError } from "./client";
+import { scopeHeaders } from "./workspaceChoice";
 
 interface ValidationIssue {
   msg?: unknown;
@@ -139,6 +140,7 @@ export async function sendJsonWithStatus<T>(
       method,
       credentials: "same-origin",
       headers: {
+        ...scopeHeaders(),
         Accept: "application/json",
         "Content-Type": "application/json",
         "X-CSRF-Token": csrfToken,

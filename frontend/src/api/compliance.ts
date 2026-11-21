@@ -6,6 +6,7 @@
 
 import { ApiError, getJson } from "./client";
 import { changeFailure, detailText, postJson, sendJson } from "./send";
+import { scopeHeaders } from "./workspaceChoice";
 
 export type FrameworkId = "soc2" | "iso27001" | "nist_800_53_moderate";
 export type SettingSource = "deployment" | "database" | "default";
@@ -158,6 +159,7 @@ export async function saveProfile(
       method: "PUT",
       credentials: "same-origin",
       headers: {
+        ...scopeHeaders(),
         Accept: "application/json",
         "Content-Type": "application/json",
         "X-CSRF-Token": csrfToken,

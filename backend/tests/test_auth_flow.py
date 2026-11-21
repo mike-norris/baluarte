@@ -121,7 +121,9 @@ def test_sign_in_creates_a_session(harness: Harness) -> None:
     assert "settings:manage" not in body["permissions"]
     assert len(body["csrf_token"]) == 64
 
-    assert harness.audit() == [("user:1", "auth.login", {"roles": ["analyst"]})]
+    assert harness.audit() == [
+        ("user:1", "auth.login", {"roles": ["analyst"], "workspaces": {"1": ["analyst"]}})
+    ]
 
 
 def test_only_digests_of_bearer_values_are_stored(harness: Harness) -> None:

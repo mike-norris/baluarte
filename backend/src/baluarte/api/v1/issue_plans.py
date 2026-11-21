@@ -301,7 +301,7 @@ def create_plan(
     db: Database,
     transport: Annotated[httpx.BaseTransport | None, Depends(gitlab_transport)],
 ) -> IssuePlanOut:
-    settings = _settings()
+    settings = _settings(db)
     instance = _instance(db)
     if settings is None or instance is None:
         raise _refusal(

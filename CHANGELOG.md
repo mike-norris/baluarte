@@ -9,6 +9,11 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Several workspaces (roadmap M11.4): a Workspaces page and `/api/v1/workspaces`; roles per
+  workspace from identity provider groups; a workspace and connection switcher, with every page
+  working on the chosen connection; every query and export scoped to the request's workspace
+  (`X-Baluarte-Workspace`, `X-Baluarte-Connection`); audit events record their workspace.
+  Database migration `0032`.
 - Connections (roadmap M11.3): a Connections page and `/api/v1/connections` to add, test,
   collect, pause and remove GitLab connections, each with its own sealed token, timeout,
   schedule and health. Hosts must resolve to public addresses unless a connection allows a
@@ -32,6 +37,8 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Changed
 
+- Deployment settings (identity provider, primary GitLab, write tokens, notifications, audit
+  shipping, compliance) are managed only while acting in the default workspace.
 - The product scope now covers GitLab and GitHub, bulk configuration, the auditable issue register,
   portfolio planning, time approval and CapEx/OpEx reporting. The [roadmap](docs/ROADMAP.md) sets
   out where Baluarte stands, the constraints and assumptions, and milestones M11 to M19 with

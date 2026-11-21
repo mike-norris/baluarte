@@ -12,7 +12,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy.orm import Session
 
-from baluarte.auth.dependencies import Principal, database, require
+from baluarte.auth.dependencies import Principal, database, require, require_deployment
 from baluarte.auth.roles import Permission
 from baluarte.compliance import (
     attestations,
@@ -55,7 +55,7 @@ from baluarte.db.models import BackupRun, ComplianceAttestation, ComplianceExcep
 router = APIRouter(prefix="/compliance", tags=["compliance"])
 
 Reader = Annotated[Principal, Depends(require(Permission.COMPLIANCE_READ))]
-Admin = Annotated[Principal, Depends(require(Permission.SETTINGS_MANAGE))]
+Admin = Annotated[Principal, Depends(require_deployment(Permission.SETTINGS_MANAGE))]
 Database = Annotated[Session, Depends(database)]
 ExceptionId = Annotated[int, Path(gt=0)]
 

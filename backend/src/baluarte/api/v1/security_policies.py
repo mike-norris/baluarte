@@ -25,9 +25,8 @@ from baluarte.db.models import (
 )
 from baluarte.integrations.gitlab import security_policies as discovery
 from baluarte.integrations.gitlab.freshness import KindFreshness, kind_freshness
-from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_settings
-from baluarte.settings import ConfigurationError
-from baluarte.workspaces import current_connection
+from baluarte.integrations.gitlab.settings import GitLabSettings
+from baluarte.workspaces import current_connection, current_settings
 
 router = APIRouter(prefix="/gitlab/security-policies", tags=["gitlab"])
 
@@ -146,11 +145,8 @@ class Coverage(Discovery):
     projects: list[CoverageRow]
 
 
-def _configured() -> GitLabSettings | None:
-    try:
-        return load_gitlab_settings()
-    except ConfigurationError:
-        return None
+def _configured(db: Session) -> GitLabSettings | None:
+    return current_settings(db)
 
 
 def _instance(db: Session, settings: GitLabSettings | None) -> GitLabInstance | None:
@@ -293,7 +289,7 @@ def list_security_policies(
     after_id: Annotated[int | None, Query(gt=0)] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> SecurityPolicyPage:
-    settings = _configured()
+    settings = _configured(db)
     instance = _instance(db, settings)
     context = _discovery(db, instance, settings)
     if instance is None:
@@ -441,7 +437,7 @@ def read_coverage(
     kind: Annotated[Literal["group", "project"] | None, Query()] = None,
     coverage: Annotated[CoverageStatus | None, Query(alias="status")] = None,
 ) -> Coverage:
-    settings = _configured()
+    settings = _configured(db)
     instance = _instance(db, settings)
     context = _discovery(db, instance, settings)
     empty: dict[Literal["groups", "projects"], CoverageCounts] = {
@@ -491,7 +487,7 @@ def read_security_policy(
     _: Annotated[Principal, Depends(require(Permission.INVENTORY_READ))],
     db: Annotated[Session, Depends(database)],
 ) -> SecurityPolicyDetail:
-    settings = _configured()
+    settings = _configured(db)
     instance = _instance(db, settings)
     row = db.get(GitLabSecurityPolicy, policy_id)
     if instance is None or row is None or row.instance_id != instance.id:
