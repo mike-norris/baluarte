@@ -9,7 +9,8 @@ that is saved but not applied anywhere does not either.
 A rule type's ``supported`` comes from the instance's latest capability snapshot, for the probe
 its evaluator depends on: ``true`` when it needs none or the probe answered, ``false`` only when
 detection could tell GitLab lacks it (``unsupported``), and ``null`` otherwise, because a refusal
-or a 404 does not prove the feature is missing.
+or a 404 does not prove the feature is missing. On a provider that does not judge the rule type
+(``providers_of``), ``supported`` is ``false``.
 
 A control is listed when every rule type the mapping in force (``baluarte.controls.posture``)
 maps to it is out of force: Baluarte collects no automated evidence for it. Controls with no
@@ -28,7 +29,7 @@ from baluarte.controls.catalogue import CONTROLS
 from baluarte.controls.posture import effective
 from baluarte.db.models import GitLabInstance, Policy, PolicyAssignment
 from baluarte.labels import taxonomy
-from baluarte.policy.evaluation.project import EVALUATORS
+from baluarte.policy.evaluation.project import PROVIDER_EVALUATORS, providers_of
 from baluarte.policy.loader import parse_policy
 from baluarte.policy.schema import RULE_TYPES
 
@@ -136,17 +137,22 @@ def coverage(db: Session, instance: GitLabInstance | None) -> Coverage:
                 used[rule_type].add(BaselineRef(name, version))
 
     probes, checked_at = _probes(instance)
+    provider = instance.provider if instance is not None else "gitlab"
+    evaluators = PROVIDER_EVALUATORS.get(provider, PROVIDER_EVALUATORS["gitlab"])
     rule_types: list[RuleTypeCoverage] = []
     for rule_type in RULE_TYPES:
-        evaluator = EVALUATORS.get(rule_type)
+        evaluator = evaluators.get(rule_type)
         capability = evaluator.capability if evaluator is not None else None
+        supported: bool | None = _supported(capability, probes)
+        if provider != "gitlab" and provider not in providers_of(rule_type):
+            supported = False
         refs = sorted(used.get(rule_type, set()), key=lambda ref: (ref.name, ref.version))
         rule_types.append(
             RuleTypeCoverage(
                 rule_type=rule_type,
                 in_force=bool(refs),
                 baselines=refs,
-                supported=_supported(capability, probes),
+                supported=supported,
                 capability=capability,
             )
         )

@@ -61,6 +61,10 @@ The security policy rules read what security policy discovery stored; a project 
 
 The change rules judge the change evidence Baluarte recorded over the window; see [CHANGE_EVIDENCE.md](CHANGE_EVIDENCE.md).
 
+### Providers
+
+A rule type keeps its name and fields on every provider; each provider that can judge it reads its own evidence. On GitHub repositories (M13.3) `gitlab.project.visibility`, `gitlab.branch.default_protected`, `gitlab.project.merge_request_approvals` and `gitlab.group.two_factor_required` are judged as [GITHUB_INTEGRATION.md](GITHUB_INTEGRATION.md#rule-types) describes. Every other rule type, and a rule that sets something GitHub has no equivalent for (`forbid_committer_approval` or `forbid_override`), is `unsupported` there, never `pass`.
+
 Any other `type` is rejected. New rule types are added to the schema, and old ones are never redefined; incompatible changes get a new `apiVersion`.
 
 ### Validation
@@ -307,7 +311,7 @@ Review { change_id, reviewed, self_approved, migrated, proposed_by, decided_by, 
 `pass`, `fail`, `unknown`, `unsupported`, `excepted`.
 
 - `unknown` covers insufficient permissions, stale data and failed collection. It never counts as compliant.
-- `unsupported` means the GitLab feature is unavailable.
+- `unsupported` means the provider or its plan does not offer the feature, or Baluarte does not judge that rule type on the provider.
 - `excepted` means a `fail` waived by an approved, unexpired exception. See [Exceptions](#exceptions).
 
 ## Exceptions

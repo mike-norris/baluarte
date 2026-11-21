@@ -50,7 +50,7 @@ export const reasonHelp: Record<UnknownReason, string> = {
   target_collection_error: "Collecting this project's data reported an error.",
   ancestry_incomplete:
     "Some groups above the project could not be followed, so a nearer policy version may apply.",
-  capability_unknown: "Whether this GitLab instance supports the setting has not been detected.",
+  capability_unknown: "Whether the connection supports the setting has not been detected.",
   value_unknown: "GitLab did not report the value.",
   evidence_missing: "No collected evidence backs the value that was judged.",
   evidence_digest_mismatch:

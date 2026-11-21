@@ -72,10 +72,13 @@ class ResourceKind:
     # Where one resource is looked up by ID, when not under ``list_path`` (GitHub's
     # ``/repositories/{id}``).
     lookup_path: str | None = None
+    # The listing's source name when its path names a parent (``GET /orgs/:org/repos``), so
+    # every connection's listing has the same source.
+    list_source_name: str | None = None
 
     @property
     def list_source(self) -> str:
-        return f"GET {self.list_path}"
+        return self.list_source_name or f"GET {self.list_path}"
 
     @property
     def lookup_source(self) -> str:

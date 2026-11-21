@@ -31,9 +31,9 @@ from collections import Counter
 from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Any
+from typing import Any, Literal
 
-from sqlalchemy import func, select
+from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.orm import Session
 
 from baluarte.audit import details_digest
@@ -41,11 +41,15 @@ from baluarte.db.models import (
     ChangeRecord,
     Evaluation,
     Finding,
+    GitLabGroup,
     GitLabProject,
     Observation,
     PolicyException,
 )
 from baluarte.evidence.observations import verify
+from baluarte.integrations.github.branches import BRANCH_SOURCE as GITHUB_BRANCH_SOURCE
+from baluarte.integrations.github.discovery import ORG_SOURCE as GITHUB_ORG_SOURCE
+from baluarte.integrations.github.discovery import REPOSITORY_SOURCES as GITHUB_REPOSITORY_SOURCES
 from baluarte.integrations.gitlab.branches import PROTECTION_SOURCE
 from baluarte.integrations.gitlab.changes import CHANGE_READ_SOURCE, parse_time
 from baluarte.integrations.gitlab.labels import PROJECT_SOURCE as LABELS_SOURCE
@@ -56,6 +60,7 @@ from baluarte.policy.evaluation import changes as change_rules
 from baluarte.policy.evaluation import labels as label_rules
 from baluarte.policy.evaluation.access import ACCESS_SOURCES
 from baluarte.policy.evaluation.engine import ChangeEntry
+from baluarte.policy.evaluation.github import VISIBILITY_SOURCE as GITHUB_VISIBILITY_SOURCE
 from baluarte.policy.evaluation.model import RuleResult, UnknownReason
 from baluarte.policy.evaluation.security_policy import summarize
 from baluarte.policy.exceptions import active_for_project
@@ -91,6 +96,8 @@ class Evidence:
     # when some other policy type was not read in full; the rule's own type is checked when it
     # is judged and again when its value is rebuilt here.
     statuses: tuple[str, ...] = ("ok",)
+    # Whose observation it is: the project's own, or (GitHub) its organization's.
+    target: Literal["project", "organization"] = "project"
 
 
 # Evidence by result ``source``. A rule type whose value lives elsewhere either adds an entry
@@ -105,6 +112,10 @@ EVIDENCE: Mapping[str, Evidence] = {
     ),
     # The access-control rules each judge one observation's payload itself.
     **{source: Evidence((source,), _whole) for source in ACCESS_SOURCES},
+    # GitHub (M13.3): the repository as listed, its default-branch settings, its organization.
+    GITHUB_VISIBILITY_SOURCE: Evidence(GITHUB_REPOSITORY_SOURCES, _visibility),
+    GITHUB_BRANCH_SOURCE: Evidence((GITHUB_BRANCH_SOURCE,), _whole),
+    GITHUB_ORG_SOURCE: Evidence((GITHUB_ORG_SOURCE,), _whole, target="organization"),
 }
 
 
@@ -145,14 +156,26 @@ class Tally:
 
 
 def _latest_observation(
-    db: Session, instance_id: int, project_id: int, sources: Sequence[str]
+    db: Session, instance_id: int, project: GitLabProject, evidence: Evidence
 ) -> Observation | None:
+    if evidence.target == "organization":
+        organization = db.scalars(
+            select(GitLabGroup.id).where(
+                GitLabGroup.instance_id == instance_id,
+                GitLabGroup.gitlab_id == project.namespace_gitlab_id,
+            )
+        ).first()
+        if organization is None:
+            return None
+        target: ColumnElement[bool] = Observation.group_id == organization
+    else:
+        target = Observation.project_id == project.id
     return db.scalars(
         select(Observation)
         .where(
             Observation.instance_id == instance_id,
-            Observation.project_id == project_id,
-            Observation.source.in_(sources),
+            target,
+            Observation.source.in_(evidence.sources),
         )
         .order_by(Observation.collected_at.desc(), Observation.id.desc())
         .limit(1)
@@ -526,17 +549,16 @@ def store_project(
     tally: Tally,
 ) -> list[Evaluation]:
     """Store a project's results and update its findings. The caller commits."""
-    observations: dict[tuple[str, ...], Observation | None] = {}
+    observations: dict[tuple[str, tuple[str, ...]], Observation | None] = {}
     exceptions = active_for_project(db, project.id)
     in_force = {exception.id for exception in exceptions.values()}
     rows: list[Evaluation] = []
     for result in results:
         evidence = evidence_for(result)
-        if evidence.sources not in observations:
-            observations[evidence.sources] = _latest_observation(
-                db, instance_id, project.id, evidence.sources
-            )
-        observation = observations[evidence.sources]
+        key = (evidence.target, evidence.sources)
+        if key not in observations:
+            observations[key] = _latest_observation(db, instance_id, project, evidence)
+        observation = observations[key]
         many: ManyEvidence | None = None
         if evidence is CHANGE_EVIDENCE:
             result, many = backed_by_changes(db, project.id, result, observation)

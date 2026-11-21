@@ -29,6 +29,7 @@ from baluarte.db.models import (
     ProviderMembership,
     ProviderTeam,
 )
+from baluarte.integrations.github.branches import BRANCH_SOURCE
 from baluarte.integrations.github.client import (
     AppAuth,
     GitHubClient,
@@ -39,7 +40,7 @@ from baluarte.integrations.github.client import (
 from baluarte.integrations.github.jobs import COLLECT, make_collect
 from baluarte.jobs import queue
 from baluarte.jobs.worker import Worker
-from baluarte.policy.evaluation.runner import EVALUATE, request_evaluation
+from baluarte.policy.evaluation.runner import EVALUATE
 
 TOKEN = "github_pat_example"
 ORG = {"id": 900, "login": "acme", "name": "Acme", "two_factor_requirement_enabled": True}
@@ -97,6 +98,7 @@ def github(**overrides: Any) -> FakeGitHub:
             "required_pull_request_reviews": {"required_approving_review_count": 1}
         },
         "GET /repos/acme/api/rules/branches/main": [],
+        "GET /repos/acme/web/rules/branches/main": [],
         "GET /user": {"login": "ada"},
         "GET /user/memberships/orgs/acme": {"role": "admin"},
     }
@@ -193,12 +195,11 @@ def test_a_github_organization_is_added_and_discovered(
                 select(Observation.source).where(Observation.instance_id == instance.id)
             ).all()
         )
-        assert {"GET /orgs/:org", "GET /orgs/acme/repos", "capabilities"} <= sources
-        # GitHub results are not evaluated until rules declare their providers (M13.3).
-        request_evaluation(db, "test")
-        db.commit()
+        assert {"GET /orgs/:org", "GET /orgs/:org/repos", "capabilities"} <= sources
+        assert BRANCH_SOURCE in sources
+        # The collection queues an evaluation of the connection (M13.3).
         queued = db.scalars(select(CollectionJob.payload).where(CollectionJob.kind == EVALUATE))
-        assert all((p or {}).get("connection_id") != instance.id for p in queued)
+        assert any((p or {}).get("connection_id") == instance.id for p in queued)
 
 
 @pytest.mark.db

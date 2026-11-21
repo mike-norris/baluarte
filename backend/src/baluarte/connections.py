@@ -244,6 +244,31 @@ def settings_for_job(engine: Engine, payload: Mapping[str, Any] | None) -> GitLa
         raise PermanentJobError(str(exc)) from exc
 
 
+def evaluation_settings_for_job(
+    engine: Engine, payload: Mapping[str, Any] | None
+) -> GitLabSettings:
+    """The settings an evaluation runs with, for a connection of any provider.
+
+    Evaluation reads only the database, so a GitHub connection needs no credential here: its URL
+    and schedule (which sets when its collections count as stale) are enough.
+    """
+    connection_id = connection_of(payload)
+    if connection_id is not None:
+        with Session(engine) as db:
+            connection = db.get(GitLabInstance, connection_id)
+            if connection is not None and connection.provider == "github":
+                if connection.removed_at is not None:
+                    raise PermanentJobError(f"Connection {connection_id} was removed")
+                return GitLabSettings(
+                    url=connection.base_url,
+                    token="",
+                    timeout_seconds=connection.timeout_seconds,
+                    sync_interval_minutes=connection.sync_interval_minutes,
+                    source="database",
+                )
+    return settings_for_job(engine, payload)
+
+
 # Adding, changing and removing connections (the Connections page). Every change is audited.
 
 

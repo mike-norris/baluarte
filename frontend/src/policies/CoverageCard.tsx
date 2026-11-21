@@ -27,7 +27,7 @@ function supportNote(item: RuleTypeCoverage): string | null {
   if (SECURITY_POLICY_TYPES.includes(item.rule_type) && item.supported !== true) {
     return "Needs GitLab Ultimate; this instance does not report security policies.";
   }
-  if (item.supported === false) return "This GitLab instance does not support it.";
+  if (item.supported === false) return "This connection does not support it.";
   return null;
 }
 

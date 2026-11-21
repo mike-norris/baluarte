@@ -35,7 +35,11 @@ from baluarte.integrations.gitlab.client import InvalidResponse
 from baluarte.integrations.gitlab.discovery import Discovery, ResourceKind, discover
 
 ORG_SOURCE = "GET /orgs/:org"
+REPOS_SOURCE = "GET /orgs/:org/repos"
 ORG_FIELDS = ("gitlab_id", "full_path", "name", "require_two_factor_authentication")
+
+
+REPOSITORY_SOURCES = (REPOS_SOURCE, "GET /repositories/:id")
 
 
 def _org_row(instance_id: int, org: dict[str, Any]) -> dict[str, Any]:
@@ -85,6 +89,7 @@ def _repo_row(instance_id: int, repo: dict[str, Any]) -> dict[str, Any]:
 
 
 def repositories(organization: str) -> ResourceKind:
+    """The organization's repositories; sources ``REPOSITORY_SOURCES`` for every organization."""
     return ResourceKind(
         name="repository",
         model=GitLabProject,
@@ -113,6 +118,7 @@ def repositories(organization: str) -> ResourceKind:
             "default_branch",
         ),
         lookup_path="/repositories",
+        list_source_name=REPOS_SOURCE,
     )
 
 
