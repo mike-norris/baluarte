@@ -517,5 +517,9 @@ def test_the_job_skips_without_a_register_and_records_an_issues_run_with_one(
 
     with Session(migrated_engine) as db:
         run = db.scalars(select(CollectionRun).where(CollectionRun.kind == "issues")).one()
-    assert (run.status, run.seen, run.error) == ("succeeded", 2, None)
+    # The index was read; the evidence of its one auditable issue could not be (nothing serves
+    # it here), so the run is partial and says so.
+    assert (run.status, run.seen) == ("partial", 2)
+    assert run.error == "evidence of 1 auditable issue could not be read"
     assert run.counts["issues"] == 1
+    assert run.counts["evidence"]["captured"] == {"failed": 1}

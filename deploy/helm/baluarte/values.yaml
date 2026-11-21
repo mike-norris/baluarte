@@ -198,6 +198,11 @@ gitlab:
 timeTracking:
   perPerson: true
 
+# Auditable issue register (docs/ISSUE_REGISTER.md). Attachments larger than this are not
+# captured; the issue's evidence lists them as a gap. Captured files are stored in PostgreSQL.
+issueRegister:
+  attachmentMaxBytes: 20971520
+
 # Key that seals the GitLab token and OIDC client secret entered in the web UI (ADR-0008):
 # 32 random bytes, base64-encoded. With existingSecret empty the chart generates one on install,
 # keeps it across upgrades and leaves it behind on uninstall. Back it up with the database:

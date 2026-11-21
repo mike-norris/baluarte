@@ -726,5 +726,7 @@ def test_the_gitlab_client_can_only_send_get() -> None:
     source = inspect.getsource(gitlab_client)
 
     # graphql sends its queries with GET too (test_gitlab_client.py checks the method).
-    assert public == {"close", "get", "get_json", "graphql", "paginate"}
-    assert re.findall(r"self\._http\.(\w+)\(", source) == ["close", "get"]
+    assert public == {"close", "download", "get", "get_json", "graphql", "paginate"}
+    assert re.findall(r"self\._http\.(\w+)\(", source) == ["close", "get", "stream"]
+    # download streams a file, and only with GET.
+    assert re.findall(r"self\._http\.stream\(\s*\"(\w+)\"", source) == ["GET"]

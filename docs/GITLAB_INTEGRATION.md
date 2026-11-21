@@ -282,7 +282,7 @@ Applying an approved remediation plan is the third write path, with its own writ
 
 ## Issue register
 
-After every project discovery, `gitlab.collect_issues` reads the issues of each monitored project, any type and state, with `GET /projects/:id/issues?scope=all&order_by=updated_at&sort=asc`, and then only those changed since (`updated_after`). It runs only for connections whose workspace has an auditable issue register, and records no run otherwise. See [ISSUE_REGISTER.md](ISSUE_REGISTER.md#collection).
+After every project discovery, `gitlab.collect_issues` reads the issues of each monitored project, any type and state, with `GET /projects/:id/issues?scope=all&order_by=updated_at&sort=asc`, and then only those changed since (`updated_after`). It runs only for connections whose workspace has an auditable issue register, and records no run otherwise. For auditable issues it then captures their evidence: `GET /projects/:id/issues/:iid` and its `notes`, `resource_state_events`, `resource_label_events`, `resource_milestone_events`, `links`, `closed_by` and `related_merge_requests`; each merge request's `approvals` and `pipelines`; `GET /projects/:id/releases`; and uploaded files with `GET /projects/:id/uploads/:secret/:filename`, size-capped and without following redirects. See [ISSUE_REGISTER.md](ISSUE_REGISTER.md#collection) and [Issue evidence](ISSUE_REGISTER.md#issue-evidence).
 
 ## Scheduling and freshness
 

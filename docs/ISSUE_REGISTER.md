@@ -7,7 +7,7 @@ Roadmap milestone M12 ([ROADMAP.md](ROADMAP.md#m12--auditable-issue-register)), 
 | Step | What it delivers | State |
 |---|---|---|
 | M12.1 Register and selection | The issue index per connection (any type and state); selection rules by label, project and issue type; including or excluding one issue with a reason; categories; a register page (`/register`, `/api/v1/register`) with filters and why each issue is listed (migration `0033`) | Done |
-| M12.2 Issue evidence | For auditable issues only: descriptions, comments, status history, approvals, linked merge requests with their reviews and pipelines, releases, and attachments captured with checksums; collection gaps disclosed per issue | Planned |
+| M12.2 Issue evidence | For auditable issues only: the description, comments, status history, linked issues, closing and related merge requests with their approvals and pipelines, releases for the issue's milestone, and attachments captured with SHA-256 checksums and stored once; sources that could not be read are gaps on the issue; an issue page (`/register/issues/:project/:iid`) (migration `0034`) | Done |
 | M12.3 Control mappings | Many-to-many issue-to-control mappings with a rationale per evidence item, proposed and reviewed like control mapping changes; audit periods, with evidence inside the period kept apart from later remediation; gaps per issue and control | Planned |
 | M12.4 Exports | Packages for one issue, a selection, every issue mapped to a control, or a period across selected controls: summary, manifest, issue-to-control index with framework versions, shared evidence stored once, provenance and checksums, assessments, approvals, exceptions and remediation status, gaps and redactions; verified offline with `baluarte-verify-export` | Planned |
 
@@ -33,10 +33,20 @@ Connection, project, category, rule, state, issue type, label, assignee, title t
 - A read that fails is recorded with its status and leaves stored issues as they were. Projects outside monitoring scope are not read.
 - Every request is a GET with the connection's read-only token.
 
+## Issue evidence
+
+- **What is captured.** For each auditable issue (selected or included, not excluded): the issue with its description; comments and system notes, internal notes flagged; its state, label and milestone events; linked issues; merge requests that close it or are related to it, each with who approved it and its latest pipelines; the project's releases for the issue's milestone; and files uploaded to the description or comments.
+- **Snapshots.** Each capture is one observation (`issue evidence (register)`, SHA-256 digest) holding all of it and a status per source. A capture identical to the previous one is not stored again. `issue_evidence` points at the latest capture.
+- **Gaps.** A source that could not be read (refused, missing, unsupported, or over a limit) is recorded with why, listed on the issue and in the capture; the capture is then `partial`. An issue GitLab no longer serves is `failed`. Nothing is left out silently.
+- **Attachments.** References to `/uploads/<secret>/<name>` are downloaded with `GET /projects/:id/uploads/:secret/:filename` (GitLab 17.4 or later) up to `BALUARTE_ISSUE_ATTACHMENT_MAX_BYTES` (default 20 MiB; Helm `issueRegister.attachmentMaxBytes`). Redirects, such as to object storage, are not followed. Files are stored once by SHA-256 in `captured_file`, which cannot be changed or deleted, and are served only as downloads (`/api/v1/register/files/<sha256>`, never rendered) to people who can read evidence in a workspace whose captures cite them. An upload already captured is not downloaded again.
+- **When.** After the issue index, the `issues` collection captures the issues that have no capture, that GitLab changed since, whose capture is older than 7 days (merge requests and pipelines change without touching the issue), or whose last capture missed something more than an hour ago. At most 200 issues per collection, up to 20 merge requests and 50 attachments per issue; the rest follow or are listed as gaps.
+- **Not evidence of effectiveness.** A captured closing merge request or approval shows what happened, not that a control works; mapping evidence to controls, with a reviewed rationale, is M12.3.
+
 ## Limits
 
-- Comments, history, linked work and attachments arrive with M12.2; until then the register shows the issue as GitLab lists it.
 - Epics and other group-level planning records are not listed yet.
+- Releases are matched through the issue's milestone, not through commits.
+- Captured files live in PostgreSQL and count toward its size and its backups.
 - An issue deleted in GitLab stays in the register as last read.
 - Confidential issues are listed (Baluarte's token can read them); the page shows "Confidential issue" in place of the title.
 - Closing an issue is never treated as proof that a control works.

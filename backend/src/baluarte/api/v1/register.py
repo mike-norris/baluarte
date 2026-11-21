@@ -6,10 +6,11 @@ or exclude one issue with a reason, and ask for the issues to be read now. Every
 audited. Everything is within the request's workspace.
 """
 
+import re
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -21,12 +22,17 @@ from baluarte.auth.roles import Permission
 from baluarte.db.models import (
     MAX_REGISTER_REASON,
     MIN_REGISTER_REASON,
+    CapturedFile,
     GitLabProject,
+    IssueEvidence,
+    Observation,
     RegisterCursor,
     RegisterDecision,
     RegisterIssue,
     RegisterRule,
 )
+from baluarte.evidence.observations import verify
+from baluarte.integrations.gitlab.issue_evidence import SOURCE as EVIDENCE_SOURCE
 from baluarte.integrations.gitlab.jobs import COLLECT_ISSUES
 from baluarte.jobs import queue
 from baluarte.register import selection
@@ -678,3 +684,110 @@ def collect_issues(
     )
     db.commit()
     return CollectionQueued(job_ids=job_ids)
+
+
+class EvidenceOut(BaseModel):
+    project_id: int
+    iid: int
+    # False until the issue's evidence is first captured.
+    captured: bool
+    status: Literal["complete", "partial", "failed"] | None = None
+    # Sources that could not be read, each with why.
+    gaps: list[str] = []
+    captured_at: datetime | None = None
+    # GitLab's last change to the issue that the capture reflects.
+    captured_for: datetime | None = None
+    observation_id: int | None = None
+    payload_digest: str | None = None
+    # Whether the stored digest matches the stored capture.
+    digest_verified: bool | None = None
+    # The capture: issue, notes, history, links, merge_requests, releases, attachments, sources.
+    capture: dict[str, Any] | None = None
+
+
+@router.get(
+    "/issues/{project_id}/{iid}/evidence",
+    response_model=EvidenceOut,
+    summary="The evidence captured for one issue",
+    description="The latest capture: the issue and its description, comments, status history, "
+    "linked issues, merge requests with approvals and pipelines, releases and attachments, "
+    "with the sources that could not be read.",
+    responses={404: {"description": "No such project in this workspace"}},
+)
+def issue_evidence(
+    project_id: Annotated[int, Path(ge=1)],
+    iid: Annotated[int, Path(ge=1)],
+    _: Reader,
+    db: Annotated[Session, Depends(database)],
+) -> EvidenceOut:
+    _project(db, project_id)
+    row = db.get(IssueEvidence, (project_id, iid))
+    if row is None:
+        return EvidenceOut(project_id=project_id, iid=iid, captured=False)
+    observation = db.get_one(Observation, row.observation_id)
+    return EvidenceOut(
+        project_id=project_id,
+        iid=iid,
+        captured=True,
+        status=row.status,  # type: ignore[arg-type]
+        gaps=list(row.gaps),
+        captured_at=row.captured_at,
+        captured_for=row.captured_for,
+        observation_id=observation.id,
+        payload_digest=observation.payload_digest,
+        digest_verified=verify(observation),
+        capture=observation.payload,
+    )
+
+
+SHA256 = Annotated[str, Path(pattern=r"^[0-9a-f]{64}$")]
+SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+@router.get(
+    "/files/{sha256}",
+    summary="Download a captured attachment",
+    description="Served as a download, never rendered. Only files cited by an issue capture in "
+    "this workspace are served.",
+    response_class=Response,
+    responses={
+        200: {"content": {"application/octet-stream": {}}},
+        404: {"description": "No such file in this workspace"},
+    },
+)
+def captured_file(
+    sha256: SHA256,
+    _: Reader,
+    db: Annotated[Session, Depends(database)],
+) -> Response:
+    cited = db.scalars(
+        select(Observation)
+        .where(
+            Observation.source == EVIDENCE_SOURCE,
+            Observation.payload.contains({"attachments": [{"sha256": sha256}]}),
+        )
+        .order_by(Observation.id.desc())
+        .limit(1)
+    ).first()
+    stored = db.get(CapturedFile, sha256) if cited is not None else None
+    if cited is None or stored is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No such file")
+    name = next(
+        (
+            str(a.get("filename") or "")
+            for a in (cited.payload or {}).get("attachments") or []
+            if isinstance(a, dict) and a.get("sha256") == sha256
+        ),
+        "",
+    )
+    safe = SAFE_NAME.sub("_", name).strip("._")[:120] or sha256
+    return Response(
+        content=stored.content,
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe}"',
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, no-store",
+            "Digest": f"sha-256={sha256}",
+        },
+    )

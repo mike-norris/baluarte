@@ -9,6 +9,11 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Issue evidence (roadmap M12.2): for auditable issues, the description, comments, status
+  history, linked issues, merge requests with approvals and pipelines, releases and attachments
+  are captured as one observation, with every unread source listed as a gap. Attachments are
+  stored once by SHA-256 and served only as downloads, up to `BALUARTE_ISSUE_ATTACHMENT_MAX_BYTES`
+  (Helm `issueRegister.attachmentMaxBytes`). An issue page shows the capture. Migration `0034`.
 - Auditable issue register (roadmap M12.1): selection rules by label, project and issue type,
   including or excluding one issue with a reason (excluded issues stay listed), categories, and
   a register page with filters and why each issue is listed (`/register`, `/api/v1/register`).

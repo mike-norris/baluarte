@@ -29,6 +29,7 @@ from baluarte.db.models import GitLabInstance
 from baluarte.evidence.observations import Provenance
 from baluarte.integrations.gitlab import (
     changes,
+    issue_evidence,
     labels,
     register_issues,
     security_policies,
@@ -524,12 +525,25 @@ def make_collect_issues(transport: httpx.BaseTransport | None = None) -> GitLabH
                 result = register_issues.collect(
                     client, engine, instance_id, Provenance(run_id, job.id)
                 )
+                evidence = (
+                    issue_evidence.collect(client, engine, instance_id, Provenance(run_id, job.id))
+                    if not result.rejected
+                    else issue_evidence.EvidenceTally()
+                )
         except Exception as exc:
             _unexpected(engine, run_id, exc)
             raise
         unread = sum(count for status, count in result.reads.items() if status != "ok")
         problems = [f"issues of {unread} projects could not be read"] if unread else []
-        if result.rejected or (result.projects and result.reads.get("ok", 0) == 0):
+        failed = evidence.captured.get("failed", 0)
+        if failed:
+            issues = "issue" if failed == 1 else "issues"
+            problems.append(f"evidence of {failed} auditable {issues} could not be read")
+        if (
+            result.rejected
+            or evidence.rejected
+            or (result.projects and result.reads.get("ok", 0) == 0)
+        ):
             outcome: RunOutcome = "failed"
         else:
             outcome = "partial" if problems else "succeeded"
@@ -538,7 +552,7 @@ def make_collect_issues(transport: httpx.BaseTransport | None = None) -> GitLabH
             run_id,
             outcome,
             seen=result.projects,
-            counts=result.as_counts(),
+            counts={**result.as_counts(), "evidence": evidence.as_counts()},
             error="; ".join(problems) or None,
         )
         logger.info(
