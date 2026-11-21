@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 
 from baluarte.db.models import GitLabGroup, GitLabInstance, GitLabProject, Policy, PolicyAssignment
 from baluarte.policy.loader import parse_policy
+from baluarte.workspaces import workspace_of
 
 TargetType = Literal["instance", "group", "project"]
 GapReason = Literal["not_in_inventory", "missing", "inaccessible", "cycle", "too_deep"]
@@ -154,6 +155,7 @@ def assign(db: Session, instance_id: int, policy: Policy, target: Target) -> Ass
         db.delete(existing)
         db.flush()
     assignment = PolicyAssignment(
+        workspace_id=workspace_of(db, instance_id),
         instance_id=instance_id,
         policy_id=policy.id,
         policy_name=policy.name,

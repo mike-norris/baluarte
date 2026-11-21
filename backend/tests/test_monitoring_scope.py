@@ -27,6 +27,7 @@ from baluarte.integrations.gitlab import security_policies
 from baluarte.integrations.gitlab.project_reads import targets
 from baluarte.main import create_app
 from baluarte.scope.exclusions import MAX_TARGETS, coverage, excluded_projects, exclusion_for
+from baluarte.workspaces import default_workspace_id
 
 CSRF = {"X-CSRF-Token": "csrf"}
 EXCLUSIONS = "/api/v1/scope/exclusions"
@@ -384,6 +385,7 @@ def test_the_trigger_keeps_exclusions_append_only(world: World) -> None:
     with Session(world.engine) as db:
         db.add(
             ScopeExclusion(
+                workspace_id=default_workspace_id(db),
                 instance_id=world.instance_id,
                 target_type="project",
                 target_id=1,

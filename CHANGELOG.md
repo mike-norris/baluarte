@@ -34,6 +34,10 @@ the API or the database schema; the release notes say how to upgrade.
   [ADR-0013](docs/architecture/ADR-0013-workspaces-and-connections.md) (workspaces and several
   connections) supersedes ADR-0004, and
   [ADR-0014](docs/architecture/ADR-0014-provider-integrations.md) sets the common provider layer.
+- Database migration `0030` (roadmap M11.2): governance records belong to a workspace. Baseline
+  names and versions, taxonomy versions and tag keys and values are unique per workspace instead
+  of across the deployment or per connection. Existing rows take their connection's workspace,
+  or the default one.
 - Database migration `0029` (roadmap M11.1, [WORKSPACES.md](docs/WORKSPACES.md)): a `workspace`
   table with a `default` workspace, and GitLab instances become connections in it (`workspace_id`,
   `provider`, `name`, `paused`). Existing data joins the default workspace unchanged; nothing

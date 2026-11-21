@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 from baluarte import audit
 from baluarte.db.models import Finding, PolicyException
 from baluarte.settings import own_decision_refused
+from baluarte.workspaces import workspace_of
 
 ExceptionState = Literal["requested", "approved", "rejected", "revoked", "expired"]
 SYSTEM_ACTOR = "system:policy-exceptions"
@@ -144,6 +145,7 @@ def request(db: Session, requested: Requested, user_id: int, actor: str) -> Poli
             f"Exception {existing} is already requested or approved for this project and rule"
         )
     row = PolicyException(
+        workspace_id=workspace_of(db, requested.instance_id),
         instance_id=requested.instance_id,
         project_id=requested.project_id,
         policy_name=requested.policy_name,

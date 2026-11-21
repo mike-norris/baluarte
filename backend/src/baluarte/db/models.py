@@ -385,12 +385,13 @@ class Policy(Base):
 
     __tablename__ = "policy"
     __table_args__ = (
-        UniqueConstraint("name", "version"),
+        UniqueConstraint("workspace_id", "name", "version"),
         CheckConstraint("version >= 1", name="version_positive"),
         sha256_hex("yaml_digest"),
     )
 
     id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"), index=True)
     name: Mapped[str] = mapped_column(Text)
     version: Mapped[int] = mapped_column(Integer)
     source_yaml: Mapped[str] = mapped_column(Text)
@@ -425,6 +426,7 @@ class PolicyAssignment(Base):
     )
 
     id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"), index=True)
     instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
     policy_id: Mapped[int] = mapped_column(ForeignKey("policy.id"))
     policy_name: Mapped[str] = mapped_column(Text)
@@ -681,6 +683,7 @@ class PolicyException(Base):
     )
 
     id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"), index=True)
     instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
     project_id: Mapped[int] = mapped_column(ForeignKey("gitlab_project.id"), index=True)
     policy_name: Mapped[str] = mapped_column(Text)
@@ -720,6 +723,7 @@ class PolicyChange(Base):
     __table_args__ = (
         Index(
             "uq_policy_change_proposed_version",
+            "workspace_id",
             "policy_name",
             unique=True,
             postgresql_where=text("state = 'proposed' AND kind = 'version'"),
@@ -799,6 +803,7 @@ class PolicyChange(Base):
     )
 
     id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"), index=True)
     kind: Mapped[str] = mapped_column(Text)
     state: Mapped[str] = mapped_column(Text)
     policy_name: Mapped[str] = mapped_column(Text)
@@ -925,6 +930,7 @@ class ControlMappingChange(Base):
     )
 
     id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"), index=True)
     framework: Mapped[str] = mapped_column(Text)
     control_id: Mapped[str] = mapped_column(Text)
     kind: Mapped[str] = mapped_column(Text)
@@ -1035,6 +1041,7 @@ class ScopeExclusion(Base):
     )
 
     id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"), index=True)
     instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
     target_type: Mapped[str] = mapped_column(Text)
     target_id: Mapped[int | None] = mapped_column(BigInteger)
@@ -1339,6 +1346,7 @@ class RemediationPlan(Base):
     )
 
     id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"), index=True)
     instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
     state: Mapped[str] = mapped_column(Text, server_default="draft")
     created_by_user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id"))
@@ -1380,10 +1388,10 @@ class LabelTaxonomy(Base):
 
     __tablename__ = "label_taxonomy"
     __table_args__ = (
-        UniqueConstraint("instance_id", "version", name="uq_label_taxonomy_version"),
+        UniqueConstraint("workspace_id", "version", name="uq_label_taxonomy_version"),
         Index(
             "uq_label_taxonomy_proposed",
-            "instance_id",
+            "workspace_id",
             unique=True,
             postgresql_where=text("state = 'proposed'"),
         ),
@@ -1422,6 +1430,7 @@ class LabelTaxonomy(Base):
     )
 
     id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"), index=True)
     instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
     version: Mapped[int] = mapped_column(Integer)
     name: Mapped[str] = mapped_column(Text)
@@ -1504,6 +1513,7 @@ class LabelPlan(Base):
     )
 
     id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"), index=True)
     instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
     taxonomy_id: Mapped[int] = mapped_column(ForeignKey("label_taxonomy.id"))
     state: Mapped[str] = mapped_column(Text, server_default="draft")
@@ -1637,6 +1647,7 @@ class IssuePlan(Base):
     )
 
     id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"), index=True)
     instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
     state: Mapped[str] = mapped_column(Text, server_default="draft")
     created_by: Mapped[str] = mapped_column(Text)
@@ -1735,6 +1746,7 @@ class Notification(Base):
     )
 
     id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"), index=True)
     event_type: Mapped[str] = mapped_column(Text)
     dedup_key: Mapped[str] = mapped_column(Text, unique=True)
     created_at: Mapped[datetime] = utc_now()
@@ -1822,6 +1834,7 @@ class ExportJob(Base):
     )
 
     id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"), index=True)
     requested_by: Mapped[str] = mapped_column(Text)
     scope: Mapped[dict[str, Any]] = mapped_column(JSONB)
     period_start: Mapped[datetime] = mapped_column(DateTime(timezone=True))
@@ -1992,6 +2005,7 @@ class ManagerScope(Base):
     )
 
     id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"), index=True)
     instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
     user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id"))
     group_gitlab_id: Mapped[int] = mapped_column(BigInteger)
@@ -2013,7 +2027,7 @@ class Tag(Base):
 
     __tablename__ = "tag"
     __table_args__ = (
-        UniqueConstraint("instance_id", "key", "value"),
+        UniqueConstraint("workspace_id", "key", "value"),
         CheckConstraint(f"key ~ '{TAG_NAME_FORMAT}'", name="key_format"),
         CheckConstraint(f"value ~ '{TAG_NAME_FORMAT}'", name="value_format"),
         CheckConstraint("color IS NULL OR color ~ '^#[0-9A-F]{6}$'", name="color_format"),
@@ -2023,6 +2037,7 @@ class Tag(Base):
     )
 
     id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"), index=True)
     instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
     key: Mapped[str] = mapped_column(Text)
     value: Mapped[str] = mapped_column(Text)

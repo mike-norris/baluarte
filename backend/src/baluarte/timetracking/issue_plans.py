@@ -379,6 +379,7 @@ def create(
         "manual": built.manual,
     }
     row = IssuePlan(
+        workspace_id=instance.workspace_id,
         instance_id=instance.id,
         created_by=by.actor,
         created_by_user_id=by.user_id,

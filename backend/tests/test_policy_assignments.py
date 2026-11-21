@@ -23,6 +23,7 @@ from baluarte.integrations.gitlab.instances import instance_for
 from baluarte.main import create_app
 from baluarte.policy.loader import digest
 from baluarte.policy.store import save_version
+from baluarte.workspaces import default_workspace_id
 
 pytestmark = pytest.mark.db
 
@@ -578,6 +579,7 @@ def test_database_keeps_one_version_per_policy_and_target(
         ).all()
         db.add(
             PolicyAssignment(
+                workspace_id=default_workspace_id(db),
                 instance_id=instance_id,
                 policy_id=v1,
                 policy_name=DEFAULT,
@@ -588,6 +590,7 @@ def test_database_keeps_one_version_per_policy_and_target(
         db.commit()
         db.add(
             PolicyAssignment(
+                workspace_id=default_workspace_id(db),
                 instance_id=instance_id,
                 policy_id=v2,
                 policy_name=DEFAULT,
@@ -614,6 +617,7 @@ def test_database_rejects_inconsistent_assignments(
         policy_id = db.scalars(select(Policy.id).where(Policy.name == DEFAULT).limit(1)).one()
         db.add(
             PolicyAssignment(
+                workspace_id=default_workspace_id(db),
                 instance_id=instance_id,
                 policy_id=policy_id,
                 policy_name=policy_name,

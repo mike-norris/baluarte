@@ -25,6 +25,7 @@ from baluarte.db.models import (
 )
 from baluarte.main import create_app
 from baluarte.policy.evaluation.runner import EVALUATE
+from baluarte.workspaces import workspace_of
 
 pytestmark = pytest.mark.db
 
@@ -74,6 +75,7 @@ def add_exception(
         exception_id = db.execute(
             insert(PolicyException)
             .values(
+                workspace_id=workspace_of(db, world.instance_id),
                 instance_id=world.instance_id,
                 project_id=project_id,
                 policy_name=POLICY,

@@ -25,6 +25,7 @@ from baluarte.integrations.gitlab import client as gitlab_client
 from baluarte.integrations.gitlab.settings import GitLabSettings
 from baluarte.remediation import plans
 from baluarte.remediation.plans import NothingToPlan, Scope
+from baluarte.workspaces import workspace_of
 
 pytestmark = pytest.mark.db
 
@@ -396,6 +397,7 @@ def expired_plan(world: World, creator: int) -> int:
         new_id = db.execute(
             insert(RemediationPlan)
             .values(
+                workspace_id=workspace_of(db, row.instance_id),
                 instance_id=row.instance_id,
                 state="submitted",
                 created_by_user_id=creator,

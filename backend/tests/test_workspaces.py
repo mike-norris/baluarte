@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from baluarte.db.migrate import alembic_config
-from baluarte.db.models import GitLabInstance, Workspace
+from baluarte.db.models import GitLabInstance, Policy, Workspace
 from baluarte.integrations.gitlab.instances import instance_for
 from baluarte.workspaces import DEFAULT_SLUG, connection_for_url, default_workspace_id
 
@@ -97,3 +97,65 @@ def test_0029_moves_existing_connections_into_the_default_workspace(
     _migrate(empty_engine, "0028", down=True)
     with empty_engine.connect() as connection:
         assert connection.execute(text("SELECT count(*) FROM gitlab_instance")).scalar() == 1
+
+
+def test_baselines_and_tags_are_unique_per_workspace(migrated_engine: Engine) -> None:
+    with Session(migrated_engine) as db:
+        default = default_workspace_id(db)
+        other = Workspace(slug="other", name="Other")
+        db.add(other)
+        db.flush()
+        for workspace_id in (default, other.id):
+            db.add(
+                Policy(
+                    workspace_id=workspace_id,
+                    name="baseline",
+                    version=1,
+                    source_yaml="x",
+                    yaml_digest="a" * 64,
+                )
+            )
+        db.commit()
+
+        db.add(
+            Policy(
+                workspace_id=default,
+                name="baseline",
+                version=1,
+                source_yaml="x",
+                yaml_digest="a" * 64,
+            )
+        )
+        with pytest.raises(IntegrityError, match="uq_policy_workspace_id_name_version"):
+            db.commit()
+
+
+def test_0030_gives_each_row_its_connections_workspace(empty_engine: Engine) -> None:
+    _migrate(empty_engine, "0029")
+    statements = (
+        "INSERT INTO workspace (slug, name) VALUES ('other', 'Other')",
+        "INSERT INTO gitlab_instance (id, base_url, workspace_id) OVERRIDING SYSTEM VALUE"
+        " VALUES (5, :url, (SELECT id FROM workspace WHERE slug = 'other'))",
+        "INSERT INTO tag (instance_id, key, value, created_by)"
+        " VALUES (5, 'team', 'payments', 'user:1')",
+        "INSERT INTO policy (name, version, source_yaml, yaml_digest)"
+        " VALUES ('base', 1, 'v1', repeat('a', 64))",
+    )
+    with empty_engine.begin() as connection:
+        for statement in statements:
+            connection.execute(text(statement), {"url": URL})
+
+    _migrate(empty_engine, "0030")
+
+    with empty_engine.connect() as connection:
+        tag = connection.execute(
+            text("SELECT w.slug FROM tag t JOIN workspace w ON w.id = t.workspace_id")
+        ).scalar_one()
+        policy = connection.execute(
+            text("SELECT w.slug FROM policy p JOIN workspace w ON w.id = p.workspace_id")
+        ).scalar_one()
+    assert (tag, policy) == ("other", DEFAULT_SLUG)
+
+    _migrate(empty_engine, "0029", down=True)
+    with empty_engine.connect() as connection:
+        assert connection.execute(text("SELECT count(*) FROM tag")).scalar() == 1

@@ -24,6 +24,7 @@ from baluarte.policy.assignments import Target, TargetType, assign, find_target
 from baluarte.policy.loader import parse_policy
 from baluarte.policy.store import latest_version, save_version
 from baluarte.settings import own_decision_refused
+from baluarte.workspaces import current_workspace_id
 
 GOVERNANCE = "governance"
 MAX_NOTE = 2000
@@ -145,6 +146,7 @@ def propose_version(db: Session, source: str, by: Actor) -> VersionChange:
     change = _record(
         db,
         PolicyChange(
+            workspace_id=current_workspace_id(db),
             kind="version",
             policy_name=parsed.name,
             source_yaml=source,
@@ -217,6 +219,7 @@ def propose_assignment(
     change = _record(
         db,
         PolicyChange(
+            workspace_id=instance.workspace_id,
             kind="assign",
             policy_name=policy.name,
             policy_id=policy.id,
@@ -265,6 +268,7 @@ def propose_unassignment(
     change = _record(
         db,
         PolicyChange(
+            workspace_id=assignment.workspace_id,
             kind="unassign",
             policy_name=assignment.policy_name,
             policy_id=assignment.policy_id,

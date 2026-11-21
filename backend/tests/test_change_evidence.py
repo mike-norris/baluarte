@@ -39,6 +39,7 @@ from baluarte.policy.assignments import Target, assign
 from baluarte.policy.evaluation.runner import evaluate_all
 from baluarte.policy.evaluation.store import combined_digest
 from baluarte.policy.store import save_version
+from baluarte.workspaces import default_workspace_id
 
 pytestmark = pytest.mark.db
 
@@ -262,6 +263,7 @@ def test_changes_of_excluded_projects_are_left_out_unless_named(world: Changes) 
     with Session(world.engine) as db:
         db.add(
             ScopeExclusion(
+                workspace_id=default_workspace_id(db),
                 instance_id=world.instance_id,
                 target_type="project",
                 target_id=PROJECT,

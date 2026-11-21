@@ -50,6 +50,7 @@ from baluarte.notifications.settings import (
     NotificationSettings,
     load,
 )
+from baluarte.workspaces import current_workspace_id
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,7 @@ def record(
     notification_id = db.execute(
         insert(Notification)
         .values(
+            workspace_id=current_workspace_id(db),
             event_type=event_type,
             dedup_key=dedup_key,
             subject=message.subject,

@@ -347,6 +347,7 @@ def create(
         "manual": built.manual,
     }
     row = LabelPlan(
+        workspace_id=instance.workspace_id,
         instance_id=instance.id,
         taxonomy_id=taxonomy.id,
         created_by=by.actor,

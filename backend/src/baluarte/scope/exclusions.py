@@ -31,6 +31,7 @@ from baluarte import audit
 from baluarte.db.models import GitLabGroup, GitLabProject, ScopeExclusion
 from baluarte.policy.changes import Actor, ChangeConflict, NotAllowed, review_required
 from baluarte.settings import own_decision_refused
+from baluarte.workspaces import workspace_of
 
 TargetType = Literal["project", "group", "personal_namespaces"]
 ExclusionState = Literal["proposed", "active", "rejected", "ended"]
@@ -341,6 +342,7 @@ def propose(
     rows: list[ScopeExclusion] = []
     for target_type, target_id, target_path in entries:
         row = ScopeExclusion(
+            workspace_id=workspace_of(db, instance_id),
             instance_id=instance_id,
             target_type=target_type,
             target_id=target_id,

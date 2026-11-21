@@ -24,6 +24,7 @@ from baluarte.controls.catalogue import MAPPING_VERSION, control, is_default, kn
 from baluarte.db.models import ControlMappingChange
 from baluarte.policy.changes import Actor, ChangeConflict, NotAllowed, review_required
 from baluarte.settings import own_decision_refused
+from baluarte.workspaces import current_workspace_id
 
 ChangeKind = Literal["map", "unmap", "not_applicable", "manual", "withdraw"]
 ChangeState = Literal["proposed", "active", "rejected", "withdrawn"]
@@ -216,6 +217,7 @@ def propose(db: Session, proposal: Proposal, by: Actor) -> ControlMappingChange:
         raise MappingConflict(reasons)
     required = review_required(db)
     change = ControlMappingChange(
+        workspace_id=current_workspace_id(db),
         framework=proposal.framework,
         control_id=proposal.control_id,
         kind=proposal.kind,
