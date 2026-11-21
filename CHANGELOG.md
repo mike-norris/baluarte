@@ -66,6 +66,9 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Changed
 
+- Backend dependencies are pinned with hashes in `backend/requirements.txt` and
+  `backend/requirements-dev.txt`; the image and CI install only those versions, and the build
+  backend is pinned. Previously each build took the newest release in range.
 - Deployment settings (identity provider, primary GitLab, write tokens, notifications, audit
   shipping, compliance) are managed only while acting in the default workspace.
 - The product scope now covers GitLab and GitHub, bulk configuration, the auditable issue register,
