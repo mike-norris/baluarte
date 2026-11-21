@@ -27,6 +27,13 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Changed
 
+- The product scope now covers GitLab and GitHub, bulk configuration, the auditable issue register,
+  portfolio planning, time approval and CapEx/OpEx reporting. The [roadmap](docs/ROADMAP.md) sets
+  out where Baluarte stands, the constraints and assumptions, and milestones M11 to M19 with
+  acceptance criteria. The product requirements, architecture notes and README follow it.
+  [ADR-0013](docs/architecture/ADR-0013-workspaces-and-connections.md) (workspaces and several
+  connections) supersedes ADR-0004, and
+  [ADR-0014](docs/architecture/ADR-0014-provider-integrations.md) sets the common provider layer.
 - Database migration `0028`: remediation plans gain the `applying`, `applied` and `failed`
   states and their progress. Upgrading runs it in the migration Job, as usual.
 

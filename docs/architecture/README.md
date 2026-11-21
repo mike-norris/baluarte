@@ -7,7 +7,7 @@ Record a decision here when it changes or establishes a foundational choice: run
 | [ADR-0001](ADR-0001-modular-monolith.md) | Modular monolith with shared API/worker image | Accepted |
 | [ADR-0002](ADR-0002-postgresql-job-queue.md) | PostgreSQL as the background job queue | Accepted |
 | [ADR-0003](ADR-0003-read-only-v0-1.md) | Read-only GitLab access for v0.1 | Accepted |
-| [ADR-0004](ADR-0004-single-gitlab-instance.md) | One GitLab instance per deployment for v0.1 | Accepted |
+| [ADR-0004](ADR-0004-single-gitlab-instance.md) | One GitLab instance per deployment for v0.1 | Superseded by ADR-0013 |
 | [ADR-0005](ADR-0005-no-cloud-dependency.md) | No cloud or internet dependency at runtime | Accepted |
 | [ADR-0006](ADR-0006-server-side-oidc-sessions.md) | API is the OIDC client; sessions in PostgreSQL | Accepted |
 | [ADR-0007](ADR-0007-remediation-constraints.md) | Constraints for GitLab remediation (M6) | Accepted (plans in BAL-031, applying in BAL-032 under ADR-0012) |
@@ -16,6 +16,8 @@ Record a decision here when it changes or establishes a foundational choice: run
 | [ADR-0010](ADR-0010-time-tracking-personal-data.md) | Time tracking, including time per person | Accepted |
 | [ADR-0011](ADR-0011-issue-time-writes.md) | Approved issue plans for time rules on closed issues | Accepted |
 | [ADR-0012](ADR-0012-remediation-writes.md) | Applying approved remediation plans with a separate write token | Accepted |
+| [ADR-0013](ADR-0013-workspaces-and-connections.md) | Workspaces and several provider connections per deployment | Accepted |
+| [ADR-0014](ADR-0014-provider-integrations.md) | A common provider layer for GitLab and GitHub | Accepted |
 
 ## Template
 

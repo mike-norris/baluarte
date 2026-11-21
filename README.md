@@ -2,11 +2,11 @@
 
 **Defend the Standard. Prove the Trust.**
 
-Baluarte is a self-hosted, open-source governance and audit-evidence platform for **self-managed GitLab**. It discovers groups and projects, evaluates their configuration against versioned security baselines, records verifiable evidence, and (in a later phase) performs authorized remediation.
+Baluarte is a self-hosted, open-source platform that extends **GitLab and GitHub** with security governance and bulk configuration management, compliance assessments and auditable evidence, engineering portfolio planning, developer time tracking, and CapEx/OpEx labor cost reporting. GitLab and GitHub stay the systems of record for code, issues, merge or pull requests and CI/CD; Baluarte connects those records to engineering, security, audit and finance work.
 
 ## Scope
 
-Initial product scope is **GitLab only**. Docker Compose and Kubernetes/Helm are supported deployment targets, not governed resources. No GitHub, Bitbucket, or Kubernetes configuration scanning is planned for v0.1.
+Today Baluarte governs self-managed GitLab: it discovers groups and projects, evaluates their configuration against versioned baselines, records verifiable evidence, and applies approved fixes. GitHub, several connections per workspace, configuration templates and bulk changes, the auditable issue register, time approval, finance and portfolio planning follow in the order set out in the [roadmap](docs/ROADMAP.md). Docker Compose and Kubernetes/Helm are deployment targets, not governed resources; Bitbucket and Kubernetes configuration scanning are not planned.
 
 ## Technology
 
@@ -14,7 +14,7 @@ Python 3.12+ / FastAPI / SQLAlchemy / Alembic / PostgreSQL; React / TypeScript /
 
 ## Status
 
-v0.1.0: read-only GitLab inventory, policy evaluation and findings, reviewed governance changes, control mapping, evidence export, audit packages and an auditor report, notifications, and dry-run remediation plans. See the [changelog](CHANGELOG.md) and the [roadmap](docs/ROADMAP.md). Released images and the Helm chart are published to `ghcr.io/mike-norris`; see [releases](docs/DEPLOYMENT.md#releases).
+v0.1.0: read-only GitLab inventory, policy evaluation and findings, reviewed governance changes, control mapping, evidence export, audit packages and an auditor report, notifications, and dry-run remediation plans. Since then, on main: approved remediation plans applied with a separate write token, and in-app help. See the [changelog](CHANGELOG.md) and the [roadmap](docs/ROADMAP.md). Released images and the Helm chart are published to `ghcr.io/mike-norris`; see [releases](docs/DEPLOYMENT.md#releases).
 
 ## Try it
 
