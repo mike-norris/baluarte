@@ -1173,7 +1173,8 @@ export const helpTopics: readonly HelpTopic[] = [
   {
     slug: "connections",
     title: "Connections",
-    summary: "Collect from more than one GitLab, each with its own token, schedule and health.",
+    summary:
+      "Collect from GitLab deployments and GitHub organizations, each with its own credential, schedule and health.",
     group: "Administration",
     paths: ["/connections"],
     body: (
@@ -1197,6 +1198,12 @@ export const helpTopics: readonly HelpTopic[] = [
             A connection&apos;s host must resolve to public addresses. For a self-managed GitLab on
             your own network, tick <strong>private network</strong>. Loopback, link-local and cloud
             metadata addresses are always refused, and the check runs again before every collection.
+          </li>
+          <li>
+            <strong>GitHub organizations</strong> on github.com are added with a fine-grained
+            personal access token or a GitHub App installation (its App ID, installation ID and
+            private key). Grant read access only. Baluarte collects the organization, its
+            repositories, teams and members; GitHub results are not evaluated yet.
           </li>
           <li>
             <strong>Pause</strong> stops scheduled collection; <strong>Remove</strong> also forgets

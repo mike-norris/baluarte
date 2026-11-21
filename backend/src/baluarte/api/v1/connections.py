@@ -28,7 +28,7 @@ from baluarte.integrations.gitlab.freshness import (
     KindFreshness,
     connection_freshness,
 )
-from baluarte.integrations.gitlab.jobs import SCHEDULED_KINDS
+from baluarte.integrations.gitlab.jobs import GITHUB_COLLECT, SCHEDULED_KINDS
 from baluarte.integrations.gitlab.settings import GitLabSettings
 from baluarte.jobs import queue
 from baluarte.settings import ConfigurationError
@@ -52,6 +52,10 @@ class ConnectionOut(BaseModel):
     timeout_seconds: float
     sync_interval_minutes: int
     allow_private_network: bool
+    # How the connection authenticates: ``token``, or for GitHub ``app`` (an App installation).
+    auth_kind: Literal["token", "app"] = "token"
+    app_id: int | None = None
+    installation_id: int | None = None
     version: str | None
     edition: str | None
     created_at: AwareDatetime
@@ -87,6 +91,9 @@ def _out(db: Session, row: GitLabInstance, primary: GitLabSettings | None) -> Co
         timeout_seconds=timeout,
         sync_interval_minutes=interval,
         allow_private_network=row.allow_private_network,
+        auth_kind=row.auth_kind,  # type: ignore[arg-type]
+        app_id=row.app_id,
+        installation_id=row.installation_id,
         version=row.version,
         edition=row.edition,
         created_at=row.created_at,
@@ -117,6 +124,20 @@ class ConnectionCreate(BaseModel):
     timeout_seconds: float = 15
     sync_interval_minutes: int = 360
     allow_private_network: bool = False
+
+
+class GitHubConnectionCreate(BaseModel):
+    """A GitHub.com organization, read with a fine-grained token or a GitHub App installation."""
+
+    name: str = Field(default="", max_length=200)
+    organization: str = Field(min_length=1, max_length=39)
+    auth_kind: Literal["token", "app"] = "token"
+    # The fine-grained token, or the App's private key (PEM).
+    secret: str = Field(min_length=1, max_length=10000, repr=False)
+    app_id: int | None = Field(default=None, ge=1)
+    installation_id: int | None = Field(default=None, ge=1)
+    timeout_seconds: float = 15
+    sync_interval_minutes: int = 360
 
 
 class ConnectionUpdate(BaseModel):
@@ -168,6 +189,42 @@ def add_connection(
             timeout_seconds=body.timeout_seconds,
             sync_interval_minutes=body.sync_interval_minutes,
             allow_private_network=body.allow_private_network,
+            actor=principal.actor,
+        )
+    except (ConnectionRefused, ConnectionConflict) as exc:
+        raise _refused(exc) from exc
+    db.commit()
+    return _out(db, row, configured_settings())
+
+
+@router.post(
+    "/github",
+    status_code=status.HTTP_201_CREATED,
+    response_model=ConnectionOut,
+    summary="Add a GitHub.com organization",
+    description="Its URL is `https://github.com/<organization>`. `auth_kind` `token` takes a "
+    "fine-grained personal access token as `secret`; `app` takes the GitHub App's private key "
+    "with `app_id` and `installation_id`. The credential is sealed and never returned. Only "
+    "read permissions are needed (docs/GITHUB_INTEGRATION.md). Requires the `X-CSRF-Token` "
+    "header.",
+    responses=_ERRORS,
+)
+def add_github_connection(
+    body: GitHubConnectionCreate,
+    principal: Annotated[Principal, Depends(require(Permission.SETTINGS_MANAGE))],
+    db: Annotated[Session, Depends(database)],
+) -> ConnectionOut:
+    try:
+        row = connections.add_github(
+            db,
+            name=body.name,
+            organization=body.organization,
+            auth_kind=body.auth_kind,
+            secret=body.secret,
+            app_id=body.app_id,
+            installation_id=body.installation_id,
+            timeout_seconds=body.timeout_seconds,
+            sync_interval_minutes=body.sync_interval_minutes,
             actor=principal.actor,
         )
     except (ConnectionRefused, ConnectionConflict) as exc:
@@ -291,6 +348,7 @@ def collect_connection(
     if row.paused:
         raise _refused(ConnectionConflict("The connection is paused"))
     minute = datetime.now(UTC).strftime("%Y%m%dT%H%M")
+    kinds = SCHEDULED_KINDS if row.provider == "gitlab" else (GITHUB_COLLECT,)
     job_ids = [
         queue.enqueue(
             db,
@@ -299,7 +357,7 @@ def collect_connection(
             connections.payload_for(row.id),
             max_attempts=3,
         )
-        for kind in SCHEDULED_KINDS
+        for kind in kinds
     ]
     audit.record(
         db,

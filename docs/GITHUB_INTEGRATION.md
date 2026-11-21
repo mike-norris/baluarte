@@ -1,6 +1,6 @@
 # GitHub integration contract
 
-Roadmap milestone M13 ([ROADMAP.md](ROADMAP.md#m13--github)), through the common provider layer of [ADR-0014](architecture/ADR-0014-provider-integrations.md). This page starts as the feasibility spike: what GitHub's official REST documentation says about each collection and rule Baluarte needs, and what is still to be confirmed against a live organization. Nothing here is assumed from GitLab, and nothing is implemented yet.
+Roadmap milestone M13 ([ROADMAP.md](ROADMAP.md#m13--github)), through the common provider layer of [ADR-0014](architecture/ADR-0014-provider-integrations.md). This page started as the feasibility spike: what GitHub's official REST documentation says about each collection and rule Baluarte needs, and what is still to be confirmed against a live organization. Nothing here is assumed from GitLab. [Connections and collection](#connections-and-collection) describes what is implemented.
 
 Each fact names its source page on docs.github.com (REST API version `2022-11-28`). **To verify** marks what the documentation did not state, or stated only in part. Each such row is confirmed by a live probe and a recorded response before a rule depends on it. As with GitLab, run-time capability detection decides in the end, not this table.
 
@@ -9,7 +9,7 @@ Each fact names its source page on docs.github.com (REST API version `2022-11-28
 | Step | What it delivers | State |
 |---|---|---|
 | M13.1 Feasibility spike | This page: authentication, versions, endpoints, permissions, plans and rate limits per collection and rule, and the step plan | Done |
-| M13.2 Provider layer and connection | Provider on connections and normalized records; GitHub App and fine-grained token connections for GitHub.com (Enterprise Server later); capability probes; rate limits and retries; organization, team, repository and membership discovery | Planned |
+| M13.2 Provider layer and connection | Provider on connections and normalized records; GitHub App and fine-grained token connections for GitHub.com (Enterprise Server later); capability probes; rate limits and retries; organization, team, repository and membership discovery | Done |
 | M13.3 Settings and rules | Repository settings, branch protection and rulesets, required reviews, visibility, security features; each rule type declares the providers it supports, and GitHub results carry their evidence | Planned |
 | M13.4 Change evidence and webhooks | Pull requests, reviews, workflow runs, deployments and releases; signed webhooks processed once per delivery and de-duplicated against scheduled collection | Planned |
 | M13.5 Issue register and acceptance | GitHub issues in the register (pull requests left out); one workspace with a GitLab and a GitHub connection evaluated by one baseline | Planned |
@@ -90,7 +90,21 @@ The current rule types are GitLab's. During M13.3 each one declares the provider
 | `gitlab.change.reviewed`, `gitlab.change.pipeline_passed`, `gitlab.change.deployed_after_review` | Pull request reviews, workflow runs or checks, deployments | **To verify** in M13.4 |
 | `gitlab.labels.consistent` | Repository labels | **To verify** in M13.3 |
 
-## Open questions for M13.2
+## Connections and collection
+
+Implemented in M13.2 (migration `0036`). Everything below is tested against a scripted GitHub; no live organization has been read yet (see the open questions).
+
+- **A connection is one organization on GitHub.com**, added on the Connections page or with `POST /api/v1/connections/github`. Its URL is `https://github.com/<organization>`, which keeps connection URLs unique. A removed organization added again is restored with its data.
+- **Authentication.** `auth_kind` is `token` (a fine-grained personal access token) or `app` (a GitHub App installation, with `app_id` and `installation_id`). The token, or the App's private key, is sealed as `connection_token:<id>` like any added connection's token and never returned. For an App, Baluarte signs a JWT (RS256, issued 60 seconds in the past, valid 9 minutes, `iss` the App ID) and exchanges it at `POST /app/installations/{id}/access_tokens`; that is the only non-GET request, and the installation token is reused until 5 minutes before it expires.
+- **Client** (`baluarte.integrations.github.client`). Every read is a GET to `https://api.github.com` with `X-GitHub-Api-Version: 2022-11-28`. Lists ask for 100 items a page and follow the `Link` header's `next` URL, refusing one that leaves the API host. Rate limits follow [Rate limits](#rate-limits); a wait longer than 5 minutes fails the job, which retries on its schedule. Server errors are retried up to three times.
+- **One job, `github.collect`**, per connection: capability detection, then discovery. Its parts are recorded as collection runs of the kinds GitLab uses (`capabilities`, `groups`, `projects`), so health and freshness read the same way. It is scheduled on the connection's interval and by *Collect now*.
+- **Capability probes**: `org.read`, `org.two_factor`, `repos.list`, `repos.visibility`, `repos.default_branch`, `teams.list`, `members.list`, `branch_protection.read` and `rules.read` on the first repository listed, and with a token `user.read` and `membership.read`. A 404 for branch protection means the branch is unprotected, so the read counts as supported; a 403 asking for a plan upgrade is `unsupported`. The organization, the repository listing and both repository fields are the core probes: without them the snapshot is `partial`.
+- **Normalized inventory** ([ADR-0014](architecture/ADR-0014-provider-integrations.md)). The organization is a `gitlab_group` row and each repository a `gitlab_project` row, with GitHub's IDs, and observations record allowlisted fields. Repositories are reconciled like GitLab projects: one not listed again is looked up at `/repositories/{id}`, and becomes `missing` on 404 or `inaccessible` on 403. Teams are `provider_team` rows; organization members (roles `admin`, `member`) and team members (`maintainer`, `member`) are `provider_membership` rows. Teams and memberships not listed again become `missing`.
+- **Not yet.** GitHub connections are not evaluated until rules declare their providers (M13.3), their issues do not join the register until M13.5, and the GitLab diagnostics (*Test connection*) are not offered for them.
+
+## Open questions
+
+Answered in M13.2: the App's private key is sealed as `connection_token:<id>`, like added connections' tokens. Still open:
+
 
 - A live GitHub organization and test repositories, on GitHub Free and on a paid plan. Plan-dependent behaviour has to be recorded from real responses.
-- Where the GitHub App's private key is kept: sealed in `app_secret` like other secrets.

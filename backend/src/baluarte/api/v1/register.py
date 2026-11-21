@@ -452,7 +452,8 @@ def _queue_collection(db: Session, reason: str) -> list[int]:
             max_attempts=3,
         )
         for row in connections.active(db)
-        if not row.paused
+        # GitHub issues join the register in roadmap M13.5.
+        if not row.paused and row.provider == "gitlab"
     ]
 
 

@@ -67,6 +67,9 @@ COLLECT_ISSUES = "gitlab.collect_issues"
 # collection are queued by each finished project discovery instead, so they always read the
 # inventory that discovery just confirmed.
 SCHEDULED_KINDS = (DETECT_CAPABILITIES, DISCOVER_GROUPS, DISCOVER_PROJECTS)
+# The GitHub collection (``baluarte.integrations.github.jobs.COLLECT``), named here so the
+# schedule needs no import of the GitHub adapter.
+GITHUB_COLLECT = "github.collect"
 
 # Retries of a scheduled collection, in seconds after each failed attempt: long enough to ride
 # out a network or GitLab outage of some minutes. Manual collection keeps the queue's short
@@ -717,6 +720,7 @@ class AddedConnectionsSchedule:
                     continue
                 bucket = int(now // (minutes * 60))
                 delays = scheduled_retry_delays(minutes)
+                kinds = SCHEDULED_KINDS if connection.provider == "gitlab" else (GITHUB_COLLECT,)
                 queued += [
                     queue.enqueue(
                         db,
@@ -726,7 +730,7 @@ class AddedConnectionsSchedule:
                         max_attempts=len(delays) + 1,
                         retry_delays=delays or None,
                     )
-                    for kind in SCHEDULED_KINDS
+                    for kind in kinds
                 ]
             db.commit()
         if queued:

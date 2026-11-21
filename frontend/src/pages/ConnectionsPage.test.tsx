@@ -201,4 +201,62 @@ describe("ConnectionsPage", () => {
     expect(await screen.findByText("Collection of EU GitLab queued.")).toBeInTheDocument();
     expect(calls.some((call) => call.url.endsWith("/connections/2/collect"))).toBe(true);
   });
+  it("adds a GitHub organization through an App installation", async () => {
+    const added = connection(4, {
+      provider: "github",
+      url: "https://github.com/acme",
+      primary: false,
+      source: "connections_page",
+      auth_kind: "app",
+      app_id: 77,
+      installation_id: 88,
+      version: "github.com",
+      edition: null,
+    });
+    const calls = api(admin, { "POST /api/v1/connections/github": () => json(added, 201) });
+    renderAt("/connections");
+    const form = await screen.findByRole("form", { name: "Add a GitHub organization" });
+
+    await userEvent.click(within(form).getByRole("button", { name: "Add organization" }));
+    expect(await within(form).findByText(/organization's name/)).toBeInTheDocument();
+    expect(calls.some((call) => call.init?.method === "POST")).toBe(false);
+
+    await userEvent.type(within(form).getByLabelText("Organization on github.com"), "acme");
+    await userEvent.selectOptions(within(form).getByLabelText("Sign in with"), "app");
+    await userEvent.type(within(form).getByLabelText("App ID"), "77");
+    await userEvent.type(within(form).getByLabelText("Installation ID"), "88");
+    await userEvent.type(within(form).getByLabelText("Private key (PEM)"), "-----BEGIN KEY-----");
+    await userEvent.click(within(form).getByRole("button", { name: "Add organization" }));
+
+    expect(await screen.findByText(/github\.com\/acme added/)).toBeInTheDocument();
+    const post = calls.find((call) => call.url.endsWith("/connections/github"));
+    expect(body(post)).toEqual({
+      name: "",
+      organization: "acme",
+      auth_kind: "app",
+      secret: "-----BEGIN KEY-----",
+      app_id: 77,
+      installation_id: 88,
+      timeout_seconds: 15,
+      sync_interval_minutes: 360,
+    });
+  });
+
+  it("shows a GitHub connection without GitLab's diagnostics", async () => {
+    const org = connection(5, {
+      provider: "github",
+      url: "https://github.com/acme",
+      primary: false,
+      source: "connections_page",
+      version: "github.com",
+      edition: null,
+    });
+    api(admin, { "GET /api/v1/connections": () => json({ connections: [org] }) });
+    renderAt("/connections");
+    const card = await screen.findByRole("region", { name: "github.com/acme" });
+
+    expect(within(card).getAllByText("GitHub").length).toBeGreaterThan(0);
+    expect(within(card).queryByRole("button", { name: "Test connection" })).not.toBeInTheDocument();
+    expect(within(card).getByRole("button", { name: "Collect now" })).toBeInTheDocument();
+  });
 });

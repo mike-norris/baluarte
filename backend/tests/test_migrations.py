@@ -53,6 +53,8 @@ TABLES = {
     "policy_assignment",
     "policy_change",
     "policy_exception",
+    "provider_membership",
+    "provider_team",
     "register_cursor",
     "register_decision",
     "register_issue",
