@@ -11,6 +11,9 @@ Standard library only and no database, so an auditor can run it anywhere (also a
   manifest cannot pass
 - for an audit-period evidence package, every observation in ``change_evidence.jsonl`` against
   its digest, and the change sample redrawn from the manifest's seed over ``changes.csv``
+- for an issue register export, every ``files/<sha256>`` against its name, every attachment a
+  capture cites present or listed as missing, and the index consistent: each mapping's issue,
+  cited items and capture are in the package
 
 Packages of an older export format are still accepted: a v1 export (before exceptions) is checked
 against what its own manifest lists, and only a v2 or later export must contain the exceptions.
@@ -47,6 +50,17 @@ REQUIRED = {
 PACKAGE_FILES = ("changes.csv", "change_sample.csv", "change_evidence.jsonl")
 # The change kinds the sample is drawn from (baluarte.evidence.sampling).
 SAMPLED_KINDS = ("merge_request", "direct_push")
+# What an issue register export must hold.
+REGISTER_FILES = (
+    "issues.csv",
+    "issue_controls.csv",
+    "mapping_evidence.csv",
+    "decisions.csv",
+    "observations.jsonl",
+    "files.csv",
+    "gaps.csv",
+    "redactions.csv",
+)
 # The members of a JSON export that are neither sections nor the manifest.
 METADATA = ("format", "export_id", "generated_at", "instance", "scope", "freshness")
 
@@ -140,6 +154,8 @@ def verify_zip(archive: zipfile.ZipFile, report: Report) -> tuple[dict[str, Any]
     ]
     if isinstance(manifest.get("evidence_package"), dict):
         verify_package(contents, manifest["evidence_package"], report)
+    if isinstance(manifest.get("register_export"), dict):
+        verify_register(contents, observations, report)
     return manifest, observations
 
 
@@ -199,6 +215,54 @@ def verify_package(contents: dict[str, bytes], package: dict[str, Any], report: 
     evidenced = {observation.get("change_id") for observation in evidence}
     for change_id in listed:
         report.check(change_id in evidenced, f"change {change_id}: sampled but without evidence")
+
+
+def verify_register(contents: dict[str, bytes], observations: list[Any], report: Report) -> None:
+    """Captured files against their names, and the issue-to-control index against itself."""
+    for name in REGISTER_FILES:
+        if not report.check(name in contents, f"{name}: required by a register export"):
+            return
+    stored = {}
+    for name, data in contents.items():
+        if name.startswith("files/"):
+            sha = name[len("files/") :]
+            report.check(sha == sha256(data), f"{name}: content does not match its name")
+            stored[sha] = data
+    listed = {row["sha256"]: row for row in _csv_rows(contents["files.csv"])}
+    for sha, row in listed.items():
+        if report.check(sha in stored, f"files.csv: {sha} listed but files/{sha} missing"):
+            report.check(int(row["size_bytes"]) == len(stored[sha]), f"files/{sha}: size differs")
+    for sha in stored:
+        report.check(sha in listed, f"files/{sha}: not listed in files.csv")
+    missing = {
+        row["ref"] for row in _csv_rows(contents["gaps.csv"]) if row["code"] == "file_missing"
+    }
+    captured = {}
+    for observation in observations:
+        captured[observation.get("id")] = observation
+        payload = observation.get("payload") or {}
+        for attachment in payload.get("attachments") or []:
+            cited = attachment.get("sha256") if isinstance(attachment, dict) else None
+            if cited:
+                report.check(
+                    cited in stored or cited in missing,
+                    f"observation {observation.get('id')}: attachment {cited} neither in the "
+                    "package nor listed as missing",
+                )
+    issues = {(row["project_id"], row["iid"]) for row in _csv_rows(contents["issues.csv"])}
+    mappings = {}
+    for row in _csv_rows(contents["issue_controls.csv"]):
+        mappings[row["mapping_id"]] = row
+        ident = f"mapping {row['mapping_id']}"
+        report.check((row["project_id"], row["iid"]) in issues, f"{ident}: its issue is missing")
+        report.check(
+            int(row["observation_id"]) in captured, f"{ident}: the capture it cites is missing"
+        )
+    for row in _csv_rows(contents["mapping_evidence.csv"]):
+        report.check(
+            row["mapping_id"] in mappings,
+            f"mapping_evidence.csv: item of mapping {row['mapping_id']} not in the index",
+        )
 
 
 def verify_json(document: dict[str, Any], report: Report) -> tuple[dict[str, Any], list[Any]]:
@@ -310,7 +374,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("file", help="the exported .zip or .json file")
     parser.add_argument(
         "--manifest-sha256",
-        help="manifest_sha256 from the evidence.export_completed audit event",
+        help="manifest_sha256 from the export's completion audit event",
     )
     args = parser.parse_args(argv)
     try:
@@ -330,7 +394,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.manifest_sha256 is None:
         print(
             "NOTE the manifest itself was not checked: pass --manifest-sha256 with the value from "
-            "the evidence.export_completed audit event"
+            "the export's completion audit event (evidence.export_completed, or "
+            "register.export_completed for an issue register export)"
         )
     verdict = "FAILED" if report.failures else "OK"
     print(f"{verdict}: {report.passed} checks passed, {len(report.failures)} failed")

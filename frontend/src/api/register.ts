@@ -3,7 +3,9 @@
  * someone included, why, and in which category. See docs/ISSUE_REGISTER.md.
  */
 
+import { exportFilename } from "../evidence/scope";
 import { getJson } from "./client";
+import { streamPost, type ExportDownload } from "./exports";
 import { sendJson } from "./send";
 
 export type RegisterCategory = "engineering" | "security_finding" | "exception" | "remediation";
@@ -247,9 +249,18 @@ export interface CapturedMergeRequest {
   merged_at: string | null;
   merged_by: string | null;
   merge_commit_sha: string | null;
-  approvals: { approved: boolean; approved_by: string[]; approvals_required: number | null } | null;
+  approvals: {
+    approved: boolean;
+    approved_by: string[];
+    approvals_required: number | null;
+  } | null;
   pipelines:
-    | { id: number | null; status: string | null; ref: string | null; web_url: string | null }[]
+    | {
+        id: number | null;
+        status: string | null;
+        ref: string | null;
+        web_url: string | null;
+      }[]
     | null;
 }
 
@@ -430,7 +441,11 @@ export function listMappings(
   periodId?: number | null,
   signal?: AbortSignal,
 ): Promise<MappingPage> {
-  const params = new URLSearchParams({ framework, control_id: controlId, limit: "200" });
+  const params = new URLSearchParams({
+    framework,
+    control_id: controlId,
+    limit: "200",
+  });
   if (periodId) params.set("period_id", String(periodId));
   return getJson(`/api/v1/register/mappings?${params.toString()}`, undefined, signal);
 }
@@ -553,3 +568,36 @@ export const gapLabels: Record<string, string> = {
   only_later_remediation: "Only later remediation",
   undated_items: "Undated items",
 };
+
+/** What a register export package covers: issues, or the issues mapped to controls. */
+export interface RegisterExportRequest {
+  issues?: { project_id: number; iid: number }[];
+  controls?: { framework: string; control_id: string }[];
+  period_id?: number | null;
+}
+
+export const EXPORT_PERMISSION = "evidence:package";
+
+/** Build a register export package and read it whole; nothing is offered part way. */
+export async function downloadRegisterExport(
+  request: RegisterExportRequest,
+  csrf: string,
+  signal: AbortSignal,
+): Promise<ExportDownload> {
+  const { response, chunks, bytes } = await streamPost(
+    "/api/v1/register/exports",
+    request,
+    "application/zip",
+    csrf,
+    signal,
+    () => undefined,
+  );
+  return {
+    blob: new Blob(chunks, {
+      type: response.headers.get("Content-Type") ?? "",
+    }),
+    filename: exportFilename(response.headers.get("Content-Disposition"), "csv"),
+    bytes,
+    exportId: response.headers.get("X-Baluarte-Export-Id"),
+  };
+}

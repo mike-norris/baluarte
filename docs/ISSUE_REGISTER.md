@@ -1,6 +1,6 @@
 # Auditable issue register
 
-Roadmap milestone M12 ([ROADMAP.md](ROADMAP.md#m12--auditable-issue-register)), decided in [ADR-0015](architecture/ADR-0015-auditable-issue-register.md). The register lists the issues an auditor should examine, says why each one is there, and, from later steps, exports its evidence against controls.
+Roadmap milestone M12 ([ROADMAP.md](ROADMAP.md#m12--auditable-issue-register)), decided in [ADR-0015](architecture/ADR-0015-auditable-issue-register.md). The register lists the issues an auditor should examine, says why each one is there, and exports its evidence against controls.
 
 ## Status
 
@@ -9,7 +9,7 @@ Roadmap milestone M12 ([ROADMAP.md](ROADMAP.md#m12--auditable-issue-register)), 
 | M12.1 Register and selection | The issue index per connection (any type and state); selection rules by label, project and issue type; including or excluding one issue with a reason; categories; a register page (`/register`, `/api/v1/register`) with filters and why each issue is listed (migration `0033`) | Done |
 | M12.2 Issue evidence | For auditable issues only: the description, comments, status history, linked issues, closing and related merge requests with their approvals and pipelines, releases for the issue's milestone, and attachments captured with SHA-256 checksums and stored once; sources that could not be read are gaps on the issue; an issue page (`/register/issues/:project/:iid`) (migration `0034`) | Done |
 | M12.3 Control mappings | Many-to-many issue-to-control mappings with a rationale per evidence item, proposed and reviewed like control mapping changes and pinned to the capture they cite; audit periods, with evidence inside the period kept apart from later remediation; gaps per issue and control; a Controls tab (`/register/controls`) with coverage, and mappings on the issue page (migration `0035`) | Done |
-| M12.4 Exports | Packages for one issue, a selection, every issue mapped to a control, or a period across selected controls: summary, manifest, issue-to-control index with framework versions, shared evidence stored once, provenance and checksums, assessments, approvals, exceptions and remediation status, gaps and redactions; verified offline with `baluarte-verify-export` | Planned |
+| M12.4 Exports | Packages for one issue, a selection, every issue mapped to a control, or a period across selected controls: summary, manifest, issue-to-control index with framework versions, shared evidence stored once, provenance and checksums, assessments, approvals, exceptions and remediation status, gaps and redactions; verified offline with `baluarte-verify-export`; export buttons on the register, issue and Controls pages | Done |
 
 ## Selection
 
@@ -51,6 +51,16 @@ Connection, project, category, rule, state, issue type, label, assignee, title t
 - **Audit periods** are named date ranges (they may overlap, one per framework for example), added and ended with `register:write`. Against a chosen period each cited item is in the period, before it, after it (later remediation) or undated, and a mapping with nothing in the period says so.
 - **Gaps** are listed on each mapping, and counted per control on the Controls tab: awaiting review; the issue no longer auditable; a partial or failed capture; captured again since the mapping; only the closure cited (closing an issue is never proof that a control works); nothing in the period; only later remediation; undated items.
 - **API.** `GET /api/v1/register/issues/{project}/{iid}/mappings` (with what a new mapping could cite), `GET /api/v1/register/mappings` (filters: state, framework, control, period), `POST /api/v1/register/mappings`, `POST /api/v1/register/mappings/{id}/approve|reject|withdraw`, `GET /api/v1/register/coverage`, and `GET|POST /api/v1/register/periods` with `POST /api/v1/register/periods/{id}/end`. A `period_id` query places evidence against that period.
+
+## Exports
+
+- **Scopes.** One issue, a selection of issues (up to 500), or every issue mapped to one or more controls (in force or awaiting review). Any scope may name an audit period, which dates each cited item against it. Issues must be auditable; a control scope with more than 500 issues, or captured files over 1 GiB, is refused with a reason.
+- **Contents.** One ZIP: `README.txt`, a readable summary (scope, controls with their framework editions, counts, each issue with its mappings, gaps, limitations and how to verify); `issues.csv` (why each issue is auditable, category, remediation status, capture status); `issue_controls.csv`, the issue-to-control index (framework edition, catalogue version, state, rationale, who proposed and decided, review and development flags, the capture cited, items inside the period, gaps); `mapping_evidence.csv` (each cited item, its rationale and timing); `decisions.csv` (every inclusion and exclusion with its reason); `observations.jsonl` (each capture once, with `payload_digest`); `files.csv` and `files/<sha256>` (each attachment once, named by its hash); `gaps.csv`; `redactions.csv`; `period.csv` with a period; `manifest.json` and `SHA256SUMS`.
+- **Shared, not duplicated.** A capture cited by several mappings, and a file cited by several captures, is in the package once.
+- **Redactions.** Text passes through the log redactor and each changed field is listed in `redactions.csv`. A capture that would need redacting is withheld with its digest, not altered.
+- **Gaps** in `gaps.csv`: each mapping's gaps (above), issues not captured or captured in part, files not stored, and controls in scope with no issue in force or none with evidence in the period. Exceptions are issues in the `exception` category; remediation status is the issue's state in GitLab, never proof that a control works.
+- **Verifying.** `baluarte-verify-export <file> --manifest-sha256 <value>` checks it offline like any export, and also checks each `files/<sha256>` against its name, that every attachment a capture cites is in the package or listed as missing, and that every mapping's issue, cited items and capture are present. The manifest hash is in the `register.export_completed` audit event, and `GET /api/v1/register/exports/{export_id}` returns it.
+- **API and audit.** `POST /api/v1/register/exports` with `issues` (`[{project_id, iid}]`) or `controls` (`[{framework, control_id}]`), and optionally `period_id`. Needs `evidence:package` (administrators, analysts and auditors). Audited as `register.export_created` (scope and counts) and `register.export_completed` (sizes and hashes); the package is built in full before the first byte is sent.
 
 ## Limits
 
