@@ -8,8 +8,8 @@ Roadmap milestone M11 ([ROADMAP.md](ROADMAP.md#m11--workspaces-and-connections))
 |---|---|---|
 | M11.1 Foundation | The `workspace` table and a `default` workspace; `gitlab_instance` rows become connections (`workspace_id`, `provider`, `name`, `paused`); the API's routers find their connection through `baluarte.workspaces.current_connection` | Done |
 | M11.2 Workspace ownership | Baselines, assignments and changes, the control mapping's changes, exclusions, finding exceptions, remediation, label and issue plans, taxonomies, tags, manager scopes, exports and notifications carry `workspace_id` (migration `0030`); a baseline's name and version, its proposed version, a taxonomy's versions and a tag's key and value are unique per workspace | Done |
-| M11.3 Connections | Credentials per connection (sealed); a Connections page to add, test, pause and remove a connection; health, coverage and errors per connection; URL checks against server-side request forgery; collection jobs run per connection | Planned |
-| M11.4 Several workspaces | Roles per workspace from identity provider groups; a workspace switcher; every API query, job, export and notification scoped to the caller's workspace, and audit events recording it; isolation tests on every router and job | Planned |
+| M11.3 Connections | A token per connection, sealed as `connection_token:<id>`; a Connections page (`/connections`, `/api/v1/connections`) to add, test, collect, pause and remove a connection; health and the latest error per connection; URL checks against server-side request forgery; collection jobs and their schedule run per connection (migration `0031`) | Done |
+| M11.4 Several workspaces | Roles per workspace from identity provider groups; a workspace and connection switcher; inventory, findings and evidence pages for every connection, not only the primary one; every API query, job, export and notification scoped to the caller's workspace, and audit events recording it; isolation tests on every router and job | Planned |
 
 Each step is deployable on its own and changes nothing an existing install relies on.
 
@@ -21,7 +21,7 @@ Each step is deployable on its own and changes nothing an existing install relie
 | Workspace | Connections; baselines and assignments; the control mapping and its changes; monitoring exclusions; finding exceptions; tags; label taxonomies; remediation, label and issue plans; manager scopes; notifications; exports; from later milestones, the issue register, templates, time and finance |
 | Connection | Inventory (groups, projects, repositories), capability detection, collection runs and cursors, observations, evaluations and findings, change records, labels, time records |
 
-Since M11.2, workspace-owned tables carry their own `workspace_id`. Rows created with a connection take that connection's workspace (`baluarte.workspaces.workspace_of`); the rest take the current workspace (`current_workspace_id`), which is the default workspace until M11.4. Some of those tables still carry `instance_id` as well; M11.3 decides, table by table, whether it stays as the connection a record is about.
+Since M11.2, workspace-owned tables carry their own `workspace_id`. Rows created with a connection take that connection's workspace (`baluarte.workspaces.workspace_of`); the rest take the current workspace (`current_workspace_id`), which is the default workspace until M11.4. Tables that also carry `instance_id` keep it as the connection a record is about: an exclusion, an exception or a plan is for one connection's projects, inside its workspace.
 
 ## Upgrade guarantees
 
@@ -29,8 +29,17 @@ Since M11.2, workspace-owned tables carry their own `workspace_id`. Rows created
 - Existing data lands in the `default` workspace, and an install with one GitLab connection behaves exactly as before.
 - Each step's migration has a downgrade that keeps existing rows.
 
+## Connections
+
+- **The primary connection** is the GitLab set in the deployment or on the Settings page, as before. Its URL, token and schedule stay there. On the Connections page it can be tested, collected now or paused.
+- **Added connections** are created on the Connections page. Each has its own name, URL, read-only token, timeout and schedule. The token is sealed with the deployment's secret key (so `BALUARTE_SECRET_KEY_FILE` is required) and never returned by the API.
+- **Address checks.** An added connection's host must resolve only to public addresses, unless an administrator allows a private network for it (a self-managed GitLab). Loopback, link-local (including cloud metadata), multicast, unspecified and reserved addresses are always refused. The check runs when a connection is added or changed and again before every job, so a name that later resolves elsewhere is refused. Redirects are never followed.
+- **Jobs.** Every collection job names its connection in its payload (`connection_id`); follow-up jobs (evaluation, security policies, changes, labels, time) carry it on. Jobs without one collect the primary connection, as before. Each added connection is scheduled on its own interval.
+- **Pause and remove.** A paused connection is not scheduled. Removing a connection also forgets its token. Neither deletes inventory, findings or evidence, and adding a removed URL again restores the connection with its data.
+- **Audit.** Adding, restoring, changing, testing, collecting and removing a connection are audit events (`connection.*`); token values are never recorded.
+
 ## Limits
 
-- Until M11.3, a workspace has one connection: the GitLab configured in the deployment or on the Settings page.
+- Pages other than Connections show the primary connection (the GitLab set in the deployment or on the Settings page). Added connections are collected and evaluated, and their health is on the Connections page; browsing their inventory and findings comes with the switcher in M11.4.
 - Until M11.4, a deployment has one workspace.
 - The connection table keeps its name, `gitlab_instance`, until GitHub connections arrive in M13.

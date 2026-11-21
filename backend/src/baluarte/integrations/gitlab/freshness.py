@@ -357,3 +357,19 @@ def report(
         alert=alert(collections, bool(settings.sync_interval_minutes), limit, now),
         population=population(instance.capability_snapshot if instance is not None else None),
     )
+
+
+def connection_freshness(
+    db: Session, instance_id: int, interval_minutes: int
+) -> tuple[Freshness, dict[str, KindFreshness]]:
+    """One connection's inventory freshness: the worst of its inventory kinds, and each kind.
+
+    Stale after two missed intervals, or 24 hours when the connection is not scheduled.
+    """
+    limit = timedelta(minutes=2 * interval_minutes) if interval_minutes else UNSCHEDULED_STALE_AFTER
+    now: datetime = db.execute(select(func.now())).scalar_one()
+    kinds: dict[str, KindFreshness] = {
+        kind: _kind(db, instance_id, kind, now, limit) for kind in INVENTORY_KINDS
+    }
+    worst: Freshness = min((k.status for k in kinds.values()), key=SEVERITY.index, default="never")
+    return worst, kinds

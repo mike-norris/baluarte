@@ -11,6 +11,7 @@ import {
   IconInbox,
   IconLayoutDashboard,
   IconScale,
+  IconPlugConnected,
   IconSettings,
   IconShieldHalf,
   IconSitemap,
@@ -192,6 +193,14 @@ export const navItems: readonly NavItem[] = [
     group: "Evidence",
     icon: IconCertificate,
     permission: "compliance:read",
+  },
+  {
+    path: "/connections",
+    label: "Connections",
+    description: "The GitLab deployments Baluarte collects from, with each one's health.",
+    group: "Admin",
+    icon: IconPlugConnected,
+    permission: "settings:manage",
   },
   {
     path: "/settings",

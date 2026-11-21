@@ -27,7 +27,12 @@ from baluarte.compliance.retention import RetentionSchedule
 from baluarte.compliance.shipping import ShippingSchedule
 from baluarte.config import ConfigurationError, database_url
 from baluarte.db.migrate import head_revisions, wait_for_database
-from baluarte.integrations.gitlab.jobs import CollectionHealth, ConfiguredSchedule, ticks
+from baluarte.integrations.gitlab.jobs import (
+    AddedConnectionsSchedule,
+    CollectionHealth,
+    ConfiguredSchedule,
+    ticks,
+)
 from baluarte.jobs import queue
 from baluarte.jobs.handlers import HANDLERS, Handler
 from baluarte.notifications.delivery import NotificationSchedule
@@ -218,6 +223,7 @@ def main(argv: list[str] | None = None) -> int:
         heartbeat_file=HEARTBEAT_FILE,
         tick=ticks(
             ConfiguredSchedule(engine),
+            AddedConnectionsSchedule(engine),
             CollectionHealth(engine),
             RetentionSchedule(engine),
             ShippingSchedule(engine),

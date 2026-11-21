@@ -13,12 +13,21 @@ so two runs never update the same findings at once.
 import logging
 import uuid
 from datetime import timedelta
-from typing import Literal
+from typing import Any, Literal
 
 from sqlalchemy import Engine, and_, exists, func, or_, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from baluarte.configuration.store import secret_stored
+from baluarte.connections import (
+    CONNECTION,
+    is_primary,
+    payload_for,
+    settings_for_job,
+    token_name,
+)
+from baluarte.connections import active as active_connections
 from baluarte.db.models import (
     CollectionJob,
     EvaluationRun,
@@ -27,9 +36,9 @@ from baluarte.db.models import (
     GitLabProject,
 )
 from baluarte.integrations.gitlab.instances import instance_for
-from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_settings
+from baluarte.integrations.gitlab.settings import GitLabSettings
 from baluarte.jobs import queue
-from baluarte.jobs.queue import ClaimedJob, PermanentJobError
+from baluarte.jobs.queue import ClaimedJob
 from baluarte.notifications import events as notification_events
 from baluarte.policy.assignments import resolve_project
 from baluarte.policy.evaluation.project import (
@@ -40,7 +49,7 @@ from baluarte.policy.evaluation.project import (
 from baluarte.policy.evaluation.store import Tally, close_archived, close_excluded, store_project
 from baluarte.policy.exceptions import expire_due
 from baluarte.scope.exclusions import coverage
-from baluarte.settings import ConfigurationError
+from baluarte.workspaces import configured_settings
 
 logger = logging.getLogger(__name__)
 
@@ -51,16 +60,6 @@ MAX_ATTEMPTS = 3
 _LOCK_CLASS = 21021
 
 INTERRUPTED = "interrupted: the worker stopped before the run finished"
-
-
-def _settings() -> GitLabSettings:
-    try:
-        settings = load_gitlab_settings()
-    except ConfigurationError as exc:
-        raise PermanentJobError(str(exc)) from exc
-    if settings is None:
-        raise PermanentJobError("GitLab is not configured (BALUARTE_GITLAB_URL is not set)")
-    return settings
 
 
 def start_run(engine: Engine, instance_id: int, job: ClaimedJob | None) -> int:
@@ -246,26 +245,38 @@ def _notify_new_findings(engine: Engine, run_id: int, instance_id: int, before: 
 
 
 def evaluate(job: ClaimedJob, engine: Engine) -> None:
-    settings = _settings()
+
+    settings = settings_for_job(engine, job.payload)
     run_id, tally = evaluate_all(engine, settings, job)
     logger.info("policy evaluation run %s: %s", run_id, tally.counts(), extra={"job_id": job.id})
 
 
-def queue_after_collection(db: Session, collection_run_id: int) -> int:
-    """Queue an evaluation for a finished project or security policy discovery; once per run."""
+def queue_after_collection(
+    db: Session, collection_run_id: int, payload: dict[str, Any] | None = None
+) -> int:
+    """Queue an evaluation for a finished project or security policy discovery; once per run.
+
+    ``payload`` names the connection the run collected, so the evaluation covers it.
+    """
     return queue.enqueue(
-        db, EVALUATE, f"{EVALUATE}:after-run:{collection_run_id}", max_attempts=MAX_ATTEMPTS
+        db,
+        EVALUATE,
+        f"{EVALUATE}:after-run:{collection_run_id}",
+        payload,
+        max_attempts=MAX_ATTEMPTS,
     )
 
 
-def request_evaluation(db: Session, reason: str) -> int | None:
-    """Queue an evaluation unless one is already waiting to start; it will see this change.
-
-    Returns the new job's ID, or None when a queued evaluation already covers the change.
-    """
+def _request(db: Session, reason: str, connection_id: int | None) -> int | None:
+    """Queue one connection's evaluation unless one is already waiting for it."""
+    for_connection = (
+        CollectionJob.payload[CONNECTION].as_integer() == connection_id
+        if connection_id is not None
+        else ~CollectionJob.payload.has_key(CONNECTION)
+    )
     waiting = db.scalars(
         select(CollectionJob.id)
-        .where(CollectionJob.kind == EVALUATE, CollectionJob.state == "queued")
+        .where(CollectionJob.kind == EVALUATE, CollectionJob.state == "queued", for_connection)
         .limit(1)
     ).first()
     if waiting is not None:
@@ -274,7 +285,28 @@ def request_evaluation(db: Session, reason: str) -> int | None:
         db,
         EVALUATE,
         f"{EVALUATE}:{reason}:{uuid.uuid4().hex}",
+        payload_for(connection_id),
         max_attempts=MAX_ATTEMPTS,
         # Let a burst of changes share one run.
         delay=timedelta(seconds=10),
     )
+
+
+def request_evaluation(db: Session, reason: str) -> int | None:
+    """Queue an evaluation of every connection unless one is already waiting to start.
+
+    A waiting evaluation will see this change. Returns the primary connection's new job ID, or
+    None when a queued evaluation already covers it. Added connections that are paused or have
+    no token are left to their next collection.
+    """
+    job_id = _request(db, reason, None)
+    primary = configured_settings()
+    for connection in active_connections(db):
+        if (
+            connection.paused
+            or is_primary(connection, primary)
+            or not secret_stored(db, token_name(connection.id))
+        ):
+            continue
+        _request(db, reason, connection.id)
+    return job_id

@@ -1070,6 +1070,47 @@ export const helpTopics: readonly HelpTopic[] = [
     ),
   },
   {
+    slug: "connections",
+    title: "Connections",
+    summary: "Collect from more than one GitLab, each with its own token, schedule and health.",
+    group: "Administration",
+    paths: ["/connections"],
+    body: (
+      <>
+        <p>
+          <Link to="/connections">Connections</Link> lists every GitLab deployment Baluarte collects
+          from, with the health of its latest capability, group and project collections.
+        </p>
+        <ul>
+          <li>
+            <strong>The primary connection</strong> is the GitLab set in the deployment or on the{" "}
+            <Link to="/settings">Settings</Link> page. Its URL, token and schedule stay there; here
+            you can test it, collect it now or pause it.
+          </li>
+          <li>
+            <strong>Added connections</strong> each have their own read-only token (
+            <code>read_api</code>), stored encrypted and never shown again, their own schedule and
+            their own timeout.
+          </li>
+          <li>
+            A connection&apos;s host must resolve to public addresses. For a self-managed GitLab on
+            your own network, tick <strong>private network</strong>. Loopback, link-local and cloud
+            metadata addresses are always refused, and the check runs again before every collection.
+          </li>
+          <li>
+            <strong>Pause</strong> stops scheduled collection; <strong>Remove</strong> also forgets
+            the token. Either way, the inventory, findings and evidence stay. Adding a removed URL
+            again restores it.
+          </li>
+        </ul>
+        <p>
+          Every change, test and collection request is in the <Link to="/audit-log">audit log</Link>
+          .
+        </p>
+      </>
+    ),
+  },
+  {
     slug: "settings",
     title: "Settings",
     summary: "Identity provider, GitLab connection, review, write tokens and notifications.",
