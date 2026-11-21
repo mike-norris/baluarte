@@ -9,6 +9,9 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- GitHub feasibility spike (roadmap M13.1): docs/GITHUB_INTEGRATION.md records what GitHub's
+  documentation says about authentication, versions, rate limits, webhooks, each collection and
+  each rule type, what is still to be verified, and the M13 step plan. GitHub.com comes first.
 - Issue register exports (roadmap M12.4): a ZIP for one issue, a selection, or every issue
   mapped to chosen controls, optionally against an audit period, with a readable summary, the
   issue-to-control index with framework editions, cited evidence and rationales, decisions,
