@@ -9,6 +9,7 @@ from sqlalchemy import Engine, func, select, update
 from sqlalchemy.orm import Session
 
 from baluarte.db.models import CollectionJob, CollectionRun, GitLabGroup
+from baluarte.integrations.gitlab import jobs as gitlab_jobs
 from baluarte.integrations.gitlab.freshness import report
 from baluarte.integrations.gitlab.instances import instance_for
 from baluarte.integrations.gitlab.jobs import (
@@ -311,6 +312,7 @@ def test_the_schedule_follows_the_settings(
 ) -> None:
     calls: list[int] = []
     monkeypatch.setattr(Schedule, "__call__", lambda self: calls.append(self.interval))
+    monkeypatch.setattr(gitlab_jobs, "_primary_paused", lambda *_: False)
     now = [0.0]
     schedule = ConfiguredSchedule(object(), check_every=60, clock=lambda: now[0])  # type: ignore[arg-type]
 

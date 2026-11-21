@@ -14,6 +14,17 @@ from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session
 
 from baluarte.changes import settings as change_settings
+from baluarte.configuration.store import secret_stored
+from baluarte.connections import (
+    active as active_connections,
+)
+from baluarte.connections import (
+    connection_of,
+    is_primary,
+    payload_for,
+    settings_for_job,
+    token_name,
+)
 from baluarte.db.models import GitLabInstance
 from baluarte.evidence.observations import Provenance
 from baluarte.integrations.gitlab import changes, labels, security_policies, timelogs
@@ -32,6 +43,7 @@ from baluarte.notifications.events import notify_collection_health
 from baluarte.policy.evaluation.runner import queue_after_collection
 from baluarte.settings import ConfigurationError
 from baluarte.timetracking import settings as time_settings
+from baluarte.workspaces import configured_settings
 
 logger = logging.getLogger(__name__)
 
@@ -75,14 +87,14 @@ GitLabHandler = Callable[[ClaimedJob, Engine], None]
 DiscoverFn = Callable[[GitLabClient, Engine, str, Provenance], Discovery]
 
 
-def _settings() -> GitLabSettings:
-    try:
-        settings = load_gitlab_settings()
-    except ConfigurationError as exc:
-        raise PermanentJobError(str(exc)) from exc
-    if settings is None:
-        raise PermanentJobError("GitLab is not configured (BALUARTE_GITLAB_URL is not set)")
-    return settings
+def _settings(job: ClaimedJob, engine: Engine) -> GitLabSettings:
+    """The settings of the connection the job collects (``baluarte.connections``)."""
+    return settings_for_job(engine, job.payload)
+
+
+def _follow_up(job: ClaimedJob) -> dict[str, Any] | None:
+    """The payload that makes a follow-up job collect the same connection as ``job``."""
+    return payload_for(connection_of(job.payload))
 
 
 def _unexpected(engine: Engine, run_id: int, exc: Exception) -> None:
@@ -93,7 +105,7 @@ def make_detect_capabilities(transport: httpx.BaseTransport | None = None) -> Gi
     """Build the handler; tests pass a transport that stands in for GitLab."""
 
     def detect_capabilities(job: ClaimedJob, engine: Engine) -> None:
-        settings = _settings()
+        settings = _settings(job, engine)
         run_id = start_run(engine, settings.url, "capabilities", job)
         try:
             # No database transaction is open while GitLab is called.
@@ -139,7 +151,7 @@ def _make_discovery(
     singular = kind.removesuffix("s")
 
     def handler(job: ClaimedJob, engine: Engine) -> None:
-        settings = _settings()
+        settings = _settings(job, engine)
         run_id = start_run(engine, settings.url, kind, job)
         try:
             with GitLabClient(settings, transport=transport) as client:
@@ -182,11 +194,12 @@ def _make_discovery(
             # Re-evaluate against the new inventory. A failed discovery queues none (its attempt
             # is retried); the collection freshness already reports the failure.
             with Session(engine) as db:
-                queue_after_collection(db, run_id)
-                queue_security_policies(db, settings.url, run_id)
-                queue_changes(db, run_id)
-                queue_labels(db, f"after-run:{run_id}")
-                queue_time(db, run_id)
+                follow_up = _follow_up(job)
+                queue_after_collection(db, run_id, follow_up)
+                queue_security_policies(db, settings.url, run_id, follow_up)
+                queue_changes(db, run_id, follow_up)
+                queue_labels(db, f"after-run:{run_id}", follow_up)
+                queue_time(db, run_id, follow_up)
                 db.commit()
         logger.info(
             "gitlab %s: %s listed (%s new, %s known, %s restored); %s not listed: %s still "
@@ -220,7 +233,9 @@ def _snapshot(db: Session, base_url: str) -> dict[str, Any] | None:
     return instance.capability_snapshot if instance is not None else None
 
 
-def queue_security_policies(db: Session, base_url: str, collection_run_id: int) -> int | None:
+def queue_security_policies(
+    db: Session, base_url: str, collection_run_id: int, payload: dict[str, Any] | None = None
+) -> int | None:
     """Queue security policy discovery after a project discovery, once per run.
 
     Only when the latest capability snapshot says links and at least one policy type are
@@ -232,6 +247,7 @@ def queue_security_policies(db: Session, base_url: str, collection_run_id: int) 
         db,
         DISCOVER_SECURITY_POLICIES,
         f"{DISCOVER_SECURITY_POLICIES}:after-run:{collection_run_id}",
+        payload,
         max_attempts=3,
     )
 
@@ -240,7 +256,7 @@ def make_discover_security_policies(
     transport: httpx.BaseTransport | None = None,
 ) -> GitLabHandler:
     def discover(job: ClaimedJob, engine: Engine) -> None:
-        settings = _settings()
+        settings = _settings(job, engine)
         run_id = start_run(engine, settings.url, "security_policies", job)
         try:
             with Session(engine) as db:
@@ -306,22 +322,28 @@ def make_discover_security_policies(
             raise JobError("security policy discovery read no group or project")
         # The security policy rules judge these observations: re-evaluate, once per run.
         with Session(engine) as db:
-            queue_after_collection(db, run_id)
+            queue_after_collection(db, run_id, _follow_up(job))
             db.commit()
 
     return discover
 
 
-def queue_changes(db: Session, collection_run_id: int) -> int:
+def queue_changes(
+    db: Session, collection_run_id: int, payload: dict[str, Any] | None = None
+) -> int:
     """Queue change collection after a project discovery, once per run."""
     return queue.enqueue(
-        db, COLLECT_CHANGES, f"{COLLECT_CHANGES}:after-run:{collection_run_id}", max_attempts=3
+        db,
+        COLLECT_CHANGES,
+        f"{COLLECT_CHANGES}:after-run:{collection_run_id}",
+        payload,
+        max_attempts=3,
     )
 
 
 def make_collect_changes(transport: httpx.BaseTransport | None = None) -> GitLabHandler:
     def collect(job: ClaimedJob, engine: Engine) -> None:
-        settings = _settings()
+        settings = _settings(job, engine)
         run_id = start_run(engine, settings.url, "changes", job)
         try:
             with Session(engine) as db:
@@ -364,20 +386,20 @@ def make_collect_changes(transport: httpx.BaseTransport | None = None) -> GitLab
             raise JobError("change collection read no project")
         # The change rules judge these observations: re-evaluate, once per run.
         with Session(engine) as db:
-            queue_after_collection(db, run_id)
+            queue_after_collection(db, run_id, _follow_up(job))
             db.commit()
 
     return collect
 
 
-def queue_labels(db: Session, key: str) -> int:
+def queue_labels(db: Session, key: str, payload: dict[str, Any] | None = None) -> int:
     """Queue a label collection; ``key`` makes it once per discovery run or per plan applied."""
-    return queue.enqueue(db, COLLECT_LABELS, f"{COLLECT_LABELS}:{key}", max_attempts=3)
+    return queue.enqueue(db, COLLECT_LABELS, f"{COLLECT_LABELS}:{key}", payload, max_attempts=3)
 
 
 def make_collect_labels(transport: httpx.BaseTransport | None = None) -> GitLabHandler:
     def collect(job: ClaimedJob, engine: Engine) -> None:
-        settings = _settings()
+        settings = _settings(job, engine)
         run_id = start_run(engine, settings.url, "labels", job)
         try:
             with Session(engine) as db:
@@ -414,22 +436,22 @@ def make_collect_labels(transport: httpx.BaseTransport | None = None) -> GitLabH
             raise JobError("label collection read no group or project")
         # The label rule judges these observations: re-evaluate, once per run.
         with Session(engine) as db:
-            queue_after_collection(db, run_id)
+            queue_after_collection(db, run_id, _follow_up(job))
             db.commit()
 
     return collect
 
 
-def queue_time(db: Session, collection_run_id: int) -> int:
+def queue_time(db: Session, collection_run_id: int, payload: dict[str, Any] | None = None) -> int:
     """Queue time collection after a project discovery, once per run."""
     return queue.enqueue(
-        db, COLLECT_TIME, f"{COLLECT_TIME}:after-run:{collection_run_id}", max_attempts=3
+        db, COLLECT_TIME, f"{COLLECT_TIME}:after-run:{collection_run_id}", payload, max_attempts=3
     )
 
 
 def make_collect_time(transport: httpx.BaseTransport | None = None) -> GitLabHandler:
     def collect(job: ClaimedJob, engine: Engine) -> None:
-        settings = _settings()
+        settings = _settings(job, engine)
         run_id = start_run(engine, settings.url, "time", job)
         try:
             with Session(engine) as db:
@@ -555,6 +577,8 @@ class ConfiguredSchedule:
         self._problem = None
         if settings is None or settings.sync_interval_minutes == 0:
             return None
+        if _primary_paused(self.engine, settings):
+            return None
         return settings.sync_interval_minutes
 
     def __call__(self) -> None:
@@ -570,6 +594,69 @@ class ConfiguredSchedule:
                 )
         if self._schedule is not None:
             self._schedule()
+
+
+def _primary_paused(engine: Engine, settings: GitLabSettings) -> bool:
+    with Session(engine) as db:
+        paused = db.scalars(
+            select(GitLabInstance.paused).where(GitLabInstance.base_url == settings.url)
+        ).first()
+    return bool(paused)
+
+
+class AddedConnectionsSchedule:
+    """Queues every added connection's collection once per its own interval (M11.3).
+
+    Connections added on the Connections page each carry their interval. A connection that is
+    paused, removed, set to 0 (off) or has no token is not scheduled. Job keys name the connection
+    and its bucket on the database clock, so any number of workers queue each collection once.
+    The primary connection is scheduled by ``ConfiguredSchedule``.
+    """
+
+    def __init__(
+        self,
+        engine: Engine,
+        check_every: float = 60.0,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self.engine = engine
+        self.check_every = check_every
+        self.clock = clock
+        self._next_check = 0.0
+
+    def __call__(self) -> None:
+        if self.clock() < self._next_check:
+            return
+        self._next_check = self.clock() + self.check_every
+        primary = configured_settings()
+        queued: list[int] = []
+        with Session(self.engine) as db:
+            now = float(db.execute(select(func.extract("epoch", func.now()))).scalar_one())
+            for connection in active_connections(db):
+                minutes = connection.sync_interval_minutes
+                if (
+                    connection.paused
+                    or minutes == 0
+                    or is_primary(connection, primary)
+                    or not secret_stored(db, token_name(connection.id))
+                ):
+                    continue
+                bucket = int(now // (minutes * 60))
+                delays = scheduled_retry_delays(minutes)
+                queued += [
+                    queue.enqueue(
+                        db,
+                        kind,
+                        f"{kind}:scheduled:connection-{connection.id}:{bucket}",
+                        payload_for(connection.id),
+                        max_attempts=len(delays) + 1,
+                        retry_delays=delays or None,
+                    )
+                    for kind in SCHEDULED_KINDS
+                ]
+            db.commit()
+        if queued:
+            logger.debug("gitlab: added connections scheduled (jobs %s)", queued)
 
 
 class CollectionHealth:

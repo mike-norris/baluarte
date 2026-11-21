@@ -9,6 +9,11 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Connections (roadmap M11.3): a Connections page and `/api/v1/connections` to add, test,
+  collect, pause and remove GitLab connections, each with its own sealed token, timeout,
+  schedule and health. Hosts must resolve to public addresses unless a connection allows a
+  private network; loopback, link-local and metadata addresses are always refused, before every
+  job too. Collection jobs name their connection. Database migration `0031`.
 - Approved remediation plans can be applied from Baluarte ([ADR-0012](docs/architecture/ADR-0012-remediation-writes.md),
   [REMEDIATION.md](docs/REMEDIATION.md#applying-a-plan)). This is off by default. It needs
   `BALUARTE_REMEDIATION_WRITES=true` (Helm: `gitlab.remediationWrites`) and a remediation write

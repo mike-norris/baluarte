@@ -15,6 +15,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Identity,
     Index,
@@ -195,6 +196,11 @@ class GitLabInstance(Base):
     __table_args__ = (
         one_of("provider", PROVIDERS),
         CheckConstraint("name IS NULL OR char_length(name) BETWEEN 1 AND 200", name="name_length"),
+        CheckConstraint("timeout_seconds BETWEEN 1 AND 120", name="timeout_range"),
+        CheckConstraint(
+            "sync_interval_minutes = 0 OR sync_interval_minutes BETWEEN 15 AND 10080",
+            name="interval_range",
+        ),
     )
 
     id: Mapped[int] = pk()
@@ -204,6 +210,14 @@ class GitLabInstance(Base):
     name: Mapped[str | None] = mapped_column(Text)
     # A paused connection is not collected; its data stays.
     paused: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    # Settings for connections added on the Connections page; the connection configured in the
+    # deployment or on the Settings page uses those settings instead.
+    timeout_seconds: Mapped[float] = mapped_column(Float, server_default=text("15"))
+    sync_interval_minutes: Mapped[int] = mapped_column(Integer, server_default=text("360"))
+    # Whether the URL may resolve to a private network address (a self-managed host).
+    allow_private_network: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    # A removed connection is no longer collected; its data and evidence stay.
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     base_url: Mapped[str] = mapped_column(Text, unique=True)
     version: Mapped[str | None] = mapped_column(Text)
     edition: Mapped[str | None] = mapped_column(Text)
@@ -1925,7 +1939,12 @@ class StoredSecret(Base):
 
     __tablename__ = "app_secret"
     __table_args__ = (
-        one_of("name", SECRET_NAMES),
+        CheckConstraint(
+            "name IN ({}) OR name ~ '^connection_token:[1-9][0-9]*$'".format(
+                ", ".join(f"'{name}'" for name in SECRET_NAMES)
+            ),
+            name="name_allowed",
+        ),
         CheckConstraint("key_id ~ '^[0-9a-f]{16}$'", name="key_id_format"),
         CheckConstraint("octet_length(nonce) = 12", name="nonce_length"),
         CheckConstraint("octet_length(ciphertext) > 16", name="ciphertext_length"),
