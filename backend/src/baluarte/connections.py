@@ -22,7 +22,7 @@ import ipaddress
 import socket
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
 from sqlalchemy import Engine, func, select
@@ -46,6 +46,9 @@ from baluarte.workspaces import ALL_WORKSPACES, configured_settings, current_wor
 CONNECTION = "connection_id"
 
 Resolver = Callable[[str], Sequence[str]]
+
+if TYPE_CHECKING:
+    from baluarte.integrations.github.client import Auth
 
 
 class ConnectionRefused(ValueError):
@@ -133,6 +136,8 @@ def settings_for(
     connection = db.get(GitLabInstance, connection_id)
     if connection is None or connection.removed_at is not None:
         raise ConnectionRefused(f"Connection {connection_id} does not exist or was removed")
+    if connection.provider != "gitlab":
+        raise ConnectionRefused(f"Connection {connection_id} is not a GitLab connection")
     if primary is not None and is_primary(connection, primary):
         return Resolved(connection, primary, True)
     token = read_secret_value(db, token_name(connection.id), box)
@@ -165,6 +170,34 @@ def job_settings(
         return settings_for(db, connection_id, box, resolve).settings
     except _NotYetRecorded as pending:
         return pending.settings
+
+
+def github_connection(
+    db: Session, connection_id: int, box: SecretBox | None
+) -> tuple[GitLabInstance, "Auth", float]:
+    """A GitHub connection with the credential to collect it and its timeout.
+
+    Raises ConnectionRefused when the connection is unknown, removed, not GitHub's, or has no
+    credential stored. The token or the App's private key is sealed as ``connection_token:<id>``.
+    """
+    from baluarte.integrations.github.client import AppAuth, TokenAuth
+
+    connection = db.get(GitLabInstance, connection_id)
+    if connection is None or connection.removed_at is not None:
+        raise ConnectionRefused(f"Connection {connection_id} does not exist or was removed")
+    if connection.provider != "github":
+        raise ConnectionRefused(f"Connection {connection_id} is not a GitHub connection")
+    secret = read_secret_value(db, token_name(connection.id), box)
+    if secret is None:
+        raise ConnectionRefused(f"Connection {connection_id} has no credential")
+    auth: Auth
+    if connection.auth_kind == "app":
+        if connection.app_id is None or connection.installation_id is None:
+            raise ConnectionRefused(f"Connection {connection_id} has no App installation")
+        auth = AppAuth(connection.app_id, connection.installation_id, secret)
+    else:
+        auth = TokenAuth(secret)
+    return connection, auth, connection.timeout_seconds
 
 
 def active(db: Session) -> list[GitLabInstance]:
@@ -298,6 +331,86 @@ def add(
             "timeout_seconds": timeout,
             "sync_interval_minutes": interval,
             "allow_private_network": allow_private_network,
+        },
+    )
+    return connection
+
+
+def add_github(
+    db: Session,
+    *,
+    name: str,
+    organization: str,
+    auth_kind: str,
+    secret: str,
+    app_id: int | None,
+    installation_id: int | None,
+    timeout_seconds: float,
+    sync_interval_minutes: int,
+    actor: str,
+) -> GitLabInstance:
+    """Add a GitHub.com organization to the current workspace; the caller commits.
+
+    ``secret`` is a fine-grained token (``auth_kind`` ``token``) or the GitHub App's private key
+    (``app``, with ``app_id`` and ``installation_id``). Adding a removed organization again
+    restores it, with its data.
+    """
+    from baluarte.integrations.github.client import connection_url
+
+    try:
+        url = connection_url(organization.strip())
+        timeout = checked_timeout(timeout_seconds, "timeout_seconds")
+        interval = checked_interval(sync_interval_minutes, "sync_interval_minutes")
+    except (ValueError, ConfigurationError) as exc:
+        raise ConnectionRefused(str(exc)) from exc
+    if auth_kind not in ("token", "app"):
+        raise ConnectionRefused("auth_kind is token or app")
+    if not secret.strip():
+        raise ConnectionRefused(
+            "A private key is required" if auth_kind == "app" else "A token is required"
+        )
+    if auth_kind == "app" and (app_id is None or installation_id is None):
+        raise ConnectionRefused("A GitHub App connection needs app_id and installation_id")
+    existing = db.scalars(
+        select(GitLabInstance)
+        .where(GitLabInstance.base_url == url)
+        .execution_options(**{ALL_WORKSPACES: True})
+    ).first()
+    if existing is not None and existing.workspace_id != current_workspace_id(db):
+        raise ConnectionConflict("This organization is connected in another workspace")
+    if existing is not None and existing.removed_at is None:
+        raise ConnectionConflict("A connection to this organization already exists")
+    box = _box()
+    connection = existing or GitLabInstance(
+        base_url=url, provider="github", workspace_id=current_workspace_id(db)
+    )
+    connection.name = name.strip() or None
+    connection.auth_kind = auth_kind
+    connection.app_id = app_id if auth_kind == "app" else None
+    connection.installation_id = installation_id if auth_kind == "app" else None
+    connection.timeout_seconds = timeout
+    connection.sync_interval_minutes = interval
+    connection.allow_private_network = False
+    connection.paused = False
+    connection.removed_at = None
+    db.add(connection)
+    db.flush()
+    store_token(db, connection.id, secret, box, actor)
+    audit.record(
+        db,
+        actor=actor,
+        action="connection.added" if existing is None else "connection.restored",
+        resource_type="gitlab_instance",
+        resource_id=str(connection.id),
+        details={
+            "provider": "github",
+            "url": url,
+            "name": connection.name,
+            "auth_kind": auth_kind,
+            "app_id": connection.app_id,
+            "installation_id": connection.installation_id,
+            "timeout_seconds": timeout,
+            "sync_interval_minutes": interval,
         },
     )
     return connection

@@ -304,6 +304,8 @@ def request_evaluation(db: Session, reason: str) -> int | None:
     for connection in active_connections(db):
         if (
             connection.paused
+            # Rules declare the providers they support in M13.3; until then only GitLab.
+            or connection.provider != "gitlab"
             or is_primary(connection, primary)
             or not secret_stored(db, token_name(connection.id))
         ):

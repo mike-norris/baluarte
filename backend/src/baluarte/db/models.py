@@ -216,6 +216,9 @@ class Workspace(Base):
 
 
 PROVIDERS = ("gitlab", "github")
+AUTH_KINDS = ("token", "app")
+PROVIDER_STATES = ("active", "missing")
+MEMBERSHIP_SUBJECTS = ("organization", "team")
 
 
 class GitLabInstance(Base):
@@ -225,6 +228,12 @@ class GitLabInstance(Base):
     __tablename__ = "gitlab_instance"
     __table_args__ = (
         one_of("provider", PROVIDERS),
+        one_of("auth_kind", AUTH_KINDS),
+        CheckConstraint("auth_kind = 'token' OR provider = 'github'", name="app_for_github"),
+        CheckConstraint(
+            "(auth_kind = 'app') = (app_id IS NOT NULL AND installation_id IS NOT NULL)",
+            name="app_identified",
+        ),
         CheckConstraint("name IS NULL OR char_length(name) BETWEEN 1 AND 200", name="name_length"),
         CheckConstraint("timeout_seconds BETWEEN 1 AND 120", name="timeout_range"),
         CheckConstraint(
@@ -246,6 +255,11 @@ class GitLabInstance(Base):
     sync_interval_minutes: Mapped[int] = mapped_column(Integer, server_default=text("360"))
     # Whether the URL may resolve to a private network address (a self-managed host).
     allow_private_network: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    # How a connection authenticates: a token (both providers) or, for GitHub, an App
+    # installation (``app_id`` and ``installation_id``; the private key is sealed like a token).
+    auth_kind: Mapped[str] = mapped_column(Text, server_default="token")
+    app_id: Mapped[int | None] = mapped_column(BigInteger)
+    installation_id: Mapped[int | None] = mapped_column(BigInteger)
     # A removed connection is no longer collected; its data and evidence stay.
     removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     base_url: Mapped[str] = mapped_column(Text, unique=True)
@@ -254,6 +268,58 @@ class GitLabInstance(Base):
     capability_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = utc_now()
+
+
+class ProviderTeam(Base):
+    """A team in a connection's organization (GitHub; roadmap M13.2), upserted on its provider ID.
+    A team no longer listed is ``missing``; its row and history stay."""
+
+    __tablename__ = "provider_team"
+    __table_args__ = (
+        UniqueConstraint("instance_id", "provider_id"),
+        one_of("state", PROVIDER_STATES),
+    )
+
+    id: Mapped[int] = pk()
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    provider_id: Mapped[int] = mapped_column(BigInteger)
+    parent_provider_id: Mapped[int | None] = mapped_column(BigInteger)
+    slug: Mapped[str] = mapped_column(Text)
+    name: Mapped[str] = mapped_column(Text)
+    privacy: Mapped[str | None] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(Text, server_default="active")
+    first_seen_at: Mapped[datetime] = utc_now()
+    last_seen_at: Mapped[datetime] = utc_now()
+
+
+class ProviderMembership(Base):
+    """Who belongs to the organization (``subject_kind`` ``organization``) or a team, and their
+    role there, as last listed (roadmap M13.2). Someone no longer listed is ``missing``."""
+
+    __tablename__ = "provider_membership"
+    __table_args__ = (
+        UniqueConstraint(
+            "instance_id",
+            "subject_kind",
+            "subject_provider_id",
+            "user_provider_id",
+            name="uq_provider_membership_member",
+        ),
+        Index("ix_provider_membership_login", "instance_id", "login"),
+        one_of("subject_kind", MEMBERSHIP_SUBJECTS),
+        one_of("state", PROVIDER_STATES),
+    )
+
+    id: Mapped[int] = pk()
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    subject_kind: Mapped[str] = mapped_column(Text)
+    subject_provider_id: Mapped[int] = mapped_column(BigInteger)
+    user_provider_id: Mapped[int] = mapped_column(BigInteger)
+    login: Mapped[str] = mapped_column(Text)
+    role: Mapped[str] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(Text, server_default="active")
+    first_seen_at: Mapped[datetime] = utc_now()
+    last_seen_at: Mapped[datetime] = utc_now()
 
 
 class GitLabGroup(Base):

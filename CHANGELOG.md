@@ -9,6 +9,11 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- GitHub.com organizations as connections (roadmap M13.2): added on the Connections page with a
+  fine-grained token or a GitHub App installation, and collected by one `github.collect` job:
+  capability probes, then the organization, repositories, teams and memberships, normalized into
+  the inventory GitLab uses. Honours GitHub's rate limits and pagination; reads only. Not
+  evaluated or in the register yet. Migration `0036`.
 - GitHub feasibility spike (roadmap M13.1): docs/GITHUB_INTEGRATION.md records what GitHub's
   documentation says about authentication, versions, rate limits, webhooks, each collection and
   each rule type, what is still to be verified, and the M13 step plan. GitHub.com comes first.

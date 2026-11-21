@@ -24,10 +24,10 @@ resource, or the status and safe error of one that could not be read.
 """
 
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Any, Protocol
 
 from sqlalchemy import Engine, func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -37,7 +37,6 @@ from baluarte.db.models import GitLabGroup, GitLabProject
 from baluarte.evidence.observations import Observed, Provenance, TargetColumn, record
 from baluarte.integrations.gitlab.client import (
     Forbidden,
-    GitLabClient,
     GitLabError,
     NotFound,
     Unauthorized,
@@ -45,6 +44,14 @@ from baluarte.integrations.gitlab.client import (
 from baluarte.integrations.gitlab.instances import instance_for
 
 logger = logging.getLogger(__name__)
+
+
+class ListingClient(Protocol):
+    """What discovery needs of a provider client (GitLab's, or GitHub's)."""
+
+    def paginate(self, path: str, params: dict[str, Any] | None = None) -> Iterator[list[Any]]: ...
+
+    def get_json(self, path: str, params: dict[str, Any] | None = None) -> Any: ...
 
 
 @dataclass(frozen=True)
@@ -62,6 +69,9 @@ class ResourceKind:
     # GitLab response is stored, so URLs, tokens and unrelated fields never reach evidence.
     target: TargetColumn
     evidence_fields: tuple[str, ...]
+    # Where one resource is looked up by ID, when not under ``list_path`` (GitHub's
+    # ``/repositories/{id}``).
+    lookup_path: str | None = None
 
     @property
     def list_source(self) -> str:
@@ -69,7 +79,7 @@ class ResourceKind:
 
     @property
     def lookup_source(self) -> str:
-        return f"GET {self.list_path}/:id"
+        return f"GET {self.lookup_path or self.list_path}/:id"
 
     @property
     def sources(self) -> tuple[str, str]:
@@ -77,7 +87,7 @@ class ResourceKind:
         return (self.list_source, self.lookup_source)
 
     def ref(self, gitlab_id: int) -> str:
-        return f"{self.list_path}/{gitlab_id}"
+        return f"{self.lookup_path or self.list_path}/{gitlab_id}"
 
 
 @dataclass
@@ -192,7 +202,7 @@ def _unread(kind: ResourceKind, row_id: int, gitlab_id: int, status: str, error:
 
 
 def discover(
-    client: GitLabClient,
+    client: ListingClient,
     engine: Engine,
     base_url: str,
     kind: ResourceKind,

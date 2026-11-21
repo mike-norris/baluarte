@@ -19,6 +19,10 @@ export interface Connection {
   timeout_seconds: number;
   sync_interval_minutes: number;
   allow_private_network: boolean;
+  /** ``token``, or for GitHub ``app`` (an App installation). */
+  auth_kind?: "token" | "app";
+  app_id?: number | null;
+  installation_id?: number | null;
   version: string | null;
   edition: string | null;
   created_at: string;
@@ -33,6 +37,19 @@ export interface NewConnection {
   timeout_seconds: number;
   sync_interval_minutes: number;
   allow_private_network: boolean;
+}
+
+/** A GitHub.com organization, read with a fine-grained token or a GitHub App installation. */
+export interface NewGitHubConnection {
+  name: string;
+  organization: string;
+  auth_kind: "token" | "app";
+  /** The fine-grained token, or the App's private key (PEM). */
+  secret: string;
+  app_id?: number;
+  installation_id?: number;
+  timeout_seconds: number;
+  sync_interval_minutes: number;
 }
 
 export type ConnectionChange = Partial<Omit<NewConnection, "url">> & { paused?: boolean };
@@ -57,8 +74,13 @@ export const sourceLabels: Record<ConnectionSource, string> = {
   connections_page: "Added here",
 };
 
+export const providerLabels: Record<string, string> = { gitlab: "GitLab", github: "GitHub" };
+
 export function connectionName(connection: Connection): string {
-  return connection.name ?? new URL(connection.url).host;
+  if (connection.name) return connection.name;
+  const url = new URL(connection.url);
+  // A GitHub connection is one organization on github.com.
+  return connection.provider === "github" ? `${url.host}${url.pathname}` : url.host;
 }
 
 export function listConnections(signal?: AbortSignal): Promise<{ connections: Connection[] }> {
@@ -67,6 +89,18 @@ export function listConnections(signal?: AbortSignal): Promise<{ connections: Co
 
 export async function addConnection(body: NewConnection, csrf: string): Promise<Connection> {
   return (await sendJson<Connection>("POST", "/api/v1/connections", body, csrf)) as Connection;
+}
+
+export async function addGitHubConnection(
+  body: NewGitHubConnection,
+  csrf: string,
+): Promise<Connection> {
+  return (await sendJson<Connection>(
+    "POST",
+    "/api/v1/connections/github",
+    body,
+    csrf,
+  )) as Connection;
 }
 
 export async function changeConnection(

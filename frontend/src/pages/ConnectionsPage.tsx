@@ -3,16 +3,19 @@ import { Link } from "react-router";
 
 import {
   addConnection,
+  addGitHubConnection,
   changeConnection,
   collectConnection,
   connectionName,
   listConnections,
+  providerLabels,
   removeConnection,
   sourceLabels,
   testConnection,
   type Connection,
   type Diagnostics,
   type NewConnection,
+  type NewGitHubConnection,
 } from "../api/connections";
 import { errorReasons } from "../api/send";
 import { useLoad } from "../api/useLoad";
@@ -167,6 +170,143 @@ function NewConnectionForm({ onAdded }: { onAdded: (message: string) => void }) 
   );
 }
 
+function NewGitHubForm({ onAdded }: { onAdded: (message: string) => void }) {
+  const csrf = useCsrf();
+  const [problems, setProblems] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [kind, setKind] = useState<"token" | "app">("token");
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const data = new FormData(form);
+    const text = (name: string) => {
+      const entry = data.get(name);
+      return typeof entry === "string" ? entry.trim() : "";
+    };
+    const body: NewGitHubConnection = {
+      name: text("name"),
+      organization: text("organization"),
+      auth_kind: kind,
+      secret: text("secret"),
+      timeout_seconds: Number(text("timeout_seconds") || "15"),
+      sync_interval_minutes: Number(text("sync_interval_minutes") || "360"),
+      ...(kind === "app"
+        ? { app_id: Number(text("app_id")), installation_id: Number(text("installation_id")) }
+        : {}),
+    };
+    const found: string[] = [];
+    if (!body.organization) found.push("Enter the organization's name on github.com.");
+    if (!body.secret)
+      found.push(kind === "app" ? "Paste the App's private key." : "Enter a fine-grained token.");
+    if (kind === "app" && !(body.app_id && body.installation_id))
+      found.push("Enter the App ID and the installation ID.");
+    setProblems(found);
+    if (found.length > 0) return;
+    setSaving(true);
+    try {
+      const added = await addGitHubConnection(body, csrf);
+      form.reset();
+      setKind("token");
+      onAdded(`${connectionName(added)} added. Collect it now or wait for its schedule.`);
+    } catch (error) {
+      setProblems(failure(error));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form
+      onSubmit={(event) => void submit(event)}
+      aria-label="Add a GitHub organization"
+      noValidate
+      className="card card-body mb-3 stack-3"
+    >
+      <h2 className="fw-semibold">Add a GitHub organization</h2>
+      <Problems messages={problems} />
+      <div className="d-grid gap-3 cols-sm-2">
+        <label className="fw-medium">
+          Name (optional)
+          <input name="name" maxLength={200} className="form-control mt-1" />
+        </label>
+        <label className="fw-medium">
+          Organization on github.com
+          <input
+            name="organization"
+            required
+            maxLength={39}
+            placeholder="acme"
+            className="form-control mt-1"
+          />
+        </label>
+        <label className="fw-medium span-sm-2">
+          Sign in with
+          <select
+            name="auth_kind"
+            className="form-select mt-1"
+            value={kind}
+            onChange={(event) => setKind(event.target.value === "app" ? "app" : "token")}
+          >
+            <option value="token">A fine-grained personal access token</option>
+            <option value="app">A GitHub App installation</option>
+          </select>
+        </label>
+        {kind === "app" && (
+          <>
+            <label className="fw-medium">
+              App ID
+              <input name="app_id" type="number" min={1} className="form-control mt-1" />
+            </label>
+            <label className="fw-medium">
+              Installation ID
+              <input name="installation_id" type="number" min={1} className="form-control mt-1" />
+            </label>
+          </>
+        )}
+        <label className="fw-medium span-sm-2">
+          {kind === "app" ? "Private key (PEM)" : "Token"}
+          {kind === "app" ? (
+            <textarea name="secret" rows={4} autoComplete="off" className="form-control mt-1" />
+          ) : (
+            <input name="secret" type="password" autoComplete="off" className="form-control mt-1" />
+          )}
+        </label>
+        <label className="fw-medium">
+          Collect every (minutes, 0 for never)
+          <input
+            name="sync_interval_minutes"
+            type="number"
+            min={0}
+            max={10080}
+            defaultValue={360}
+            className="form-control mt-1"
+          />
+        </label>
+        <label className="fw-medium">
+          Timeout (seconds)
+          <input
+            name="timeout_seconds"
+            type="number"
+            min={1}
+            max={120}
+            defaultValue={15}
+            className="form-control mt-1"
+          />
+        </label>
+      </div>
+      <p className="small text-secondary">
+        Grant read access only: organization members and administration, and repository
+        administration, metadata, pull requests, actions, deployments and issues. The credential is
+        sealed in the database and never shown again. Baluarte only reads from GitHub.
+      </p>
+      <button type="submit" disabled={saving} className="btn btn-primary">
+        {saving ? "Adding…" : "Add organization"}
+      </button>
+    </form>
+  );
+}
+
 function DiagnosticsResult({ report }: { report: Diagnostics }) {
   const tone =
     report.status === "ok" ? "success" : report.status === "warning" ? "warning" : "danger";
@@ -219,6 +359,7 @@ function ConnectionCard({
       <div className="d-flex flex-wrap align-items-center gap-2">
         <h2 className="fw-semibold mb-0">{title}</h2>
         <Badge tone={freshnessColor[connection.health]}>{freshnessLabels[connection.health]}</Badge>
+        <Badge tone="secondary">{providerLabels[connection.provider] ?? connection.provider}</Badge>
         {connection.primary && <Badge tone="info">Primary</Badge>}
         {connection.paused && <Badge tone="warning">Paused</Badge>}
       </div>
@@ -227,10 +368,17 @@ function ConnectionCard({
         rows={[
           ["URL", <span className="text-break">{connection.url}</span>],
           ["Settings", sourceLabels[connection.source]],
-          ["Token", connection.token === "configured" ? "Stored" : "Not set"],
+          [
+            connection.auth_kind === "app" ? "GitHub App" : "Token",
+            connection.auth_kind === "app"
+              ? `App ${String(connection.app_id)}, installation ${String(connection.installation_id)}`
+              : connection.token === "configured"
+                ? "Stored"
+                : "Not set",
+          ],
           ["Collection", connection.paused ? "Paused" : interval(connection.sync_interval_minutes)],
           [
-            "GitLab",
+            providerLabels[connection.provider] ?? "Provider",
             connection.version
               ? `${connection.version}${connection.edition ? ` (${connection.edition})` : ""}`
               : "Not detected yet",
@@ -266,19 +414,21 @@ function ConnectionCard({
       {report && <DiagnosticsResult report={report} />}
       {manage && (
         <div className="d-flex flex-wrap gap-2">
-          <button
-            type="button"
-            className="btn"
-            disabled={busy}
-            onClick={() =>
-              void act(async () => {
-                setReport(await testConnection(connection.id, csrf));
-                return null;
-              })
-            }
-          >
-            Test connection
-          </button>
+          {connection.provider === "gitlab" && (
+            <button
+              type="button"
+              className="btn"
+              disabled={busy}
+              onClick={() =>
+                void act(async () => {
+                  setReport(await testConnection(connection.id, csrf));
+                  return null;
+                })
+              }
+            >
+              Test connection
+            </button>
+          )}
           <button
             type="button"
             className="btn"
@@ -376,7 +526,7 @@ export function ConnectionsPage() {
       <PageHeader
         pretitle="Admin"
         title="Connections"
-        subtitle="The GitLab deployments Baluarte collects from, each with its own token, schedule and health."
+        subtitle="The GitLab deployments and GitHub organizations Baluarte collects from, each with its own credential, schedule and health."
       />
       {message && (
         <Notice tone="success" role="status">
@@ -399,6 +549,7 @@ export function ConnectionsPage() {
         />
       ))}
       {manage && <NewConnectionForm onAdded={changed} />}
+      {manage && <NewGitHubForm onAdded={changed} />}
     </div>
   );
 }
