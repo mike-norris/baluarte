@@ -59,3 +59,19 @@ def current_connection(
 def current_connection_id(db: Session, settings: GitLabSettings | None = None) -> int | None:
     connection = current_connection(db, settings)
     return connection.id if connection is not None else None
+
+
+def workspace_of(db: Session, connection_id: int) -> int:
+    """The workspace a connection belongs to."""
+    return db.scalars(
+        select(GitLabInstance.workspace_id).where(GitLabInstance.id == connection_id)
+    ).one()
+
+
+def current_workspace_id(db: Session) -> int:
+    """The workspace a request or job works in, for records that carry no connection.
+
+    Always the default workspace until a deployment can hold several (M11.4), when it comes from
+    the request or job.
+    """
+    return default_workspace_id(db)

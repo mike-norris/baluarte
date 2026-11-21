@@ -35,6 +35,7 @@ from baluarte.controls.posture import Counts, MappedRule, status_of
 from baluarte.db.models import AuditEvent, ControlMappingChange
 from baluarte.main import create_app
 from baluarte.policy.schema import RULE_TYPES
+from baluarte.workspaces import default_workspace_id
 
 CSRF = {"X-CSRF-Token": "csrf"}
 CHANGES = "/api/v1/control-mapping/changes"
@@ -536,6 +537,7 @@ def test_approval_checks_the_change_again(world: World) -> None:
     require_review(world.engine)
     with Session(world.engine) as db:
         stale = ControlMappingChange(
+            workspace_id=default_workspace_id(db),
             framework="soc2",
             control_id="CC6.8",
             kind="not_applicable",
@@ -606,6 +608,7 @@ def test_not_applicable_and_manual_controls_and_their_review_date(world: World) 
 def test_an_overdue_status_shows_until_it_is_renewed(world: World) -> None:
     with Session(world.engine) as db:
         overdue = ControlMappingChange(
+            workspace_id=default_workspace_id(db),
             framework="soc2",
             control_id="CC6.8",
             kind="not_applicable",

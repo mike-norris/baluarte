@@ -473,6 +473,7 @@ def create(
     }
     digest = plan_digest(plan)
     row = RemediationPlan(
+        workspace_id=instance.workspace_id,
         instance_id=instance.id,
         created_by_user_id=user_id,
         created_at=now,

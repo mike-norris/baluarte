@@ -35,6 +35,7 @@ from baluarte.db.models import (
 from baluarte.evidence import report
 from baluarte.evidence import verify as verify_tool
 from baluarte.evidence.report import Capped, ControlRow, NotMet, ReportData, render
+from baluarte.workspaces import default_workspace_id, workspace_of
 
 pytestmark = pytest.mark.db
 
@@ -88,6 +89,7 @@ def exclude(world: Changes, path: str, justification: str, gitlab_id: int) -> No
         )
         db.add(
             ScopeExclusion(
+                workspace_id=default_workspace_id(db),
                 instance_id=world.instance_id,
                 target_type="project",
                 target_id=gitlab_id,
@@ -316,6 +318,7 @@ def test_exceptions_in_force_in_the_period_are_listed(world: Changes) -> None:
         now = db.execute(select(func.now())).scalar_one()
         db.execute(
             insert(PolicyException).values(
+                workspace_id=workspace_of(db, world.instance_id),
                 instance_id=world.instance_id,
                 project_id=project_id,
                 policy_name="change-management",

@@ -23,6 +23,7 @@ from baluarte import audit
 from baluarte.db.models import GitLabGroup, GitLabProject, Tag, TagAssignment
 from baluarte.hierarchy import GroupTree
 from baluarte.policy.changes import Actor
+from baluarte.workspaces import workspace_of
 
 NAME = re.compile(r"^[a-z0-9][a-z0-9._-]{0,62}$")
 COLOR = re.compile(r"^#[0-9A-Fa-f]{6}$")
@@ -89,6 +90,7 @@ def create(
     ).first():
         raise TagRefused("tag_exists", f"The tag {key}={value} already exists", [f"{key}={value}"])
     row = Tag(
+        workspace_id=workspace_of(db, instance_id),
         instance_id=instance_id,
         key=key,
         value=value,

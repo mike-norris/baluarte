@@ -4,7 +4,7 @@ Implemented in `backend/src/baluarte/db/models.py`; migrations `0001` (inventory
 
 | Table | Key fields | Notes |
 |---|---|---|
-| workspace | id, slug (unique, lowercase), name, created_at | The isolation boundary ([ADR-0013](architecture/ADR-0013-workspaces-and-connections.md), [WORKSPACES.md](WORKSPACES.md)). Migration `0029` creates `default` |
+| workspace | id, slug (unique, lowercase), name, created_at | The isolation boundary ([ADR-0013](architecture/ADR-0013-workspaces-and-connections.md), [WORKSPACES.md](WORKSPACES.md)). Migration `0029` creates `default`. Since `0030`, governance records (baselines, assignments, changes, exceptions, exclusions, plans, taxonomies, tags, manager scopes, exports, notifications) carry `workspace_id` |
 | gitlab_instance | id, workspace_id, provider (`gitlab`; `github` from M13), name, paused, base_url (unique), version, edition, capability_snapshot, last_checked_at | A provider connection in a workspace. Every existing row joined the default workspace in `0029`; the ID is kept on every GitLab resource |
 | gitlab_group | id, instance_id, gitlab_id, parent_gitlab_id, full_path, visibility, require_two_factor_authentication, two_factor_grace_period, state, first_seen_at, last_seen_at, last_error, last_error_at | Unique `(instance_id, gitlab_id)`; state `active`, `missing`, `inaccessible`. The two-factor columns are null when GitLab did not report them |
 | gitlab_project | id, instance_id, gitlab_id, namespace_gitlab_id, namespace_kind, path_with_namespace, visibility, archived, default_branch, state, first_seen_at, last_seen_at, last_error, last_error_at | Unique `(instance_id, gitlab_id)`; current inventory cache |

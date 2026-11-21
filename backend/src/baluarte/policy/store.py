@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from baluarte.db.models import Policy
 from baluarte.policy.loader import parse_policy
+from baluarte.workspaces import current_workspace_id
 
 
 @dataclass(frozen=True)
@@ -38,6 +39,7 @@ def save_version(db: Session, source: str) -> Saved:
     if latest is not None and latest.yaml_digest == parsed.digest:
         return Saved(policy=latest, created=False)
     policy = Policy(
+        workspace_id=current_workspace_id(db),
         name=parsed.name,
         version=(latest.version if latest else 0) + 1,
         source_yaml=source,

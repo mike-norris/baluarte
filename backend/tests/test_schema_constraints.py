@@ -117,6 +117,7 @@ def add_exception(session: Session, instance: GitLabInstance, project: GitLabPro
     session.add(requester)
     session.flush()
     exception = PolicyException(
+        workspace_id=instance.workspace_id,
         instance_id=instance.id,
         project_id=project.id,
         policy_name="baseline",
@@ -135,7 +136,13 @@ def evaluation(
 ) -> Evaluation:
     project = add_project(session, instance, 1)
     observation = add_observation(session, instance)
-    policy = Policy(name="baseline", version=1, source_yaml="x", yaml_digest=digest("x"))
+    policy = Policy(
+        workspace_id=instance.workspace_id,
+        name="baseline",
+        version=1,
+        source_yaml="x",
+        yaml_digest=digest("x"),
+    )
     session.add(policy)
     exception_id = add_exception(session, instance, project) if outcome == "excepted" else None
     session.commit()
@@ -328,7 +335,15 @@ def test_timestamps_round_trip_as_utc_instants(session: Session, instance: GitLa
 
 def test_export_period_must_be_ordered(session: Session) -> None:
     now = datetime.now(UTC)
-    session.add(ExportJob(requested_by="auditor", scope={}, period_start=now, period_end=now))
+    session.add(
+        ExportJob(
+            workspace_id=default_workspace_id(session),
+            requested_by="auditor",
+            scope={},
+            period_start=now,
+            period_end=now,
+        )
+    )
     with pytest.raises(IntegrityError, match="ck_export_job_period_ordered"):
         session.commit()
 

@@ -18,6 +18,7 @@ from baluarte.auth.roles import Role
 from baluarte.db.models import AppUser, GitLabGroup, ManagerScope
 from baluarte.hierarchy import GroupTree
 from baluarte.policy.changes import Actor
+from baluarte.workspaces import workspace_of
 
 MAX_GROUPS = 100
 
@@ -84,6 +85,7 @@ def assign(
         row = existing.get(group)
         if row is None:
             row = ManagerScope(
+                workspace_id=workspace_of(db, instance_id),
                 instance_id=instance_id,
                 user_id=user_id,
                 group_gitlab_id=group,

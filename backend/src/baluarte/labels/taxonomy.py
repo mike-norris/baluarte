@@ -42,6 +42,7 @@ from baluarte.policy.changes import Actor, ChangeConflict, NotAllowed, review_re
 from baluarte.policy.loader import PolicyError, PolicyInvalid, digest, load_yaml
 from baluarte.policy.schema import GROUP_PATTERN, Metadata
 from baluarte.settings import own_decision_refused
+from baluarte.workspaces import workspace_of
 
 MAX_LABELS = 500
 MAX_ALIASES = 20
@@ -249,6 +250,7 @@ def propose(
     ).scalar_one()
     required = review_required(db)
     row = LabelTaxonomy(
+        workspace_id=workspace_of(db, instance_id),
         instance_id=instance_id,
         version=(last or 0) + 1,
         name=parsed.name,
