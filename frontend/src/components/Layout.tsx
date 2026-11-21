@@ -15,6 +15,7 @@ import { useDeviceClass } from "../ui/device";
 import { useTheme } from "../ui/theme";
 import { ThemeProvider } from "../ui/ThemeProvider";
 import { AccountMenu } from "./AccountMenu";
+import { WorkspaceSwitcher } from "./WorkspaceSwitcher";
 import { DevelopmentModeBanner } from "./DevelopmentModeBanner";
 import { HelpButton } from "../help/HelpButton";
 import { JumpSearch } from "./JumpSearch";
@@ -254,6 +255,7 @@ function Shell() {
                 )}
                 {user && !phone && <JumpSearch items={items} />}
                 <div className="navbar-nav flex-row align-items-center gap-2 ms-auto">
+                  {user && !phone && <WorkspaceSwitcher />}
                   {user && <AsOfPicker />}
                   <FreshnessIndicator />
                   {user && !phone && <HelpButton />}

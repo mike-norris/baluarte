@@ -3,6 +3,7 @@
 import { ApiError, getJson } from "./client";
 import type { WriteTokenStatus } from "./labels";
 import { changeFailure, detailText, sendJson } from "./send";
+import { scopeHeaders } from "./workspaceChoice";
 
 /** ``expired`` once ``expires_at`` has passed, whether or not the row says so yet. */
 export type PlanState =
@@ -215,6 +216,7 @@ async function post(path: string, body: unknown, csrfToken: string): Promise<Pla
       method: "POST",
       credentials: "same-origin",
       headers: {
+        ...scopeHeaders(),
         Accept: "application/json",
         "Content-Type": "application/json",
         "X-CSRF-Token": csrfToken,

@@ -27,15 +27,14 @@ from baluarte.db.models import (
     PolicyException,
 )
 from baluarte.evidence.as_of import FindingAt, RunRef, findings_at, run_at, run_ref
-from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_settings
+from baluarte.integrations.gitlab.settings import GitLabSettings
 from baluarte.jobs import queue
 from baluarte.policy.evaluation import freshness
 from baluarte.policy.evaluation.freshness import EvaluationFreshness, EvaluationRunOut
 from baluarte.policy.evaluation.runner import EVALUATE, MAX_ATTEMPTS
 from baluarte.policy.exceptions import in_force
 from baluarte.scope.exclusions import coverage
-from baluarte.settings import ConfigurationError
-from baluarte.workspaces import current_connection_id
+from baluarte.workspaces import current_connection_id, current_settings
 
 router = APIRouter(tags=["evaluations"])
 
@@ -176,11 +175,8 @@ class RunPage(PointInTime):
     next_before_id: int | None
 
 
-def _settings() -> GitLabSettings | None:
-    try:
-        return load_gitlab_settings()
-    except ConfigurationError:
-        return None
+def _settings(db: Session) -> GitLabSettings | None:
+    return current_settings(db)
 
 
 def _instance_id(db: Session, settings: GitLabSettings | None) -> int | None:
@@ -312,12 +308,12 @@ def _tagged_projects(db: Session, wanted: list[tuple[str, str]]) -> frozenset[in
     """Row IDs of the projects with every tag in ``wanted``; None when no tag is asked for."""
     if not wanted:
         return None
-    return frozenset(tags.index(db, _instance_id(db, _settings())).projects_with(wanted))
+    return frozenset(tags.index(db, _instance_id(db, _settings(db))).projects_with(wanted))
 
 
 def _scoped(statement: FindingRows, db: Session) -> FindingRows:
     """Limit to the configured instance; nothing when GitLab is not configured."""
-    instance_id = _instance_id(db, _settings())
+    instance_id = _instance_id(db, _settings(db))
     return statement.where(GitLabProject.instance_id == (instance_id or 0))
 
 
@@ -335,7 +331,7 @@ def run_evaluation(
     principal: Annotated[Principal, Depends(require(Permission.POLICY_WRITE))],
     db: Annotated[Session, Depends(database)],
 ) -> EvaluationQueued:
-    settings = _settings()
+    settings = _settings(db)
     if settings is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "GitLab is not configured")
     minute = datetime.now(UTC).strftime("%Y%m%dT%H%M")
@@ -366,7 +362,7 @@ def read_freshness(
     _: Annotated[Principal, Depends(require(Permission.FINDINGS_READ))],
     db: Annotated[Session, Depends(database)],
 ) -> EvaluationFreshness:
-    settings = _settings()
+    settings = _settings(db)
     return freshness.report(db, _instance_id(db, settings), settings)
 
 
@@ -447,7 +443,7 @@ def evaluation_summary(
     policy: Annotated[str | None, Query(max_length=63)] = None,
     as_of: AsOf = None,
 ) -> EvaluationSummary:
-    settings = _settings()
+    settings = _settings(db)
     instance_id = _instance_id(db, settings)
     report = freshness.report(db, instance_id, settings)
     if as_of is None:
@@ -555,7 +551,7 @@ def list_runs(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     as_of: AsOf = None,
 ) -> RunPage:
-    instance_id = _instance_id(db, _settings())
+    instance_id = _instance_id(db, _settings(db))
     statement = select(EvaluationRun).where(EvaluationRun.instance_id == (instance_id or 0))
     if as_of is not None:
         # Runs that had finished by then; a run still going then is not shown as it ended.
@@ -619,7 +615,7 @@ def list_findings(
     if tagged is not None:
         statement = statement.where(GitLabProject.id.in_(tagged))
     if monitoring != "all":
-        scope = coverage(db, _instance_id(db, _settings()))
+        scope = coverage(db, _instance_id(db, _settings(db)))
         statement = statement.where(
             scope.project_included() if monitoring == "included" else scope.project_excluded()
         )
@@ -642,7 +638,7 @@ def list_findings(
     rows = db.execute(statement.order_by(Finding.id).limit(limit + 1)).all()
     mapping = effective(db)
     items = [_finding_out(row, mapping) for row in rows[:limit]]
-    instance_id = _instance_id(db, _settings())
+    instance_id = _instance_id(db, _settings(db))
     return FindingPage(
         items=items,
         next_after_id=items[-1].id if len(rows) > limit else None,
@@ -714,7 +710,7 @@ def _findings_as_of(
     finding_id: int | None = None,
 ) -> FindingPage:
     """Findings as they stood at ``as_of`` (``baluarte.evidence.as_of``), filtered on that state."""
-    instance_id = _instance_id(db, _settings())
+    instance_id = _instance_id(db, _settings(db))
     run = run_at(db, instance_id, as_of)
     if run is None:
         return FindingPage(items=[], next_after_id=None, as_of=as_of, evaluation_run=None)
@@ -810,7 +806,7 @@ def read_finding(
 ) -> FindingRead:
     if as_of is None:
         out = _finding_out(_finding(db, finding_id), effective(db))
-        run = run_at(db, _instance_id(db, _settings()), None)
+        run = run_at(db, _instance_id(db, _settings(db)), None)
         return FindingRead(**dict(out), evaluation_run=run_ref(run))
     page = _findings_as_of(db, as_of, FindingFilters(), None, 1, finding_id=finding_id)
     if not page.items:
@@ -851,7 +847,7 @@ def finding_history(
         items=items,
         next_before_id=items[-1].id if len(rows) > limit else None,
         as_of=as_of,
-        evaluation_run=run_ref(run_at(db, _instance_id(db, _settings()), as_of)),
+        evaluation_run=run_ref(run_at(db, _instance_id(db, _settings(db)), as_of)),
     )
 
 
@@ -871,7 +867,7 @@ def project_evaluations(
     db: Annotated[Session, Depends(database)],
     as_of: AsOf = None,
 ) -> ProjectEvaluations:
-    instance_id = _instance_id(db, _settings())
+    instance_id = _instance_id(db, _settings(db))
     project = db.scalars(
         select(GitLabProject).where(
             GitLabProject.instance_id == (instance_id or 0), GitLabProject.gitlab_id == gitlab_id

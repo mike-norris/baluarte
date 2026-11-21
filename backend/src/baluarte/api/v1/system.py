@@ -15,7 +15,12 @@ from baluarte import __version__
 from baluarte.api.v1.compliance import compliance_errors
 from baluarte.api.v1.gitlab import gitlab_transport
 from baluarte.api.v1.setup import http_errors, oidc_transport
-from baluarte.auth.dependencies import Principal, auth_settings, database, require
+from baluarte.auth.dependencies import (
+    Principal,
+    auth_settings,
+    database,
+    require_deployment,
+)
 from baluarte.auth.roles import Permission, Role
 from baluarte.auth.settings import AuthSettings
 from baluarte.changes import settings as change_settings
@@ -45,7 +50,7 @@ from baluarte.settings import ConfigurationError, load_logging_settings
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 SecretState = Literal["configured", "not_set"]
-Admin = Annotated[Principal, Depends(require(Permission.SETTINGS_MANAGE))]
+Admin = Annotated[Principal, Depends(require_deployment(Permission.SETTINGS_MANAGE))]
 Database = Annotated[Session, Depends(database)]
 
 
@@ -100,7 +105,7 @@ def _state(value: object) -> SecretState:
 
 @router.get("", response_model=SettingsInfo, summary="Effective settings (no secret values)")
 def read_settings(
-    _: Annotated[Principal, Depends(require(Permission.SETTINGS_MANAGE))],
+    _: Admin,
     auth: Annotated[AuthSettings, Depends(auth_settings)],
 ) -> SettingsInfo:
     try:

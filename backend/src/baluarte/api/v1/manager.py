@@ -6,6 +6,7 @@ subgroups and projects. Administrators assign and end them; every change is audi
 ``manager:read``; they show no per-person data.
 """
 
+from collections.abc import Sequence
 from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
@@ -25,6 +26,7 @@ from baluarte.manager import overview as manager_overview
 from baluarte.manager import scopes
 from baluarte.manager import trends as manager_trends
 from baluarte.policy.changes import Actor
+from baluarte.workspaces import default_workspace_id, request_workspace_id, stored_roles
 
 router = APIRouter(prefix="/manager", tags=["manager"])
 
@@ -215,6 +217,25 @@ def end_scope(
     return scope_out(db, [row])[0]
 
 
+def _in_workspace(db: Session, rows: Sequence[Any]) -> list[tuple[AppUser, list[str]]]:
+    """People and their roles in the request's workspace, from their latest sign-in.
+
+    Outside a workspace request (tests), everyone with their roles as signed in.
+    """
+    workspace_id = request_workspace_id(db)
+    if workspace_id is None:
+        return [(user, list(roles or [])) for user, roles, _ in rows]
+    default_id = default_workspace_id(db)
+    found: list[tuple[AppUser, list[str]]] = []
+    for user, roles, by_workspace in rows:
+        held = stored_roles(by_workspace, roles or [], default_id).get(workspace_id)
+        if held:
+            found.append((user, [role.value for role in held]))
+        elif roles is None and workspace_id == default_id:
+            found.append((user, []))  # never signed in since an administrator added them
+    return found
+
+
 @router.get(
     "/users",
     response_model=UsersPage,
@@ -231,7 +252,7 @@ def list_users(
         .subquery()
     )
     rows = db.execute(
-        select(AppUser, UserSession.roles)
+        select(AppUser, UserSession.roles, UserSession.workspace_roles)
         .outerjoin(latest, latest.c.user_id == AppUser.id)
         .outerjoin(UserSession, UserSession.id == latest.c.session_id)
         .order_by(func.lower(func.coalesce(AppUser.display_name, AppUser.email, "")), AppUser.id)
@@ -242,10 +263,10 @@ def list_users(
                 id=user.id,
                 display_name=user.display_name,
                 email=user.email,
-                roles=sorted(roles or []),
+                roles=sorted(held),
                 last_login_at=user.last_login_at,
             )
-            for user, roles in rows
+            for user, held in _in_workspace(db, rows)
         ]
     )
 

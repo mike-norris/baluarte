@@ -40,7 +40,7 @@ from baluarte.integrations.gitlab.settings import (
 )
 from baluarte.jobs.queue import PermanentJobError
 from baluarte.settings import ConfigurationError
-from baluarte.workspaces import configured_settings, current_workspace_id
+from baluarte.workspaces import ALL_WORKSPACES, configured_settings, current_workspace_id
 
 # The job payload key that names the connection a job collects.
 CONNECTION = "connection_id"
@@ -263,7 +263,13 @@ def add(
     primary = configured_settings()
     if primary is not None and primary.url == url:
         raise ConnectionConflict("This is the primary connection, set on the Settings page")
-    existing = db.scalars(select(GitLabInstance).where(GitLabInstance.base_url == url)).first()
+    existing = db.scalars(
+        select(GitLabInstance)
+        .where(GitLabInstance.base_url == url)
+        .execution_options(**{ALL_WORKSPACES: True})
+    ).first()
+    if existing is not None and existing.workspace_id != current_workspace_id(db):
+        raise ConnectionConflict("This URL is connected in another workspace")
     if existing is not None and existing.removed_at is None:
         raise ConnectionConflict("A connection to this URL already exists")
     box = _box()

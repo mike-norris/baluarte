@@ -15,7 +15,12 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from baluarte.auth.dependencies import Principal, current_principal, database, require
+from baluarte.auth.dependencies import (
+    Principal,
+    current_principal,
+    database,
+    require_deployment,
+)
 from baluarte.auth.roles import Permission
 from baluarte.db.models import Notification, NotificationDelivery
 from baluarte.notifications import messages
@@ -31,7 +36,7 @@ from baluarte.notifications.settings import (
 
 router = APIRouter(tags=["notifications"])
 
-Admin = Annotated[Principal, Depends(require(Permission.SETTINGS_MANAGE))]
+Admin = Annotated[Principal, Depends(require_deployment(Permission.SETTINGS_MANAGE))]
 Database = Annotated[Session, Depends(database)]
 SecretState = Literal["configured", "not_set"]
 LATEST = 50

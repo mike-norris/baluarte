@@ -35,7 +35,7 @@ from baluarte.db.models import (
 from baluarte.evidence.as_of import RunRef, run_at, run_ref
 from baluarte.integrations.gitlab.client import GitLabClient
 from baluarte.integrations.gitlab.labels import Owner, collect
-from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_settings
+from baluarte.integrations.gitlab.settings import GitLabSettings
 from baluarte.labels import drift, plans
 from baluarte.labels import taxonomy as taxonomies
 from baluarte.labels.drift import DRIFT_KINDS, DriftItem
@@ -43,8 +43,7 @@ from baluarte.labels.plans import NothingToPlan, PlanConflict, ScopeTooLarge
 from baluarte.policy.changes import Actor, ChangeConflict, NotAllowed, review_required
 from baluarte.policy.loader import PolicyInvalid
 from baluarte.policy.schema import GROUP_PATTERN
-from baluarte.settings import ConfigurationError
-from baluarte.workspaces import current_connection
+from baluarte.workspaces import current_connection, current_settings
 
 router = APIRouter(prefix="/labels", tags=["labels"])
 
@@ -65,15 +64,12 @@ def _refusal(
     return HTTPException(code, {"code": reason, "message": message, "reasons": reasons or [reason]})
 
 
-def _settings() -> GitLabSettings | None:
-    try:
-        return load_gitlab_settings()
-    except ConfigurationError:
-        return None
+def _settings(db: Session) -> GitLabSettings | None:
+    return current_settings(db)
 
 
 def _instance(db: Session) -> GitLabInstance | None:
-    return current_connection(db, _settings())
+    return current_connection(db, _settings(db))
 
 
 def _instance_id(db: Session) -> int | None:
@@ -828,7 +824,7 @@ def create_plan(
     db: Database,
     transport: Annotated[httpx.BaseTransport | None, Depends(gitlab_transport)],
 ) -> LabelPlanOut:
-    settings = _settings()
+    settings = _settings(db)
     instance = _instance(db)
     if settings is None or instance is None:
         raise _refusal(

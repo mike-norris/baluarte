@@ -1070,6 +1070,42 @@ export const helpTopics: readonly HelpTopic[] = [
     ),
   },
   {
+    slug: "workspaces",
+    title: "Workspaces",
+    summary: "Keep organizations apart: their connections, data, evidence and who may see them.",
+    group: "Administration",
+    paths: ["/workspaces"],
+    body: (
+      <>
+        <p>
+          A workspace holds its own connections, inventory, baselines, findings, exceptions, plans,
+          tags, exports and audit trail. Nothing in one workspace is visible from another.
+        </p>
+        <ul>
+          <li>
+            <strong>Who works where:</strong> each workspace maps identity provider groups to roles.
+            The default workspace uses the groups on the <Link to="/settings">Settings</Link> page.
+            Roles are read at sign-in, so a change applies from each person&apos;s next sign-in.
+          </li>
+          <li>
+            <strong>Switching:</strong> when you can work in more than one workspace or connection,
+            a selector appears at the top of every page. Switching starts again from the dashboard.
+          </li>
+          <li>
+            <strong>Managing:</strong> administrators of the default workspace create workspaces and
+            change their groups on <Link to="/workspaces">Workspaces</Link>. To add a
+            workspace&apos;s first connection, switch to it and use{" "}
+            <Link to="/connections">Connections</Link>.
+          </li>
+          <li>
+            Every audit event records the workspace it happened in. Sign-ins and deployment settings
+            belong to the default workspace.
+          </li>
+        </ul>
+      </>
+    ),
+  },
+  {
     slug: "connections",
     title: "Connections",
     summary: "Collect from more than one GitLab, each with its own token, schedule and health.",

@@ -37,6 +37,7 @@ from baluarte.api.v1 import (
     system,
     tags,
     time,
+    workspaces,
 )
 from baluarte.auth.dependencies import current_principal
 
@@ -60,6 +61,7 @@ protected.include_router(audit_events.router)
 protected.include_router(system.router)
 protected.include_router(audit_shipping.router)
 protected.include_router(connections.router)
+protected.include_router(workspaces.router)
 protected.include_router(notifications.router)
 protected.include_router(gitlab.router)
 protected.include_router(scope.router)

@@ -21,7 +21,6 @@ from baluarte.auth.dependencies import Principal, database, require
 from baluarte.auth.roles import Permission
 from baluarte.db.models import MAX_PLAN_HOURS, MAX_PLAN_STEPS, GitLabInstance, RemediationPlan
 from baluarte.integrations.gitlab import freshness
-from baluarte.integrations.gitlab.settings import load_gitlab_settings
 from baluarte.remediation import plans
 from baluarte.remediation.plans import (
     ApplyRefused,
@@ -32,8 +31,7 @@ from baluarte.remediation.plans import (
     Scope,
     ScopeTooLarge,
 )
-from baluarte.settings import ConfigurationError
-from baluarte.workspaces import current_connection
+from baluarte.workspaces import current_connection, current_settings
 
 router = APIRouter(tags=["remediation"])
 
@@ -133,9 +131,8 @@ def _instance(db: Session) -> GitLabInstance | None:
 
 
 def _projects_freshness(db: Session, instance_id: int) -> str | None:
-    try:
-        settings = load_gitlab_settings()
-    except ConfigurationError:
+    settings = current_settings(db)
+    if settings is None:
         return None
     report = freshness.report(db, instance_id, settings)
     projects = report.collections.get("projects")

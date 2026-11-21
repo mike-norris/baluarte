@@ -50,7 +50,7 @@ from baluarte.notifications.settings import (
     NotificationSettings,
     load,
 )
-from baluarte.workspaces import current_workspace_id
+from baluarte.workspaces import current_workspace_id, workspace_of
 
 logger = logging.getLogger(__name__)
 
@@ -71,15 +71,17 @@ def record(
     dedup_key: str,
     message: Message,
     channels: Sequence[Channel],
+    workspace_id: int | None = None,
 ) -> int | None:
     """Record a notification and a pending delivery per channel; None when the key exists.
 
-    The caller commits.
+    ``workspace_id`` is the workspace the event happened in; by default the request's, or the
+    default workspace in a job. The caller commits.
     """
     notification_id = db.execute(
         insert(Notification)
         .values(
-            workspace_id=current_workspace_id(db),
+            workspace_id=workspace_id if workspace_id is not None else current_workspace_id(db),
             event_type=event_type,
             dedup_key=dedup_key,
             subject=message.subject,
@@ -179,7 +181,14 @@ def notify_new_findings(
     message = messages.new_findings(
         base if base is not None else messages.public_url(), run_id, threshold, len(opened), listed
     )
-    return record(db, "new_findings", f"findings:{run_id}", message, channels)
+    return record(
+        db,
+        "new_findings",
+        f"findings:{run_id}",
+        message,
+        channels,
+        workspace_of(db, instance_id),
+    )
 
 
 # Collection health -----------------------------------------------------------------------------

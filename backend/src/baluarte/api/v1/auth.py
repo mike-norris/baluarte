@@ -15,6 +15,7 @@ from urllib.parse import urlencode, urlsplit
 from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from baluarte import audit
@@ -27,7 +28,7 @@ from baluarte.auth.dependencies import (
     oidc_client,
 )
 from baluarte.auth.oidc import OidcClient, OidcError, new_pending_login
-from baluarte.auth.roles import Permission, Role, roles_from_claim
+from baluarte.auth.roles import Permission, Role
 from baluarte.auth.sessions import (
     LOGIN_TTL,
     create_session,
@@ -39,8 +40,9 @@ from baluarte.auth.sessions import (
 )
 from baluarte.auth.settings import AuthSettings
 from baluarte.configuration.setup import complete_setup
-from baluarte.db.models import UserSession
+from baluarte.db.models import UserSession, Workspace
 from baluarte.settings import development_mode
+from baluarte.workspaces import roles_by_workspace
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +71,16 @@ class CurrentUser(BaseModel):
     csrf_token: str
     # The deployment runs in development mode: review may be off whatever the profile.
     development_mode: bool = False
+    # The workspace this request acted in (``X-Baluarte-Workspace``, or the caller's default);
+    # ``roles`` and ``permissions`` are the caller's there.
+    workspace: str | None = None
+    workspaces: list["WorkspaceAccess"] = []
+
+
+class WorkspaceAccess(BaseModel):
+    slug: str
+    name: str
+    roles: list[Role]
 
 
 def safe_return_to(value: str | None) -> str:
@@ -194,7 +206,10 @@ def callback(
     except OidcError as exc:
         return _failed(db, settings, "sign_in_failed", exc.reason)
 
-    roles = roles_from_claim(profile.get(settings.roles_claim), settings.group_roles)
+    workspace_roles = roles_by_workspace(
+        db, profile.get(settings.roles_claim), settings.group_roles
+    )
+    roles = frozenset().union(*workspace_roles.values())
     if not roles:
         return _failed(db, settings, "not_authorized", "no_mapped_role", subject)
 
@@ -209,14 +224,19 @@ def callback(
     previous = request.cookies.get(settings.session_cookie)
     if previous:
         revoke_token(db, previous)
-    token = create_session(db, user, roles, settings)
+    token = create_session(db, user, roles, settings, workspace_roles)
     db.flush()
     audit.record(
         db,
         actor=f"user:{user.id}",
         action="auth.login",
         resource_type="session",
-        details={"roles": sorted(roles)},
+        details={
+            "roles": sorted(roles),
+            "workspaces": {
+                str(workspace_id): sorted(held) for workspace_id, held in workspace_roles.items()
+            },
+        },
     )
     # The first admin to sign in through settings entered in the setup wizard completes setup.
     if Role.ADMIN in roles and settings.source == "database" and complete_setup(db, user.id):
@@ -241,7 +261,7 @@ def callback(
 
 
 @router.get("/me", response_model=CurrentUser, summary="Current user and session")
-def me(principal: SignedIn) -> CurrentUser:
+def me(principal: SignedIn, db: Annotated[Session, Depends(database)]) -> CurrentUser:
     return CurrentUser(
         user_id=principal.user_id,
         subject=principal.subject,
@@ -252,6 +272,17 @@ def me(principal: SignedIn) -> CurrentUser:
         session_expires_at=principal.session_expires_at,
         csrf_token=principal.csrf_token,
         development_mode=development_mode(),
+        workspace=principal.workspace_slug,
+        workspaces=[
+            WorkspaceAccess(
+                slug=row.slug, name=row.name, roles=sorted(principal.workspaces[row.id])
+            )
+            for row in db.scalars(
+                select(Workspace)
+                .where(Workspace.id.in_(principal.workspaces.keys()))
+                .order_by(Workspace.id)
+            )
+        ],
     )
 
 

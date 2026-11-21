@@ -7,6 +7,7 @@ import { ApiError, getJson } from "./client";
 import { changeFailure, detailText } from "./send";
 import type { Person } from "./policies";
 import type { AsOfAnswer } from "../asof/format";
+import { scopeHeaders } from "./workspaceChoice";
 
 export type FrameworkId = "soc2" | "iso27001" | "nist_800_53_moderate";
 export const frameworkIds: readonly FrameworkId[] = ["soc2", "iso27001", "nist_800_53_moderate"];
@@ -267,6 +268,7 @@ export async function postChange<T>(
       method: "POST",
       credentials: "same-origin",
       headers: {
+        ...scopeHeaders(),
         Accept: "application/json",
         "Content-Type": "application/json",
         "X-CSRF-Token": csrfToken,

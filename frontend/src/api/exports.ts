@@ -1,6 +1,7 @@
 import { ApiError } from "./client";
 import { detailMessage, readDetail, reasonSentences, RefusalError } from "./send";
 import { exportFilename, type ExportRequest } from "../evidence/scope";
+import { scopeHeaders } from "./workspaceChoice";
 
 export interface ExportDownload {
   blob: Blob;
@@ -82,6 +83,7 @@ export async function streamPost(
       method: "POST",
       credentials: "same-origin",
       headers: {
+        ...scopeHeaders(),
         Accept: accept,
         "Content-Type": "application/json",
         "X-CSRF-Token": csrfToken,

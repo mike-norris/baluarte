@@ -21,7 +21,7 @@ Packages are audited as ``evidence.package_created`` and ``evidence.package_comp
 """
 
 import textwrap
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from datetime import datetime
 from typing import Any
 
@@ -260,6 +260,7 @@ class EvidencePackage(EvidenceExport):
         export_id: str,
         seed: int,
         requested_by: str | None = None,
+        workspace: Mapping[str, Any] | None = None,
     ) -> None:
         scope = ExportScope.model_validate(
             {
@@ -269,7 +270,15 @@ class EvidencePackage(EvidenceExport):
                 "until": request.period_to,
             }
         )
-        super().__init__(engine, settings, scope, "csv", export_id, requested_by=requested_by)
+        super().__init__(
+            engine,
+            settings,
+            scope,
+            "csv",
+            export_id,
+            requested_by=requested_by,
+            workspace=workspace,
+        )
         self.request = request
         self.seed = seed
         self.to: datetime = request.period_to
