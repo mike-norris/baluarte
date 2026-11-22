@@ -50,7 +50,9 @@ def _why(part: Mapping[str, Any], what: str) -> str:
 def label(payload: Mapping[str, Any]) -> str:
     """How a change is named in reasons: ``!12`` or a short SHA."""
     if payload.get("kind") == "merge_request":
-        return f"!{payload.get('iid')}"
+        # A GitHub pull request is #12; a GitLab merge request !12.
+        mark = "#" if payload.get("provider") == "github" else "!"
+        return f"{mark}{payload.get('iid')}"
     sha = payload.get("sha")
     short = sha[:8] if isinstance(sha, str) else "?"
     if payload.get("kind") == "deployment":

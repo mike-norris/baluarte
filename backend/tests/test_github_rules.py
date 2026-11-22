@@ -224,4 +224,6 @@ def test_rule_coverage_marks_rule_types_github_does_not_judge(
     assert supported["gitlab.project.visibility"] is True
     assert supported["gitlab.branch.default_protected"] is True
     assert supported["gitlab.project.privileged_members"] is False
-    assert supported["gitlab.change.reviewed"] is False
+    assert supported["gitlab.project.access_tokens"] is False
+    # Judged on GitHub since M13.4a.
+    assert supported["gitlab.change.reviewed"] is not False

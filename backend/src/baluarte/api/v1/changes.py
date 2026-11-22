@@ -105,7 +105,9 @@ class ChangeOut(BaseModel):
     id: int
     project: ProjectRef
     kind: ChangeKind
-    # Merge requests only.
+    # Where the change was read: a GitHub pull request or a GitLab merge request.
+    provider: Literal["gitlab", "github"] = "gitlab"
+    # Merge requests (GitHub pull requests) only.
     iid: int | None
     # The commit on the default branch (merge or squash commit), or the deployed commit.
     sha: str
@@ -249,6 +251,7 @@ def change_out(
             gitlab_id=project.gitlab_id, path=project.path_with_namespace, state=project.state
         ),
         kind=record.kind,  # type: ignore[arg-type]
+        provider="github" if payload.get("provider") == "github" else "gitlab",
         iid=record.iid,
         sha=record.sha,
         title=payload.get("title"),

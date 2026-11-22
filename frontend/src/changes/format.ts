@@ -48,11 +48,14 @@ export function shortSha(sha: string): string {
   return sha.slice(0, 8);
 }
 
-/** "!12 Title" for a merge request, "Direct push 1a2b3c4d Title" for a push. */
-export function changeName(change: Pick<Change, "kind" | "iid" | "sha" | "title">): string {
+/** "!12 Title" for a merge request ("#12" on GitHub), "Direct push 1a2b3c4d Title" for a push. */
+export function changeName(
+  change: Pick<Change, "kind" | "iid" | "sha" | "title" | "provider">,
+): string {
+  const mark = change.provider === "github" ? "#" : "!";
   const lead =
     change.kind === "merge_request" && change.iid !== null
-      ? `!${String(change.iid)}`
+      ? `${mark}${String(change.iid)}`
       : `${kindLabels[change.kind]} ${shortSha(change.sha)}`;
   return change.title ? `${lead} ${change.title}` : lead;
 }

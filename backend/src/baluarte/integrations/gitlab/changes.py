@@ -36,7 +36,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Protocol
 from urllib.parse import urlparse
 
 from sqlalchemy import Engine, func, select
@@ -894,15 +894,32 @@ def _history_since(known: Known, now: datetime, settings: ChangeEvidenceSettings
     return now - timedelta(days=settings.lookback_days)
 
 
+class Reader(Protocol):
+    def read(self, target: ProjectTarget, known: Known) -> ProjectChanges: ...
+
+
+# Builds a provider's reader for one project: (parts, settings, the database's now).
+ReaderFactory = Callable[[Parts, ChangeEvidenceSettings, datetime], Reader]
+
+
 def collect(
-    client: GitLabClient,
+    client: GitLabClient | None,
     engine: Engine,
     instance_id: int,
     settings: ChangeEvidenceSettings,
     provenance: Provenance | None = None,
+    reader: ReaderFactory | None = None,
+    provider: str = "GitLab",
 ) -> ChangeCollection:
-    """Read and record every project's changes."""
+    """Read and record every project's changes, with GitLab's reader unless ``reader`` gives
+    another provider's (``baluarte.integrations.github.changes``)."""
     provenance = provenance or Provenance()
+    if reader is None:
+        if client is None:
+            raise ValueError("a GitLab client or another provider's reader is needed")
+        gitlab = client
+        reader = lambda parts, options, now: ProjectReader(gitlab, parts, options, now)  # noqa: E731
+    make_reader: ReaderFactory = reader
     tally = ChangeCollection()
     parts = Parts()
     for target in change_targets(engine, instance_id):
@@ -913,11 +930,11 @@ def collect(
             project = ProjectChanges(
                 target=target,
                 history_since=_history_since(known, now, settings),
-                error="not read: GitLab rejected the token earlier in this collection",
+                error=f"not read: {provider} rejected the token earlier in this collection",
             )
         else:
             try:
-                project = ProjectReader(client, parts, settings, now).read(target, known)
+                project = make_reader(parts, settings, now).read(target, known)
             except TokenRejected as error:
                 tally.rejected = True
                 project = ProjectChanges(
@@ -932,5 +949,7 @@ def collect(
         if project.error is not None:
             tally.failed_projects += 1
     if tally.failed_projects:
-        logger.warning("gitlab: changes of %s projects could not be read", tally.failed_projects)
+        logger.warning(
+            "%s: changes of %s projects could not be read", provider, tally.failed_projects
+        )
     return tally
