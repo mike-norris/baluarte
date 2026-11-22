@@ -20,6 +20,15 @@ a provider, or a rule setting the provider has no equivalent for, is ``unsupport
 
 The branch rules are ``unsupported`` for a repository whose plan does not offer branch
 protection (a private repository on GitHub Free).
+
+GitHub-only rule types (roadmap M13.3b):
+
+- ``github.repository.security_features``: every listed feature is ``enabled`` for the
+  repository. A feature GitHub did not report (``security_and_analysis`` needs admin rights) is
+  ``unknown``; code scanning on a repository whose licence lacks GitHub Advanced Security is
+  ``unsupported``.
+- ``gitlab.labels.consistent`` is judged on GitHub as on GitLab, from the repositories' labels
+  (GitHub organizations define none that repositories inherit).
 """
 
 from dataclasses import replace
@@ -27,11 +36,18 @@ from typing import Any
 
 from baluarte.integrations.github.branches import BRANCH_SOURCE
 from baluarte.integrations.github.discovery import ORG_SOURCE
+from baluarte.integrations.github.repositories import SECURITY_SOURCE
 from baluarte.policy.evaluation.access import MERGE_REQUEST_APPROVALS, TWO_FACTOR_REQUIRED
 from baluarte.policy.evaluation.default_branch import DEFAULT_BRANCH_PROTECTED
 from baluarte.policy.evaluation.engine import ProjectFacts, ProjectObservation, RuleEvaluator
+from baluarte.policy.evaluation.labels import LABELS_CONSISTENT
 from baluarte.policy.evaluation.visibility import VISIBILITY
-from baluarte.policy.schema import MergeRequestApprovalsRule, Rule, TwoFactorRequiredRule
+from baluarte.policy.schema import (
+    GitHubSecurityFeaturesRule,
+    MergeRequestApprovalsRule,
+    Rule,
+    TwoFactorRequiredRule,
+)
 
 PROVIDER = "github"
 BRANCH_CAPABILITY = "branch_protection.read"
@@ -245,17 +261,119 @@ VISIBILITY_GITHUB = replace(
     value_unknown=lambda project: f"GitHub did not report a visibility for {project.path}.",
 )
 
+SECURITY_FEATURES_TYPE = "github.repository.security_features"
+_FEATURE_NAMES = {
+    "secret_scanning": "secret scanning",
+    "secret_scanning_push_protection": "secret scanning push protection",
+    "dependabot_security_updates": "Dependabot security updates",
+    "code_scanning": "code scanning",
+}
+
+
+def _security_rule(rule: Rule) -> GitHubSecurityFeaturesRule:
+    if not isinstance(rule, GitHubSecurityFeaturesRule):
+        raise TypeError(f"not a security features rule: {rule.type}")
+    return rule
+
+
+def _security_observation(project: ProjectFacts) -> ProjectObservation | None:
+    return project.github.get(SECURITY_SOURCE)
+
+
+def _security(project: ProjectFacts) -> dict[str, Any] | None:
+    observation = _security_observation(project)
+    if observation is None or observation.status != "ok" or observation.payload is None:
+        return None
+    if not isinstance(observation.payload.get("features"), dict):
+        return None
+    return observation.payload
+
+
+def _feature_status(observed: dict[str, Any], feature: str) -> Any:
+    return observed["features"].get(feature)
+
+
+def _security_undecided(rule: Rule, observed: Any) -> str | None:
+    unreported = [
+        _FEATURE_NAMES[feature]
+        for feature in _security_rule(rule).features
+        if _feature_status(observed, feature) not in ("enabled", "disabled", "unsupported")
+    ]
+    if not unreported:
+        return None
+    return (
+        f"GitHub did not report {', '.join(unreported)} for the repository; it reports security "
+        "settings only to a token with admin rights on it."
+    )
+
+
+def _security_unsupported(rule: Rule, project: ProjectFacts) -> str | None:
+    observed = _security(project)
+    if observed is None:
+        return None
+    if any(
+        _feature_status(observed, feature) == "unsupported"
+        for feature in _security_rule(rule).features
+    ):
+        return (
+            f"GitHub does not offer code scanning for repository {project.path}: GitHub Advanced "
+            "Security is not enabled for it."
+        )
+    return None
+
+
+def _security_judge(rule: Rule, observed: Any) -> tuple[bool, str]:
+    features = _security_rule(rule).features
+    off = [_FEATURE_NAMES[f] for f in features if _feature_status(observed, f) != "enabled"]
+    if off:
+        return False, f"Not enabled: {', '.join(off)}."
+    return True, f"Enabled: {', '.join(_FEATURE_NAMES[f] for f in features)}."
+
+
+def _security_unknown(project: ProjectFacts) -> str:
+    observation = _security_observation(project)
+    if observation is None:
+        return f"The security features of repository {project.path} have not been read yet."
+    detail = f": {observation.error}" if observation.error else ""
+    return (
+        f"The security features of repository {project.path} could not be read "
+        f"({observation.status}){detail}."
+    )
+
+
+def _security_at(project: ProjectFacts) -> Any:
+    observation = _security_observation(project)
+    return observation.collected_at if observation is not None else project.last_seen_at
+
+
+SECURITY_FEATURES = RuleEvaluator(
+    rule_type=SECURITY_FEATURES_TYPE,
+    collection="projects",
+    source=SECURITY_SOURCE,
+    capability=None,
+    expected=lambda rule: {"features": list(_security_rule(rule).features)},
+    observe=_security,
+    judge=_security_judge,
+    value_unknown=_security_unknown,
+    observed_at=_security_at,
+    undecided=_security_undecided,
+    unsupported=_security_unsupported,
+)
+
 EVALUATORS: tuple[RuleEvaluator, ...] = (
     VISIBILITY_GITHUB,
     DEFAULT_BRANCH_PROTECTED_GITHUB,
     MERGE_REQUEST_APPROVALS_GITHUB,
     TWO_FACTOR_REQUIRED_GITHUB,
+    LABELS_CONSISTENT,
+    SECURITY_FEATURES,
 )
 
 
 def not_on(evaluator: RuleEvaluator, provider: str) -> RuleEvaluator:
     """``evaluator``'s rule type on a provider that cannot judge it: always ``unsupported``."""
-    message = f"Baluarte does not evaluate {evaluator.rule_type} on {provider} repositories."
+    targets = "repositories" if provider == "GitHub" else "projects"
+    message = f"Baluarte does not evaluate {evaluator.rule_type} on {provider} {targets}."
     return replace(
         evaluator,
         collection="projects",

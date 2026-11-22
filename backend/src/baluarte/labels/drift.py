@@ -20,6 +20,10 @@ taxonomy label:
   not be read reports only that; nothing is claimed missing on evidence that does not exist.
 
 Projects in a personal namespace belong to no group and so to no hierarchy; they are left out.
+
+A GitHub connection's inventory is flat: organizations define no labels that repositories
+inherit, so each repository in scope is the root of its own hierarchy and must define every
+taxonomy label itself.
 """
 
 from collections import defaultdict
@@ -32,8 +36,15 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.orm import Session
 
-from baluarte.db.models import GitLabGroup, GitLabProject, LabelTaxonomy, Observation
+from baluarte.db.models import (
+    GitLabGroup,
+    GitLabInstance,
+    GitLabProject,
+    LabelTaxonomy,
+    Observation,
+)
 from baluarte.evidence.observations import verify
+from baluarte.integrations.github.repositories import LABELS_SOURCE as GITHUB_PROJECT_SOURCE
 from baluarte.integrations.gitlab.labels import GROUP_SOURCE, PROJECT_SOURCE
 from baluarte.labels.taxonomy import (
     LabelSpec,
@@ -155,7 +166,8 @@ class Project:
 
 @dataclass
 class Hierarchy:
-    root: Group
+    # A group; a repository on a flat (GitHub) inventory.
+    root: Group | Project
     groups: list[Group] = field(default_factory=list)
     projects: list[Project] = field(default_factory=list)
 
@@ -164,6 +176,13 @@ class Hierarchy:
 class Inventory:
     groups: Mapping[int, Group]
     projects: Sequence[Project]
+    # True on GitHub: no label is inherited, so every project is its own root.
+    flat: bool = False
+
+
+def projects_of(tree: Hierarchy) -> list[Project]:
+    """The projects a hierarchy holds, its root included on a flat inventory."""
+    return [tree.root] if isinstance(tree.root, Project) else list(tree.projects)
 
 
 def _ref(owner: Group | Project) -> OwnerRef:
@@ -177,6 +196,13 @@ def hierarchies(spec: TaxonomySpec, inventory: Inventory) -> list[Hierarchy]:
     in_scope = {
         gid: group for gid, group in inventory.groups.items() if covers(spec.scope, group.path)
     }
+
+    if inventory.flat:
+        return [
+            Hierarchy(project)
+            for project in sorted(inventory.projects, key=lambda p: p.path)
+            if project.namespace_gitlab_id in in_scope
+        ]
 
     def root_of(group: Group) -> Group:
         current = group
@@ -221,7 +247,7 @@ def hierarchy_drift(
     members: list[tuple[OwnerRef, OwnerLabels | None]] = [
         (_ref(group), labels.get(("group", group.row_id))) for group in tree.groups
     ] + [(_ref(project), labels.get(("project", project.row_id))) for project in tree.projects]
-    root_labels = labels.get(("group", tree.root.row_id))
+    root_labels = labels.get((root.type, tree.root.row_id))
 
     def unknown(owner: OwnerRef, observed: OwnerLabels | None) -> DriftItem:
         if observed is None:
@@ -426,7 +452,10 @@ def inventory(db: Session, instance_id: int, as_of: datetime | None = None) -> I
         )
         if row.namespace_kind != "user"
     ]
-    return Inventory(groups, projects)
+    connection = db.get(GitLabInstance, instance_id)
+    return Inventory(
+        groups, projects, flat=connection is not None and connection.provider != "gitlab"
+    )
 
 
 def observations(
@@ -439,13 +468,15 @@ def observations(
     only of the (type, row ID) pairs in ``only``."""
     wanted = set(only) if only is not None else None
     found: dict[tuple[str, int], OwnerLabels] = {}
-    for kind, column, source in (
-        ("group", Observation.group_id, GROUP_SOURCE),
-        ("project", Observation.project_id, PROJECT_SOURCE),
+    # GitHub repositories' labels are recorded under their own source; a connection has only one
+    # provider's.
+    for kind, column, sources in (
+        ("group", Observation.group_id, (GROUP_SOURCE,)),
+        ("project", Observation.project_id, (PROJECT_SOURCE, GITHUB_PROJECT_SOURCE)),
     ):
         statement = select(Observation).where(
             Observation.instance_id == instance_id,
-            Observation.source == source,
+            Observation.source.in_(sources),
             column.is_not(None),
         )
         if wanted is not None:

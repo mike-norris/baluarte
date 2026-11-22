@@ -10,7 +10,7 @@ Each fact names its source page on docs.github.com (REST API version `2022-11-28
 |---|---|---|
 | M13.1 Feasibility spike | This page: authentication, versions, endpoints, permissions, plans and rate limits per collection and rule, and the step plan | Done |
 | M13.2 Provider layer and connection | Provider on connections and normalized records; GitHub App and fine-grained token connections for GitHub.com (Enterprise Server later); capability probes; rate limits and retries; organization, team, repository and membership discovery | Done |
-| M13.3 Settings and rules | Repository settings, branch protection and rulesets, required reviews, visibility, security features; each rule type declares the providers it supports, and GitHub results carry their evidence | In progress: provider-aware evaluation, branch settings, visibility, protection, reviews and two-factor done (M13.3a); security features and labels next |
+| M13.3 Settings and rules | Repository settings, branch protection and rulesets, required reviews, visibility, security features; each rule type declares the providers it supports, and GitHub results carry their evidence | Done: provider-aware evaluation, branch settings, visibility, protection, reviews and two-factor (M13.3a); security features and label drift (M13.3b). Fake-tested only; the **to verify** items need a live organization |
 | M13.4 Change evidence and webhooks | Pull requests, reviews, workflow runs, deployments and releases; signed webhooks processed once per delivery and de-duplicated against scheduled collection | Planned |
 | M13.5 Issue register and acceptance | GitHub issues in the register (pull requests left out); one workspace with a GitLab and a GitHub connection evaluated by one baseline | Planned |
 
@@ -75,7 +75,7 @@ A 403 or 404 caused by plan or licensing is recorded as a capability (`unsupport
 
 ## Rule types
 
-A rule type keeps its name on every provider. Each one declares the providers it is judged on (`baluarte.policy.evaluation.project.PROVIDER_EVALUATORS`); on any other provider its result is `unsupported`, never `pass`. GitHub equivalents get their own names only where the concepts differ. Implemented in M13.3a: the first four rows below.
+A rule type keeps its name on every provider. Each one declares the providers it is judged on (`baluarte.policy.evaluation.project.PROVIDER_EVALUATORS`); on any other provider its result is `unsupported`, never `pass`. GitHub equivalents get their own names only where the concepts differ. Implemented: the first four rows below (M13.3a), `github.repository.security_features` and `gitlab.labels.consistent` (M13.3b).
 
 | GitLab rule type | GitHub equivalent | Basis |
 |---|---|---|
@@ -85,10 +85,11 @@ A rule type keeps its name on every provider. Each one declares the providers it
 | `gitlab.group.two_factor_required` | Organization `two_factor_requirement_enabled` | **Done (M13.3a).** Null (shown only to owners) gives `unknown`. GitHub removes members without two-factor authentication when it is required, so there is no grace period and `max_grace_hours` holds. Owner visibility is **to verify** |
 | `gitlab.project.privileged_members` | Collaborators with admin or maintain permission | **To verify** |
 | `gitlab.project.access_tokens` | Fine-grained tokens with access to the organization | **To verify**; `unsupported` until confirmed |
-| `gitlab.security_policy.scan_execution` | Secret scanning and code scanning enabled | Secret and Code scanning pages; GitHub Advanced Security licensing applies |
+| `gitlab.security_policy.scan_execution` | None: GitHub has no scan execution policies | `unsupported`; use `github.repository.security_features` |
+| `github.repository.security_features` (GitHub only) | `security_and_analysis` statuses; a code scanning analysis of the default branch | **Done (M13.3b).** `features`: any of `secret_scanning`, `secret_scanning_push_protection`, `dependabot_security_updates`, `code_scanning`; passes when each is enabled. A status GitHub does not report (it needs admin rights on the repository) is `unknown`; code scanning without GitHub Advanced Security is `unsupported`. `unsupported` on GitLab projects. The 403 wording for a missing licence is **to verify** |
 | `gitlab.security_policy.approval` | None | GitLab only |
 | `gitlab.change.reviewed`, `gitlab.change.pipeline_passed`, `gitlab.change.deployed_after_review` | Pull request reviews, workflow runs or checks, deployments | **To verify** in M13.4 |
-| `gitlab.labels.consistent` | Repository labels | **To verify** in M13.3 |
+| `gitlab.labels.consistent` | Repository labels | **Done (M13.3b).** Organizations define no labels that repositories inherit, so each repository in the taxonomy's scope must define every taxonomy label itself ([LABELS.md](LABELS.md#github)). Label plans are refused on GitHub connections for now |
 
 ## Connections and collection
 
@@ -102,6 +103,8 @@ Implemented in M13.2 (migration `0036`). Everything below is tested against a sc
 - **Normalized inventory** ([ADR-0014](architecture/ADR-0014-provider-integrations.md)). The organization is a `gitlab_group` row and each repository a `gitlab_project` row, with GitHub's IDs, and observations record allowlisted fields. Repositories are reconciled like GitLab projects: one not listed again is looked up at `/repositories/{id}`, and becomes `missing` on 404 or `inaccessible` on 403. Teams are `provider_team` rows; organization members (roles `admin`, `member`) and team members (`maintainer`, `member`) are `provider_membership` rows. Teams and memberships not listed again become `missing`.
 - **Default-branch settings** (M13.3a). After discovery, each active, unarchived repository with a default branch gets one observation (`GET /repos/:owner/:repo/branches/:branch (protection and rules)`): whether the branch is protected and by what, classic protection's review settings, and each active ruleset rule's type and review parameters. People, teams and bypass actors are not kept. A 403 asking for a plan upgrade is recorded as `unsupported`; any other failure leaves the settings unread and the run partial.
 - **Evaluation** (M13.3a). Every collection queues an evaluation of the connection, judged as in [Rule types](#rule-types). Repository listings are recorded as `GET /orgs/:org/repos` for every organization.
+- **Security features** (M13.3b). In the same run, each of those repositories gets one observation (`GET /repos/:owner/:repo (security_and_analysis, code scanning)`): the status of secret scanning, push protection and Dependabot security updates as `GET /repos/:owner/:repo` reports them (null when not reported), and code scanning from `GET /repos/:owner/:repo/code-scanning/analyses?ref=refs/heads/:branch&per_page=1` (an analysis: enabled; none or a 404: disabled; a 403 naming Advanced Security: unsupported).
+- **Labels** (M13.3b). Then a collection run of kind `labels` reads each in-scope repository's labels (`GET /repos/:owner/:repo/labels`) in the shape GitLab project labels are recorded in, colour as `#rrggbb`. A refusal is recorded as such and makes the run partial, never "no labels".
 - **Not yet.** Their issues do not join the register until M13.5, and the GitLab diagnostics (*Test connection*) are not offered for them.
 
 ## Open questions

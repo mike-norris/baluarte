@@ -9,6 +9,13 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- GitHub security features and label drift (roadmap M13.3b): a GitHub-only rule type,
+  `github.repository.security_features`, requires secret scanning, push protection, Dependabot
+  security updates or code scanning, read for each repository after discovery; a setting GitHub
+  does not report is `unknown`, and code scanning without Advanced Security is `unsupported`.
+  Repository labels are collected as a `labels` run and `gitlab.labels.consistent` is judged on
+  GitHub, each repository defining the taxonomy's labels itself. Default control mappings for the
+  new rule type. Label plans are refused on GitHub connections.
 - GitHub repositories are evaluated (roadmap M13.3a): each rule type declares the providers it is
   judged on, and on any other its result is `unsupported`, never `pass`. On GitHub, visibility,
   default-branch protection (classic protection or ruleset rules), required reviews and the

@@ -27,6 +27,7 @@ import {
   TWO_FACTOR_TYPE,
   VISIBILITY_TYPE,
 } from "../policies/yaml";
+import { SECURITY_FEATURES_TYPE } from "../policies/coverage";
 
 export const CONTROLS = "/controls";
 
@@ -76,6 +77,7 @@ export const ruleTypes: readonly string[] = [
   REVIEWED_TYPE,
   PIPELINE_TYPE,
   DEPLOYED_TYPE,
+  SECURITY_FEATURES_TYPE,
 ];
 
 export const ruleTypeLabels: Record<string, string> = {
@@ -90,6 +92,7 @@ export const ruleTypeLabels: Record<string, string> = {
   [REVIEWED_TYPE]: "Changes reviewed",
   [PIPELINE_TYPE]: "Changes passed their pipeline",
   [DEPLOYED_TYPE]: "Deployments of reviewed changes",
+  [SECURITY_FEATURES_TYPE]: "GitHub security features",
 };
 
 export function ruleTypeLabel(ruleType: string): string {

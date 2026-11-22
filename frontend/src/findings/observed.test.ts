@@ -134,4 +134,19 @@ describe("observed value summaries", () => {
     expect(observedSummary("gitlab.project.visibility", "private")).toBeNull();
     expect(observedSummary("gitlab.branch.default_protected", { protected: true })).toBeNull();
   });
+
+  it("summarizes GitHub security features, naming any not reported", () => {
+    expect(
+      observedSummary("github.repository.security_features", {
+        features: {
+          secret_scanning: "enabled",
+          secret_scanning_push_protection: "disabled",
+          dependabot_security_updates: null,
+          code_scanning: "unsupported",
+        },
+      }),
+    ).toBe(
+      "On GitHub: secret scanning enabled, push protection disabled, Dependabot security updates not reported, code scanning unsupported.",
+    );
+  });
 });

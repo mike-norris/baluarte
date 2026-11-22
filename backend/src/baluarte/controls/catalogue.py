@@ -163,6 +163,19 @@ DEFAULT_MAPPING: tuple[DefaultPair, ...] = tuple(
             },
         ),
         *_pairs(
+            "github.repository.security_features",
+            {
+                (SOC2, "CC7.1"): "Secret, dependency and code scanning detect vulnerabilities.",
+                (ISO27001, "A.8.8"): "Dependabot and code scanning find technical vulnerabilities.",
+                (
+                    ISO27001,
+                    "A.8.28",
+                ): "Code scanning and push protection check code as it is written.",
+                (NIST, "RA-5"): "Code and dependency scanning are vulnerability scanning.",
+                (NIST, "SI-2"): "Dependabot security updates correct known flaws.",
+            },
+        ),
+        *_pairs(
             "gitlab.security_policy.approval",
             {
                 (SOC2, "CC8.1"): "An approval policy requires changes to be approved before merge.",

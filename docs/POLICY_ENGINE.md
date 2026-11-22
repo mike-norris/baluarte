@@ -55,6 +55,7 @@ Each rule type supports SOC 2, ISO 27001 and NIST 800-53 controls through the de
 | `gitlab.change.reviewed` | `window_days`: 1 to 365, default 90. `min_approvals`: 1 to 20, default 1. `forbid_self_approval`: default `true`. `allow_direct_push`: default `false` | Every merge request merged into the default branch in the window was approved by at least `min_approvals` people other than its author, and no commit was pushed directly unless allowed. |
 | `gitlab.change.pipeline_passed` | `window_days`. `require_tests`: default `false` | The pipeline for the last commit of every change in the window succeeded, with a test report and no failed tests when `require_tests`. |
 | `gitlab.change.deployed_after_review` | `window_days` | Every successful production deployment in the window deployed a commit of a reviewed merge request. |
+| `github.repository.security_features` | `features`: 1 to 4 distinct values from `secret_scanning`, `secret_scanning_push_protection`, `dependabot_security_updates`, `code_scanning` | GitHub only: every listed feature is enabled for the repository ([GITHUB_INTEGRATION.md](GITHUB_INTEGRATION.md#rule-types)). |
 | `gitlab.labels.consistent` | `ignore`: drift kinds that do not count (any of `missing`, `misplaced`, `misnamed`, `color`, `description`, `duplicate`, `unknown_label`) | No label drift from the taxonomy in force is on the project or a group above it ([LABELS.md](LABELS.md)). Unknown without a taxonomy or when labels could not be read. |
 
 The security policy rules read what security policy discovery stored; a project whose policies were not read in full is `unknown`. [EVALUATION.md](EVALUATION.md#gitlab-security-policy-rules) gives the exact semantics. The access-control and approval rules read what project discovery stored for each project ([EVALUATION.md](EVALUATION.md#access-control-and-merge-request-approval-rules)).
@@ -63,7 +64,7 @@ The change rules judge the change evidence Baluarte recorded over the window; se
 
 ### Providers
 
-A rule type keeps its name and fields on every provider; each provider that can judge it reads its own evidence. On GitHub repositories (M13.3) `gitlab.project.visibility`, `gitlab.branch.default_protected`, `gitlab.project.merge_request_approvals` and `gitlab.group.two_factor_required` are judged as [GITHUB_INTEGRATION.md](GITHUB_INTEGRATION.md#rule-types) describes. Every other rule type, and a rule that sets something GitHub has no equivalent for (`forbid_committer_approval` or `forbid_override`), is `unsupported` there, never `pass`.
+A rule type keeps its name and fields on every provider; each provider that can judge it reads its own evidence. On GitHub repositories (M13.3) `gitlab.project.visibility`, `gitlab.branch.default_protected`, `gitlab.project.merge_request_approvals` `gitlab.group.two_factor_required` and `gitlab.labels.consistent` are judged as [GITHUB_INTEGRATION.md](GITHUB_INTEGRATION.md#rule-types) describes, and `github.repository.security_features` is judged only there (on GitLab projects it is `unsupported`). Every other rule type, and a rule that sets something GitHub has no equivalent for (`forbid_committer_approval` or `forbid_override`), is `unsupported` there, never `pass`.
 
 Any other `type` is rejected. New rule types are added to the schema, and old ones are never redefined; incompatible changes get a new `apiVersion`.
 

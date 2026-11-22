@@ -142,6 +142,23 @@ function tokens(observed: unknown): string | null {
   return `${parts.join("; ")}.`;
 }
 
+const featureNames: Record<string, string> = {
+  secret_scanning: "secret scanning",
+  secret_scanning_push_protection: "push protection",
+  dependabot_security_updates: "Dependabot security updates",
+  code_scanning: "code scanning",
+};
+
+function securityFeatures(observed: Payload): string | null {
+  const features = isRecord(observed.features) ? observed.features : null;
+  if (!features) return null;
+  const parts = Object.entries(featureNames).map(([key, name]) => {
+    const status = features[key];
+    return `${name} ${typeof status === "string" ? status : "not reported"}`;
+  });
+  return `On GitHub: ${parts.join(", ")}.`;
+}
+
 function twoFactor(observed: Payload): string | null {
   const groups = records(observed.groups);
   const enforcedBy = observed.enforced_by;
@@ -190,6 +207,8 @@ export function observedSummary(ruleType: string, observed: unknown): string | n
       return members(observed);
     case "gitlab.group.two_factor_required":
       return twoFactor(observed);
+    case "github.repository.security_features":
+      return securityFeatures(observed);
     case "gitlab.change.reviewed":
     case "gitlab.change.pipeline_passed":
     case "gitlab.change.deployed_after_review":

@@ -19,6 +19,7 @@ import {
 } from "./yaml";
 
 export const LABELS_TYPE = "gitlab.labels.consistent";
+export const SECURITY_FEATURES_TYPE = "github.repository.security_features";
 
 export interface RuleTypeCoverage {
   rule_type: string;
@@ -107,6 +108,10 @@ export const ruleTypeInfo: Record<string, { name: string; proves: string }> = {
   [LABELS_TYPE]: {
     name: "Label consistency",
     proves: "Labels follow the label taxonomy.",
+  },
+  [SECURITY_FEATURES_TYPE]: {
+    name: "GitHub security features",
+    proves: "Secret scanning, Dependabot and code scanning are on for each GitHub repository.",
   },
 };
 

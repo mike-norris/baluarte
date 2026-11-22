@@ -99,6 +99,12 @@ def github(**overrides: Any) -> FakeGitHub:
         },
         "GET /repos/acme/api/rules/branches/main": [],
         "GET /repos/acme/web/rules/branches/main": [],
+        "GET /repos/acme/api": repo(1, "api"),
+        "GET /repos/acme/web": repo(2, "web", visibility="public"),
+        "GET /repos/acme/api/code-scanning/analyses": [],
+        "GET /repos/acme/web/code-scanning/analyses": [],
+        "GET /repos/acme/api/labels": [],
+        "GET /repos/acme/web/labels": [],
         "GET /user": {"login": "ada"},
         "GET /user/memberships/orgs/acme": {"role": "admin"},
     }
@@ -189,7 +195,12 @@ def test_a_github_organization_is_added_and_discovered(
                 select(CollectionRun).where(CollectionRun.instance_id == instance.id)
             )
         }
-        assert runs == {"capabilities": "succeeded", "groups": "succeeded", "projects": "succeeded"}
+        assert runs == {
+            "capabilities": "succeeded",
+            "groups": "succeeded",
+            "projects": "succeeded",
+            "labels": "succeeded",
+        }
         sources = set(
             db.scalars(
                 select(Observation.source).where(Observation.instance_id == instance.id)

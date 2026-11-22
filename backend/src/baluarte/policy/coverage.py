@@ -144,7 +144,7 @@ def coverage(db: Session, instance: GitLabInstance | None) -> Coverage:
         evaluator = evaluators.get(rule_type)
         capability = evaluator.capability if evaluator is not None else None
         supported: bool | None = _supported(capability, probes)
-        if provider != "gitlab" and provider not in providers_of(rule_type):
+        if provider not in providers_of(rule_type):
             supported = False
         refs = sorted(used.get(rule_type, set()), key=lambda ref: (ref.name, ref.version))
         rule_types.append(
