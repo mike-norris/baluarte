@@ -47,9 +47,9 @@ def facts(db: Session, project: GitLabProject, as_of: datetime | None = None) ->
         return LabelFacts(ref, False, (), ())
     above = {gitlab_id for kind, gitlab_id in drift.chain(found, target) if kind == "group"}
     groups = {gid: group for gid, group in found.groups.items() if gid in above}
-    narrowed = drift.Inventory(groups, [target])
+    narrowed = drift.Inventory(groups, [target], found.flat)
     spec = spec_of(taxonomy)
-    if not any(tree.projects for tree in drift.hierarchies(spec, narrowed)):
+    if not any(drift.projects_of(tree) for tree in drift.hierarchies(spec, narrowed)):
         return LabelFacts(ref, False, (), ())
     owners = {("project", target.row_id)} | {("group", group.row_id) for group in groups.values()}
     labels = drift.observations(db, project.instance_id, as_of, only=owners)

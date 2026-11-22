@@ -313,6 +313,69 @@
       "title": "DefaultBranchProtectedRule",
       "type": "object"
     },
+    "GitHubSecurityFeaturesRule": {
+      "additionalProperties": false,
+      "description": "Passes when every feature in ``features`` is on for the GitHub repository: secret\nscanning, push protection and Dependabot security updates as the repository reports them, and\ncode scanning when its default branch has a code scanning analysis.",
+      "properties": {
+        "id": {
+          "description": "Unique within the baseline; named in findings.",
+          "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
+          "title": "Id",
+          "type": "string"
+        },
+        "severity": {
+          "default": "medium",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "type": {
+          "const": "github.repository.security_features",
+          "title": "Type",
+          "type": "string"
+        },
+        "features": {
+          "items": {
+            "enum": [
+              "secret_scanning",
+              "secret_scanning_push_protection",
+              "dependabot_security_updates",
+              "code_scanning"
+            ],
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "Features",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "features"
+      ],
+      "title": "GitHubSecurityFeaturesRule",
+      "type": "object"
+    },
     "LabelsConsistentRule": {
       "additionalProperties": false,
       "description": "Passes when no label drift from the label taxonomy in force reaches the project: on the\nproject itself or on a group above it (docs/LABELS.md). Drift kinds in ``ignore`` do not\ncount; a group or project whose labels could not be read is never ignored.",
@@ -778,6 +841,7 @@
           "items": {
             "discriminator": {
               "mapping": {
+                "github.repository.security_features": "#/$defs/GitHubSecurityFeaturesRule",
                 "gitlab.branch.default_protected": "#/$defs/DefaultBranchProtectedRule",
                 "gitlab.change.deployed_after_review": "#/$defs/ChangeDeployedAfterReviewRule",
                 "gitlab.change.pipeline_passed": "#/$defs/ChangePipelinePassedRule",
@@ -829,6 +893,9 @@
               },
               {
                 "$ref": "#/$defs/LabelsConsistentRule"
+              },
+              {
+                "$ref": "#/$defs/GitHubSecurityFeaturesRule"
               }
             ]
           },

@@ -800,7 +800,7 @@ def _plan_owners(
             current = (
                 found.groups.get(current.parent_gitlab_id) if current.parent_gitlab_id else None
             )
-    narrowed = drift.Inventory({gid: found.groups[gid] for gid in chosen}, projects)
+    narrowed = drift.Inventory({gid: found.groups[gid] for gid in chosen}, projects, found.flat)
     owners = [Owner("group", g.row_id, g.gitlab_id, g.path) for g in narrowed.groups.values()]
     owners += [Owner("project", p.row_id, p.gitlab_id, p.path) for p in projects]
     return sorted(owners, key=lambda o: (o.type, o.path)), narrowed
@@ -829,6 +829,13 @@ def create_plan(
     if settings is None or instance is None:
         raise _refusal(
             status.HTTP_409_CONFLICT, "gitlab_not_configured", "GitLab is not configured"
+        )
+    if instance.provider != "gitlab":
+        raise _refusal(
+            status.HTTP_409_CONFLICT,
+            "provider_not_supported",
+            "Label plans apply to GitLab connections only; on GitHub, label drift is reported but "
+            "not yet remediated.",
         )
     current = taxonomies.in_force(db, instance.id)
     if current is None:

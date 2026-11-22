@@ -59,6 +59,10 @@ For each hierarchy (the topmost group in the taxonomy's scope, its subgroups and
 
 When the top-level group could not be read, its hierarchy reports only `unknown`: nothing is claimed missing. Each item lists the observations it was judged from. Personal namespaces are not covered.
 
+### GitHub
+
+GitHub organizations define no labels that repositories inherit, so on a GitHub connection each repository in the taxonomy's scope is its own hierarchy: every kind above is judged on the repository, and a label is `missing` when the repository itself does not define it. The `github.collect` job reads the labels (`GET /repos/:owner/:repo/labels`) as a `labels` run ([GITHUB_INTEGRATION.md](GITHUB_INTEGRATION.md#connections-and-collection)). Label plans are refused on GitHub connections for now (`409 provider_not_supported`).
+
 ## The rule
 
 ```yaml

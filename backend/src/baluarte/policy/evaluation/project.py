@@ -24,6 +24,7 @@ from baluarte.db.models import (
 from baluarte.evidence.observations import latest
 from baluarte.integrations.github.branches import BRANCH_SOURCE as GITHUB_BRANCH_SOURCE
 from baluarte.integrations.github.discovery import ORG_SOURCE as GITHUB_ORG_SOURCE
+from baluarte.integrations.github.repositories import SECURITY_SOURCE as GITHUB_SECURITY_SOURCE
 from baluarte.integrations.gitlab.access import (
     ACCESS_TOKENS_SOURCE,
     APPROVALS_SOURCE,
@@ -88,23 +89,27 @@ EVALUATORS: Mapping[str, RuleEvaluator] = {
 
 # Each provider's evaluators (ADR-0014): a rule type a provider has no evaluator for is
 # ``unsupported`` on that provider's projects, never left out and never passed.
+_GITHUB = {evaluator.rule_type: evaluator for evaluator in GITHUB_EVALUATORS}
 PROVIDER_EVALUATORS: Mapping[str, Mapping[str, RuleEvaluator]] = {
-    "gitlab": EVALUATORS,
+    "gitlab": {
+        **EVALUATORS,
+        **{
+            rule_type: not_on(evaluator, "GitLab")
+            for rule_type, evaluator in _GITHUB.items()
+            if rule_type not in EVALUATORS
+        },
+    },
     "github": {
-        rule_type: next(
-            (found for found in GITHUB_EVALUATORS if found.rule_type == rule_type),
-            not_on(evaluator, "GitHub"),
-        )
-        for rule_type, evaluator in EVALUATORS.items()
+        **{rule_type: not_on(evaluator, "GitHub") for rule_type, evaluator in EVALUATORS.items()},
+        **_GITHUB,
     },
 }
 
 
 def providers_of(rule_type: str) -> tuple[str, ...]:
     """The providers whose projects ``rule_type`` is evaluated on (not ``unsupported``)."""
-    github = {evaluator.rule_type for evaluator in GITHUB_EVALUATORS}
     found = ["gitlab"] if rule_type in EVALUATORS else []
-    if rule_type in github:
+    if rule_type in _GITHUB:
         found.append("github")
     return tuple(found)
 
@@ -262,7 +267,8 @@ def project_facts(
 def github_observations(
     db: Session, project: GitLabProject
 ) -> dict[str, ProjectObservation | None]:
-    """A GitHub repository's default-branch settings and its organization, as last read."""
+    """A GitHub repository's default-branch settings, security features and organization, as
+    last read."""
     organization = db.scalars(
         select(GitLabGroup.id).where(
             GitLabGroup.instance_id == project.instance_id,
@@ -276,6 +282,7 @@ def github_observations(
     )
     return {
         GITHUB_BRANCH_SOURCE: project_observation(db, project, GITHUB_BRANCH_SOURCE),
+        GITHUB_SECURITY_SOURCE: project_observation(db, project, GITHUB_SECURITY_SOURCE),
         GITHUB_ORG_SOURCE: (
             ProjectObservation(
                 observation_id=org_observation.id,
@@ -356,10 +363,8 @@ def evaluate_project(
             context,
             project=replace(context.project, changes=change_history(db, project, evaluated_at)),
         )
-    if (
-        provider == "gitlab"
-        and context.project is not None
-        and any(rule.type == LABELS_RULE_TYPE for _, rules in in_force for rule in rules)
+    if context.project is not None and any(
+        rule.type == LABELS_RULE_TYPE for _, rules in in_force for rule in rules
     ):
         # Label drift is read only for a project a label rule is in force for.
         context = replace(

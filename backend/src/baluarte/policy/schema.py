@@ -265,6 +265,29 @@ class LabelsConsistentRule(_Rule):
         return self
 
 
+SecurityFeature = Literal[
+    "secret_scanning",
+    "secret_scanning_push_protection",
+    "dependabot_security_updates",
+    "code_scanning",
+]
+
+
+class GitHubSecurityFeaturesRule(_Rule):
+    """Passes when every feature in ``features`` is on for the GitHub repository: secret
+    scanning, push protection and Dependabot security updates as the repository reports them, and
+    code scanning when its default branch has a code scanning analysis."""
+
+    type: Literal["github.repository.security_features"]
+    features: Annotated[list[SecurityFeature], Field(min_length=1, max_length=4)]
+
+    @model_validator(mode="after")
+    def _unique(self) -> "GitHubSecurityFeaturesRule":
+        if len(set(self.features)) != len(self.features):
+            raise ValueError("features must not repeat a feature")
+        return self
+
+
 Rule = Annotated[
     ProjectVisibilityRule
     | DefaultBranchProtectedRule
@@ -277,7 +300,8 @@ Rule = Annotated[
     | ChangeReviewedRule
     | ChangePipelinePassedRule
     | ChangeDeployedAfterReviewRule
-    | LabelsConsistentRule,
+    | LabelsConsistentRule
+    | GitHubSecurityFeaturesRule,
     Field(discriminator="type"),
 ]
 RULE_TYPES = (
@@ -293,6 +317,7 @@ RULE_TYPES = (
     "gitlab.change.pipeline_passed",
     "gitlab.change.deployed_after_review",
     "gitlab.labels.consistent",
+    "github.repository.security_features",
 )
 
 

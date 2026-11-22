@@ -50,6 +50,8 @@ from baluarte.evidence.observations import verify
 from baluarte.integrations.github.branches import BRANCH_SOURCE as GITHUB_BRANCH_SOURCE
 from baluarte.integrations.github.discovery import ORG_SOURCE as GITHUB_ORG_SOURCE
 from baluarte.integrations.github.discovery import REPOSITORY_SOURCES as GITHUB_REPOSITORY_SOURCES
+from baluarte.integrations.github.repositories import LABELS_SOURCE as GITHUB_LABELS_SOURCE
+from baluarte.integrations.github.repositories import SECURITY_SOURCE as GITHUB_SECURITY_SOURCE
 from baluarte.integrations.gitlab.branches import PROTECTION_SOURCE
 from baluarte.integrations.gitlab.changes import CHANGE_READ_SOURCE, parse_time
 from baluarte.integrations.gitlab.labels import PROJECT_SOURCE as LABELS_SOURCE
@@ -114,6 +116,7 @@ EVIDENCE: Mapping[str, Evidence] = {
     **{source: Evidence((source,), _whole) for source in ACCESS_SOURCES},
     # GitHub (M13.3): the repository as listed, its default-branch settings, its organization.
     GITHUB_VISIBILITY_SOURCE: Evidence(GITHUB_REPOSITORY_SOURCES, _visibility),
+    GITHUB_SECURITY_SOURCE: Evidence((GITHUB_SECURITY_SOURCE,), _whole),
     GITHUB_BRANCH_SOURCE: Evidence((GITHUB_BRANCH_SOURCE,), _whole),
     GITHUB_ORG_SOURCE: Evidence((GITHUB_ORG_SOURCE,), _whole, target="organization"),
 }
@@ -126,7 +129,7 @@ CHANGE_EVIDENCE = Evidence((CHANGE_READ_SOURCE,), None, ("ok", "partial"))
 
 # The label rule judges the label observations of the project and the groups above it, read with
 # the project's own label observation; ``backed_by_labels`` checks them.
-LABEL_EVIDENCE = Evidence((LABELS_SOURCE,), None)
+LABEL_EVIDENCE = Evidence((LABELS_SOURCE, GITHUB_LABELS_SOURCE), None)
 
 
 def evidence_for(result: RuleResult) -> Evidence:

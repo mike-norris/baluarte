@@ -166,7 +166,7 @@ def test_only_applied_versions_count_not_proposed_or_unapplied_ones(engine: Engi
     assert "nist_800_53_moderate:RA-5" in control_keys(body)
     ra5 = next(item for item in body["controls"] if item["control_id"] == "RA-5")
     assert ra5["title"] == next(c.title for c in CONTROLS if c.id == "RA-5")
-    assert ra5["rule_types"] == [SCAN]
+    assert ra5["rule_types"] == [SCAN, "github.repository.security_features"]
     assert ra5["status_change"] is None
     assert body["baselines"] == [
         {

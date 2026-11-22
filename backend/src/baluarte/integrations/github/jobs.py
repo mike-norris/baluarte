@@ -1,11 +1,11 @@
 """The GitHub collection job (roadmap M13.2, M13.3).
 
 ``github.collect`` collects one GitHub connection in order: capability detection, the
-organization, then its repositories, teams and memberships, then each repository's default-branch
-settings. Each part is a collection run of the same kinds as GitLab's (``capabilities``,
-``groups``, ``projects``), so freshness and the Connections page report GitHub connections the
-same way. An evaluation is queued after each collection; each rule type declares the providers
-it evaluates (``baluarte.policy.evaluation.project``).
+organization, its repositories, teams and memberships, each repository's default-branch settings
+and security features, then the labels. Each part is a collection run of the kinds GitLab uses
+(``capabilities``, ``groups``, ``projects``, ``labels``), so freshness and the Connections page
+report GitHub connections the same way. An evaluation is queued after each collection; each rule
+type declares the providers it evaluates (``baluarte.policy.evaluation.project``).
 """
 
 import logging
@@ -22,6 +22,7 @@ from baluarte.integrations.github.branches import read_branches, unconfirmed
 from baluarte.integrations.github.capabilities import detect
 from baluarte.integrations.github.client import GitHubClient, organization_of
 from baluarte.integrations.github.discovery import discover_organization
+from baluarte.integrations.github.repositories import read_all_labels, read_repositories, unread
 from baluarte.integrations.gitlab.capabilities import observe_snapshot, record_snapshot
 from baluarte.integrations.gitlab.client import GitLabError
 from baluarte.integrations.gitlab.jobs import GITHUB_COLLECT as COLLECT
@@ -85,6 +86,7 @@ def make_collect(transport: httpx.BaseTransport | None = None) -> Handler:
                 provenance = Provenance(projects_run, job.id)
                 result = discover_organization(client, engine, connection, provenance)
                 branches = read_branches(client, engine, connection, provenance)
+                security = read_repositories(client, engine, connection, provenance)["security"]
             except GitLabError as error:
                 message = f"GitHub discovery failed: {error}"
                 finish_run(engine, groups_run, "failed", error=message)
@@ -100,9 +102,13 @@ def make_collect(transport: httpx.BaseTransport | None = None) -> Handler:
         problems = []
         if repos.reconciled["unchanged"]:
             problems.append(f"{repos.reconciled['unchanged']} repositories could not be confirmed")
-        unread = unconfirmed(branches.items())
-        if unread:
-            problems.append(f"the default-branch settings of {unread} repositories were not read")
+        not_read = unconfirmed(branches.items())
+        if not_read:
+            problems.append(f"the default-branch settings of {not_read} repositories were not read")
+        if unread(security.items()):
+            problems.append(
+                f"the security features of {unread(security.items())} repositories were not read"
+            )
         finish_run(
             engine,
             projects_run,
@@ -114,10 +120,33 @@ def make_collect(transport: httpx.BaseTransport | None = None) -> Handler:
                 "teams": result.teams,
                 "members": result.members,
                 "branches": branches,
+                "security": security,
             },
             error="; ".join(problems) or None,
         )
-        # The repositories and their settings are new evidence: evaluate, once per run.
+        labels_run = start_run(engine, url, "labels", job)
+        try:
+            with GitHubClient(auth, timeout_seconds=timeout, transport=transport) as client:
+                labels = read_all_labels(client, engine, connection, Provenance(labels_run, job.id))
+        except GitLabError as error:
+            finish_run(engine, labels_run, "failed", error=f"GitHub labels failed: {error}")
+            labels = None
+        except Exception as error:
+            finish_run(
+                engine, labels_run, "failed", error=f"unexpected error: {type(error).__name__}"
+            )
+            raise
+        if labels is not None:
+            missed = unread(labels.items())
+            finish_run(
+                engine,
+                labels_run,
+                "partial" if missed else "succeeded",
+                seen=sum(labels.values()),
+                counts=labels,
+                error=f"the labels of {missed} repositories were not read" if missed else None,
+            )
+        # The repositories, their settings and labels are new evidence: evaluate, once per run.
         with Session(engine) as db:
             queue_after_collection(db, projects_run, payload_for(connection.id))
             db.commit()

@@ -70,6 +70,11 @@ Each default pair carries a one-sentence rationale. Every rule type supports at 
 | `gitlab.security_policy.scan_execution` | NIST 800-53 RA-5 | Scheduled and pipeline scans are vulnerability scanning. |
 | `gitlab.security_policy.scan_execution` | NIST 800-53 SA-11 | Scans in the pipeline are developer security testing. |
 | `gitlab.security_policy.scan_execution` | NIST 800-53 SI-2 | Scan results identify flaws to correct. |
+| `github.repository.security_features` | SOC 2 CC7.1 | Secret, dependency and code scanning detect vulnerabilities. |
+| `github.repository.security_features` | ISO 27001 A.8.8 | Dependabot and code scanning find technical vulnerabilities. |
+| `github.repository.security_features` | ISO 27001 A.8.28 | Code scanning and push protection check code as it is written. |
+| `github.repository.security_features` | NIST 800-53 RA-5 | Code and dependency scanning are vulnerability scanning. |
+| `github.repository.security_features` | NIST 800-53 SI-2 | Dependabot security updates correct known flaws. |
 | `gitlab.security_policy.approval` | SOC 2 CC8.1 | An approval policy requires changes to be approved before merge. |
 | `gitlab.security_policy.approval` | ISO 27001 A.8.25 | Required approvals put review into the development life cycle. |
 | `gitlab.security_policy.approval` | ISO 27001 A.8.32 | Approval before merge is a step of the change process. |
