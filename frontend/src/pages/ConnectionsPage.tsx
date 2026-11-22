@@ -21,6 +21,7 @@ import { errorReasons } from "../api/send";
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
+import { WebhookPanel } from "../connections/WebhookPanel";
 import { freshnessColor, freshnessLabels } from "../freshness/status";
 import { asApiError, Problems, Values } from "../settings/parts";
 import { formatTime } from "../time";
@@ -412,6 +413,9 @@ function ConnectionCard({
         })}
       </dl>
       {report && <DiagnosticsResult report={report} />}
+      {manage && connection.provider === "github" && (
+        <WebhookPanel connectionId={connection.id} csrf={csrf} />
+      )}
       {manage && (
         <div className="d-flex flex-wrap gap-2">
           {connection.provider === "gitlab" && (

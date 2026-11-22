@@ -292,6 +292,45 @@ class ProviderTeam(Base):
     last_seen_at: Mapped[datetime] = utc_now()
 
 
+WEBHOOK_STATUSES = ("queued", "processed", "ignored", "failed")
+
+
+class WebhookDelivery(Base):
+    """A webhook delivery a connection accepted (GitHub; roadmap M13.4b), once per delivery ID.
+
+    ``queued`` until a read covers it, then ``processed``; ``ignored`` for an event Baluarte does
+    not act on; ``failed`` when its read failed. The body is never stored, only its SHA-256.
+    """
+
+    __tablename__ = "webhook_delivery"
+    __table_args__ = (
+        UniqueConstraint("instance_id", "delivery_id"),
+        one_of("status", WEBHOOK_STATUSES),
+        CheckConstraint("char_length(delivery_id) BETWEEN 1 AND 100", name="delivery_id_length"),
+        sha256_hex("body_sha256"),
+        Index(
+            "ix_webhook_delivery_pending",
+            "instance_id",
+            "repository_id",
+            "received_at",
+            postgresql_where=text("status = 'queued'"),
+        ),
+    )
+
+    id: Mapped[int] = pk()
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    delivery_id: Mapped[str] = mapped_column(Text)
+    event: Mapped[str] = mapped_column(Text)
+    action: Mapped[str | None] = mapped_column(Text)
+    repository_id: Mapped[int | None] = mapped_column(BigInteger)
+    body_sha256: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text)
+    job_id: Mapped[int | None] = mapped_column(BigInteger)
+    received_at: Mapped[datetime] = utc_now()
+    processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str | None] = mapped_column(Text)
+
+
 class ProviderMembership(Base):
     """Who belongs to the organization (``subject_kind`` ``organization``) or a team, and their
     role there, as last listed (roadmap M13.2). Someone no longer listed is ``missing``."""
@@ -2342,7 +2381,8 @@ class StoredSecret(Base):
     __tablename__ = "app_secret"
     __table_args__ = (
         CheckConstraint(
-            "name IN ({}) OR name ~ '^connection_token:[1-9][0-9]*$'".format(
+            "name IN ({}) OR name ~ '^connection_token:[1-9][0-9]*$' "
+            "OR name ~ '^connection_webhook_secret:[1-9][0-9]*$'".format(
                 ", ".join(f"'{name}'" for name in SECRET_NAMES)
             ),
             name="name_allowed",

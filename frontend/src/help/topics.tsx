@@ -1203,7 +1203,11 @@ export const helpTopics: readonly HelpTopic[] = [
             <strong>GitHub organizations</strong> on github.com are added with a fine-grained
             personal access token or a GitHub App installation (its App ID, installation ID and
             private key). Grant read access only. Baluarte collects the organization, its
-            repositories, teams and members; GitHub results are not evaluated yet.
+            repositories, teams and members, branch settings, security features, labels and changes,
+            and evaluates them like GitLab&apos;s. A <strong>webhook</strong> on a GitHub connection
+            makes Baluarte read a repository again within seconds of a change: set it up on the
+            connection and copy its URL and secret, shown once, into the organization&apos;s
+            settings on GitHub.
           </li>
           <li>
             <strong>Pause</strong> stops scheduled collection; <strong>Remove</strong> also forgets

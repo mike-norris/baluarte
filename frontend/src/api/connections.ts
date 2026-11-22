@@ -132,3 +132,48 @@ export async function testConnection(id: number, csrf: string): Promise<Diagnost
 export async function collectConnection(id: number, csrf: string): Promise<void> {
   await sendJson("POST", `/api/v1/connections/${String(id)}/collect`, undefined, csrf);
 }
+
+/** A delivery a GitHub connection's webhook accepted (roadmap M13.4b). */
+export interface WebhookDelivery {
+  delivery_id: string;
+  event: string;
+  action: string | null;
+  repository_id: number | null;
+  status: "queued" | "processed" | "ignored" | "failed";
+  received_at: string;
+  processed_at: string | null;
+  error: string | null;
+}
+
+export interface Webhook {
+  configured: boolean;
+  /** The payload URL to give GitHub. */
+  url: string;
+  /** The events to subscribe the webhook to. */
+  events: string[];
+  deliveries: WebhookDelivery[];
+}
+
+/** Shown once, when the secret is set or rotated. */
+export interface WebhookSecret {
+  url: string;
+  secret: string;
+  events: string[];
+}
+
+export function readWebhook(id: number, signal?: AbortSignal): Promise<Webhook> {
+  return getJson(`/api/v1/connections/${String(id)}/webhook`, undefined, signal);
+}
+
+export async function setWebhook(id: number, csrf: string): Promise<WebhookSecret> {
+  return (await sendJson<WebhookSecret>(
+    "POST",
+    `/api/v1/connections/${String(id)}/webhook`,
+    undefined,
+    csrf,
+  )) as WebhookSecret;
+}
+
+export async function removeWebhook(id: number, csrf: string): Promise<void> {
+  await sendJson("DELETE", `/api/v1/connections/${String(id)}/webhook`, undefined, csrf);
+}

@@ -68,6 +68,7 @@ TABLES = {
     "time_cursor",
     "time_entry",
     "user_session",
+    "webhook_delivery",
     "workspace",
 }
 

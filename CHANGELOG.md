@@ -9,6 +9,13 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Signed GitHub webhooks (roadmap M13.4b): an admin can set up a webhook on a GitHub connection
+  (the secret is generated, sealed and shown once) and GitHub's deliveries to
+  `/api/v1/webhooks/github/{id}` are verified by their HMAC-SHA256 signature before anything is
+  read. Each delivery is recorded once per delivery ID, without its body, and reads the
+  repository's changes, branch settings, security features or labels again within seconds; a
+  burst of events is read once. Webhook reads record exactly what scheduled collection would and
+  never make a collection look fresh. The connection shows its latest deliveries. Migration 0037.
 - GitHub change evidence (roadmap M13.4a): each GitHub collection also reads, as a `changes`
   run, every repository's merged pull requests with their reviews, the Actions workflow runs of
   each change, direct pushes to the default branch and successful production deployments, in

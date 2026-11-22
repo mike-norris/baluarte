@@ -5,22 +5,26 @@ settings management. Tokens are write-only: the API says whether one is stored, 
 Nothing is ever written to GitLab.
 """
 
+import secrets
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import AwareDatetime, BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from baluarte import audit, connections
 from baluarte.api.v1.gitlab import gitlab_transport
-from baluarte.auth.dependencies import Principal, database, require
+from baluarte.auth.dependencies import Principal, auth_settings, database, require
 from baluarte.auth.roles import Permission
+from baluarte.auth.settings import AuthSettings
 from baluarte.configuration.crypto import SecretUnavailable, load_secret_box
-from baluarte.configuration.store import secret_stored
+from baluarte.configuration.store import delete_secret, secret_stored, write_secret
 from baluarte.connections import ConnectionConflict, ConnectionRefused
-from baluarte.db.models import GitLabInstance
+from baluarte.db.models import GitLabInstance, WebhookDelivery
+from baluarte.integrations.github import webhooks
 from baluarte.integrations.gitlab.client import GitLabClient
 from baluarte.integrations.gitlab.diagnostics import DiagnosticsReport, run_diagnostics
 from baluarte.integrations.gitlab.freshness import (
@@ -369,3 +373,155 @@ def collect_connection(
     )
     db.commit()
     return CollectionQueued(job_ids=job_ids)
+
+
+# Webhooks (GitHub; roadmap M13.4b) ------------------------------------------------------------
+
+WEBHOOK_EVENTS = sorted(webhooks.READS)
+RECENT_DELIVERIES = 20
+
+
+class WebhookDeliveryOut(BaseModel):
+    delivery_id: str
+    event: str
+    action: str | None
+    repository_id: int | None
+    status: Literal["queued", "processed", "ignored", "failed"]
+    received_at: AwareDatetime
+    processed_at: AwareDatetime | None
+    error: str | None
+
+
+class WebhookOut(BaseModel):
+    configured: bool
+    # The address to give GitHub as the webhook's payload URL.
+    url: str
+    # The events Baluarte acts on; subscribe the webhook to these.
+    events: list[str]
+    deliveries: list[WebhookDeliveryOut]
+
+
+class WebhookSecretOut(BaseModel):
+    url: str
+    # Shown once: GitHub needs it as the webhook's secret. It is sealed and never returned again.
+    secret: str
+    events: list[str]
+
+
+def _github(db: Session, connection_id: int) -> GitLabInstance:
+    row = db.get(GitLabInstance, connection_id)
+    if row is None or row.removed_at is not None:
+        raise _refused(LookupError(connection_id))
+    if row.provider != "github":
+        raise _refused(ConnectionConflict("Webhooks are set up for GitHub connections only"))
+    return row
+
+
+def _webhook_url(settings: AuthSettings, connection_id: int) -> str:
+    return f"{settings.public_url.rstrip('/')}/api/v1/webhooks/github/{connection_id}"
+
+
+@router.get(
+    "/{connection_id}/webhook",
+    response_model=WebhookOut,
+    summary="A GitHub connection's webhook",
+    description="Whether a webhook secret is set, the payload URL to give GitHub, the events to "
+    f"subscribe and the latest {RECENT_DELIVERIES} deliveries.",
+    responses=_ERRORS,
+)
+def read_webhook(
+    connection_id: ConnectionId,
+    _: Annotated[Principal, Depends(require(Permission.SETTINGS_MANAGE))],
+    db: Annotated[Session, Depends(database)],
+    settings: Annotated[AuthSettings, Depends(auth_settings)],
+) -> WebhookOut:
+    row = _github(db, connection_id)
+    recent = db.scalars(
+        select(WebhookDelivery)
+        .where(WebhookDelivery.instance_id == row.id)
+        .order_by(WebhookDelivery.received_at.desc(), WebhookDelivery.id.desc())
+        .limit(RECENT_DELIVERIES)
+    ).all()
+    return WebhookOut(
+        configured=secret_stored(db, webhooks.secret_name(row.id)),
+        url=_webhook_url(settings, row.id),
+        events=WEBHOOK_EVENTS,
+        deliveries=[
+            WebhookDeliveryOut(
+                delivery_id=item.delivery_id,
+                event=item.event,
+                action=item.action,
+                repository_id=item.repository_id,
+                status=item.status,  # type: ignore[arg-type]
+                received_at=item.received_at,
+                processed_at=item.processed_at,
+                error=item.error,
+            )
+            for item in recent
+        ],
+    )
+
+
+@router.post(
+    "/{connection_id}/webhook",
+    status_code=status.HTTP_201_CREATED,
+    response_model=WebhookSecretOut,
+    summary="Set up or rotate a GitHub connection's webhook secret",
+    description="Generates a new secret, seals it and returns it once; a previous secret stops "
+    "working at once. Give GitHub the URL and the secret, with content type `application/json`. "
+    "Requires the `X-CSRF-Token` header. Audited (never the secret).",
+    responses=_ERRORS,
+)
+def set_webhook(
+    connection_id: ConnectionId,
+    principal: Annotated[Principal, Depends(require(Permission.SETTINGS_MANAGE))],
+    db: Annotated[Session, Depends(database)],
+    settings: Annotated[AuthSettings, Depends(auth_settings)],
+) -> WebhookSecretOut:
+    row = _github(db, connection_id)
+    box = load_secret_box()
+    if box is None:
+        raise _refused(ConnectionRefused("Webhook secrets need BALUARTE_SECRET_KEY_FILE to be set"))
+    rotated = secret_stored(db, webhooks.secret_name(row.id))
+    secret = secrets.token_urlsafe(32)
+    write_secret(db, webhooks.secret_name(row.id), secret, box, principal.actor)
+    audit.record(
+        db,
+        actor=principal.actor,
+        action="connection.webhook_secret_set",
+        resource_type="gitlab_instance",
+        resource_id=str(row.id),
+        details={"url": row.base_url, "rotated": rotated},
+    )
+    db.commit()
+    return WebhookSecretOut(
+        url=_webhook_url(settings, row.id), secret=secret, events=WEBHOOK_EVENTS
+    )
+
+
+@router.delete(
+    "/{connection_id}/webhook",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Turn off a GitHub connection's webhook",
+    description="Forgets the secret, so deliveries are refused; scheduled collection goes on. "
+    "Requires the `X-CSRF-Token` header. Audited.",
+    responses=_ERRORS,
+)
+def remove_webhook(
+    connection_id: ConnectionId,
+    principal: Annotated[Principal, Depends(require(Permission.SETTINGS_MANAGE))],
+    db: Annotated[Session, Depends(database)],
+) -> None:
+    row = _github(db, connection_id)
+    if not secret_stored(db, webhooks.secret_name(row.id)):
+        return
+    delete_secret(db, webhooks.secret_name(row.id))
+    audit.record(
+        db,
+        actor=principal.actor,
+        action="connection.webhook_removed",
+        resource_type="gitlab_instance",
+        resource_id=str(row.id),
+        details={"url": row.base_url},
+    )
+    db.commit()

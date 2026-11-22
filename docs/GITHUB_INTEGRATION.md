@@ -11,7 +11,7 @@ Each fact names its source page on docs.github.com (REST API version `2022-11-28
 | M13.1 Feasibility spike | This page: authentication, versions, endpoints, permissions, plans and rate limits per collection and rule, and the step plan | Done |
 | M13.2 Provider layer and connection | Provider on connections and normalized records; GitHub App and fine-grained token connections for GitHub.com (Enterprise Server later); capability probes; rate limits and retries; organization, team, repository and membership discovery | Done |
 | M13.3 Settings and rules | Repository settings, branch protection and rulesets, required reviews, visibility, security features; each rule type declares the providers it supports, and GitHub results carry their evidence | Done: provider-aware evaluation, branch settings, visibility, protection, reviews and two-factor (M13.3a); security features and label drift (M13.3b). Fake-tested only; the **to verify** items need a live organization |
-| M13.4 Change evidence and webhooks | Pull requests, reviews, workflow runs, deployments and releases; signed webhooks processed once per delivery and de-duplicated against scheduled collection | In progress: change evidence by scheduled collection done (M13.4a, fake-tested only); signed webhooks next (M13.4b). Releases are not read |
+| M13.4 Change evidence and webhooks | Pull requests, reviews, workflow runs, deployments and releases; signed webhooks processed once per delivery and de-duplicated against scheduled collection | Done, fake-tested only: change evidence by scheduled collection (M13.4a) and signed webhooks (M13.4b). Releases are not read |
 | M13.5 Issue register and acceptance | GitHub issues in the register (pull requests left out); one workspace with a GitLab and a GitHub connection evaluated by one baseline | Planned |
 
 ## Authentication
@@ -52,7 +52,32 @@ Each fact names its source page on docs.github.com (REST API version `2022-11-28
 
 - **Signature:** `X-Hub-Signature-256: sha256=<hex>`, the HMAC-SHA256 of the raw body under the webhook secret, compared in constant time. The legacy `X-Hub-Signature` (SHA-1) is ignored.
 - **Implementation test:** the documented vector (secret `It's a Secret to Everybody`, body `Hello, World!`, signature `757107ea0eb2509fc211221cce984b8a37570b6d7586c22c46f4379c8b043e17`) becomes a test.
-- **To verify:** the delivery ID header (`X-GitHub-Delivery`) and redelivery behaviour, from "Webhook events and payloads" and "Handling webhook deliveries". Deliveries will be processed once per delivery ID, and keyed by provider IDs so they never duplicate scheduled reads.
+- **Implemented (M13.4b):** both, in `baluarte.integrations.github.webhooks` and tested with the vector. **To verify** against a live organization: the delivery ID header (`X-GitHub-Delivery`) and redelivery behaviour, from "Webhook events and payloads" and "Handling webhook deliveries".
+
+### Setting one up
+
+An admin opens *Connections*, and on a GitHub connection chooses **Set up webhook**. Baluarte generates a secret, seals it as `connection_webhook_secret:<id>` and shows it once with the payload URL (`<public URL>/api/v1/webhooks/github/<connection id>`) and the events to subscribe. In the organization's settings on GitHub, add a webhook with that URL and secret and content type `application/json`. **Rotate secret** replaces it at once; **Turn off** forgets it, and deliveries are then refused. Removing the connection forgets it too. Each change is audited (`connection.webhook_secret_set`, `connection.webhook_removed`), never with the secret. The same is available as `GET`, `POST` and `DELETE /api/v1/connections/{id}/webhook` (`settings:manage`). GitHub has to reach the public URL: a webhook is optional, and scheduled collection goes on either way.
+
+### Receiving
+
+`POST /api/v1/webhooks/github/{connection id}` takes no session or CSRF token; the signature is the authentication.
+
+1. `X-GitHub-Event` and `X-GitHub-Delivery` are required (400). The body is read up to 5 MiB (413; nginx allows the same on this path, with its own rate limit).
+2. A connection that is not GitHub, is removed or has no webhook secret answers 404. A signature that does not match answers 401. Neither is recorded, and nothing is parsed before the signature matches.
+3. The delivery is recorded once per delivery ID in `webhook_delivery`: the event, its action, the repository ID and the SHA-256 of the body, never the body. A repeat answers `duplicate` (202) and does nothing.
+4. An event Baluarte acts on is `queued` with a `github.webhook` job that runs 15 seconds later; anything else is `ignored`, as is every delivery while the connection is paused.
+
+| Events | What is read |
+|---|---|
+| `pull_request` (`closed`), `pull_request_review`, `workflow_run` (`completed`), `deployment`, `deployment_status`, `push` | The repository's changes, as the `changes` run reads them ([CHANGE_EVIDENCE.md](CHANGE_EVIDENCE.md#github)) |
+| `branch_protection_rule`, `repository_ruleset` | The repository's default-branch settings |
+| `security_and_analysis` | The repository's security features |
+| `label` | The repository's labels |
+| `repository`, `organization`, `member`, `membership`, `team`, `team_add`; any event about a repository not in the inventory, archived or out of monitoring scope | A full collection of the connection, unless one is already waiting |
+
+A read covers every delivery still queued for the same repository and kind of read that arrived before it started, so a burst of events is read once and none is lost: one that arrives during a read gets its own. Then an evaluation of the connection is queued, unless one is waiting. A read that could not be completed marks its deliveries `failed` with the reason; what was read is recorded, and the next scheduled collection reads the rest.
+
+Webhook reads are not collection runs: their observations and changes name the job, not a run, so they never make a collection look fresh. They write exactly what scheduled collection would, through the same code: observations are only added when they differ from the latest one, and changes are upserted on their provider IDs, so webhooks and scheduled collection never duplicate a record. The 20 latest deliveries and their statuses are shown on the connection.
 
 ## Collections
 
@@ -106,7 +131,8 @@ Implemented in M13.2 (migration `0036`). Everything below is tested against a sc
 - **Security features** (M13.3b). In the same run, each of those repositories gets one observation (`GET /repos/:owner/:repo (security_and_analysis, code scanning)`): the status of secret scanning, push protection and Dependabot security updates as `GET /repos/:owner/:repo` reports them (null when not reported), and code scanning from `GET /repos/:owner/:repo/code-scanning/analyses?ref=refs/heads/:branch&per_page=1` (an analysis: enabled; none or a 404: disabled; a 403 naming Advanced Security: unsupported).
 - **Labels** (M13.3b). Then a collection run of kind `labels` reads each in-scope repository's labels (`GET /repos/:owner/:repo/labels`) in the shape GitLab project labels are recorded in, colour as `#rrggbb`. A refusal is recorded as such and makes the run partial, never "no labels".
 - **Changes** (M13.4a). Then a collection run of kind `changes` reads each repository's pull requests, workflow runs, direct pushes and production deployments ([CHANGE_EVIDENCE.md](CHANGE_EVIDENCE.md#github)).
-- **Not yet.** Webhooks (M13.4b). Their issues do not join the register until M13.5, and the GitLab diagnostics (*Test connection*) are not offered for them.
+- **Webhooks** (M13.4b). Optional: they make the reads above happen within seconds of a change on GitHub ([Webhooks](#webhooks)).
+- **Not yet.** Their issues do not join the register until M13.5, and the GitLab diagnostics (*Test connection*) are not offered for them.
 
 ## Open questions
 
