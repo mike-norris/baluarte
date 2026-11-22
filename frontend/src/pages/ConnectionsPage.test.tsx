@@ -82,6 +82,28 @@ function body(call: Call | undefined): unknown {
   return JSON.parse(String(call?.init?.body ?? "null"));
 }
 
+function webhook(configured: boolean) {
+  return {
+    configured,
+    url: "https://baluarte.example.test/api/v1/webhooks/github/5",
+    events: ["pull_request", "push"],
+    deliveries: configured
+      ? [
+          {
+            delivery_id: "d-1",
+            event: "push",
+            action: "none",
+            repository_id: 1,
+            status: "processed",
+            received_at: "2026-11-21T10:00:00Z",
+            processed_at: "2026-11-21T10:00:20Z",
+            error: null,
+          },
+        ]
+      : [],
+  };
+}
+
 afterEach(() => vi.unstubAllGlobals());
 
 describe("ConnectionsPage", () => {
@@ -251,12 +273,55 @@ describe("ConnectionsPage", () => {
       version: "github.com",
       edition: null,
     });
-    api(admin, { "GET /api/v1/connections": () => json({ connections: [org] }) });
+    api(admin, {
+      "GET /api/v1/connections": () => json({ connections: [org] }),
+      "GET /api/v1/connections/5/webhook": () => json(webhook(false)),
+    });
     renderAt("/connections");
     const card = await screen.findByRole("region", { name: "github.com/acme" });
 
     expect(within(card).getAllByText("GitHub").length).toBeGreaterThan(0);
     expect(within(card).queryByRole("button", { name: "Test connection" })).not.toBeInTheDocument();
     expect(within(card).getByRole("button", { name: "Collect now" })).toBeInTheDocument();
+  });
+
+  it("sets up a GitHub webhook, shows its secret once and lists deliveries", async () => {
+    const org = connection(5, {
+      provider: "github",
+      url: "https://github.com/acme",
+      primary: false,
+      source: "connections_page",
+      version: "github.com",
+      edition: null,
+    });
+    let configured = false;
+    const calls = api(admin, {
+      "GET /api/v1/connections": () => json({ connections: [org] }),
+      "GET /api/v1/connections/5/webhook": () => json(webhook(configured)),
+      "POST /api/v1/connections/5/webhook": () => {
+        configured = true;
+        return json(
+          {
+            url: "https://baluarte.example.test/api/v1/webhooks/github/5",
+            secret: "s3cret-value",
+            events: ["pull_request", "push"],
+          },
+          201,
+        );
+      },
+    });
+    renderAt("/connections");
+    const panel = await screen.findByRole("region", { name: "Webhook" });
+    expect(within(panel).getByText("Not set up")).toBeInTheDocument();
+
+    await userEvent.click(within(panel).getByRole("button", { name: "Set up webhook" }));
+
+    expect(await within(panel).findByText("s3cret-value")).toBeInTheDocument();
+    expect(within(panel).getByText("pull_request, push")).toBeInTheDocument();
+    expect(await within(panel).findByText("Set up")).toBeInTheDocument();
+    expect(within(panel).getByText("push (none)")).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Rotate secret" })).toBeInTheDocument();
+    const post = calls.find((call) => call.init?.method === "POST");
+    expect(post?.url).toMatch(/\/connections\/5\/webhook$/);
   });
 });

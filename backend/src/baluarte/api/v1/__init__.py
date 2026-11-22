@@ -40,6 +40,7 @@ from baluarte.api.v1 import (
     system,
     tags,
     time,
+    webhooks,
     workspaces,
 )
 from baluarte.auth.dependencies import current_principal
@@ -49,6 +50,7 @@ public.include_router(health.router)
 public.include_router(ready.router)
 public.include_router(auth.public_router)
 public.include_router(setup.router)
+public.include_router(webhooks.router)
 
 protected = APIRouter(
     dependencies=[Depends(current_principal)],

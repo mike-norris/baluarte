@@ -298,6 +298,11 @@ def _request(db: Session, reason: str, connection_id: int | None) -> int | None:
     )
 
 
+def request_connection_evaluation(db: Session, reason: str, connection_id: int) -> int | None:
+    """Queue one connection's evaluation unless one is already waiting to start for it."""
+    return _request(db, reason, connection_id)
+
+
 def request_evaluation(db: Session, reason: str) -> int | None:
     """Queue an evaluation of every connection unless one is already waiting to start.
 

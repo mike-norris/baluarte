@@ -24,6 +24,8 @@ PUBLIC_ROUTES = {
     ("GET", "/api/v1/ready"),
     ("GET", "/api/v1/auth/login"),
     ("GET", "/api/v1/auth/callback"),
+    # Authenticated by the delivery's signature instead (tests/test_github_webhooks.py).
+    ("POST", "/api/v1/webhooks/github/{connection_id}"),
 }
 # First-run setup needs a setup session instead (tests/test_setup.py checks each route).
 SETUP_ROUTES = {

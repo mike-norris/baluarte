@@ -33,7 +33,7 @@ change rules judge a project's changes only together with it.
 
 import logging
 from collections import Counter
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any, Protocol
@@ -910,6 +910,7 @@ def collect(
     provenance: Provenance | None = None,
     reader: ReaderFactory | None = None,
     provider: str = "GitLab",
+    only: Collection[int] | None = None,
 ) -> ChangeCollection:
     """Read and record every project's changes, with GitLab's reader unless ``reader`` gives
     another provider's (``baluarte.integrations.github.changes``)."""
@@ -923,6 +924,9 @@ def collect(
     tally = ChangeCollection()
     parts = Parts()
     for target in change_targets(engine, instance_id):
+        # A webhook reads only the repository it concerns (``only``: project row IDs).
+        if only is not None and target.row_id not in only:
+            continue
         with Session(engine) as db:
             now: datetime = db.execute(select(func.now())).scalar_one()
             known = _known(db, target)

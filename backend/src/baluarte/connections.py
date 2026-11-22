@@ -59,6 +59,10 @@ def token_name(connection_id: int) -> str:
     return f"connection_token:{connection_id}"
 
 
+def webhook_secret_name(connection_id: int) -> str:
+    return f"connection_webhook_secret:{connection_id}"
+
+
 def dns_lookup(host: str) -> list[str]:
     """The addresses ``host`` resolves to; tests replace this function."""
     try:
@@ -520,6 +524,8 @@ def remove(db: Session, connection_id: int, actor: str) -> None:
         )
     connection.removed_at = db.execute(select(func.now())).scalar_one()
     forget_token(db, connection.id)
+    # Its webhook stops being accepted too (``baluarte.integrations.github.webhooks``).
+    delete_secret(db, webhook_secret_name(connection.id))
     audit.record(
         db,
         actor=actor,
