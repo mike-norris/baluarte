@@ -1,7 +1,7 @@
 """Timecards: display names, issue context and the timecard with its downloads."""
 
 import json
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -261,7 +261,8 @@ def test_timecard_downloads_as_csv_and_html(carded: Engine) -> None:
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/csv")
     disposition = response.headers["content-disposition"]
-    today = date.today().isoformat()
+    # The period ends today in UTC, as the API reckons it, not on the local date.
+    today = datetime.now(UTC).date().isoformat()
     assert (
         disposition.startswith('attachment; filename="timecard-') and f"{today}.csv" in disposition
     )
