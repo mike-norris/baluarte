@@ -105,6 +105,12 @@ def github(**overrides: Any) -> FakeGitHub:
         "GET /repos/acme/web/code-scanning/analyses": [],
         "GET /repos/acme/api/labels": [],
         "GET /repos/acme/web/labels": [],
+        "GET /repos/acme/api/pulls": [],
+        "GET /repos/acme/web/pulls": [],
+        "GET /repos/acme/api/commits": [],
+        "GET /repos/acme/web/commits": [],
+        "GET /repos/acme/api/deployments": [],
+        "GET /repos/acme/web/deployments": [],
         "GET /user": {"login": "ada"},
         "GET /user/memberships/orgs/acme": {"role": "admin"},
     }
@@ -200,6 +206,7 @@ def test_a_github_organization_is_added_and_discovered(
             "groups": "succeeded",
             "projects": "succeeded",
             "labels": "succeeded",
+            "changes": "succeeded",
         }
         sources = set(
             db.scalars(

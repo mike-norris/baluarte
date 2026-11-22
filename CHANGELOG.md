@@ -9,6 +9,13 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- GitHub change evidence (roadmap M13.4a): each GitHub collection also reads, as a `changes`
+  run, every repository's merged pull requests with their reviews, the Actions workflow runs of
+  each change, direct pushes to the default branch and successful production deployments, in
+  the shape GitLab changes are recorded in. `gitlab.change.reviewed`,
+  `gitlab.change.pipeline_passed` and `gitlab.change.deployed_after_review` are judged on GitHub;
+  `require_tests` is `unsupported` there. Pull requests are named `#12` in reasons and on the
+  Code changes page.
 - GitHub security features and label drift (roadmap M13.3b): a GitHub-only rule type,
   `github.repository.security_features`, requires secret scanning, push protection, Dependabot
   security updates or code scanning, read for each repository after discovery; a setting GitHub

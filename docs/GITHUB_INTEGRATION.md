@@ -11,7 +11,7 @@ Each fact names its source page on docs.github.com (REST API version `2022-11-28
 | M13.1 Feasibility spike | This page: authentication, versions, endpoints, permissions, plans and rate limits per collection and rule, and the step plan | Done |
 | M13.2 Provider layer and connection | Provider on connections and normalized records; GitHub App and fine-grained token connections for GitHub.com (Enterprise Server later); capability probes; rate limits and retries; organization, team, repository and membership discovery | Done |
 | M13.3 Settings and rules | Repository settings, branch protection and rulesets, required reviews, visibility, security features; each rule type declares the providers it supports, and GitHub results carry their evidence | Done: provider-aware evaluation, branch settings, visibility, protection, reviews and two-factor (M13.3a); security features and label drift (M13.3b). Fake-tested only; the **to verify** items need a live organization |
-| M13.4 Change evidence and webhooks | Pull requests, reviews, workflow runs, deployments and releases; signed webhooks processed once per delivery and de-duplicated against scheduled collection | Planned |
+| M13.4 Change evidence and webhooks | Pull requests, reviews, workflow runs, deployments and releases; signed webhooks processed once per delivery and de-duplicated against scheduled collection | In progress: change evidence by scheduled collection done (M13.4a, fake-tested only); signed webhooks next (M13.4b). Releases are not read |
 | M13.5 Issue register and acceptance | GitHub issues in the register (pull requests left out); one workspace with a GitLab and a GitHub connection evaluated by one baseline | Planned |
 
 ## Authentication
@@ -65,9 +65,9 @@ Each fact names its source page on docs.github.com (REST API version `2022-11-28
 | Rules for a branch | `GET /repos/{owner}/{repo}/rules/branches/{branch}` | **To verify** | Every active rule that applies to the branch, from repository or organization rulesets. Rules set to `evaluate` (Enterprise only) or `disabled` are left out. **To verify:** plan availability. *Source: Rules* |
 | Organization rulesets | `GET /orgs/{org}/rulesets` | organization `administration` | **To verify:** plan availability |
 | Issues | `GET /repos/{owner}/{repo}/issues?state=all&since=…` | repository `issues` read | Pull requests come back too and carry a `pull_request` key; Baluarte drops them from the register. `since` filters on last update, which suits incremental reads. The page is unclear on the default `state`, so Baluarte always sends `state=all`. *Source: Issues* |
-| Pull requests, reviews | — | repository `pull_requests` read | **To verify** in M13.4 |
-| Workflow runs | — | repository `actions` read | **To verify** in M13.4 |
-| Deployments, releases | — | repository `deployments` read; releases **to verify** | **To verify** in M13.4 |
+| Pull requests, reviews | `GET /repos/{owner}/{repo}/pulls?state=closed&base=…&sort=updated&direction=desc`, `GET …/pulls/{number}/reviews`, `GET …/commits/{sha}/pulls` | repository `pull_requests` read (and `contents` read for commits) | M13.4a. The pulls listing has no `updated_after`, so it is read newest first back to the cursor. **To verify** against a live organization |
+| Workflow runs | `GET /repos/{owner}/{repo}/actions/runs?head_sha=…` | repository `actions` read | M13.4a. **To verify** against a live organization |
+| Deployments, releases | `GET /repos/{owner}/{repo}/deployments?environment=…`, `GET …/deployments/{id}/statuses` | repository `deployments` read; releases **to verify** | M13.4a: deployments only. A deployment counts once its newest status is `success`. Releases are not read |
 | Secret scanning alerts | `GET /repos/{owner}/{repo}/secret-scanning/alerts` | Repository or organization administrator; App `secret_scanning_alerts` | Gives 404 when the repository is public or secret scanning is off. **To verify:** licensing for private repositories. *Source: Secret scanning* |
 | Code scanning alerts | `GET /repos/{owner}/{repo}/code-scanning/alerts` | App `security_events` | Gives 403 when GitHub Advanced Security is not enabled for the repository. *Source: Code scanning* |
 
@@ -88,7 +88,7 @@ A rule type keeps its name on every provider. Each one declares the providers it
 | `gitlab.security_policy.scan_execution` | None: GitHub has no scan execution policies | `unsupported`; use `github.repository.security_features` |
 | `github.repository.security_features` (GitHub only) | `security_and_analysis` statuses; a code scanning analysis of the default branch | **Done (M13.3b).** `features`: any of `secret_scanning`, `secret_scanning_push_protection`, `dependabot_security_updates`, `code_scanning`; passes when each is enabled. A status GitHub does not report (it needs admin rights on the repository) is `unknown`; code scanning without GitHub Advanced Security is `unsupported`. `unsupported` on GitLab projects. The 403 wording for a missing licence is **to verify** |
 | `gitlab.security_policy.approval` | None | GitLab only |
-| `gitlab.change.reviewed`, `gitlab.change.pipeline_passed`, `gitlab.change.deployed_after_review` | Pull request reviews, workflow runs or checks, deployments | **To verify** in M13.4 |
+| `gitlab.change.reviewed`, `gitlab.change.pipeline_passed`, `gitlab.change.deployed_after_review` | Pull request reviews, workflow runs, deployments | **Done (M13.4a).** Judged as on GitLab from changes recorded in the same shape ([CHANGE_EVIDENCE.md](CHANGE_EVIDENCE.md#github)). `require_tests` is `unsupported`: GitHub has no test report API |
 | `gitlab.labels.consistent` | Repository labels | **Done (M13.3b).** Organizations define no labels that repositories inherit, so each repository in the taxonomy's scope must define every taxonomy label itself ([LABELS.md](LABELS.md#github)). Label plans are refused on GitHub connections for now |
 
 ## Connections and collection
@@ -105,7 +105,8 @@ Implemented in M13.2 (migration `0036`). Everything below is tested against a sc
 - **Evaluation** (M13.3a). Every collection queues an evaluation of the connection, judged as in [Rule types](#rule-types). Repository listings are recorded as `GET /orgs/:org/repos` for every organization.
 - **Security features** (M13.3b). In the same run, each of those repositories gets one observation (`GET /repos/:owner/:repo (security_and_analysis, code scanning)`): the status of secret scanning, push protection and Dependabot security updates as `GET /repos/:owner/:repo` reports them (null when not reported), and code scanning from `GET /repos/:owner/:repo/code-scanning/analyses?ref=refs/heads/:branch&per_page=1` (an analysis: enabled; none or a 404: disabled; a 403 naming Advanced Security: unsupported).
 - **Labels** (M13.3b). Then a collection run of kind `labels` reads each in-scope repository's labels (`GET /repos/:owner/:repo/labels`) in the shape GitLab project labels are recorded in, colour as `#rrggbb`. A refusal is recorded as such and makes the run partial, never "no labels".
-- **Not yet.** Their issues do not join the register until M13.5, and the GitLab diagnostics (*Test connection*) are not offered for them.
+- **Changes** (M13.4a). Then a collection run of kind `changes` reads each repository's pull requests, workflow runs, direct pushes and production deployments ([CHANGE_EVIDENCE.md](CHANGE_EVIDENCE.md#github)).
+- **Not yet.** Webhooks (M13.4b). Their issues do not join the register until M13.5, and the GitLab diagnostics (*Test connection*) are not offered for them.
 
 ## Open questions
 

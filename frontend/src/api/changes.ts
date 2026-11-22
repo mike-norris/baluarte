@@ -68,6 +68,8 @@ export interface Change {
   id: number;
   project: ProjectRef;
   kind: ChangeKind;
+  /** Where the change was read; a GitHub pull request is named #12, a GitLab merge request !12. */
+  provider?: "gitlab" | "github";
   /** The merge request's IID; null for a direct push. */
   iid: number | null;
   sha: string;

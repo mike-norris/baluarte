@@ -29,6 +29,11 @@ GitHub-only rule types (roadmap M13.3b):
   ``unsupported``.
 - ``gitlab.labels.consistent`` is judged on GitHub as on GitLab, from the repositories' labels
   (GitHub organizations define none that repositories inherit).
+
+Change rules (roadmap M13.4a): ``gitlab.change.reviewed``, ``gitlab.change.pipeline_passed`` and
+``gitlab.change.deployed_after_review`` judge pull requests, Actions workflow runs, direct pushes
+and deployments recorded in GitLab's change shape (``baluarte.integrations.github.changes``).
+GitHub has no test report API, so ``pipeline_passed`` with ``require_tests`` is ``unsupported``.
 """
 
 from dataclasses import replace
@@ -38,11 +43,17 @@ from baluarte.integrations.github.branches import BRANCH_SOURCE
 from baluarte.integrations.github.discovery import ORG_SOURCE
 from baluarte.integrations.github.repositories import SECURITY_SOURCE
 from baluarte.policy.evaluation.access import MERGE_REQUEST_APPROVALS, TWO_FACTOR_REQUIRED
+from baluarte.policy.evaluation.changes import (
+    CHANGE_DEPLOYED_AFTER_REVIEW,
+    CHANGE_PIPELINE_PASSED,
+    CHANGE_REVIEWED,
+)
 from baluarte.policy.evaluation.default_branch import DEFAULT_BRANCH_PROTECTED
 from baluarte.policy.evaluation.engine import ProjectFacts, ProjectObservation, RuleEvaluator
 from baluarte.policy.evaluation.labels import LABELS_CONSISTENT
 from baluarte.policy.evaluation.visibility import VISIBILITY
 from baluarte.policy.schema import (
+    ChangePipelinePassedRule,
     GitHubSecurityFeaturesRule,
     MergeRequestApprovalsRule,
     Rule,
@@ -360,6 +371,18 @@ SECURITY_FEATURES = RuleEvaluator(
     unsupported=_security_unsupported,
 )
 
+
+def _no_test_reports(rule: Rule, _project: ProjectFacts) -> str | None:
+    if isinstance(rule, ChangePipelinePassedRule) and rule.require_tests:
+        return (
+            "GitHub has no test report API, so the policy's requirement of a clean test report "
+            "cannot be checked; workflow runs are judged without it when require_tests is false."
+        )
+    return None
+
+
+CHANGE_PIPELINE_PASSED_GITHUB = replace(CHANGE_PIPELINE_PASSED, unsupported=_no_test_reports)
+
 EVALUATORS: tuple[RuleEvaluator, ...] = (
     VISIBILITY_GITHUB,
     DEFAULT_BRANCH_PROTECTED_GITHUB,
@@ -367,6 +390,9 @@ EVALUATORS: tuple[RuleEvaluator, ...] = (
     TWO_FACTOR_REQUIRED_GITHUB,
     LABELS_CONSISTENT,
     SECURITY_FEATURES,
+    CHANGE_REVIEWED,
+    CHANGE_PIPELINE_PASSED_GITHUB,
+    CHANGE_DEPLOYED_AFTER_REVIEW,
 )
 
 

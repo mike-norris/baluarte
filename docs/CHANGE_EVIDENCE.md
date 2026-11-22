@@ -62,6 +62,15 @@ Each part records what GitLab returned. When a read fails, the part is `{"status
 | `finished_at` of a pipeline | Only in the single pipeline read, not in lists. | Read one by one. |
 | Test report summary | Every tier; empty when the pipeline produced no report. | `tests` is null and `tests_status` says why. |
 
+### GitHub
+
+On a GitHub connection the `github.collect` job reads changes as a `changes` run (roadmap M13.4a; `backend/src/baluarte/integrations/github/changes.py`). They are recorded in the same shape and under the same sources as GitLab's, with `provider: github`, so the cursor, versions, judging, the rules, reading as of a moment and the evidence package are shared:
+
+- A **pull request** merged into the default branch is a `merge_request` change; `iid` is its number and reasons name it `#12`. Its approvals are its reviews: each reviewer's latest approving or change-requesting review counts, a comment changes nothing, and a dismissed review withdraws an approval. GitHub never lets an author approve their own pull request. `merged_by` is null (the listing does not include it).
+- Its **pipeline** is the Actions workflow runs for its head commit, combined: the latest attempt of each workflow counts; one still running makes it `running`; one that failed, timed out or needed approval makes it `failed`; one cancelled makes it `canceled`; otherwise it succeeded. No runs is no pipeline. GitHub has no test report API, so `tests_status` is `none` and `require_tests` is `unsupported` on GitHub.
+- A **direct push** is a first-parent commit of the default branch (worked out by following each listed commit's first parent from the branch head) that is not a commit of a recorded pull request and that `GET …/commits/:sha/pulls` ties to no pull request merged into the branch. Only the commit author's name is kept.
+- A **deployment** to a production environment counts once its newest status is `success`, finished when that status was created. GitHub lists deployments by when they were created, not when they succeeded, so each collection lists them back to the cursor and at least `redeploy_days` (7 by default): a deployment still in progress is recorded at the first collection after it succeeds. Only a deployment that succeeds more than `redeploy_days` after it was created is missed. Statuses are read only for deployments not yet recorded.
+
 Capability detection adds probes for these reads (`merge_requests.read`, `merge_request_approvals_state.read`, `pipelines.read`, `test_reports.read`, `deployments.read`, `commits.read`). They say what to expect; the rules do not depend on them, because every part of every change records what GitLab returned.
 
 ## Judging a change

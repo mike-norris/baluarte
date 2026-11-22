@@ -63,6 +63,18 @@ describe("change evidence words", () => {
     ).toBe("Direct push 01234567");
   });
 
+  it("names GitHub pull requests with #", () => {
+    expect(
+      changeName({
+        kind: "merge_request",
+        provider: "github",
+        iid: 12,
+        sha: "f".repeat(40),
+        title: "Fix",
+      }),
+    ).toBe("#12 Fix");
+  });
+
   it("reads filters from the URL, dropping invalid values", () => {
     const filters = readChangeFilters(
       new URLSearchParams(

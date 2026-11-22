@@ -15,19 +15,23 @@ import httpx
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
+from baluarte.changes import settings as change_settings
 from baluarte.configuration.crypto import SecretUnavailable, load_secret_box
 from baluarte.connections import ConnectionRefused, connection_of, github_connection, payload_for
+from baluarte.db.models import GitLabInstance
 from baluarte.evidence.observations import Provenance
+from baluarte.integrations.github import changes as github_changes
 from baluarte.integrations.github.branches import read_branches, unconfirmed
 from baluarte.integrations.github.capabilities import detect
-from baluarte.integrations.github.client import GitHubClient, organization_of
+from baluarte.integrations.github.client import Auth, GitHubClient, organization_of
 from baluarte.integrations.github.discovery import discover_organization
 from baluarte.integrations.github.repositories import read_all_labels, read_repositories, unread
+from baluarte.integrations.gitlab import changes as gitlab_changes
 from baluarte.integrations.gitlab.capabilities import observe_snapshot, record_snapshot
 from baluarte.integrations.gitlab.client import GitLabError
 from baluarte.integrations.gitlab.jobs import GITHUB_COLLECT as COLLECT
 from baluarte.integrations.gitlab.jobs import SNAPSHOT_OUTCOMES
-from baluarte.integrations.gitlab.runs import finish_run, start_run
+from baluarte.integrations.gitlab.runs import RunOutcome, finish_run, start_run
 from baluarte.jobs.queue import ClaimedJob, JobError, PermanentJobError
 from baluarte.policy.evaluation.runner import queue_after_collection
 from baluarte.settings import ConfigurationError
@@ -37,6 +41,57 @@ logger = logging.getLogger(__name__)
 __all__ = ["COLLECT", "make_collect"]
 
 Handler = Callable[[ClaimedJob, Engine], None]
+
+
+def collect_changes(
+    engine: Engine,
+    url: str,
+    job: ClaimedJob,
+    connection: GitLabInstance,
+    auth: Auth,
+    timeout: float,
+    transport: httpx.BaseTransport | None,
+) -> None:
+    """The ``changes`` run: pull requests, workflow runs, direct pushes and deployments
+    (``baluarte.integrations.github.changes``). A failure is recorded on the run; the rest of the
+    collection still counts."""
+    run_id = start_run(engine, url, "changes", job)
+    try:
+        with Session(engine) as db:
+            options = change_settings.load(db)
+            db.commit()
+        with GitHubClient(auth, timeout_seconds=timeout, transport=transport) as client:
+            result = gitlab_changes.collect(
+                None,
+                engine,
+                connection.id,
+                options,
+                Provenance(run_id, job.id),
+                reader=github_changes.reader(client),
+                provider="GitHub",
+            )
+    except Exception as error:
+        finish_run(engine, run_id, "failed", error=f"unexpected error: {type(error).__name__}")
+        raise
+    problems = []
+    if result.failed_projects:
+        problems.append(f"changes of {result.failed_projects} repositories could not be listed")
+    failed_parts = sum(count for key, count in result.parts.items() if key.endswith(":failed"))
+    if failed_parts:
+        problems.append(f"{failed_parts} parts of changes could not be read")
+    outcome: RunOutcome
+    if result.rejected or (result.projects and result.failed_projects == result.projects):
+        outcome = "failed"
+    else:
+        outcome = "partial" if problems else "succeeded"
+    finish_run(
+        engine,
+        run_id,
+        outcome,
+        seen=result.projects,
+        counts=result.as_counts(),
+        error="; ".join(problems) or None,
+    )
 
 
 def make_collect(transport: httpx.BaseTransport | None = None) -> Handler:
@@ -146,7 +201,9 @@ def make_collect(transport: httpx.BaseTransport | None = None) -> Handler:
                 counts=labels,
                 error=f"the labels of {missed} repositories were not read" if missed else None,
             )
-        # The repositories, their settings and labels are new evidence: evaluate, once per run.
+        collect_changes(engine, url, job, connection, auth, timeout, transport)
+        # The repositories, their settings, labels and changes are new evidence: evaluate, once
+        # per run.
         with Session(engine) as db:
             queue_after_collection(db, projects_run, payload_for(connection.id))
             db.commit()

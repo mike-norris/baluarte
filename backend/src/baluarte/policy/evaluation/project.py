@@ -353,10 +353,8 @@ def evaluate_project(
             yaml_digest=policy.yaml_digest,
         )
         in_force.append((ref, parse_policy(policy.source_yaml).document.spec.rules))
-    if (
-        provider == "gitlab"
-        and context.project is not None
-        and any(rule.type in CHANGE_RULE_TYPES for _, rules in in_force for rule in rules)
+    if context.project is not None and any(
+        rule.type in CHANGE_RULE_TYPES for _, rules in in_force for rule in rules
     ):
         # Changes are read only for a project a change rule is in force for.
         context = replace(
