@@ -5,6 +5,7 @@ import { listPolicyChanges } from "../api/policies";
 import { useLoad } from "../api/useLoad";
 import {
   APPLY_VIEW,
+  CHANGE_SETS_VIEW,
   CHANGES_VIEW,
   GOVERNANCE,
   SECURITY_POLICIES_VIEW,
@@ -17,6 +18,7 @@ const tabs = [
   { to: APPLY_VIEW, label: "Where baselines apply" },
   { to: SECURITY_POLICIES_VIEW, label: "GitLab security policies" },
   { to: TEMPLATES_VIEW, label: "Templates" },
+  { to: CHANGE_SETS_VIEW, label: "Change sets" },
   { to: CHANGES_VIEW, label: "Changes" },
 ] as const;
 

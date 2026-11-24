@@ -670,6 +670,128 @@ class TemplateException(Base):
     end_note: Mapped[str | None] = mapped_column(Text)
 
 
+CHANGE_SET_STATES = ("proposed", "approved", "rejected", "withdrawn", "expired")
+MAX_CHANGE_SET_HOURS = 7 * 24
+
+
+class TemplateChangeSet(Base):
+    """Exact template changes to selected projects, with before and after values from evidence
+    (roadmap M14.3, ``baluarte.templates.change_sets``).
+
+    The document, its digest and its counts never change. ``proposed`` becomes ``approved`` or
+    ``rejected`` by someone other than the creator; a ``sensitive`` set (one that weakens
+    protection or removes access) needs a first approval and then a second by a different
+    person. The creator may withdraw a proposed set; ``proposed`` and ``approved`` sets expire at
+    ``expires_at``. Approval records the digest reviewed, which must equal the set's. A trigger
+    (migration 0040) enforces the transitions, keeps recorded decisions and rejects ``DELETE``.
+    """
+
+    __tablename__ = "template_change_set"
+    __table_args__ = (
+        Index("ix_template_change_set_state", "instance_id", "state", "id"),
+        one_of("state", CHANGE_SET_STATES),
+        sha256_hex("digest"),
+        CheckConstraint("length(title) BETWEEN 1 AND 200", name="title_length"),
+        CheckConstraint("targets >= 1 AND changes >= 1 AND skipped >= 0", name="counts"),
+        CheckConstraint(
+            f"expires_at > created_at AND expires_at <= created_at + "
+            f"interval '{MAX_CHANGE_SET_HOURS} hours'",
+            name="expiry_bounded",
+        ),
+        CheckConstraint(
+            "(first_approved_at IS NULL) = (first_approved_by_user_id IS NULL)",
+            name="first_approval_complete",
+        ),
+        CheckConstraint(
+            "sensitive OR first_approved_at IS NULL", name="first_approval_when_sensitive"
+        ),
+        CheckConstraint(
+            "(decided_at IS NULL) = (decided_by_user_id IS NULL)", name="decision_complete"
+        ),
+        CheckConstraint(
+            "state NOT IN ('approved', 'rejected') OR decided_at IS NOT NULL",
+            name="decided_has_decision",
+        ),
+        CheckConstraint(
+            "state <> 'rejected' OR length(decision_note) > 0", name="rejection_explained"
+        ),
+        CheckConstraint(
+            "state <> 'approved' OR approved_digest IS NOT NULL", name="approved_has_digest"
+        ),
+        CheckConstraint(
+            "state NOT IN ('proposed', 'rejected', 'withdrawn') OR approved_digest IS NULL",
+            name="unapproved_has_no_digest",
+        ),
+        CheckConstraint(
+            "approved_digest IS NULL OR approved_digest = digest", name="approval_binds_digest"
+        ),
+        CheckConstraint(
+            "NOT sensitive OR state <> 'approved' OR first_approved_at IS NOT NULL",
+            name="sensitive_approved_twice",
+        ),
+        CheckConstraint(
+            "development_decision OR ("
+            "(decided_by_user_id IS NULL OR decided_by_user_id <> created_by_user_id) "
+            "AND (first_approved_by_user_id IS NULL "
+            "OR (first_approved_by_user_id <> created_by_user_id "
+            "AND first_approved_by_user_id IS DISTINCT FROM decided_by_user_id)))",
+            name="decided_by_others",
+        ),
+        CheckConstraint(
+            "NOT development_decision OR decided_by_user_id = created_by_user_id "
+            "OR first_approved_by_user_id = created_by_user_id",
+            name="development_decision_by_proposer",
+        ),
+        CheckConstraint(
+            "(state IN ('withdrawn', 'expired')) = (ended_at IS NOT NULL)", name="ended_has_time"
+        ),
+    )
+
+    id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"), index=True)
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    title: Mapped[str] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(Text, server_default="proposed")
+    # The canonical document; ``digest`` is the SHA-256 of its canonical JSON.
+    document: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    digest: Mapped[str] = mapped_column(Text)
+    targets: Mapped[int] = mapped_column(Integer)
+    changes: Mapped[int] = mapped_column(Integer)
+    skipped: Mapped[int] = mapped_column(Integer)
+    sensitive: Mapped[bool] = mapped_column(Boolean)
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = utc_now()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    first_approved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    first_approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    first_approval_note: Mapped[str | None] = mapped_column(Text)
+    decided_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_note: Mapped[str | None] = mapped_column(Text)
+    approved_digest: Mapped[str | None] = mapped_column(Text)
+    # Development mode only: the creator gave an approval (baluarte.settings).
+    development_decision: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class SavedSelection(Base):
+    """Named target criteria for change sets (``baluarte.templates.selection``)."""
+
+    __tablename__ = "saved_selection"
+    __table_args__ = (
+        UniqueConstraint("instance_id", "name"),
+        CheckConstraint("length(name) BETWEEN 1 AND 100", name="name_length"),
+    )
+
+    id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"), index=True)
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    name: Mapped[str] = mapped_column(Text)
+    selection: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id"))
+    created_at: Mapped[datetime] = utc_now()
+
+
 class PolicyAssignment(Base):
     """Pins one immutable policy version to the instance, a group or a project (BAL-018).
 
