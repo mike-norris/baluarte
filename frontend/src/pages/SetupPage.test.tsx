@@ -318,8 +318,47 @@ describe("identity provider step", () => {
       analyst_groups: [],
       auditor_groups: [],
       manager_groups: [],
+      preset: "generic",
+      require_mfa: false,
+      mfa_amr: [],
+      acr_values: "",
     });
     expect(headersOf(calls, "/api/v1/setup/oidc")?.["X-CSRF-Token"]).toBe(CSRF);
+  });
+
+  it("sends the MFA preset and requirement", async () => {
+    const calls = inSession(
+      {},
+      {
+        [OIDC]: notFound,
+        [GITLAB]: notFound,
+        "PUT /api/v1/setup/oidc": () => json(oidcConfig),
+      },
+    );
+    const user = userEvent.setup();
+
+    renderAt("/setup");
+    await user.type(
+      await screen.findByRole("textbox", { name: "Issuer" }),
+      "https://example.okta.com",
+    );
+    await user.type(screen.getByRole("textbox", { name: "Client ID" }), "baluarte-client");
+    await user.type(screen.getByRole("textbox", { name: "Admin groups" }), "ops");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Provider preset" }), "okta");
+    await user.click(screen.getByRole("checkbox", { name: "Require MFA" }));
+    expect(screen.getByRole("textbox", { name: "acr_values to ask for MFA" })).toHaveAttribute(
+      "placeholder",
+      "urn:okta:loa:2fa:any",
+    );
+    await user.click(screen.getByRole("button", { name: "Save and continue" }));
+
+    await screen.findByRole("heading", { name: "Step 2 of 3: GitLab" });
+    expect(bodyOf(calls, "PUT /api/v1/setup/oidc")).toMatchObject({
+      preset: "okta",
+      require_mfa: true,
+      mfa_amr: [],
+      acr_values: "",
+    });
   });
 
   it("keeps a stored secret unless a new one is entered", async () => {

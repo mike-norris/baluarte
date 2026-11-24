@@ -10,6 +10,8 @@ export interface CurrentUser {
   roles: string[];
   permissions: string[];
   session_expires_at: string;
+  /** How a second factor was proven at sign-in; absent from older servers. */
+  mfa_method?: "provider" | null;
   csrf_token: string;
   /** The deployment runs in development mode; absent from older servers. */
   development_mode?: boolean;

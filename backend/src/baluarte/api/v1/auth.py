@@ -9,7 +9,7 @@ import hmac
 import logging
 import re
 from datetime import datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from urllib.parse import urlencode, urlsplit
 
 from fastapi import APIRouter, Depends, Query, Request, Response, status
@@ -68,6 +68,9 @@ class CurrentUser(BaseModel):
     roles: list[Role]
     permissions: list[Permission]
     session_expires_at: datetime
+    # How a second factor was proven at sign-in ("provider": the identity provider's amr), or
+    # null when none was.
+    mfa_method: Literal["provider"] | None = None
     csrf_token: str
     # The deployment runs in development mode: review may be off whatever the profile.
     development_mode: bool = False
@@ -206,6 +209,15 @@ def callback(
     except OidcError as exc:
         return _failed(db, settings, "sign_in_failed", exc.reason)
 
+    # MFA is read from the ID token itself, never from userinfo.
+    amr = settings.mfa.proven(claims.get("amr"))
+    claimed = claims.get("amr")
+    presented: list[Any] = claimed if isinstance(claimed, list) else []
+    # What the provider said, for the audit trail: short strings only, at most 20.
+    amr_seen = sorted({v for v in presented if isinstance(v, str) and 0 < len(v) <= 64})[:20]
+    if settings.mfa.required and amr is None:
+        return _failed(db, settings, "mfa_required", "mfa_not_proven", subject)
+
     workspace_roles = roles_by_workspace(
         db, profile.get(settings.roles_claim), settings.group_roles
     )
@@ -224,7 +236,9 @@ def callback(
     previous = request.cookies.get(settings.session_cookie)
     if previous:
         revoke_token(db, previous)
-    token = create_session(db, user, roles, settings, workspace_roles)
+    token = create_session(
+        db, user, roles, settings, workspace_roles, "provider" if amr is not None else None
+    )
     db.flush()
     audit.record(
         db,
@@ -236,6 +250,8 @@ def callback(
             "workspaces": {
                 str(workspace_id): sorted(held) for workspace_id, held in workspace_roles.items()
             },
+            "mfa": amr is not None,
+            "amr": amr_seen,
         },
     )
     # The first admin to sign in through settings entered in the setup wizard completes setup.
@@ -270,6 +286,7 @@ def me(principal: SignedIn, db: Annotated[Session, Depends(database)]) -> Curren
         roles=sorted(principal.roles),
         permissions=sorted(principal.permissions),
         session_expires_at=principal.session_expires_at,
+        mfa_method="provider" if principal.mfa_method == "provider" else None,
         csrf_token=principal.csrf_token,
         development_mode=development_mode(),
         workspace=principal.workspace_slug,

@@ -10,7 +10,7 @@ from sqlalchemy import delete, func
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from baluarte.auth.settings import AuthSettings, stored_auth_settings
+from baluarte.auth.settings import AuthSettings, mfa_policy, stored_auth_settings
 from baluarte.configuration.crypto import Sealed, SecretBox, SecretUnavailable
 from baluarte.db.models import StoredSecret, StoredSetting
 from baluarte.integrations.gitlab.settings import (
@@ -102,6 +102,12 @@ def auth_from_value(value: dict[str, Any], client_secret: str | None) -> AuthSet
         scopes=str(value.get("scopes", "")),
         roles_claim=str(value.get("roles_claim", "")),
         groups=value.get("groups") or {},
+        mfa=mfa_policy(
+            str(value.get("preset", "")),
+            value.get("require_mfa") is True,
+            [str(item) for item in value.get("mfa_amr") or []],
+            str(value.get("acr_values") or ""),
+        ),
     )
 
 

@@ -12,7 +12,9 @@ import {
   DEFAULT_ROLES_CLAIM,
   DEFAULT_SCOPES,
   oidcProblems,
+  parseAmr,
   parseGroups,
+  PRESETS,
   redirectUri,
   type OidcFields,
 } from "./format";
@@ -31,6 +33,24 @@ function initialFields(config: OidcConfig | null): OidcFields {
     analyst_groups: config?.analyst_groups.join("\n") ?? "",
     auditor_groups: config?.auditor_groups.join("\n") ?? "",
     manager_groups: config?.manager_groups?.join("\n") ?? "",
+    ...mfaFields(config),
+  };
+}
+
+/** The MFA fields, leaving the overrides empty where they match the preset's own values. */
+function mfaFields(
+  config: OidcConfig | null,
+): Pick<OidcFields, "preset" | "require_mfa" | "mfa_amr" | "acr_values"> {
+  const preset = config?.preset ?? "generic";
+  const defaults = PRESETS[preset];
+  const amr = [...(config?.mfa_amr ?? defaults.amr)].sort();
+  const sameAmr = amr.join(",") === [...defaults.amr].sort().join(",");
+  const acr = config?.acr_values ?? null;
+  return {
+    preset,
+    require_mfa: config?.require_mfa ?? false,
+    mfa_amr: sameAmr ? "" : amr.join("\n"),
+    acr_values: acr === defaults.acr ? "" : (acr ?? ""),
   };
 }
 
@@ -122,7 +142,7 @@ export function OidcForm({
   const canStoreSecret = secretKeyConfigured !== false;
   const redirect = redirectUri(fields.public_url);
 
-  function change(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) {
+  function change(event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) {
     const { name, value, type } = event.currentTarget;
     const checked = type === "checkbox" && (event.currentTarget as HTMLInputElement).checked;
     setFields((current) => ({ ...current, [name]: type === "checkbox" ? checked : value }));
@@ -169,6 +189,10 @@ export function OidcForm({
           analyst_groups: parseGroups(fields.analyst_groups),
           auditor_groups: parseGroups(fields.auditor_groups),
           manager_groups: parseGroups(fields.manager_groups),
+          preset: fields.preset,
+          require_mfa: fields.require_mfa,
+          mfa_amr: parseAmr(fields.mfa_amr),
+          acr_values: fields.acr_values.trim(),
         },
         csrf,
       );
@@ -336,6 +360,44 @@ export function OidcForm({
         </p>
       </fieldset>
 
+      <fieldset className="rounded border p-3 stack-3">
+        <legend className="px-1 fw-medium">Multi-factor authentication</legend>
+        <label className="d-block fw-medium">
+          Provider preset
+          <select
+            name="preset"
+            value={fields.preset}
+            onChange={change}
+            aria-describedby={`${id}-preset-help`}
+            className="form-select mt-1"
+          >
+            {(Object.keys(PRESETS) as (keyof typeof PRESETS)[]).map((key) => (
+              <option key={key} value={key}>
+                {PRESETS[key].label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p id={`${id}-preset-help`} className="small text-secondary">
+          How Baluarte asks the provider for MFA and reads it back from the ID token&apos;s{" "}
+          <code>amr</code> claim. Okta and Auth0 report MFA as <code>mfa</code>.
+        </p>
+        <label className="d-flex align-items-center gap-2">
+          <input
+            name="require_mfa"
+            type="checkbox"
+            checked={fields.require_mfa}
+            onChange={change}
+            aria-describedby={`${id}-require-help`}
+          />
+          Require MFA
+        </label>
+        <p id={`${id}-require-help`} className="small text-secondary">
+          Refuse a sign-in whose ID token does not prove a second factor. Require MFA in the
+          provider first, and test a sign-in in another window before you sign out here.
+        </p>
+      </fieldset>
+
       <details className="rounded border p-3">
         <summary className="fw-medium">Advanced</summary>
         <div className="mt-3 stack-3">
@@ -361,6 +423,27 @@ export function OidcForm({
             The claim listing the user&apos;s groups, read from the ID token or userinfo. Add the
             scope your provider needs to release it.
           </p>
+          <label className="d-block fw-medium">
+            amr values that prove MFA
+            <input
+              name="mfa_amr"
+              value={fields.mfa_amr}
+              onChange={change}
+              placeholder={PRESETS[fields.preset].amr.join(", ")}
+              className="form-control mt-1"
+            />
+          </label>
+          <label className="d-block fw-medium">
+            acr_values to ask for MFA
+            <input
+              name="acr_values"
+              value={fields.acr_values}
+              onChange={change}
+              placeholder={PRESETS[fields.preset].acr ?? "none"}
+              className="form-control mt-1"
+            />
+          </label>
+          <p className="small text-secondary">Leave these empty to use the preset&apos;s.</p>
         </div>
       </details>
 

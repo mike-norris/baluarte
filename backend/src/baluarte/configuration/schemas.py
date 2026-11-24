@@ -9,6 +9,9 @@ SecretState = Literal["configured", "not_set"]
 SetupStateName = Literal["needs_setup", "awaiting_admin_sign_in", "complete"]
 
 GroupName = Annotated[str, Field(max_length=255)]
+# An amr value (RFC 8176), such as mfa, otp or hwk.
+AmrValue = Annotated[str, Field(max_length=64)]
+Preset = Literal["generic", "okta", "auth0"]
 
 
 class SectionStatus(BaseModel):
@@ -50,6 +53,12 @@ class OidcUpdate(BaseModel):
     analyst_groups: list[GroupName] = Field(default=[], max_length=100)
     auditor_groups: list[GroupName] = Field(default=[], max_length=100)
     manager_groups: list[GroupName] = Field(default=[], max_length=100)
+    # Multi-factor authentication (docs/SECURITY.md#multi-factor-authentication).
+    preset: Preset = "generic"
+    require_mfa: bool = False
+    # Empty takes the preset's: amr values that prove MFA, and acr_values that ask for it.
+    mfa_amr: list[AmrValue] = Field(default=[], max_length=20)
+    acr_values: str = Field(default="", max_length=512)
 
 
 class OidcConfig(BaseModel):
@@ -66,6 +75,10 @@ class OidcConfig(BaseModel):
     manager_groups: list[str]
     # Register this with the identity provider.
     redirect_uri: str
+    preset: Preset
+    require_mfa: bool
+    mfa_amr: list[str]
+    acr_values: str | None
 
 
 class OidcTest(BaseModel):

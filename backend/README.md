@@ -63,6 +63,10 @@ OIDC sign-in from the environment needs `BALUARTE_PUBLIC_URL`, `BALUARTE_OIDC_IS
 | `BALUARTE_OIDC_SCOPES` | `openid profile email` | Requested scopes; must include `openid`. Add the scope your provider needs to release groups |
 | `BALUARTE_OIDC_ROLES_CLAIM` | `groups` | Claim listing the user's groups. Read from the ID token, or from userinfo if the ID token lacks it |
 | `BALUARTE_OIDC_ADMIN_GROUPS`, `BALUARTE_OIDC_ANALYST_GROUPS`, `BALUARTE_OIDC_AUDITOR_GROUPS`, `BALUARTE_OIDC_MANAGER_GROUPS` | | Comma-separated groups granted each role; matching is exact and case-sensitive |
+| `BALUARTE_OIDC_PRESET` | `generic` | `generic`, `okta` or `auth0`: how to ask for MFA and read it from `amr` ([SECURITY.md](../docs/SECURITY.md#multi-factor-authentication)) |
+| `BALUARTE_OIDC_REQUIRE_MFA` | `false` | `true` refuses a sign-in whose ID token does not prove MFA |
+| `BALUARTE_OIDC_MFA_AMR` | the preset's | Comma-separated `amr` values that prove MFA |
+| `BALUARTE_OIDC_ACR_VALUES` | the preset's | `acr_values` sent to ask the provider for MFA |
 | `BALUARTE_TIME_PER_PERSON` | `true` | `false` turns off time per person for everyone, administrators included ([TIME_TRACKING.md](../docs/TIME_TRACKING.md)) |
 | `BALUARTE_GITLAB_URL` | | https URL of the GitLab instance; unset means GitLab is not configured |
 | `BALUARTE_GITLAB_TOKEN_FILE` | when the URL is set | File containing a `read_api` token |

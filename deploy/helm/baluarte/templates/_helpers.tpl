@@ -235,6 +235,16 @@ https://{{ .Values.ingress.host }}
   value: {{ join "," $oidc.auditorGroups | quote }}
 - name: BALUARTE_OIDC_MANAGER_GROUPS
   value: {{ join "," ($oidc.managerGroups | default list) | quote }}
+{{- with $oidc.mfa }}
+- name: BALUARTE_OIDC_PRESET
+  value: {{ .preset | default "generic" | quote }}
+- name: BALUARTE_OIDC_REQUIRE_MFA
+  value: {{ ternary "true" "false" (.required | default false) | quote }}
+- name: BALUARTE_OIDC_MFA_AMR
+  value: {{ join "," (.amr | default list) | quote }}
+- name: BALUARTE_OIDC_ACR_VALUES
+  value: {{ .acrValues | default "" | quote }}
+{{- end }}
 {{- with .Values.auth.session.idleMinutes }}
 - name: BALUARTE_SESSION_IDLE_MINUTES
   value: {{ . | quote }}

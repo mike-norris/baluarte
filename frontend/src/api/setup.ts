@@ -41,7 +41,16 @@ export interface OidcConfig {
   /** Absent from older servers. */
   manager_groups?: string[];
   redirect_uri: string;
+  /** MFA at sign-in; absent from older servers. */
+  preset?: OidcPreset;
+  require_mfa?: boolean;
+  /** amr values that prove MFA, the preset's unless overridden. */
+  mfa_amr?: string[];
+  /** acr_values sent to ask for MFA; null sends none. */
+  acr_values?: string | null;
 }
+
+export type OidcPreset = "generic" | "okta" | "auth0";
 
 export interface OidcUpdate {
   public_url: string;
@@ -56,6 +65,11 @@ export interface OidcUpdate {
   analyst_groups: string[];
   auditor_groups: string[];
   manager_groups: string[];
+  preset: OidcPreset;
+  require_mfa: boolean;
+  /** Empty takes the preset's. */
+  mfa_amr: string[];
+  acr_values: string;
 }
 
 export interface OidcTestResult {

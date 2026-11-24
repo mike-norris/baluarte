@@ -23,7 +23,7 @@ import { TemplateWriteTokenCard } from "../settings/TemplateWriteTokenCard";
 import { ManagerScopesCard } from "../settings/ManagerScopesCard";
 import { NotificationsCard } from "../settings/NotificationsCard";
 import { TimeSettingsCard } from "../settings/TimeSettingsCard";
-import { describeInterval } from "../settings/format";
+import { describeInterval, PRESETS } from "../settings/format";
 import { GitLabForm } from "../settings/GitLabForm";
 import { OidcForm } from "../settings/OidcForm";
 import {
@@ -264,6 +264,13 @@ function OidcCard({ csrf, secretKey }: { csrf: string; secretKey: boolean | null
                 ["Analyst groups", groupList(config.analyst_groups)],
                 ["Auditor groups", groupList(config.auditor_groups)],
                 ["Manager groups", groupList(config.manager_groups ?? [])],
+                ["MFA preset", PRESETS[config.preset ?? "generic"].label],
+                [
+                  "Require MFA",
+                  config.require_mfa
+                    ? `Yes, proven by amr: ${(config.mfa_amr ?? []).join(", ")}`
+                    : "No",
+                ],
               ]}
             />
           )}

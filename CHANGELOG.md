@@ -9,6 +9,11 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- MFA at sign-in: provider presets (`generic`, `okta`, `auth0`) ask for MFA with `acr_values`
+  and read it from the ID token's `amr` claim. **Require MFA** refuses a sign-in without that
+  proof. Each session records how MFA was proven (migration `0044`), and each sign-in audit
+  event records whether it was proven and the `amr` values sent. `identity-mfa` is now a check,
+  still attestable when MFA is not required in Baluarte.
 - Provable backups: `baluarte-backup restore-test` restores a backup into a temporary
   PostgreSQL inside the backup container, preferring the off-site copy. It checks the file's
   SHA-256, the schema revision, the tables, the audit triggers and every audit digest, and

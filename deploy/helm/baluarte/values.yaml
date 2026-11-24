@@ -162,6 +162,15 @@ auth:
     analystGroups: []
     auditorGroups: []
     managerGroups: []
+    # Multi-factor authentication (docs/SECURITY.md#multi-factor-authentication).
+    mfa:
+      # generic, okta or auth0: how to ask the provider for MFA and read it from amr.
+      preset: generic
+      # Refuse a sign-in whose ID token does not prove MFA.
+      required: false
+      # amr values that prove MFA, and acr_values that ask for it; empty takes the preset's.
+      amr: []
+      acrValues: ""
   # Session idle and absolute expiry in minutes. Empty (the default) leaves them to the operating
   # profile chosen in the web UI; a value here overrides it there.
   session:

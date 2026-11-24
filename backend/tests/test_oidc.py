@@ -9,6 +9,7 @@ import pytest
 from oidc_fake import CLIENT_ID, ISSUER, FakeIdP, make_settings, new_key, public_jwk
 
 from baluarte.auth.oidc import OidcClient, OidcError, code_challenge, new_pending_login
+from baluarte.auth.settings import mfa_policy
 
 
 class Clock:
@@ -60,6 +61,16 @@ def test_authorization_url(client: OidcClient, idp: FakeIdP) -> None:
         "code_challenge": code_challenge(pending.code_verifier),
         "code_challenge_method": "S256",
     }
+
+
+def test_authorization_url_asks_for_mfa_with_acr_values(idp: FakeIdP, clock: Clock) -> None:
+    client = idp.client(
+        make_settings(mfa=mfa_policy("generic", True, acr_values="phrh  urn:example:mfa")), clock
+    )
+
+    query = idp.authorize(client.authorization_url(new_pending_login()))
+
+    assert query["acr_values"] == "phrh urn:example:mfa"
 
 
 def test_metadata_is_cached_then_refreshed(client: OidcClient, idp: FakeIdP, clock: Clock) -> None:

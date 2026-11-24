@@ -49,6 +49,20 @@ Exceptions separate duties: the user who requests one cannot approve or reject i
 
 Baseline changes can separate duties too: with "Require a second person to approve baseline changes" on (Settings, off by default), a new version, assignment or unassignment waits until another user with `policy:write` approves it, enforced by the API and the database. While it is off, each change is still recorded, marked self-approved ([POLICY_ENGINE.md](POLICY_ENGINE.md#reviewing-baseline-changes)).
 
+### Multi-factor authentication
+
+The identity provider proves the second factor, and Baluarte checks the proof. The ID token's `amr` claim (RFC 8176) must hold one of the accepted values. Only the ID token counts, never userinfo. With **Require MFA** on, a sign-in without that proof is refused (`mfa_required`, audited as `mfa_not_proven`). With it off, the sign-in goes ahead and its session records that no second factor was proven. Each session records how MFA was proven (`user_session.mfa_method`), and each `auth.login` audit event records whether it was proven and the `amr` values the provider sent.
+
+A preset knows how a provider asks for MFA (`acr_values`) and reports it (`amr`):
+
+| Preset | `acr_values` sent | Accepted `amr` |
+|---|---|---|
+| `generic` | none | `mfa` |
+| `okta` | `urn:okta:loa:2fa:any` | `mfa` |
+| `auth0` | `http://schemas.openid.net/pape/policies/2007/06/multi-factor` | `mfa` |
+
+Set it in Settings > Identity provider, or with `BALUARTE_OIDC_PRESET`, `BALUARTE_OIDC_REQUIRE_MFA`, `BALUARTE_OIDC_MFA_AMR` and `BALUARTE_OIDC_ACR_VALUES` (Helm: `auth.oidc.mfa`). The `amr` and `acr_values` settings override the preset's. Asking is not proof: the provider must still enforce MFA. In Okta, use an authentication policy that requires two factors. In Auth0, use an Action that requires MFA when the multi-factor `acr_values` is asked for. Then turn on Require MFA and test a sign-in in another window before you sign out, since a provider that does not report `amr` locks everyone out. The `identity-mfa` control is met while MFA is required and every live session began with it. A provider that enforces MFA but does not report it can be attested instead.
+
 Sign-in, failed sign-in (with a reason code) and sign-out are written to `audit_event`. Callbacks that do not match a sign-in started by the same browser are logged but not audited, so anonymous requests cannot grow the append-only audit table. The bundled web server rate limits the sign-in and setup endpoints per client address (5 requests a second, bursts of 20; 429 beyond that). Behind a proxy all clients share the proxy's address, so add a per-client limit at the ingress if sign-in floods are a concern. Production settings: [HARDENING.md](HARDENING.md).
 
 ## Secrets and logs

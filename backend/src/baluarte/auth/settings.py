@@ -5,10 +5,11 @@ a ConfigurationError, so a typo never leaves the API running with weaker checks.
 entered in the web UI (ADR-0008) go through the same checks as the environment.
 """
 
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import timedelta
-from typing import Literal
+from typing import Literal, get_args
 from urllib.parse import urlsplit
 
 from baluarte.auth.roles import Role
@@ -32,6 +33,93 @@ _GROUP_VARIABLES = {
 }
 
 
+# Multi-factor authentication (docs/SECURITY.md#multi-factor-authentication). The identity
+# provider proves MFA in the ID token's ``amr`` claim (RFC 8176); a preset knows how a provider
+# says it and how to ask for it (``acr_values``). Values here are names, never secrets.
+Preset = Literal["generic", "okta", "auth0"]
+PRESETS: tuple[Preset, ...] = get_args(Preset)
+MFA_AMR = frozenset({"mfa"})
+
+
+@dataclass(frozen=True)
+class PresetDefaults:
+    label: str
+    # Sent as acr_values to ask the provider for MFA; None sends nothing.
+    acr_values: str | None
+    # amr values that prove a second factor.
+    amr: frozenset[str]
+
+
+PRESET_DEFAULTS: dict[Preset, PresetDefaults] = {
+    "generic": PresetDefaults("Any OpenID Connect provider", None, MFA_AMR),
+    # Okta Identity Engine: any two factors.
+    "okta": PresetDefaults("Okta", "urn:okta:loa:2fa:any", MFA_AMR),
+    # Auth0 asks for MFA with the PAPE multi-factor policy and reports it as amr ["mfa"].
+    "auth0": PresetDefaults(
+        "Auth0", "http://schemas.openid.net/pape/policies/2007/06/multi-factor", MFA_AMR
+    ),
+}
+
+PRESET_ENV = "BALUARTE_OIDC_PRESET"
+REQUIRE_MFA_ENV = "BALUARTE_OIDC_REQUIRE_MFA"
+MFA_AMR_ENV = "BALUARTE_OIDC_MFA_AMR"
+ACR_VALUES_ENV = "BALUARTE_OIDC_ACR_VALUES"
+_AMR_VALUE = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
+_ACR_VALUES = re.compile(r"^[\x21-\x7e]+( [\x21-\x7e]+)*$")
+
+
+@dataclass(frozen=True)
+class MfaPolicy:
+    preset: Preset = "generic"
+    # Sign-in is refused unless the ID token proves MFA.
+    required: bool = False
+    amr: frozenset[str] = MFA_AMR
+    acr_values: str | None = None
+
+    def proven(self, amr: object) -> list[str] | None:
+        """The ID token's amr values when one of them proves MFA, else None."""
+        values = [value for value in amr if isinstance(value, str)] if isinstance(amr, list) else []
+        return values if self.amr.intersection(values) else None
+
+
+def mfa_policy(
+    preset: str,
+    required: bool,
+    amr: Iterable[str] | None = None,
+    acr_values: str | None = None,
+    names: tuple[str, str, str] = ("preset", "mfa_amr", "acr_values"),
+) -> MfaPolicy:
+    """Check an MFA policy. Empty ``amr`` and ``acr_values`` take the preset's."""
+    preset_name, amr_name, acr_name = names
+    chosen = preset.strip().lower() or "generic"
+    if chosen not in PRESETS:
+        raise ConfigurationError(f"{preset_name} must be one of {', '.join(PRESETS)}")
+    defaults = PRESET_DEFAULTS[chosen]
+    values = frozenset(value.strip() for value in (amr or ()) if value.strip())
+    if len(values) > 20 or any(not _AMR_VALUE.match(value) for value in values):
+        raise ConfigurationError(
+            f"{amr_name} must be up to 20 amr values of letters, digits and . _ : -"
+        )
+    acr = " ".join((acr_values or "").split())
+    if acr and (len(acr) > 512 or not _ACR_VALUES.match(acr)):
+        raise ConfigurationError(f"{acr_name} must be space-separated printable values")
+    return MfaPolicy(
+        preset=chosen,
+        required=required,
+        amr=values or defaults.amr,
+        acr_values=acr or defaults.acr_values,
+    )
+
+
+def _flag(name: str) -> bool:
+    raw = env(name).lower()
+    if raw in ("", "false"):
+        return False
+    if raw == "true":
+        return True
+    raise ConfigurationError(f"{name} must be true or false")
+
+
 @dataclass(frozen=True)
 class AuthSettings:
     public_url: str
@@ -45,6 +133,7 @@ class AuthSettings:
     session_lifetime: timedelta
     # Where the settings came from: the environment, or the web UI (ADR-0008).
     source: Literal["deployment", "database"] = "deployment"
+    mfa: MfaPolicy = MfaPolicy()
 
     @property
     def redirect_uri(self) -> str:
@@ -147,8 +236,10 @@ def stored_auth_settings(
     scopes: str,
     roles_claim: str,
     groups: Mapping[str, Iterable[str]],
+    mfa: MfaPolicy | None = None,
 ) -> AuthSettings:
-    """Settings entered in the web UI, checked as strictly as the environment."""
+    """Settings entered in the web UI, checked as strictly as the environment. ``mfa`` comes
+    from ``mfa_policy``, which checks it."""
     if not client_id.strip():
         raise ConfigurationError("client_id must not be empty")
     group_roles = {role: group_list(groups.get(role.value, ())) for role in _GROUP_VARIABLES}
@@ -166,6 +257,7 @@ def stored_auth_settings(
         session_idle=idle,
         session_lifetime=lifetime,
         source="database",
+        mfa=mfa or MfaPolicy(),
     )
 
 
@@ -200,4 +292,11 @@ def load_auth_settings() -> AuthSettings | None:
         group_roles=group_roles,
         session_idle=idle,
         session_lifetime=lifetime,
+        mfa=mfa_policy(
+            env(PRESET_ENV),
+            _flag(REQUIRE_MFA_ENV),
+            env(MFA_AMR_ENV).split(","),
+            env(ACR_VALUES_ENV),
+            (PRESET_ENV, MFA_AMR_ENV, ACR_VALUES_ENV),
+        ),
     )

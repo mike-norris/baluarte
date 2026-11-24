@@ -18,6 +18,7 @@ from baluarte.auth.settings import (
     deployment_auth_present,
     issuer_url,
     load_auth_settings,
+    mfa_policy,
     stored_auth_settings,
 )
 from baluarte.configuration import effective
@@ -157,6 +158,10 @@ def _oidc_out(settings: AuthSettings, secret: bool) -> OidcConfig:
         auditor_groups=sorted(settings.group_roles.get(Role.AUDITOR, ())),
         manager_groups=sorted(settings.group_roles.get(Role.MANAGER, ())),
         redirect_uri=settings.redirect_uri,
+        preset=settings.mfa.preset,
+        require_mfa=settings.mfa.required,
+        mfa_amr=sorted(settings.mfa.amr),
+        acr_values=settings.mfa.acr_values,
     )
 
 
@@ -197,6 +202,7 @@ def update_oidc(db: Session, update: OidcUpdate, actor: str, via: Via) -> OidcCo
             scopes=update.scopes,
             roles_claim=update.roles_claim,
             groups=groups,
+            mfa=mfa_policy(update.preset, update.require_mfa, update.mfa_amr, update.acr_values),
         )
     except ConfigurationError as exc:
         raise SettingsInvalid(str(exc)) from exc
@@ -220,6 +226,11 @@ def update_oidc(db: Session, update: OidcUpdate, actor: str, via: Via) -> OidcCo
             "scopes": checked.scopes,
             "roles_claim": checked.roles_claim,
             "groups": groups,
+            "preset": checked.mfa.preset,
+            "require_mfa": checked.mfa.required,
+            # Stored as entered, so an empty value keeps following the preset.
+            "mfa_amr": sorted({value.strip() for value in update.mfa_amr if value.strip()}),
+            "acr_values": " ".join(update.acr_values.split()),
         },
         actor,
     )
@@ -240,6 +251,10 @@ def update_oidc(db: Session, update: OidcUpdate, actor: str, via: Via) -> OidcCo
             "client_id": checked.client_id,
             "scopes": checked.scopes,
             "roles_claim": checked.roles_claim,
+            "preset": checked.mfa.preset,
+            "require_mfa": checked.mfa.required,
+            "mfa_amr": sorted(checked.mfa.amr),
+            "acr_values": checked.mfa.acr_values,
             "admin_groups": groups["admin"],
             "analyst_groups": groups["analyst"],
             "auditor_groups": groups["auditor"],

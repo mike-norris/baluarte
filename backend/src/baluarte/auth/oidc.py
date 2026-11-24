@@ -148,19 +148,20 @@ class OidcClient:
         )
 
     def authorization_url(self, pending: PendingLogin) -> str:
-        query = urlencode(
-            {
-                "response_type": "code",
-                "client_id": self._settings.client_id,
-                "redirect_uri": self._settings.redirect_uri,
-                "scope": self._settings.scopes,
-                "state": pending.state,
-                "nonce": pending.nonce,
-                "code_challenge": code_challenge(pending.code_verifier),
-                "code_challenge_method": "S256",
-            }
-        )
-        return f"{self.metadata().authorization_endpoint}?{query}"
+        parameters = {
+            "response_type": "code",
+            "client_id": self._settings.client_id,
+            "redirect_uri": self._settings.redirect_uri,
+            "scope": self._settings.scopes,
+            "state": pending.state,
+            "nonce": pending.nonce,
+            "code_challenge": code_challenge(pending.code_verifier),
+            "code_challenge_method": "S256",
+        }
+        # Asks the provider for MFA; whether it happened is read from amr, never assumed.
+        if self._settings.mfa.acr_values:
+            parameters["acr_values"] = self._settings.mfa.acr_values
+        return f"{self.metadata().authorization_endpoint}?{urlencode(parameters)}"
 
     def exchange_code(self, code: str, code_verifier: str) -> dict[str, Any]:
         metadata = self.metadata()
