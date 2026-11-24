@@ -312,7 +312,7 @@ describe("ConnectionsPage", () => {
     });
     renderAt("/connections");
     const panel = await screen.findByRole("region", { name: "Webhook" });
-    expect(within(panel).getByText("Not set up")).toBeInTheDocument();
+    expect(await within(panel).findByText("Not set up")).toBeInTheDocument();
 
     await userEvent.click(within(panel).getByRole("button", { name: "Set up webhook" }));
 
