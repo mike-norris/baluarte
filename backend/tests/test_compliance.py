@@ -21,6 +21,7 @@ from baluarte.auth.dependencies import (
     database_engine,
 )
 from baluarte.auth.roles import Role
+from baluarte.auth.settings import mfa_policy
 from baluarte.compliance import posture
 from baluarte.compliance.catalogue import CONTROLS, FRAMEWORK_IDS, minimum
 from baluarte.compliance.retention import RETENTION_EXPIRE, expire
@@ -557,7 +558,7 @@ def test_attestations(engine: Engine) -> None:
     controls = {c["id"]: c for c in admin.get("/api/v1/compliance/posture").json()["controls"]}
     assert controls["backup-offsite"]["status"] == "met"
     assert controls["backup-offsite"]["attestation"]["id"] == row["id"]
-    assert controls["identity-mfa"]["status"] == "needs_attestation"
+    assert controls["encryption-at-rest"]["status"] == "needs_attestation"
     listed = admin.get("/api/v1/compliance/attestations", params={"control_id": "backup-offsite"})
     assert [a["id"] for a in listed.json()] == [row["id"]]
     assert "compliance.attested" in actions(engine)
@@ -565,8 +566,8 @@ def test_attestations(engine: Engine) -> None:
     with Session(engine) as db:
         db.add(
             ComplianceAttestation(
-                control_id="identity-mfa",
-                statement="MFA enforced in Okta",
+                control_id="encryption-at-rest",
+                statement="Disks encrypted by the cloud provider",
                 attested_by="user:1",
                 attested_by_user_id=1,
                 attested_at=datetime.now(UTC) - timedelta(days=400),
@@ -575,8 +576,8 @@ def test_attestations(engine: Engine) -> None:
         )
         db.commit()
     controls = {c["id"]: c for c in admin.get("/api/v1/compliance/posture").json()["controls"]}
-    assert controls["identity-mfa"]["status"] == "needs_attestation"
-    assert "expired" in controls["identity-mfa"]["detail"]
+    assert controls["encryption-at-rest"]["status"] == "needs_attestation"
+    assert "expired" in controls["encryption-at-rest"]["detail"]
     with pytest.raises(DBAPIError), engine.begin() as connection:
         connection.execute(text("UPDATE compliance_attestation SET statement = 'changed text'"))
 
@@ -592,6 +593,7 @@ def context(**overrides: Any) -> posture.Context:
         "database_ssl_mode": lambda: "verify-full",
         "secret_key_configured": lambda: True,
         "freshness": lambda _db: report,
+        "mfa": lambda: None,
     } | overrides
     return posture.Context(**values)
 
@@ -629,6 +631,49 @@ def test_url_and_key_checks(engine: Engine) -> None:
     # The test database connection is not encrypted, whatever the URL says.
     assert good["tls-database"].status == "not_met"
     assert good["tls-database"].evidence["connection_encrypted"] is False
+
+
+@pytest.mark.db
+def test_identity_mfa_follows_the_sign_in_policy_and_live_sessions(engine: Engine) -> None:
+    save_profile(engine, ["soc2"])
+    required = context(mfa=lambda: mfa_policy("okta", True))
+
+    assert results(engine, context())["identity-mfa"].status == "not_met"
+    met = results(engine, required)["identity-mfa"]
+    assert met.status == "met"
+    assert "(mfa)" in met.detail
+    assert met.evidence["preset"] == "okta"
+
+    with Session(engine) as db:
+        user = AppUser(issuer="https://idp.example.test", subject="s-1")
+        db.add(user)
+        db.flush()
+        for method in ("provider", None):
+            db.add(
+                UserSession(
+                    token_digest=hashlib.sha256(secrets.token_bytes(16)).hexdigest(),
+                    user_id=user.id,
+                    roles=["admin"],
+                    expires_at=datetime.now(UTC) + timedelta(hours=1),
+                    mfa_method=method,
+                )
+            )
+        db.commit()
+    live = results(engine, required)["identity-mfa"]
+    assert live.status == "not_met"
+    assert live.evidence["live_sessions_without_mfa"] == 1
+    with Session(engine) as db:
+        db.execute(update(UserSession).values(revoked_at=func.now()))
+        db.commit()
+    assert results(engine, required)["identity-mfa"].status == "met"
+
+    # Not required: an attestation that the provider enforces MFA stands in.
+    attested = client(engine, 1, Role.ADMIN).post(
+        "/api/v1/compliance/attestations",
+        json={"control_id": "identity-mfa", "statement": "MFA enforced in the provider"},
+    )
+    assert attested.status_code == 201
+    assert results(engine, context())["identity-mfa"].status == "met"
 
 
 @pytest.mark.db

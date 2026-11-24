@@ -71,7 +71,7 @@ Decided 2026-11-24, one change each, in this order:
 1. **TLS** (done): HTTPS from nginx and PostgreSQL TLS with client certificates and `sslmode=verify-full`, through a Compose overlay and a script that creates a local CA and certificates for testing ([DEPLOYMENT.md](DEPLOYMENT.md#tls)).
 2. **Off-site backups** (done): an S3-compatible target (SeaweedFS for local testing) receiving the encrypted backups; its storage must be a mount, NAS or block storage, not the host's own disk.
 3. **Provable backups** (done): list backups, restore one, and record restore runs, so `backup-offsite` and `restore-test` become checks.
-4. **MFA**: Okta and Auth0 presets with MFA verified from the token's `amr` claim, and built-in TOTP as the fallback.
+4. **MFA** (provider presets done; built-in TOTP next): Okta and Auth0 presets with MFA verified from the token's `amr` claim, and built-in TOTP as the fallback.
 
 ### Product milestones
 

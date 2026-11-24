@@ -335,6 +335,10 @@ def test_saving_the_identity_provider(harness: Harness) -> None:
         "auditor_groups": [],
         "manager_groups": [],
         "redirect_uri": f"{PUBLIC_URL}/api/v1/auth/callback",
+        "preset": "generic",
+        "require_mfa": False,
+        "mfa_amr": ["mfa"],
+        "acr_values": None,
     }
     assert harness.client.get("/api/v1/setup/oidc").json() == response.json()
     # The operating profile is still to be chosen.
@@ -768,6 +772,35 @@ def test_admins_change_the_identity_provider(harness: Harness) -> None:
     assert read.json()["manager_groups"] == ["leads"]
     assert tested.json()["ok"] is True
     assert harness.audit()[-1][:2] == ("user:1", "settings.oidc_updated")
+
+
+def test_the_identity_providers_mfa_settings_are_stored(harness: Harness) -> None:
+    client = admin_client(harness, Role.ADMIN)
+
+    default = client.put("/api/v1/settings/oidc", json=oidc_body())
+    assert default.json()["preset"] == "generic"
+    assert default.json()["require_mfa"] is False
+    assert default.json()["acr_values"] is None
+
+    saved = client.put("/api/v1/settings/oidc", json=oidc_body(preset="auth0", require_mfa=True))
+    read = client.get("/api/v1/settings/oidc").json()
+
+    assert saved.status_code == 200, saved.text
+    assert read["preset"] == "auth0"
+    assert read["require_mfa"] is True
+    assert read["mfa_amr"] == ["mfa"]
+    assert read["acr_values"] == "http://schemas.openid.net/pape/policies/2007/06/multi-factor"
+    details = harness.audit()[-1][2]
+    assert details["preset"] == "auth0" and details["require_mfa"] is True
+
+    custom = client.put(
+        "/api/v1/settings/oidc",
+        json=oidc_body(preset="okta", mfa_amr=["hwk", " otp "], acr_values="phrh"),
+    ).json()
+    assert custom["mfa_amr"] == ["hwk", "otp"]
+    assert custom["acr_values"] == "phrh"
+    refused = client.put("/api/v1/settings/oidc", json=oidc_body(mfa_amr=["has space"]))
+    assert refused.status_code == 422
 
 
 # Stored secrets

@@ -11,6 +11,8 @@ export const signInErrors: Record<string, string> = {
   not_authorized:
     "Your account is not in a group that has access to Baluarte. Ask an administrator for access.",
   sign_in_failed: "Sign-in could not be completed. Try again, or contact an administrator.",
+  mfa_required:
+    "Baluarte requires multi-factor authentication, and the identity provider did not confirm a second factor. Sign in again and complete the second step, or ask an administrator to require MFA in the provider.",
 };
 
 const fallbackError = signInErrors.sign_in_failed;

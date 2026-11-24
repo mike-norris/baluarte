@@ -27,7 +27,7 @@ from baluarte.compliance import attestations, operations
 from baluarte.compliance.catalogue import CONTROLS, Control, FrameworkId
 from baluarte.compliance.exceptions import controls_in_force
 from baluarte.config import database_url
-from baluarte.db.models import AuditEvent, CollectionJob, ComplianceAttestation
+from baluarte.db.models import AuditEvent, CollectionJob, ComplianceAttestation, UserSession
 from baluarte.settings import ConfigurationError, development_mode
 
 logger = logging.getLogger(__name__)
@@ -82,6 +82,8 @@ class Context:
     database_ssl_mode: Callable[[], str | None]
     secret_key_configured: Callable[[], bool]
     freshness: Callable[[Session], Any]
+    # The sign-in MFA policy in force, or None when sign-in is not configured.
+    mfa: Callable[[], Any]
 
 
 def _public_url() -> str | None:
@@ -90,6 +92,13 @@ def _public_url() -> str | None:
 
     settings = effective_auth_settings()
     return settings.public_url if settings is not None else None
+
+
+def _mfa() -> Any:
+    from baluarte.configuration.effective import effective_auth_settings
+
+    settings = effective_auth_settings()
+    return settings.mfa if settings is not None else None
 
 
 def _gitlab_url() -> str | None:
@@ -124,7 +133,7 @@ def _freshness(db: Session) -> Any:
 
 
 def default_context() -> Context:
-    return Context(_public_url, _gitlab_url, _ssl_mode, _secret_key, _freshness)
+    return Context(_public_url, _gitlab_url, _ssl_mode, _secret_key, _freshness, _mfa)
 
 
 # Settings ------------------------------------------------------------------------------------
@@ -512,6 +521,52 @@ def _restore_test(db: Session, _context: Context) -> Result:
     )
 
 
+def _identity_mfa(db: Session, context: Context) -> Result:
+    policy = context.mfa()
+    evidence: dict[str, Any] = {
+        "required": bool(policy is not None and policy.required),
+        "preset": policy.preset if policy is not None else None,
+    }
+    if policy is not None and policy.required:
+        evidence["amr"] = sorted(policy.amr)
+        # Sessions that began before MFA was required end on their own; until then they count.
+        without = db.scalar(
+            select(func.count())
+            .select_from(UserSession)
+            .where(
+                UserSession.revoked_at.is_(None),
+                UserSession.expires_at > func.now(),
+                UserSession.mfa_method.is_(None),
+            )
+        )
+        evidence["live_sessions_without_mfa"] = without
+        accepted = ", ".join(sorted(policy.amr))
+        if without:
+            return Result(
+                "not_met",
+                f"Sign-in requires MFA, but {without} live sessions began without it; they end "
+                "when they expire, or revoke them.",
+                evidence,
+            )
+        return Result(
+            "met",
+            f"Sign-in requires MFA, proven by the identity provider's amr claim ({accepted}); "
+            "every live session began with it.",
+            evidence,
+        )
+    attested = _attested(
+        db, "identity-mfa", evidence, "The identity provider requires MFA for everyone"
+    )
+    if attested is not None:
+        return attested
+    return Result(
+        "not_met",
+        "Sign-in does not require MFA. Turn on Require MFA in the identity provider settings, or "
+        "attest that the provider enforces it for everyone who can sign in.",
+        evidence,
+    )
+
+
 CHECKS: dict[str, Callable[[Session, Context], Result]] = {
     "audit-integrity": _audit_integrity,
     "audit-protection": _audit_protection,
@@ -524,6 +579,7 @@ CHECKS: dict[str, Callable[[Session, Context], Result]] = {
     "backups": _backups,
     "backup-offsite": _backup_offsite,
     "restore-test": _restore_test,
+    "identity-mfa": _identity_mfa,
     "collection-health": _collection_health,
     "inventory-population": _inventory_population,
 }

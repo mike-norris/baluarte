@@ -81,7 +81,7 @@ Each control is a **setting** (met when its setting meets the requirement), a **
 | `backup-offsite` | check, or attestation (90 days) | A1.2 | A.8.13 | CP-9 | The backup files are copied off the database host |
 | `restore-test` | check, or attestation (365 days) | A1.3 | A.8.13 | CP-4 | A backup was restored and checked in the last 12 months |
 | `encryption-at-rest` | attestation (365 days) | CC6.1 | A.8.24 | SC-28 | Database and backup storage is encrypted |
-| `identity-mfa` | attestation (365 days) | CC6.1 | A.8.5 | IA-2(1), IA-2(2) | The identity provider requires MFA for everyone who can sign in |
+| `identity-mfa` | check, or attestation (365 days) | CC6.1 | A.8.5 | IA-2(1), IA-2(2) | The identity provider requires MFA for everyone who can sign in |
 | `access-review` | attestation (90 days) | CC6.2, CC6.3 | A.5.18 | AC-2 | Membership of the groups mapped to Baluarte roles was reviewed |
 
 A check that cannot run (a database error, a setting that cannot be read) is `not_met` and says why; it is never reported as met. The catalogue, with a how-to for each control, is served by `GET /api/v1/compliance/catalogue`.

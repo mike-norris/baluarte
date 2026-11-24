@@ -1,6 +1,6 @@
 /** Checks for the identity provider and GitLab forms. The API repeats every check. */
 
-import { CALLBACK_PATH } from "../api/setup";
+import { CALLBACK_PATH, type OidcPreset } from "../api/setup";
 
 export const DEFAULT_SCOPES = "openid profile email";
 export const DEFAULT_ROLES_CLAIM = "groups";
@@ -58,6 +58,34 @@ export interface OidcFields {
   analyst_groups: string;
   auditor_groups: string;
   manager_groups: string;
+  preset: OidcPreset;
+  require_mfa: boolean;
+  /** Overrides, one per line or comma-separated; empty takes the preset's. */
+  mfa_amr: string;
+  acr_values: string;
+}
+
+/** What each preset sends and accepts, as the server defines them. */
+export const PRESETS: Record<OidcPreset, { label: string; acr: string | null; amr: string[] }> = {
+  generic: { label: "Any OpenID Connect provider", acr: null, amr: ["mfa"] },
+  okta: { label: "Okta", acr: "urn:okta:loa:2fa:any", amr: ["mfa"] },
+  auth0: {
+    label: "Auth0",
+    acr: "http://schemas.openid.net/pape/policies/2007/06/multi-factor",
+    amr: ["mfa"],
+  },
+};
+
+/** amr values from the form: one per line or comma-separated. */
+export function parseAmr(value: string): string[] {
+  return [
+    ...new Set(
+      value
+        .split(/[\s,]+/)
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 /** Problems with the identity provider form, in field order; empty when it may be sent. */
@@ -72,6 +100,8 @@ export function oidcProblems(fields: OidcFields): string[] {
   if (!fields.client_id.trim()) problems.push("Enter the client ID from your identity provider.");
   if (!fields.scopes.split(/\s+/).includes("openid")) problems.push("Scopes must include openid.");
   if (!fields.roles_claim.trim()) problems.push("Enter the claim that lists the user's groups.");
+  if (parseAmr(fields.mfa_amr).some((value) => !/^[A-Za-z0-9_.:-]{1,64}$/.test(value)))
+    problems.push("amr values are letters, digits and . _ : - only.");
   if (parseGroups(fields.admin_groups).length === 0) {
     problems.push("Map at least one group to the admin role, or no one can manage Baluarte.");
   }

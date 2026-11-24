@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from baluarte.api.v1.auth import safe_return_to
 from baluarte.audit import details_digest
 from baluarte.auth.dependencies import CSRF_HEADER, auth_settings, database_engine, oidc_client
-from baluarte.auth.settings import AuthSettings
+from baluarte.auth.settings import AuthSettings, mfa_policy
 from baluarte.db.models import AppUser, AuditEvent, OidcLogin, UserSession
 from baluarte.main import create_app
 
@@ -122,7 +122,11 @@ def test_sign_in_creates_a_session(harness: Harness) -> None:
     assert len(body["csrf_token"]) == 64
 
     assert harness.audit() == [
-        ("user:1", "auth.login", {"roles": ["analyst"], "workspaces": {"1": ["analyst"]}})
+        (
+            "user:1",
+            "auth.login",
+            {"roles": ["analyst"], "workspaces": {"1": ["analyst"]}, "mfa": False, "amr": []},
+        )
     ]
 
 
@@ -323,3 +327,83 @@ def test_session_activity_is_recorded(harness: Harness) -> None:
     with Session(harness.engine) as db:
         session = db.scalars(select(UserSession)).one()
         assert session.last_seen_at > session.created_at
+
+
+def mfa_harness(engine: Engine, preset: str = "generic", required: bool = True) -> Harness:
+    return Harness(engine, make_settings(mfa=mfa_policy(preset, required)))
+
+
+def test_sign_in_records_mfa_proven_by_amr(harness: Harness) -> None:
+    harness.idp.claims["amr"] = ["pwd", "mfa", "otp"]
+
+    harness.sign_in()
+
+    assert harness.me().json()["mfa_method"] == "provider"
+    details = harness.audit()[-1][2]
+    assert details["mfa"] is True
+    assert details["amr"] == ["mfa", "otp", "pwd"]
+
+
+def test_sign_in_without_mfa_is_allowed_while_not_required(harness: Harness) -> None:
+    harness.idp.claims["amr"] = ["pwd"]
+
+    harness.sign_in()
+
+    assert harness.me().json()["mfa_method"] is None
+    assert harness.audit()[-1][2]["amr"] == ["pwd"]
+
+
+@pytest.mark.parametrize("amr", [None, ["pwd"], "mfa", [], [{"mfa": True}]])
+def test_required_mfa_refuses_a_token_that_does_not_prove_it(
+    migrated_engine: Engine, amr: Any
+) -> None:
+    harness = mfa_harness(migrated_engine)
+    try:
+        if amr is None:
+            harness.idp.claims.pop("amr", None)
+        else:
+            harness.idp.claims["amr"] = amr
+
+        response = harness.sign_in()
+
+        assert redirect_error(response) == "mfa_required"
+        assert harness.audit() == [
+            ("oidc:user-1", "auth.login_failed", {"reason": "mfa_not_proven"})
+        ]
+        with Session(harness.engine) as db:
+            assert db.scalars(select(UserSession)).all() == []
+    finally:
+        harness.client.close()
+
+
+def test_required_mfa_is_read_from_the_id_token_not_userinfo(migrated_engine: Engine) -> None:
+    harness = mfa_harness(migrated_engine)
+    try:
+        del harness.idp.claims["groups"]
+        harness.idp.userinfo_claims = {"groups": ["baluarte-auditors"], "amr": ["mfa"]}
+
+        assert redirect_error(harness.sign_in()) == "mfa_required"
+    finally:
+        harness.client.close()
+
+
+@pytest.mark.parametrize(
+    ("preset", "acr"),
+    [
+        ("okta", "urn:okta:loa:2fa:any"),
+        ("auth0", "http://schemas.openid.net/pape/policies/2007/06/multi-factor"),
+    ],
+)
+def test_presets_ask_for_mfa_and_accept_it(migrated_engine: Engine, preset: str, acr: str) -> None:
+    harness = mfa_harness(migrated_engine, preset)
+    try:
+        query = harness.start()
+        assert query["acr_values"] == acr
+        harness.idp.claims["amr"] = ["mfa"]
+
+        response = harness.callback(state=query["state"], code=harness.idp.code)
+
+        assert response.status_code == 303
+        assert harness.me().json()["mfa_method"] == "provider"
+    finally:
+        harness.client.close()

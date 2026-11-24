@@ -1207,7 +1207,7 @@ export const helpTopics: readonly HelpTopic[] = [
           </li>
           <li>
             <strong>Attestations</strong> an administrator makes for what Baluarte cannot see, such
-            as encryption at rest or MFA at the identity provider. They expire and must be renewed.
+            as encryption at rest. They expire and must be renewed.
           </li>
         </ul>
         <p>

@@ -105,6 +105,8 @@ class Principal:
     workspaces: Mapping[int, frozenset[Role]] = field(default_factory=dict)
     # Whether that workspace is the default one, where deployment settings are managed.
     in_default_workspace: bool = True
+    # How a second factor was proven at sign-in, or None.
+    mfa_method: str | None = None
 
     @property
     def permissions(self) -> frozenset[Permission]:
@@ -150,6 +152,7 @@ def current_principal(
         roles=held[workspace.id],
         session_id=active.session.id,
         session_expires_at=active.session.expires_at,
+        mfa_method=active.session.mfa_method,
         csrf_token=csrf,
         workspace_id=workspace.id,
         workspace_slug=workspace.slug,

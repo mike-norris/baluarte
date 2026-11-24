@@ -2748,6 +2748,9 @@ class UserSession(Base):
             name="roles_allowed",
         ),
         CheckConstraint("expires_at > created_at", name="expires_after_created"),
+        CheckConstraint(
+            "mfa_method IS NULL OR mfa_method IN ('provider')", name="mfa_method_allowed"
+        ),
     )
 
     id: Mapped[int] = pk()
@@ -2762,6 +2765,9 @@ class UserSession(Base):
     last_seen_at: Mapped[datetime] = utc_now()
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # How a second factor was proven at sign-in (migration 0044): "provider" when the ID
+    # token's amr proved it; None when none was.
+    mfa_method: Mapped[str | None] = mapped_column(Text)
 
 
 class OidcLogin(Base):

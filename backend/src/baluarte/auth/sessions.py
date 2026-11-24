@@ -80,9 +80,11 @@ def create_session(
     roles: frozenset[Role],
     settings: AuthSettings,
     workspace_roles: Mapping[int, frozenset[Role]] | None = None,
+    mfa_method: str | None = None,
 ) -> str:
     """Start a session. ``roles`` is the union of ``workspace_roles``, the roles per workspace;
-    without them, the roles are held in the default workspace."""
+    without them, the roles are held in the default workspace. ``mfa_method`` says how a second
+    factor was proven, if one was."""
     token = secrets.token_urlsafe(32)
     now = utcnow()
     db.add(
@@ -97,6 +99,7 @@ def create_session(
             created_at=now,
             last_seen_at=now,
             expires_at=now + settings.session_lifetime,
+            mfa_method=mfa_method,
         )
     )
     return token

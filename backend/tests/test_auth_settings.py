@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from baluarte.auth.roles import Role
-from baluarte.auth.settings import load_auth_settings
+from baluarte.auth.settings import MfaPolicy, load_auth_settings
 from baluarte.config import ConfigurationError
 
 BASE = {
@@ -121,3 +121,76 @@ def test_unreadable_or_empty_secret_file_is_an_error(
 
     with pytest.raises(ConfigurationError, match="BALUARTE_OIDC_CLIENT_SECRET_FILE"):
         load_auth_settings()
+
+
+def test_mfa_is_off_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    configure(monkeypatch)
+
+    settings = load_auth_settings()
+
+    assert settings is not None
+    assert settings.mfa == MfaPolicy()
+    assert settings.mfa.acr_values is None
+
+
+@pytest.mark.parametrize(
+    ("preset", "acr"),
+    [
+        ("okta", "urn:okta:loa:2fa:any"),
+        ("AUTH0", "http://schemas.openid.net/pape/policies/2007/06/multi-factor"),
+        ("generic", None),
+    ],
+)
+def test_mfa_presets_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch, preset: str, acr: str | None
+) -> None:
+    configure(monkeypatch)
+    monkeypatch.setenv("BALUARTE_OIDC_PRESET", preset)
+    monkeypatch.setenv("BALUARTE_OIDC_REQUIRE_MFA", "true")
+
+    settings = load_auth_settings()
+
+    assert settings is not None
+    assert settings.mfa.required
+    assert settings.mfa.preset == preset.lower()
+    assert settings.mfa.acr_values == acr
+    assert settings.mfa.amr == {"mfa"}
+
+
+def test_mfa_amr_and_acr_values_override_the_preset(monkeypatch: pytest.MonkeyPatch) -> None:
+    configure(monkeypatch)
+    monkeypatch.setenv("BALUARTE_OIDC_PRESET", "okta")
+    monkeypatch.setenv("BALUARTE_OIDC_MFA_AMR", "otp, hwk")
+    monkeypatch.setenv("BALUARTE_OIDC_ACR_VALUES", "phrh")
+
+    settings = load_auth_settings()
+
+    assert settings is not None
+    assert settings.mfa.amr == {"otp", "hwk"}
+    assert settings.mfa.acr_values == "phrh"
+    assert settings.mfa.proven(["pwd", "hwk"]) == ["pwd", "hwk"]
+    assert settings.mfa.proven(["pwd", "mfa"]) is None
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [
+        ("BALUARTE_OIDC_PRESET", "keycloak"),
+        ("BALUARTE_OIDC_REQUIRE_MFA", "yes"),
+        ("BALUARTE_OIDC_MFA_AMR", "mfa,has space"),
+        ("BALUARTE_OIDC_ACR_VALUES", "café"),
+    ],
+)
+def test_invalid_mfa_settings_are_refused(
+    monkeypatch: pytest.MonkeyPatch, name: str, value: str
+) -> None:
+    configure(monkeypatch)
+    monkeypatch.setenv(name, value)
+
+    with pytest.raises(ConfigurationError, match=name):
+        load_auth_settings()
+
+
+@pytest.mark.parametrize("amr", [None, "mfa", [], ["pwd"], [1, None], [{"mfa": 1}]])
+def test_mfa_is_proven_only_by_a_listed_amr_value(amr: object) -> None:
+    assert MfaPolicy(required=True).proven(amr) is None

@@ -399,11 +399,14 @@ CONTROLS: tuple[Control, ...] = (
         "identity-mfa",
         "Sign-in requires multi-factor authentication",
         "Access",
-        "attestation",
-        "The identity provider Baluarte uses requires multi-factor authentication for everyone "
-        "who can sign in to Baluarte.",
-        "Require MFA in the identity provider for the groups mapped to Baluarte roles. Then "
-        "attest to it here.",
+        "check",
+        "Everyone who signs in to Baluarte proves a second factor. With Require MFA on, "
+        "Baluarte refuses a sign-in whose ID token does not prove MFA in its amr claim, and "
+        "every live session must have begun with it.",
+        "Require MFA in the identity provider for the groups mapped to Baluarte roles, then turn "
+        "on **Require MFA** in Settings > Identity provider, choosing the Okta or Auth0 preset "
+        "if it applies (docs/SECURITY.md#multi-factor-authentication). If the provider "
+        "enforces MFA but does not report it in amr, attest to it here instead.",
         _maps(["CC6.1"], ["A.8.5"], ["IA-2(1)", "IA-2(2)"]),
         attestation_days=365,
     ),
