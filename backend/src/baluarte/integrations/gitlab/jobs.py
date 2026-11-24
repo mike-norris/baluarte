@@ -70,6 +70,8 @@ SCHEDULED_KINDS = (DETECT_CAPABILITIES, DISCOVER_GROUPS, DISCOVER_PROJECTS)
 # The GitHub collection (``baluarte.integrations.github.jobs.COLLECT``), named here so the
 # schedule needs no import of the GitHub adapter.
 GITHUB_COLLECT = "github.collect"
+# A GitHub connection's issue register alone (roadmap M13.5; ``integrations.github.jobs``).
+GITHUB_COLLECT_ISSUES = "github.collect_issues"
 
 # Retries of a scheduled collection, in seconds after each failed attempt: long enough to ride
 # out a network or GitLab outage of some minutes. Manual collection keeps the queue's short

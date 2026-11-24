@@ -12,7 +12,7 @@ Each fact names its source page on docs.github.com (REST API version `2022-11-28
 | M13.2 Provider layer and connection | Provider on connections and normalized records; GitHub App and fine-grained token connections for GitHub.com (Enterprise Server later); capability probes; rate limits and retries; organization, team, repository and membership discovery | Done |
 | M13.3 Settings and rules | Repository settings, branch protection and rulesets, required reviews, visibility, security features; each rule type declares the providers it supports, and GitHub results carry their evidence | Done: provider-aware evaluation, branch settings, visibility, protection, reviews and two-factor (M13.3a); security features and label drift (M13.3b). Fake-tested only; the **to verify** items need a live organization |
 | M13.4 Change evidence and webhooks | Pull requests, reviews, workflow runs, deployments and releases; signed webhooks processed once per delivery and de-duplicated against scheduled collection | Done, fake-tested only: change evidence by scheduled collection (M13.4a) and signed webhooks (M13.4b). Releases are not read |
-| M13.5 Issue register and acceptance | GitHub issues in the register (pull requests left out); one workspace with a GitLab and a GitHub connection evaluated by one baseline | Planned |
+| M13.5 Issue register and acceptance | GitHub issues in the register (pull requests left out); one workspace with a GitLab and a GitHub connection evaluated by one baseline | Done, fake-tested only: issues, their evidence and the acceptance test ([ISSUE_REGISTER.md](ISSUE_REGISTER.md#github)) |
 
 ## Authentication
 
@@ -73,6 +73,7 @@ An admin opens *Connections*, and on a GitHub connection chooses **Set up webhoo
 | `branch_protection_rule`, `repository_ruleset` | The repository's default-branch settings |
 | `security_and_analysis` | The repository's security features |
 | `label` | The repository's labels |
+| `issues`, `issue_comment` | The register's read of the connection's issues, unless one is waiting; nothing without a register |
 | `repository`, `organization`, `member`, `membership`, `team`, `team_add`; any event about a repository not in the inventory, archived or out of monitoring scope | A full collection of the connection, unless one is already waiting |
 
 A read covers every delivery still queued for the same repository and kind of read that arrived before it started, so a burst of events is read once and none is lost: one that arrives during a read gets its own. Then an evaluation of the connection is queued, unless one is waiting. A read that could not be completed marks its deliveries `failed` with the reason; what was read is recorded, and the next scheduled collection reads the rest.
@@ -132,7 +133,8 @@ Implemented in M13.2 (migration `0036`). Everything below is tested against a sc
 - **Labels** (M13.3b). Then a collection run of kind `labels` reads each in-scope repository's labels (`GET /repos/:owner/:repo/labels`) in the shape GitLab project labels are recorded in, colour as `#rrggbb`. A refusal is recorded as such and makes the run partial, never "no labels".
 - **Changes** (M13.4a). Then a collection run of kind `changes` reads each repository's pull requests, workflow runs, direct pushes and production deployments ([CHANGE_EVIDENCE.md](CHANGE_EVIDENCE.md#github)).
 - **Webhooks** (M13.4b). Optional: they make the reads above happen within seconds of a change on GitHub ([Webhooks](#webhooks)).
-- **Not yet.** Their issues do not join the register until M13.5, and the GitLab diagnostics (*Test connection*) are not offered for them.
+- **Issues** (M13.5). When the connection's workspace has an issue register, a collection run of kind `issues` reads each repository's issues, pull requests left out, and captures the evidence of the auditable ones ([ISSUE_REGISTER.md](ISSUE_REGISTER.md#github)). *Read issues now* and new rules queue it alone (`github.collect_issues`).
+- **Not yet.** The GitLab diagnostics (*Test connection*) are not offered for them.
 
 ## Open questions
 

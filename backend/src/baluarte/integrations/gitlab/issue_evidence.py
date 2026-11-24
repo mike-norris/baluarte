@@ -566,19 +566,12 @@ def write(
     )
 
 
-def collect(
-    client: GitLabClient,
-    engine: Engine,
-    instance_id: int,
-    provenance: Provenance | None = None,
-    limit: int = MAX_CAPTURES,
-) -> EvidenceTally:
-    """Capture the evidence of the connection's auditable issues that need it."""
-    provenance = provenance or Provenance()
-    tally = EvidenceTally()
+# Captures one issue, given the files its previous capture already stored.
+Capturer = Callable[[IssueTarget, Mapping[tuple[str, str], Mapping[str, Any]]], Capture]
+
+
+def gitlab_capturer(client: GitLabClient) -> Capturer:
     max_bytes = attachment_limit()
-    with Session(engine) as db:
-        targets, tally.remaining = due(db, instance_id, limit)
     releases: dict[int, list[dict[str, Any]]] = {}
 
     def releases_of(gitlab_id: int) -> list[dict[str, Any]]:
@@ -588,13 +581,37 @@ def collect(
             ]
         return releases[gitlab_id]
 
+    return lambda target, files: capture_issue(client, target, files, releases_of, max_bytes)
+
+
+def collect(
+    client: GitLabClient | None,
+    engine: Engine,
+    instance_id: int,
+    provenance: Provenance | None = None,
+    limit: int = MAX_CAPTURES,
+    capturer: Capturer | None = None,
+) -> EvidenceTally:
+    """Capture the evidence of the connection's auditable issues that need it.
+
+    ``capturer`` captures another provider's issues (``baluarte.integrations.github.issues``).
+    """
+    provenance = provenance or Provenance()
+    tally = EvidenceTally()
+    if capturer is None:
+        if client is None:
+            raise ValueError("a GitLab client or a capturer is needed")
+        capturer = gitlab_capturer(client)
+    with Session(engine) as db:
+        targets, tally.remaining = due(db, instance_id, limit)
+
     for target in targets:
         with Session(engine) as db:
             evidence, observation = _previous(db, target)
             files = _previous_files(observation)
             db.expunge_all()
         try:
-            capture = capture_issue(client, target, files, releases_of, max_bytes)
+            capture = capturer(target, files)
         except Unauthorized:
             tally.rejected = True
             break

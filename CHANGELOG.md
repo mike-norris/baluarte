@@ -9,6 +9,15 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- GitHub issues in the auditable issue register (roadmap M13.5): when a workspace has a
+  register, each GitHub collection also reads its repositories' issues, pull requests left out,
+  as an `issues` run, and captures the evidence of auditable ones: the description, comments,
+  timeline history, mentioning issues, and mentioning pull requests with their reviews and
+  workflow runs. Rules, decisions, mappings and exports work across GitLab and GitHub issues
+  alike, and the issue page and mappings use GitHub's words. *Read issues now*, new rules and
+  the `issues` and `issue_comment` webhook events queue the read. Files attached on GitHub are
+  listed as gaps, not downloaded. An acceptance test evaluates one workspace with a GitLab and a
+  GitHub connection against one baseline.
 - Signed GitHub webhooks (roadmap M13.4b): an admin can set up a webhook on a GitHub connection
   (the secret is generated, sealed and shown once) and GitHub's deliveries to
   `/api/v1/webhooks/github/{id}` are verified by their HMAC-SHA256 signature before anything is

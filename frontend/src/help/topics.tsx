@@ -997,6 +997,12 @@ export const helpTopics: readonly HelpTopic[] = [
             SHA-256 and only offered as downloads.
           </li>
           <li>
+            <strong>GitHub</strong> issues are read after each GitHub collection, pull requests left
+            out. Their evidence is the description, comments, timeline, and the issues and pull
+            requests that mention them, with reviews and workflow runs. Files attached on GitHub are
+            listed as gaps rather than downloaded.
+          </li>
+          <li>
             <strong>Controls</strong>: on an issue&apos;s page, map it to a framework control and
             cite the captured items that show the control working, each with why. While review is
             required someone else with permission to change baselines approves the mapping, from the

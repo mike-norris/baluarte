@@ -24,7 +24,7 @@ from baluarte.db.models import (
     Observation,
     WebhookDelivery,
 )
-from baluarte.integrations.github.jobs import COLLECT
+from baluarte.integrations.github.jobs import COLLECT, COLLECT_ISSUES
 from baluarte.integrations.github.repositories import LABELS_SOURCE
 from baluarte.integrations.github.webhooks import WEBHOOK, make_handle, signature
 from baluarte.jobs.worker import Worker
@@ -273,3 +273,22 @@ def test_a_failed_read_marks_the_delivery_failed(
     with Session(migrated_engine) as db:
         row = db.scalars(select(WebhookDelivery)).one()
     assert row.status == "failed" and row.error
+
+
+def test_issue_events_queue_one_register_read(migrated_engine: Engine, environment: None) -> None:
+    connection_id, secret, fake = set_up(migrated_engine)
+    for n, event in enumerate(["issues", "issue_comment", "issues"]):
+        payload = {"action": "edited", "issue": {"number": 4}, "repository": {"id": 1}}
+        accepted = deliver(migrated_engine, connection_id, secret, event, payload, f"i-{n}")
+        assert accepted.json()["status"] == "queued"
+    fake.requests.clear()
+    run_webhooks(migrated_engine, fake)
+    assert fake.requests == []
+    with Session(migrated_engine) as db:
+        queued = db.scalars(
+            select(CollectionJob).where(
+                CollectionJob.kind == COLLECT_ISSUES, CollectionJob.state == "queued"
+            )
+        ).all()
+    assert len(queued) == 1
+    assert set(deliveries(migrated_engine).values()) == {"processed"}

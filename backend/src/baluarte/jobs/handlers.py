@@ -14,7 +14,11 @@ from sqlalchemy import Engine
 from baluarte.compliance.retention import RETENTION_EXPIRE, handle_expire
 from baluarte.compliance.shipping import AUDIT_SHIP, handle_ship
 from baluarte.integrations.github.jobs import COLLECT as GITHUB_COLLECT
+from baluarte.integrations.github.jobs import COLLECT_ISSUES as GITHUB_COLLECT_ISSUES
 from baluarte.integrations.github.jobs import make_collect as make_github_collect
+from baluarte.integrations.github.jobs import (
+    make_collect_issues as make_github_collect_issues,
+)
 from baluarte.integrations.github.webhooks import WEBHOOK as GITHUB_WEBHOOK
 from baluarte.integrations.github.webhooks import make_handle as make_github_webhook
 from baluarte.integrations.gitlab.jobs import (
@@ -55,6 +59,7 @@ HANDLERS: Mapping[str, Handler] = {
     COLLECT_TIME: make_collect_time(),
     COLLECT_ISSUES: make_collect_issues(),
     GITHUB_COLLECT: make_github_collect(),
+    GITHUB_COLLECT_ISSUES: make_github_collect_issues(),
     GITHUB_WEBHOOK: make_github_webhook(),
     APPLY_LABEL_PLAN: make_apply_label_plan(),
     APPLY_ISSUE_PLAN: make_apply_issue_plan(),
