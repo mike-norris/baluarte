@@ -10,6 +10,7 @@ Roadmap milestone M12 ([ROADMAP.md](ROADMAP.md#m12--auditable-issue-register)), 
 | M12.2 Issue evidence | For auditable issues only: the description, comments, status history, linked issues, closing and related merge requests with their approvals and pipelines, releases for the issue's milestone, and attachments captured with SHA-256 checksums and stored once; sources that could not be read are gaps on the issue; an issue page (`/register/issues/:project/:iid`) (migration `0034`) | Done |
 | M12.3 Control mappings | Many-to-many issue-to-control mappings with a rationale per evidence item, proposed and reviewed like control mapping changes and pinned to the capture they cite; audit periods, with evidence inside the period kept apart from later remediation; gaps per issue and control; a Controls tab (`/register/controls`) with coverage, and mappings on the issue page (migration `0035`) | Done |
 | M12.4 Exports | Packages for one issue, a selection, every issue mapped to a control, or a period across selected controls: summary, manifest, issue-to-control index with framework versions, shared evidence stored once, provenance and checksums, assessments, approvals, exceptions and remediation status, gaps and redactions; verified offline with `baluarte-verify-export`; export buttons on the register, issue and Controls pages | Done |
+| M13.5 GitHub issues | GitHub issues in the register, pull requests left out, with their evidence: comments, timeline, mentioning issues and pull requests with reviews and workflow runs ([GitHub](#github)) | Done, fake-tested only |
 
 ## Selection
 
@@ -62,11 +63,23 @@ Connection, project, category, rule, state, issue type, label, assignee, title t
 - **Verifying.** `baluarte-verify-export <file> --manifest-sha256 <value>` checks it offline like any export, and also checks each `files/<sha256>` against its name, that every attachment a capture cites is in the package or listed as missing, and that every mapping's issue, cited items and capture are present. The manifest hash is in the `register.export_completed` audit event, and `GET /api/v1/register/exports/{export_id}` returns it.
 - **API and audit.** `POST /api/v1/register/exports` with `issues` (`[{project_id, iid}]`) or `controls` (`[{framework, control_id}]`), and optionally `period_id`. Needs `evidence:package` (administrators, analysts and auditors). Audited as `register.export_created` (scope and counts) and `register.export_completed` (sizes and hashes); the package is built in full before the first byte is sent.
 
+## GitHub
+
+GitHub connections (roadmap M13.5, [GITHUB_INTEGRATION.md](GITHUB_INTEGRATION.md)) share the register: the same rules, decisions, mappings and exports apply, and GitHub issues are recorded in the shape GitLab issues are, so a register and a package can hold both. A repository is the project; an issue's number is its `iid`.
+
+- **When.** The `issues` run follows each GitHub collection, for connections whose workspace has a register; adding a rule or *Read issues now* queues it alone (`github.collect_issues`), as do the `issues` and `issue_comment` webhook events.
+- **The index.** `GET /repos/{owner}/{repo}/issues?state=all&sort=updated&direction=asc`, with `since` (the latest update read, less five minutes) after the first read. Pull requests, which GitHub lists there too, are left out. `open` is recorded as `opened`. GitHub's issue types are defined per organization: `Task` is `task`, every other issue `issue`. GitHub has no confidential issues.
+- **Evidence.** The issue and its description, its comments (`…/issues/{number}/comments`), and its timeline (`…/timeline`): closed and reopened, labels and milestones added and removed as status history; issues that mention it as linked issues (`mentioned`); pull requests that mention it, up to 20, each with its reviewers' latest verdicts (`…/pulls/{number}/reviews`) and the latest run of each workflow for its head commit (`…/actions/runs?head_sha=`). A pull request whose merge commit closed the issue *closes* it; the others are *related*.
+- **Not captured.** Releases (`unsupported`: GitHub releases are not tied to milestones). Files attached on GitHub are listed as a gap with their count, so such a capture is `partial`: GitHub serves them through redirects to signed storage, and Baluarte never follows redirects. Required review counts are a branch setting, judged by `gitlab.project.merge_request_approvals`, so `approvals_required` is empty.
+- **On the page and in mappings**, GitHub's words are used: *Pull request #8*, *Workflow run 900 of #8*.
+- **Every request is a GET** with the connection's read-only token or App installation.
+
 ## Limits
 
 - Epics and other group-level planning records are not listed yet.
 - Releases are matched through the issue's milestone, not through commits.
 - Captured files live in PostgreSQL and count toward its size and its backups.
-- An issue deleted in GitLab stays in the register as last read.
+- An issue deleted in GitLab or GitHub stays in the register as last read.
+- GitHub sub-issues and issue dependencies are not read; a mention in another issue is.
 - Confidential issues are listed (Baluarte's token can read them); the page shows "Confidential issue" in place of the title.
 - Closing an issue is never treated as proof that a control works.

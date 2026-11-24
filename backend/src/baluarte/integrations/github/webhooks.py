@@ -16,6 +16,8 @@ token) accepts deliveries at ``POST /api/v1/webhooks/github/<connection id>``:
      repository's changes are read (``baluarte.integrations.github.changes``);
    - a repository's settings (branch protection, rulesets, security features, labels): that
      setting is read again for the repository;
+   - issues and their comments: the register's read of the connection (``github.collect_issues``)
+     is queued, unless one is already waiting; it reads nothing without a register;
    - organization events, and any event about a repository not yet in the inventory: a full
      ``github.collect`` is queued, unless one is already waiting.
 
@@ -57,7 +59,7 @@ from baluarte.integrations.github.client import GitHubClient
 from baluarte.integrations.github.repositories import read_labels, read_security
 from baluarte.integrations.gitlab import changes as gitlab_changes
 from baluarte.integrations.gitlab.client import GitLabError
-from baluarte.integrations.gitlab.jobs import GITHUB_COLLECT
+from baluarte.integrations.gitlab.jobs import GITHUB_COLLECT, GITHUB_COLLECT_ISSUES
 from baluarte.integrations.gitlab.project_reads import ProjectTarget
 from baluarte.jobs import queue
 from baluarte.jobs.queue import ClaimedJob
@@ -75,7 +77,7 @@ DELIVERY_ID = re.compile(r"^[A-Za-z0-9-]{1,100}$")
 EVENT_NAME = re.compile(r"^[a-z_]{1,64}$")
 
 # Which read an event calls for, by event name.
-Read = Literal["changes", "branch", "security", "labels", "organization"]
+Read = Literal["changes", "branch", "security", "labels", "organization", "register"]
 READS: dict[str, Read] = {
     "pull_request": "changes",
     "pull_request_review": "changes",
@@ -87,6 +89,9 @@ READS: dict[str, Read] = {
     "repository_ruleset": "branch",
     "security_and_analysis": "security",
     "label": "labels",
+    # The issue register (roadmap M13.5): a read of the connection's issues, if it has one.
+    "issues": "register",
+    "issue_comment": "register",
     "repository": "organization",
     "organization": "organization",
     "member": "organization",
@@ -202,7 +207,7 @@ def _settle(
             WebhookDelivery.received_at <= started,
             WebhookDelivery.event.in_(_same_read(read)),
         ]
-        if read != "organization":
+        if read not in ("organization", "register"):
             covered.append(WebhookDelivery.repository_id == delivery.repository_id)
         result = db.execute(
             update(WebhookDelivery)
@@ -216,12 +221,12 @@ def _settle(
         return int(result.rowcount or 0)  # type: ignore[attr-defined]
 
 
-def _full_collection(engine: Engine, delivery: WebhookDelivery) -> int:
-    """Queue a full collection of the connection unless one is already waiting to start."""
+def _full_collection(engine: Engine, delivery: WebhookDelivery, kind: str = GITHUB_COLLECT) -> int:
+    """Queue a collection of the connection (``kind``) unless one is already waiting to start."""
     with Session(engine) as db:
         waiting = db.scalars(
             select(CollectionJob.id).where(
-                CollectionJob.kind == GITHUB_COLLECT,
+                CollectionJob.kind == kind,
                 CollectionJob.state == "queued",
                 CollectionJob.payload[CONNECTION].as_integer() == delivery.instance_id,
             )
@@ -229,8 +234,8 @@ def _full_collection(engine: Engine, delivery: WebhookDelivery) -> int:
         if waiting is None:
             waiting = queue.enqueue(
                 db,
-                GITHUB_COLLECT,
-                f"{GITHUB_COLLECT}:connection-{delivery.instance_id}:webhook-{delivery.id}",
+                kind,
+                f"{kind}:connection-{delivery.instance_id}:webhook-{delivery.id}",
                 payload_for(delivery.instance_id),
                 max_attempts=3,
             )
@@ -252,6 +257,10 @@ def make_handle(transport: httpx.BaseTransport | None = None) -> Any:
         read = READS.get(delivery.event)
         if read is None:
             _settle(engine, delivery, "organization", started, "ignored")
+            return
+        if read == "register":
+            _full_collection(engine, delivery, GITHUB_COLLECT_ISSUES)
+            _settle(engine, delivery, read, started, "processed")
             return
         target = (
             _target(engine, delivery.instance_id, delivery.repository_id)

@@ -18,7 +18,7 @@ stored issues and the cursor as they were. Every request is a GET with the read-
 
 import logging
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Any
@@ -156,13 +156,25 @@ def has_register(db: Session, instance_id: int) -> bool:
     return bool(db.execute(select(or_(rules, decisions))).scalar_one())
 
 
+# Lists a project's issues, or those updated since a time, as ``issue_entry`` records them.
+IndexReader = Callable[[ProjectTarget, datetime | None], list[dict[str, Any]]]
+
+
 def read_project(
-    client: GitLabClient, target: ProjectTarget, updated_after: datetime | None
+    client: GitLabClient | None,
+    target: ProjectTarget,
+    updated_after: datetime | None,
+    reader: IndexReader | None = None,
 ) -> IssueRead:
     """Read one project's issues. Raises Unauthorized on 401."""
     read = IssueRead(target, updated_after)
     try:
-        read.issues = read_issues(client, target, updated_after)
+        if reader is not None:
+            read.issues = reader(target, updated_after)
+        else:
+            if client is None:
+                raise ValueError("a GitLab client or a reader is needed")
+            read.issues = read_issues(client, target, updated_after)
         read.status = "ok"
     except Unauthorized:
         raise
@@ -276,13 +288,17 @@ def write(
 
 
 def collect(
-    client: GitLabClient,
+    client: GitLabClient | None,
     engine: Engine,
     instance_id: int,
     provenance: Provenance | None = None,
     projects: Sequence[ProjectTarget] | None = None,
+    reader: IndexReader | None = None,
 ) -> RegisterCollection:
-    """Read and record the issues of every monitored project, if the workspace has a register."""
+    """Read and record the issues of every monitored project, if the workspace has a register.
+
+    ``reader`` reads another provider's issues (``baluarte.integrations.github.issues``).
+    """
     provenance = provenance or Provenance()
     tally = RegisterCollection()
     with Session(engine) as db:
@@ -300,7 +316,7 @@ def collect(
             read = IssueRead(target, since, status="failed", error=STOPPED_BY_REJECTION)
         else:
             try:
-                read = read_project(client, target, since)
+                read = read_project(client, target, since, reader)
             except Unauthorized as error:
                 tally.rejected = True
                 read = IssueRead(target, since, status="failed", error=str(error))

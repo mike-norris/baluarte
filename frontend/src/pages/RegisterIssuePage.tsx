@@ -37,7 +37,16 @@ const SOURCE_LABELS: Record<string, string> = {
   pipelines: "Pipelines",
   releases: "Releases",
   attachments: "Attachments",
+  timeline: "Timeline",
+  pull_requests: "Pull requests",
 };
+
+/** What a provider calls a merge request, how it numbers one, and what it calls a pipeline. */
+function changeWords(capture: Capture) {
+  return capture.provider === "github"
+    ? { plural: "Pull requests", one: "Pull request", mark: "#", run: "Latest workflow run" }
+    : { plural: "Merge requests", one: "Merge request", mark: "!", run: "Latest pipeline" };
+}
 
 function bytes(size: number | null): string {
   if (size === null) return "";
@@ -169,6 +178,7 @@ function Sources({ capture }: { capture: Capture }) {
 
 function EvidenceSections({ capture }: { capture: Capture }) {
   const mergeRequests = capture.merge_requests ?? [];
+  const words = changeWords(capture);
   const attachments = capture.attachments ?? [];
   return (
     <>
@@ -191,22 +201,22 @@ function EvidenceSections({ capture }: { capture: Capture }) {
         <h2 className="fw-semibold mb-0">Comments and history</h2>
         <Timeline capture={capture} />
       </section>
-      <section aria-label="Merge requests" className="card">
+      <section aria-label={words.plural} className="card">
         <div className="card-header">
-          <h2 className="card-title">Merge requests</h2>
+          <h2 className="card-title">{words.plural}</h2>
         </div>
         {mergeRequests.length === 0 ? (
-          <div className="card-body text-secondary">No linked merge requests.</div>
+          <div className="card-body text-secondary">No linked {words.plural.toLowerCase()}.</div>
         ) : (
           <div className="table-responsive">
             <table className="table table-vcenter card-table">
               <thead>
                 <tr>
-                  <th>Merge request</th>
+                  <th>{words.one}</th>
                   <th>Relation</th>
                   <th>State</th>
                   <th>Approved by</th>
-                  <th>Latest pipeline</th>
+                  <th>{words.run}</th>
                 </tr>
               </thead>
               <tbody>
@@ -215,10 +225,11 @@ function EvidenceSections({ capture }: { capture: Capture }) {
                     <td>
                       {mr.web_url ? (
                         <a href={mr.web_url} target="_blank" rel="noreferrer">
-                          !{mr.iid} {mr.title}
+                          {words.mark}
+                          {mr.iid} {mr.title}
                         </a>
                       ) : (
-                        `!${String(mr.iid)} ${mr.title ?? ""}`
+                        `${words.mark}${String(mr.iid)} ${mr.title ?? ""}`
                       )}
                     </td>
                     <td>{mr.relation === "closes" ? "Closes the issue" : "Related"}</td>

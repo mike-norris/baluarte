@@ -252,6 +252,17 @@ describe("RegisterIssuePage", () => {
     expect(screen.getByText("closed the issue")).toBeInTheDocument();
   });
 
+  it("names a GitHub issue's pull requests and workflow runs as GitHub does", async () => {
+    if (!evidence.capture) throw new Error("the fixture has a capture");
+    api({ ...evidence, capture: { ...evidence.capture, provider: "github" } });
+    renderIssue();
+
+    const pulls = within(await screen.findByRole("region", { name: "Pull requests" }));
+    expect(pulls.getByRole("columnheader", { name: "Latest workflow run" })).toBeInTheDocument();
+    expect(pulls.getByRole("link", { name: /^#\d+ / })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Merge requests" })).not.toBeInTheDocument();
+  });
+
   it("shows mappings with their gaps and lets a reviewer approve", async () => {
     api(evidence);
     renderIssue();

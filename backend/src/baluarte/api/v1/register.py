@@ -33,7 +33,7 @@ from baluarte.db.models import (
 )
 from baluarte.evidence.observations import verify
 from baluarte.integrations.gitlab.issue_evidence import SOURCE as EVIDENCE_SOURCE
-from baluarte.integrations.gitlab.jobs import COLLECT_ISSUES
+from baluarte.integrations.gitlab.jobs import COLLECT_ISSUES, GITHUB_COLLECT_ISSUES
 from baluarte.jobs import queue
 from baluarte.register import selection
 from baluarte.workspaces import current_workspace_id
@@ -443,18 +443,21 @@ class RuleCreate(BaseModel):
 def _queue_collection(db: Session, reason: str) -> list[int]:
     """Queue the issue collection for every active connection of the request's workspace."""
     minute = datetime.now(UTC).strftime("%Y%m%dT%H%M")
-    return [
-        queue.enqueue(
-            db,
-            COLLECT_ISSUES,
-            f"{COLLECT_ISSUES}:{reason}:connection-{row.id}:{minute}",
-            connections.payload_for(row.id),
-            max_attempts=3,
+    queued = []
+    for row in connections.active(db):
+        if row.paused:
+            continue
+        kind = GITHUB_COLLECT_ISSUES if row.provider == "github" else COLLECT_ISSUES
+        queued.append(
+            queue.enqueue(
+                db,
+                kind,
+                f"{kind}:{reason}:connection-{row.id}:{minute}",
+                connections.payload_for(row.id),
+                max_attempts=3,
+            )
         )
-        for row in connections.active(db)
-        # GitHub issues join the register in roadmap M13.5.
-        if not row.paused and row.provider == "gitlab"
-    ]
+    return queued
 
 
 @router.post(

@@ -293,6 +293,8 @@ export interface Capture {
     web_url: string | null;
     link_type: string | null;
   }[];
+  /** ``github`` for a GitHub issue (roadmap M13.5); GitLab captures have none. */
+  provider?: string;
   merge_requests?: CapturedMergeRequest[];
   releases?: {
     tag_name: string | null;

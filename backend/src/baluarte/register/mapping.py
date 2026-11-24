@@ -141,6 +141,11 @@ def items(payload: Mapping[str, Any]) -> dict[str, EvidenceItem]:
         found.setdefault(key, EvidenceItem(key, kind, label, parse_time(at)))
 
     issue = payload.get("issue") or {}
+    # GitHub captures (roadmap M13.5) name pull requests and workflow runs as GitHub does.
+    github = payload.get("provider") == "github"
+    change, mark, run = (
+        ("Pull request", "#", "Workflow run") if github else ("Merge request", "!", "Pipeline")
+    )
     notes = [n for n in payload.get("notes") or [] if isinstance(n, dict)]
     note_times = {f"note:{n.get('id')}": n.get("created_at") for n in notes}
     if issue.get("description"):
@@ -164,12 +169,12 @@ def items(payload: Mapping[str, Any]) -> dict[str, EvidenceItem]:
         if not isinstance(mr, dict) or mr.get("iid") is None:
             continue
         approvers = ", ".join((mr.get("approvals") or {}).get("approved_by") or []) or "nobody"
-        label = f"Merge request !{mr['iid']} ({mr.get('state')}, approved by {approvers})"
+        label = f"{change} {mark}{mr['iid']} ({mr.get('state')}, approved by {approvers})"
         at = mr.get("merged_at") or mr.get("created_at")
         add(f"merge_request:{mr.get('project_id')}:{mr['iid']}", "merge_request", label, at)
         for pipeline in mr.get("pipelines") or []:
             if isinstance(pipeline, dict) and pipeline.get("id") is not None:
-                label = f"Pipeline {pipeline['id']} of !{mr['iid']}: {pipeline.get('status')}"
+                label = f"{run} {pipeline['id']} of {mark}{mr['iid']}: {pipeline.get('status')}"
                 add(f"pipeline:{pipeline['id']}", "pipeline", label, pipeline.get("created_at"))
     for release in payload.get("releases") or []:
         if isinstance(release, dict) and release.get("tag_name"):
