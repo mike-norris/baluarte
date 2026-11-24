@@ -359,10 +359,31 @@ export interface BackupRun {
   offsite_error: string | null;
 }
 
+/** A restore test the backup service reported (docs/OPERATIONS.md#restore-tests). */
+export interface RestoreRun {
+  id: number;
+  started_at: string;
+  finished_at: string;
+  status: "succeeded" | "failed";
+  backup_run_id: number | null;
+  file_name: string | null;
+  sha256: string | null;
+  source: "offsite" | "local" | null;
+  schema_revision: string | null;
+  table_count: number | null;
+  audit_events: number | null;
+  digest_mismatches: number | null;
+  error: string | null;
+  host: string | null;
+  reported_by: string;
+}
+
 export interface Backups {
   interval_hours: number;
   last_success: BackupRun | null;
   runs: BackupRun[];
+  /** Restore tests, newest first. */
+  restores: RestoreRun[];
 }
 
 export function listServices(signal?: AbortSignal): Promise<Service[]> {

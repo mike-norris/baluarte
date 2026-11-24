@@ -47,6 +47,7 @@ from baluarte.compliance.schemas import (
     ProfileOut,
     ProfileUpdate,
     RequirementOut,
+    RestoreRunOut,
     ServiceOut,
 )
 from baluarte.configuration import effective
@@ -243,7 +244,7 @@ def _backup_run_out(row: BackupRun) -> BackupRunOut:
 @router.get(
     "/backups",
     response_model=BackupsOut,
-    summary="Backup runs the backup service reported, newest first",
+    summary="Backup runs and restore tests the backup service reported, newest first",
 )
 def read_backups(_: Reader, db: Database) -> BackupsOut:
     overview = backups.overview(db)
@@ -253,6 +254,9 @@ def read_backups(_: Reader, db: Database) -> BackupsOut:
             _backup_run_out(overview.last_success) if overview.last_success is not None else None
         ),
         runs=[_backup_run_out(row) for row in overview.runs],
+        restores=[
+            RestoreRunOut.model_validate(row, from_attributes=True) for row in overview.restores
+        ],
     )
 
 

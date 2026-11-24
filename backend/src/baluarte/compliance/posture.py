@@ -422,6 +422,96 @@ def _backups(db: Session, _context: Context) -> Result:
     )
 
 
+def _attested(db: Session, control_id: str, evidence: dict[str, Any], what: str) -> Result | None:
+    """The control met by a current attestation, when its own evidence is not configured."""
+    attested = _current_attestation(db, control_id)
+    if attested is None:
+        return None
+    evidence["attestation_id"] = attested.id
+    return Result(
+        "met",
+        f"{what}, as {attested.attested_by} attested, current until "
+        f"{attested.expires_at.isoformat()}.",
+        evidence,
+    )
+
+
+def _backup_offsite(db: Session, _context: Context) -> Result:
+    from baluarte.compliance import backups
+
+    last = backups.last_success(db)
+    evidence: dict[str, Any] = {}
+    if last is not None and last.offsite_status is not None:
+        evidence.update(
+            {
+                "backup_run_id": last.id,
+                "file_name": last.file_name,
+                "offsite_status": last.offsite_status,
+                "offsite_location": last.offsite_location,
+            }
+        )
+        if last.offsite_status == "copied":
+            return Result(
+                "met",
+                f"The last backup, {last.file_name}, was copied to {last.offsite_location} and "
+                "read back.",
+                evidence,
+            )
+        return Result(
+            "not_met",
+            f"The last backup, {last.file_name}, was not copied off site: {last.offsite_error}",
+            evidence,
+        )
+    attested = _attested(db, "backup-offsite", evidence, "Backups are copied off the host")
+    if attested is not None:
+        return attested
+    return Result(
+        "not_met",
+        "No off-site target is configured, and nobody has attested to another off-site copy.",
+        evidence,
+    )
+
+
+def _restore_test(db: Session, _context: Context) -> Result:
+    from baluarte.compliance import backups
+
+    now: datetime = db.execute(select(func.now())).scalar_one()
+    last = backups.last_restore(db)
+    evidence: dict[str, Any] = {"within_days": backups.RESTORE_WITHIN.days}
+    if last is not None and now - last.finished_at <= backups.RESTORE_WITHIN:
+        evidence.update(
+            {
+                "restore_run_id": last.id,
+                "finished_at": last.finished_at.isoformat(),
+                "file_name": last.file_name,
+                "status": last.status,
+            }
+        )
+        if last.status == "succeeded":
+            return Result(
+                "met",
+                f"{last.file_name} was restored from {last.source} at "
+                f"{last.finished_at.isoformat()}: revision {last.schema_revision}, "
+                f"{last.table_count} tables, {last.audit_events} audit events whose digests all "
+                "match.",
+                evidence,
+            )
+        return Result(
+            "not_met",
+            f"The latest restore test, at {last.finished_at.isoformat()}, failed: {last.error}",
+            evidence,
+        )
+    attested = _attested(db, "restore-test", evidence, "A restore was tested")
+    if attested is not None:
+        return attested
+    return Result(
+        "not_met",
+        f"No restore test in the last {backups.RESTORE_WITHIN.days} days has been recorded or "
+        "attested.",
+        evidence,
+    )
+
+
 CHECKS: dict[str, Callable[[Session, Context], Result]] = {
     "audit-integrity": _audit_integrity,
     "audit-protection": _audit_protection,
@@ -432,6 +522,8 @@ CHECKS: dict[str, Callable[[Session, Context], Result]] = {
     "retention-running": _retention_running,
     "log-shipping": _log_shipping,
     "backups": _backups,
+    "backup-offsite": _backup_offsite,
+    "restore-test": _restore_test,
     "collection-health": _collection_health,
     "inventory-population": _inventory_population,
 }

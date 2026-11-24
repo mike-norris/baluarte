@@ -256,10 +256,32 @@ class BackupRunOut(BaseModel):
     offsite_error: str | None
 
 
+class RestoreRunOut(BaseModel):
+    """A restore test the backup service reported (docs/OPERATIONS.md#restore-tests)."""
+
+    id: int
+    started_at: datetime
+    finished_at: datetime
+    status: Literal["succeeded", "failed"]
+    backup_run_id: int | None
+    file_name: str | None
+    sha256: str | None
+    source: Literal["offsite", "local"] | None
+    schema_revision: str | None
+    table_count: int | None
+    audit_events: int | None
+    digest_mismatches: int | None
+    error: str | None
+    host: str | None
+    reported_by: str
+
+
 class BackupsOut(BaseModel):
     interval_hours: int
     last_success: BackupRunOut | None
     runs: list[BackupRunOut]
+    # Restore tests, newest first.
+    restores: list[RestoreRunOut]
 
 
 class ServiceHowTo(BaseModel):

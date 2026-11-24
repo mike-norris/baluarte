@@ -1,7 +1,12 @@
 """Backups: the runs the backup service reports, their posture, the services page and the
 configuration Baluarte generates for Compose and Helm."""
 
+import importlib.util
+import io
+import json
+import sys
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -14,9 +19,17 @@ from test_compliance import engine as engine
 from baluarte.auth.roles import Role
 from baluarte.compliance import backups
 from baluarte.compliance.retention import expire
-from baluarte.db.models import BackupRun
+from baluarte.db.models import BackupRun, RestoreRun
 
 SHA = "a" * 64
+DIGEST_CASES: list[dict[str, Any]] = [
+    {},
+    {"status": "ok", "checks": {"token": "ok", "a": [1, 2]}},
+    {"note": "naïve ✓ unicode", "z": None, "b": True},
+    {"n": 1.5, "big": 12345678901234567890, "neg": -0.25, "tiny": 1e-07},
+    {"quote": 'say "hi"\\', "ctrl": "tab\tnew\nline", "B": 1, "a": 2, "é": 3},
+]
+TOOLS = Path(__file__).resolve().parents[2] / "deploy" / "backup" / "backup_tools.py"
 
 
 def report(engine: Engine, hours_ago: float, **overrides: Any) -> int:
@@ -47,6 +60,51 @@ def report(engine: Engine, hours_ago: float, **overrides: Any) -> int:
             )
             connection.execute(text("ALTER TABLE backup_run ENABLE TRIGGER backup_run_immutable"))
     return new_id
+
+
+def restored(engine: Engine, days_ago: float, **overrides: Any) -> int:
+    """Insert a restore run the way the backup script does, finished ``days_ago``."""
+    values = {
+        "started_at": func.now() - timedelta(days=days_ago, minutes=3),
+        "status": "succeeded",
+        "backup_run_id": 1,
+        "file_name": "baluarte-20261102T020000Z.dump.age",
+        "sha256": SHA,
+        "source": "offsite",
+        "schema_revision": "0043",
+        "table_count": 66,
+        "audit_events": 120,
+        "digest_mismatches": 0,
+        "error": None,
+        "host": "backup-1",
+    } | overrides
+    with engine.begin() as connection:
+        new_id = int(
+            connection.execute(
+                insert(RestoreRun).values(**values).returning(RestoreRun.id)
+            ).scalar_one()
+        )
+        if days_ago:
+            connection.execute(
+                text("ALTER TABLE restore_run DISABLE TRIGGER restore_run_immutable")
+            )
+            connection.execute(
+                text(
+                    "UPDATE restore_run SET finished_at = now() - make_interval(days => :d) "
+                    "WHERE id = :id"
+                ),
+                {"d": days_ago, "id": new_id},
+            )
+            connection.execute(text("ALTER TABLE restore_run ENABLE TRIGGER restore_run_immutable"))
+    return new_id
+
+
+def attest(engine: Engine, control_id: str) -> None:
+    response = client(engine, 1, Role.ADMIN).post(
+        "/api/v1/compliance/attestations",
+        json={"control_id": control_id, "statement": "Done another way, recorded elsewhere"},
+    )
+    assert response.status_code == 201, response.text
 
 
 def control(engine: Engine, control_id: str) -> dict[str, Any]:
@@ -141,6 +199,180 @@ def test_an_off_site_outcome_must_be_complete(engine: Engine, overrides: dict[st
 
 
 @pytest.mark.db
+def test_backup_offsite_follows_the_last_backups_copy(engine: Engine) -> None:
+    save_profile(engine, ["soc2"])
+    where = "s3://baluarte-backups/baluarte/x.dump.age (at offsite:8333)"
+
+    report(engine, 3)
+    assert control(engine, "backup-offsite")["status"] == "not_met"
+    attest(engine, "backup-offsite")
+    # No off-site target: the attestation stands in.
+    assert control(engine, "backup-offsite")["status"] == "met"
+
+    report(engine, 2, offsite_status="copied", offsite_location=where)
+    met = control(engine, "backup-offsite")
+    assert met["status"] == "met"
+    assert where in met["detail"]
+    assert met["evidence"]["offsite_status"] == "copied"
+
+    # A configured target decides: a failed copy is not met, attestation or not.
+    report(engine, 1, offsite_status="failed", offsite_location=where, offsite_error="403")
+    failed = control(engine, "backup-offsite")
+    assert failed["status"] == "not_met"
+    assert "403" in failed["detail"]
+
+
+@pytest.mark.db
+def test_restore_test_follows_the_latest_restore_run(engine: Engine) -> None:
+    save_profile(engine, ["soc2"])
+    assert control(engine, "restore-test")["status"] == "not_met"
+
+    # Older than a year: does not count.
+    restored(engine, 400)
+    assert control(engine, "restore-test")["status"] == "not_met"
+
+    restored(engine, 30)
+    met = control(engine, "restore-test")
+    assert met["status"] == "met"
+    assert "120 audit events" in met["detail"]
+
+    restored(
+        engine,
+        1,
+        status="failed",
+        source=None,
+        schema_revision=None,
+        table_count=None,
+        audit_events=None,
+        digest_mismatches=None,
+        error="baluarte-x.dump.age from offsite has SHA-256 b, but a was recorded",
+    )
+    failed = control(engine, "restore-test")
+    assert failed["status"] == "not_met"
+    assert "was recorded" in failed["detail"]
+
+    # An attestation does not cover a recorded failure.
+    attest(engine, "restore-test")
+    assert control(engine, "restore-test")["status"] == "not_met"
+    restored(engine, 0)
+    assert control(engine, "restore-test")["status"] == "met"
+
+
+@pytest.mark.db
+def test_restore_runs_are_listed_and_cannot_be_changed(engine: Engine) -> None:
+    restored(engine, 2)
+    restored(
+        engine,
+        0,
+        status="failed",
+        error="no age private key",
+        file_name=None,
+        sha256=None,
+        source=None,
+        schema_revision=None,
+        table_count=None,
+        audit_events=None,
+        digest_mismatches=None,
+    )
+
+    response = client(engine, 2, Role.AUDITOR).get("/api/v1/compliance/backups")
+
+    restores = response.json()["restores"]
+    assert [r["status"] for r in restores] == ["failed", "succeeded"]
+    assert restores[1]["source"] == "offsite"
+    assert restores[1]["digest_mismatches"] == 0
+    with pytest.raises(DBAPIError), engine.begin() as connection:
+        connection.execute(text("UPDATE restore_run SET status = 'succeeded'"))
+
+
+@pytest.mark.db
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"digest_mismatches": 1},
+        {"table_count": 0},
+        {"schema_revision": None},
+        {"source": "tape"},
+        {"error": "but it succeeded"},
+        {"status": "failed", "error": None},
+    ],
+)
+def test_a_restore_run_must_be_consistent(engine: Engine, overrides: dict[str, Any]) -> None:
+    with pytest.raises(IntegrityError):
+        restored(engine, 0, **overrides)
+
+
+def _tools() -> Any:
+    spec = importlib.util.spec_from_file_location("backup_tools", TOOLS)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@pytest.mark.parametrize("details", DIGEST_CASES)
+def test_the_backup_images_digest_matches_the_applications(details: dict[str, Any]) -> None:
+    from baluarte.audit import details_digest
+
+    # As PostgreSQL's jsonb prints it, with spaces; the tool reads it back as the app does.
+    as_jsonb_text = json.dumps(details, ensure_ascii=False)
+    assert _tools().digest(as_jsonb_text) == details_digest(details)
+
+
+@pytest.mark.db
+@pytest.mark.parametrize("details", DIGEST_CASES)
+def test_the_digest_matches_through_postgresql_jsonb(
+    engine: Engine, details: dict[str, Any]
+) -> None:
+    from baluarte.audit import details_digest
+
+    with engine.connect() as connection:
+        printed = connection.execute(
+            text("SELECT CAST(:j AS jsonb)::text"), {"j": json.dumps(details)}
+        ).scalar_one()
+    assert _tools().digest(printed) == details_digest(details)
+
+
+def test_the_digest_tool_counts_mismatches(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from baluarte.audit import details_digest
+
+    good = {"status": "ok"}
+    lines = [
+        f"1\t{details_digest(good)}\t{json.dumps(good)}",
+        f"2\t{details_digest(good)}\t{json.dumps({'status': 'failed'})}",
+    ]
+    monkeypatch.setattr(sys, "stdin", io.StringIO("\n".join(lines) + "\n"))
+
+    assert _tools().main(["digests"]) == 0
+    assert capsys.readouterr().out.split() == ["2", "1", "2"]
+
+
+def test_list_compares_records_with_stored_files(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    records = tmp_path / "records"
+    records.write_text(
+        f"baluarte-b.dump.age|10|{SHA}|2026-11-02 02:00:00|copied\n"
+        f"baluarte-a.dump.age|20|{SHA}|2026-11-01 02:00:00|copied\n"
+    )
+    local = tmp_path / "local"
+    local.write_text("baluarte-b.dump.age|10\nbaluarte-a.dump.age|21\nbaluarte-c.dump.age|5\n")
+    remote = tmp_path / "remote"
+    remote.write_text(
+        json.dumps([{"Name": "baluarte-b.dump.age", "Size": 10, "Metadata": {"sha256": SHA}}])
+    )
+
+    assert _tools().main(["list", str(records), str(local), str(remote)]) == 0
+
+    lines = capsys.readouterr().out.splitlines()
+    assert lines[1].split()[-2:] == ["ok", "ok"]
+    assert lines[2].split()[-2:] == ["DIFFERS", "missing"]
+    assert "baluarte-c.dump.age" in lines[3] and "(no record)" in lines[3]
+
+
+@pytest.mark.db
 def test_backups_posture_follows_the_interval(engine: Engine) -> None:
     save_profile(engine, ["soc2"])
 
@@ -204,7 +436,7 @@ def test_backup_controls_are_attestable_where_they_take_an_attestation(engine: E
     assert refused.status_code == 422
     assert restore.status_code == 201
     assert control(engine, "restore-test")["status"] == "met"
-    assert control(engine, "backup-offsite")["status"] == "needs_attestation"
+    assert control(engine, "backup-offsite")["status"] == "not_met"
     catalogue = client(engine, 2, Role.AUDITOR).get("/api/v1/compliance/catalogue").json()
     days = {c["id"]: c["attestation_days"] for c in catalogue["controls"]}
     assert days["restore-test"] == 365
@@ -278,3 +510,17 @@ def test_retention_keeps_the_latest_successful_backup_run(engine: Engine) -> Non
         assert db.get(BackupRun, latest) is not None
         assert db.get(BackupRun, older) is None
         assert db.get(BackupRun, failed) is None
+
+
+@pytest.mark.db
+def test_retention_keeps_the_latest_successful_restore_run(engine: Engine) -> None:
+    save_profile(engine, ["soc2"])
+    latest = restored(engine, 400)
+    older = restored(engine, 401)
+
+    with Session(engine) as db:
+        details = expire(db)
+        db.commit()
+        assert details["deleted"]["restore_run"] == 1
+        assert db.get(RestoreRun, latest) is not None
+        assert db.get(RestoreRun, older) is None

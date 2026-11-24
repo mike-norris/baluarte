@@ -44,7 +44,8 @@ READ_ONLY_TABLES = ("alembic_version",)
 # The only functions the app role may call beyond the PUBLIC defaults.
 APP_FUNCTIONS = ("baluarte_expire_audit(timestamptz)",)
 # The backup service reads everything and may only add rows here.
-BACKUP_RUN_TABLE = "backup_run"
+# The tables the backup service reports to: its backup runs and its restore tests.
+BACKUP_REPORT_TABLES = ("backup_run", "restore_run")
 
 
 def alembic_config() -> Config:
@@ -197,8 +198,8 @@ def ensure_app_role(engine: Engine, name: str, password: str) -> None:
 def ensure_backup_role(engine: Engine, name: str, password: str) -> None:
     """Create or update the backup service's login role. Safe to re-run.
 
-    It may read every table and sequence (what pg_dump needs) and add rows to ``backup_run``,
-    and nothing else.
+    It may read every table and sequence (what pg_dump needs) and add rows to ``backup_run``
+    and ``restore_run``, and nothing else.
     """
     with engine.begin() as connection:
         connection.execute(text("SELECT pg_advisory_xact_lock(:id)"), {"id": ADVISORY_LOCK_ID})
@@ -211,17 +212,19 @@ def ensure_backup_role(engine: Engine, name: str, password: str) -> None:
         for table in tables:
             statements.append(f"REVOKE ALL ON public.{table} FROM {quoted}")
             statements.append(f"GRANT SELECT ON public.{table} TO {quoted}")
-        if BACKUP_RUN_TABLE in tables:
-            statements.append(f"GRANT INSERT ON public.{BACKUP_RUN_TABLE} TO {quoted}")
+        for report in BACKUP_REPORT_TABLES:
+            if report not in tables:
+                continue
+            statements.append(f"GRANT INSERT ON public.{report} TO {quoted}")
             sequence = connection.execute(
                 text("SELECT pg_get_serial_sequence(:table, 'id')"),
-                {"table": f"public.{BACKUP_RUN_TABLE}"},
+                {"table": f"public.{report}"},
             ).scalar()
             if sequence:
                 statements.append(f"GRANT USAGE ON SEQUENCE {sequence} TO {quoted}")
         for statement in statements:
             connection.execute(text(statement))
-    logger.info("database role %s may read data and record backups only", name)
+    logger.info("database role %s may read data and record backups and restores only", name)
 
 
 def main(argv: list[str] | None = None) -> int:

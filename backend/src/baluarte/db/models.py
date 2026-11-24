@@ -2651,6 +2651,53 @@ class BackupRun(Base):
     offsite_error: Mapped[str | None] = mapped_column(Text)
 
 
+class RestoreRun(Base):
+    """One restore test reported by the ``baluarte-backup`` service (migration 0043): a backup
+    fetched, checked against its recorded SHA-256, decrypted into a temporary PostgreSQL and
+    checked. Rows cannot be updated. ``backup_run_id`` is not a foreign key, since retention
+    removes old backup runs while their restore runs stay as evidence."""
+
+    __tablename__ = "restore_run"
+    __table_args__ = (
+        Index("ix_restore_run_finished", "finished_at"),
+        one_of("status", BACKUP_STATUSES),
+        CheckConstraint("source IS NULL OR source IN ('offsite', 'local')", name="source_allowed"),
+        sha256_hex("sha256"),
+        CheckConstraint("finished_at >= started_at", name="finished_after_started"),
+        CheckConstraint(
+            "coalesce(table_count, 0) >= 0 AND coalesce(audit_events, 0) >= 0 "
+            "AND coalesce(digest_mismatches, 0) >= 0",
+            name="counts_nonnegative",
+        ),
+        CheckConstraint(
+            "status <> 'succeeded' OR (file_name IS NOT NULL AND sha256 IS NOT NULL "
+            "AND source IS NOT NULL AND schema_revision IS NOT NULL AND table_count > 0 "
+            "AND audit_events IS NOT NULL AND digest_mismatches = 0 AND error IS NULL)",
+            name="success_complete",
+        ),
+        CheckConstraint("status <> 'failed' OR error IS NOT NULL", name="failure_explained"),
+    )
+
+    id: Mapped[int] = pk()
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime] = utc_now()
+    status: Mapped[str] = mapped_column(Text)
+    backup_run_id: Mapped[int | None] = mapped_column(BigInteger)
+    file_name: Mapped[str | None] = mapped_column(Text)
+    sha256: Mapped[str | None] = mapped_column(Text)
+    # Where the file came from: the off-site copy when there is one, else the local directory.
+    source: Mapped[str | None] = mapped_column(Text)
+    # What the restored database held: its alembic revision, its tables, its audit events and
+    # how many of their details digests did not match (must be 0 to succeed).
+    schema_revision: Mapped[str | None] = mapped_column(Text)
+    table_count: Mapped[int | None] = mapped_column(Integer)
+    audit_events: Mapped[int | None] = mapped_column(BigInteger)
+    digest_mismatches: Mapped[int | None] = mapped_column(BigInteger)
+    error: Mapped[str | None] = mapped_column(Text)
+    host: Mapped[str | None] = mapped_column(Text)
+    reported_by: Mapped[str] = mapped_column(Text, server_default=text("CURRENT_USER"))
+
+
 class ExportJob(Base):
     __tablename__ = "export_job"
     __table_args__ = (

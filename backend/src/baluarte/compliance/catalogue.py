@@ -359,13 +359,14 @@ CONTROLS: tuple[Control, ...] = (
         "backup-offsite",
         "Backups are copied off the database host",
         "Resilience",
-        "attestation",
+        "check",
         "The encrypted backup files are copied to storage outside the database host and outside "
-        "the reach of anyone who can delete the database.",
+        "the reach of anyone who can delete the database. With an off-site target, the last "
+        "successful backup must have been copied and read back.",
         "Configure an off-site target so each backup is copied to S3-compatible storage outside "
-        "the host (docs/OPERATIONS.md#off-site-copies), or mount the backup directory on network "
-        "storage. Object storage with versioning or retention lock is best. Then attest to it "
-        "here, naming the location.",
+        "the host (docs/OPERATIONS.md#off-site-copies); object storage with versioning or "
+        "retention lock is best. If you copy the files another way, such as a backup directory "
+        "on network storage, attest to it here instead, naming the location.",
         _maps(["A1.2"], ["A.8.13"], ["CP-9"]),
         attestation_days=90,
     ),
@@ -373,12 +374,13 @@ CONTROLS: tuple[Control, ...] = (
         "restore-test",
         "A restore was tested in the last 12 months",
         "Resilience",
-        "attestation",
-        "A backup was restored into a scratch database in the last 12 months and the result was "
-        "checked, including the audit trail's digests.",
-        "Decrypt a backup with the age private key, restore it into a scratch database and run "
-        "the checks in docs/OPERATIONS.md (Verifying a restore). Then attest to it here, naming "
-        "the backup and the date.",
+        "check",
+        "A backup was restored in the last 12 months and the result was checked, including the "
+        "audit trail's digests, and the latest restore test succeeded.",
+        "Run `baluarte-backup restore-test` with the age private key mounted for that run "
+        "(docs/OPERATIONS.md#restore-tests). It restores the newest backup into a temporary "
+        "database, checks it and records the result here. If you test restores another way, "
+        "attest to it here instead, naming the backup and the date.",
         _maps(["A1.3"], ["A.8.13"], ["CP-4"]),
         attestation_days=365,
     ),

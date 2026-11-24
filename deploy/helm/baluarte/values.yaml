@@ -277,6 +277,18 @@ backup:
     existingSecret: ""
     accessKeyIdKey: access-key-id
     secretAccessKeyKey: secret-access-key
+  # A monthly restore test (docs/OPERATIONS.md#restore-tests): restores the newest backup into
+  # a temporary database in the pod, checks it and records the result for the restore-test
+  # control. It needs the age private key in the cluster, in a Secret you create; anyone who can
+  # read that Secret can decrypt every backup. Leave it off to run restore tests from a trusted
+  # machine instead.
+  restoreTest:
+    enabled: false
+    schedule: "47 3 1 * *"
+    existingSecret: ""
+    identityKey: key.txt
+    # Room for the fetched backup and the restored database.
+    sizeLimit: 4Gi
   # The postgres user in the image.
   runAsUser: 70
   resources:
