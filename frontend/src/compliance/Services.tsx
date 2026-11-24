@@ -238,12 +238,13 @@ export function BackupsPanel({ backups }: { backups: Backups }) {
       <p className="text-secondary">
         {`Expected at least every ${String(backups.interval_hours)} hours. `}
         {last
-          ? `Last successful backup: ${formatTime(last.finished_at)}${last.size_bytes === null ? "" : `, ${formatBytes(last.size_bytes)}`}${last.encrypted ? ", encrypted" : ""}.`
+          ? `Last successful backup: ${formatTime(last.finished_at)}${last.size_bytes === null ? "" : `, ${formatBytes(last.size_bytes)}`}${last.encrypted ? ", encrypted" : ""}${last.offsite_status === "copied" ? ", copied off site" : last.offsite_status === "failed" ? ", not copied off site" : ""}.`
           : "No successful backup has been reported."}
       </p>
       {last?.recipient && (
         <CopyValue label="Encrypted for (age recipient)" value={last.recipient} />
       )}
+      {last?.offsite_location && <CopyValue label="Off-site copy" value={last.offsite_location} />}
       {backups.runs.length === 0 ? (
         <p className="text-secondary">The backup service has not reported any runs.</p>
       ) : (
@@ -268,6 +269,9 @@ export function BackupsPanel({ backups }: { backups: Backups }) {
                   SHA-256
                 </th>
                 <th scope="col" className={cell}>
+                  Off site
+                </th>
+                <th scope="col" className={cell}>
                   Error
                 </th>
               </tr>
@@ -286,7 +290,18 @@ export function BackupsPanel({ backups }: { backups: Backups }) {
                     {run.size_bytes === null ? "" : formatBytes(run.size_bytes)}
                   </td>
                   <td className={cell}>{run.sha256 && <Sha value={run.sha256} />}</td>
-                  <td className={`${cell} text-danger-emphasis`}>{run.error ?? ""}</td>
+                  <td className={cell}>
+                    {run.offsite_status === null ? (
+                      <span className="text-secondary">Not configured</span>
+                    ) : (
+                      <Badge tone={run.offsite_status === "copied" ? "good" : "bad"}>
+                        {run.offsite_status === "copied" ? "Copied" : "Failed"}
+                      </Badge>
+                    )}
+                  </td>
+                  <td className={`${cell} text-danger-emphasis`}>
+                    {[run.error, run.offsite_error].filter(Boolean).join(" ")}
+                  </td>
                 </tr>
               ))}
             </tbody>

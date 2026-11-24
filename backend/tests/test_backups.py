@@ -108,6 +108,39 @@ def test_a_failed_run_is_recorded_with_its_error(engine: Engine) -> None:
 
 
 @pytest.mark.db
+def test_off_site_copies_are_recorded_with_the_run(engine: Engine) -> None:
+    where = "s3://baluarte-backups/baluarte/baluarte-20261102T020000Z.dump.age (at offsite:8333)"
+    report(engine, 2)
+    report(engine, 1, offsite_status="failed", offsite_location=where, offsite_error="403")
+    report(engine, 0, offsite_status="copied", offsite_location=where)
+
+    response = client(engine, 2, Role.AUDITOR).get("/api/v1/compliance/backups")
+
+    runs = response.json()["runs"]
+    assert [(r["offsite_status"], r["offsite_error"]) for r in runs] == [
+        ("copied", None),
+        ("failed", "403"),
+        (None, None),
+    ]
+    assert response.json()["last_success"]["offsite_location"] == where
+
+
+@pytest.mark.db
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"offsite_status": "partial", "offsite_location": "s3://b/k"},
+        {"offsite_status": "copied"},
+        {"offsite_status": "copied", "offsite_location": "s3://b/k", "offsite_error": "x"},
+        {"offsite_status": "failed", "offsite_location": "s3://b/k"},
+    ],
+)
+def test_an_off_site_outcome_must_be_complete(engine: Engine, overrides: dict[str, Any]) -> None:
+    with pytest.raises(IntegrityError):
+        report(engine, 0, **overrides)
+
+
+@pytest.mark.db
 def test_backups_posture_follows_the_interval(engine: Engine) -> None:
     save_profile(engine, ["soc2"])
 

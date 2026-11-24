@@ -362,9 +362,10 @@ CONTROLS: tuple[Control, ...] = (
         "attestation",
         "The encrypted backup files are copied to storage outside the database host and outside "
         "the reach of anyone who can delete the database.",
-        "Mount the backup directory on network storage, or copy it off the host on a schedule "
-        "(object storage with versioning or retention lock is best). Then attest to it here, "
-        "naming the location.",
+        "Configure an off-site target so each backup is copied to S3-compatible storage outside "
+        "the host (docs/OPERATIONS.md#off-site-copies), or mount the backup directory on network "
+        "storage. Object storage with versioning or retention lock is best. Then attest to it "
+        "here, naming the location.",
         _maps(["A1.2"], ["A.8.13"], ["CP-9"]),
         attestation_days=90,
     ),

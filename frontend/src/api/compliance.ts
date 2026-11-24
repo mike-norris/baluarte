@@ -353,6 +353,10 @@ export interface BackupRun {
   error: string | null;
   host: string | null;
   reported_by: string;
+  /** The off-site copy; null when no off-site target is configured. */
+  offsite_status: "copied" | "failed" | null;
+  offsite_location: string | null;
+  offsite_error: string | null;
 }
 
 export interface Backups {

@@ -138,7 +138,7 @@ Application logs (stdout) stay with the platform's log collector. If that collec
 
 ## Backups
 
-The `baluarte-backup` service runs `pg_dump` as the read-only `baluarte_backup` role, encrypts the dump to an [age](https://age-encryption.org) public key and records every run, failed or not, in `backup_run`. Baluarte never holds the private key, so neither it nor anyone with its database can read a backup. Compliance > Services gives the exact Compose and Helm steps and a configuration generated from `backup_interval_hours`; [OPERATIONS.md](OPERATIONS.md#scheduled-backups) describes the service. Copying the files off the host and testing a restore stay with you, as the `backup-offsite` and `restore-test` attestations.
+The `baluarte-backup` service runs `pg_dump` as the read-only `baluarte_backup` role, encrypts the dump to an [age](https://age-encryption.org) public key and records every run, failed or not, in `backup_run`. Baluarte never holds the private key, so neither it nor anyone with its database can read a backup. Compliance > Services gives the exact Compose and Helm steps and a configuration generated from `backup_interval_hours`; [OPERATIONS.md](OPERATIONS.md#scheduled-backups) describes the service. The service can copy each file to an off-site S3-compatible target and record whether it did ([OPERATIONS.md](OPERATIONS.md#off-site-copies)); attesting to that copy and testing a restore stay with you, as the `backup-offsite` and `restore-test` attestations.
 
 An access-review report is planned for a later release.
 

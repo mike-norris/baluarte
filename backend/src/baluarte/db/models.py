@@ -2619,6 +2619,15 @@ class BackupRun(Base):
             "AND sha256 IS NOT NULL AND encrypted)",
             name="success_complete",
         ),
+        CheckConstraint(
+            "offsite_status IS NULL OR offsite_status IN ('copied', 'failed')",
+            name="offsite_status_allowed",
+        ),
+        CheckConstraint(
+            "offsite_status IS NULL OR (offsite_location IS NOT NULL AND "
+            "(offsite_status = 'copied') = (offsite_error IS NULL))",
+            name="offsite_complete",
+        ),
     )
 
     id: Mapped[int] = pk()
@@ -2634,6 +2643,12 @@ class BackupRun(Base):
     error: Mapped[str | None] = mapped_column(Text)
     host: Mapped[str | None] = mapped_column(Text)
     reported_by: Mapped[str] = mapped_column(Text, server_default=text("CURRENT_USER"))
+    # The off-site copy (migration 0042): None when no off-site target is configured, else
+    # copied (uploaded and its size and checksum read back) or failed, where to
+    # (s3://bucket/key at the endpoint's host, never credentials) and why it failed.
+    offsite_status: Mapped[str | None] = mapped_column(Text)
+    offsite_location: Mapped[str | None] = mapped_column(Text)
+    offsite_error: Mapped[str | None] = mapped_column(Text)
 
 
 class ExportJob(Base):

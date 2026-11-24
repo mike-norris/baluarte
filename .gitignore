@@ -24,4 +24,5 @@ CLAUDE.local.md
 *.pfx
 secrets/
 backups/
+offsite/
 *.log
