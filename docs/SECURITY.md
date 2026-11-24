@@ -63,6 +63,18 @@ A preset knows how a provider asks for MFA (`acr_values`) and reports it (`amr`)
 
 Set it in Settings > Identity provider, or with `BALUARTE_OIDC_PRESET`, `BALUARTE_OIDC_REQUIRE_MFA`, `BALUARTE_OIDC_MFA_AMR` and `BALUARTE_OIDC_ACR_VALUES` (Helm: `auth.oidc.mfa`). The `amr` and `acr_values` settings override the preset's. Asking is not proof: the provider must still enforce MFA. In Okta, use an authentication policy that requires two factors. In Auth0, use an Action that requires MFA when the multi-factor `acr_values` is asked for. Then turn on Require MFA and test a sign-in in another window before you sign out, since a provider that does not report `amr` locks everyone out. The `identity-mfa` control is met while MFA is required and every live session began with it. A provider that enforces MFA but does not report it can be attested instead.
 
+### Built-in TOTP
+
+When the provider cannot report MFA in `amr`, Baluarte can ask for the second factor itself. Turn on **Require MFA** and **Ask for a code from an authenticator app** (`BALUARTE_OIDC_MFA_TOTP=true`, Helm `auth.oidc.mfa.totp`). It needs `BALUARTE_SECRET_KEY_FILE`. A sign-in the provider proved still goes straight in. Any other sign-in continues to `/mfa`:
+
+- **Waiting for a code.** The session grants nothing until a code is entered. Every other endpoint answers 401, and the session ends after 10 minutes. Entering a code changes the session cookie, and the session's lifetime starts then.
+- **First sign-in.** The person scans a QR code into an authenticator app (Authy, Google Authenticator, 1Password, Microsoft Authenticator) and enters a code from it. This confirms the app and shows 10 recovery codes once. Whoever passes the provider first sets up the app, so ask people to sign in soon after you turn this on.
+- **Codes.** Codes follow RFC 6238: HMAC-SHA1, 6 digits and 30-second steps. A code is accepted one step either side of now, and never twice. Each recovery code works once.
+- **Wrong codes.** After 5 wrong codes, the sign-in ends.
+- **Storage.** The app's secret is sealed with the secret key, bound to the user (`user_totp`). `baluarte-reencrypt-secrets` re-seals these secrets when the key rotates. Recovery codes are stored as SHA-256 digests only.
+- **Lost phone.** If a person loses their phone and recovery codes, an administrator resets their authenticator in Settings > Authenticator apps. The reset removes the app and recovery codes and ends the person's sessions, and their next sign-in sets up a new app. Administrators cannot reset their own.
+- **Audit.** The audit log records `auth.mfa_challenged`, `auth.mfa_failed`, `auth.mfa_enrolled` and `settings.mfa_reset`. `auth.login` is recorded once the code is accepted, with `mfa_method` `totp` or `recovery`.
+
 Sign-in, failed sign-in (with a reason code) and sign-out are written to `audit_event`. Callbacks that do not match a sign-in started by the same browser are logged but not audited, so anonymous requests cannot grow the append-only audit table. The bundled web server rate limits the sign-in and setup endpoints per client address (5 requests a second, bursts of 20; 429 beyond that). Behind a proxy all clients share the proxy's address, so add a per-client limit at the ingress if sign-in floods are a concern. Production settings: [HARDENING.md](HARDENING.md).
 
 ## Secrets and logs
@@ -87,7 +99,7 @@ Sign-in, failed sign-in (with a reason code) and sign-out are written to `audit_
   - Stored secrets are sealed with AES-256-GCM under the key in `BALUARTE_SECRET_KEY_FILE` (32 random bytes, base64: `openssl rand -base64 32`), with a random nonce and the secret's name as associated data. They are never returned, and audit events record only that a secret was replaced or cleared.
   - Without the key, secrets cannot be saved. With a different key, they cannot be read, and sign-in or collection reports a configuration error.
   - Back up the key separately from the database: a database backup alone does not expose the secrets, and the key alone is useless.
-- **Rotating the key.** Write a new key to `BALUARTE_SECRET_KEY_FILE`, the old one to `BALUARTE_SECRET_KEY_PREVIOUS_FILE` (read only to decrypt), restart, run `baluarte-reencrypt-secrets`, then remove the previous key. If the key is lost, enter the GitLab token and client secret again on the Settings page; nothing else is affected.
+- **Rotating the key.** Write a new key to `BALUARTE_SECRET_KEY_FILE`, the old one to `BALUARTE_SECRET_KEY_PREVIOUS_FILE` (read only to decrypt), restart, run `baluarte-reencrypt-secrets` (which also re-seals built-in TOTP secrets), then remove the previous key. If the key is lost, enter the GitLab token and client secret again on the Settings page; nothing else is affected.
 - **Where stored secrets go.** A stored secret is only ever sent to the host it was entered for. Changing the issuer or GitLab URL requires entering it again, and "test with the stored token" works only for the stored URL.
 - **Outbound requests.** The discovery and connection tests make the API send `GET` requests to the URL entered, https only, never following redirects.
 - **Risk while setup is open.** Anyone who can read the API log or run a command in its container can complete setup. Complete it promptly after installing, and keep API logs private.

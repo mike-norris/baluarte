@@ -21,6 +21,7 @@ import { LabelWriteTokenCard } from "../settings/LabelWriteTokenCard";
 import { RemediationWriteTokenCard } from "../settings/RemediationWriteTokenCard";
 import { TemplateWriteTokenCard } from "../settings/TemplateWriteTokenCard";
 import { ManagerScopesCard } from "../settings/ManagerScopesCard";
+import { MfaEnrollmentsCard } from "../settings/MfaEnrollmentsCard";
 import { NotificationsCard } from "../settings/NotificationsCard";
 import { TimeSettingsCard } from "../settings/TimeSettingsCard";
 import { describeInterval, PRESETS } from "../settings/format";
@@ -268,7 +269,9 @@ function OidcCard({ csrf, secretKey }: { csrf: string; secretKey: boolean | null
                 [
                   "Require MFA",
                   config.require_mfa
-                    ? `Yes, proven by amr: ${(config.mfa_amr ?? []).join(", ")}`
+                    ? `Yes, proven by amr: ${(config.mfa_amr ?? []).join(", ")}${
+                        config.totp_fallback ? ", or built-in TOTP" : ""
+                      }`
                     : "No",
                 ],
               ]}
@@ -442,6 +445,7 @@ function SettingsContent({ csrf }: { csrf: string }) {
       <LabelWriteTokenCard csrf={csrf} secretKey={secretKey} />
       <RemediationWriteTokenCard csrf={csrf} secretKey={secretKey} />
       <TemplateWriteTokenCard csrf={csrf} secretKey={secretKey} />
+      <MfaEnrollmentsCard csrf={csrf} />
       <ManagerScopesCard csrf={csrf} />
       <TimeSettingsCard csrf={csrf} />
       <ComplianceCard csrf={csrf} />

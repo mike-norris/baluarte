@@ -155,6 +155,18 @@ def test_mfa_presets_from_the_environment(
     assert settings.mfa.preset == preset.lower()
     assert settings.mfa.acr_values == acr
     assert settings.mfa.amr == {"mfa"}
+    assert settings.mfa.totp is False
+
+
+def test_built_in_totp_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    configure(monkeypatch)
+    monkeypatch.setenv("BALUARTE_OIDC_REQUIRE_MFA", "true")
+    monkeypatch.setenv("BALUARTE_OIDC_MFA_TOTP", "true")
+
+    settings = load_auth_settings()
+
+    assert settings is not None
+    assert settings.mfa.required and settings.mfa.totp
 
 
 def test_mfa_amr_and_acr_values_override_the_preset(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -177,6 +189,7 @@ def test_mfa_amr_and_acr_values_override_the_preset(monkeypatch: pytest.MonkeyPa
     [
         ("BALUARTE_OIDC_PRESET", "keycloak"),
         ("BALUARTE_OIDC_REQUIRE_MFA", "yes"),
+        ("BALUARTE_OIDC_MFA_TOTP", "1"),
         ("BALUARTE_OIDC_MFA_AMR", "mfa,has space"),
         ("BALUARTE_OIDC_ACR_VALUES", "café"),
     ],

@@ -67,6 +67,7 @@ OIDC sign-in from the environment needs `BALUARTE_PUBLIC_URL`, `BALUARTE_OIDC_IS
 | `BALUARTE_OIDC_REQUIRE_MFA` | `false` | `true` refuses a sign-in whose ID token does not prove MFA |
 | `BALUARTE_OIDC_MFA_AMR` | the preset's | Comma-separated `amr` values that prove MFA |
 | `BALUARTE_OIDC_ACR_VALUES` | the preset's | `acr_values` sent to ask the provider for MFA |
+| `BALUARTE_OIDC_MFA_TOTP` | `false` | With `BALUARTE_OIDC_REQUIRE_MFA`, `true` asks for a code from an authenticator app when the ID token does not prove MFA, instead of refusing; needs `BALUARTE_SECRET_KEY_FILE` ([SECURITY.md](../docs/SECURITY.md#built-in-totp)) |
 | `BALUARTE_TIME_PER_PERSON` | `true` | `false` turns off time per person for everyone, administrators included ([TIME_TRACKING.md](../docs/TIME_TRACKING.md)) |
 | `BALUARTE_GITLAB_URL` | | https URL of the GitLab instance; unset means GitLab is not configured |
 | `BALUARTE_GITLAB_TOKEN_FILE` | when the URL is set | File containing a `read_api` token |
@@ -98,7 +99,7 @@ See [ADR-0008](../docs/architecture/ADR-0008-settings-in-the-database.md) and [d
   - `PUT` answers 409 for such a section, 409 when a secret is sent without `BALUARTE_SECRET_KEY_FILE`, and 422 for invalid values. A `null` secret keeps the stored one, but must be sent again when the issuer or GitLab URL changes.
   - Tests store nothing. Testing with the stored GitLab token only works for its URL.
 - **When changes apply.** Stored settings take effect within 10 seconds in every API and worker process, without a restart. The worker re-reads its collection schedule every minute.
-- **Key rotation.** `baluarte-reencrypt-secrets` seals every stored secret under the current key; run it after rotating.
+- **Key rotation.** `baluarte-reencrypt-secrets` seals every stored secret and built-in TOTP secret under the current key; run it after rotating.
 
 ## Background worker
 

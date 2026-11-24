@@ -74,7 +74,9 @@ TABLES = {
     "template_change_item",
     "time_cursor",
     "time_entry",
+    "user_recovery_code",
     "user_session",
+    "user_totp",
     "webhook_delivery",
     "workspace",
 }

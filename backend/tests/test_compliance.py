@@ -648,7 +648,8 @@ def test_identity_mfa_follows_the_sign_in_policy_and_live_sessions(engine: Engin
         user = AppUser(issuer="https://idp.example.test", subject="s-1")
         db.add(user)
         db.flush()
-        for method in ("provider", None):
+        # A session waiting for its TOTP code grants nothing, so does not count.
+        for method, pending in (("provider", False), ("totp", False), (None, True), (None, False)):
             db.add(
                 UserSession(
                     token_digest=hashlib.sha256(secrets.token_bytes(16)).hexdigest(),
@@ -656,6 +657,7 @@ def test_identity_mfa_follows_the_sign_in_policy_and_live_sessions(engine: Engin
                     roles=["admin"],
                     expires_at=datetime.now(UTC) + timedelta(hours=1),
                     mfa_method=method,
+                    mfa_pending=pending,
                 )
             )
         db.commit()
@@ -666,6 +668,9 @@ def test_identity_mfa_follows_the_sign_in_policy_and_live_sessions(engine: Engin
         db.execute(update(UserSession).values(revoked_at=func.now()))
         db.commit()
     assert results(engine, required)["identity-mfa"].status == "met"
+    with_totp = results(engine, context(mfa=lambda: mfa_policy("generic", True, totp=True)))
+    assert "or built-in TOTP" in with_totp["identity-mfa"].detail
+    assert with_totp["identity-mfa"].evidence["totp_fallback"] is True
 
     # Not required: an attestation that the provider enforces MFA stands in.
     attested = client(engine, 1, Role.ADMIN).post(

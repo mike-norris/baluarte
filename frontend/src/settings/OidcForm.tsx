@@ -40,7 +40,7 @@ function initialFields(config: OidcConfig | null): OidcFields {
 /** The MFA fields, leaving the overrides empty where they match the preset's own values. */
 function mfaFields(
   config: OidcConfig | null,
-): Pick<OidcFields, "preset" | "require_mfa" | "mfa_amr" | "acr_values"> {
+): Pick<OidcFields, "preset" | "require_mfa" | "mfa_amr" | "acr_values" | "totp_fallback"> {
   const preset = config?.preset ?? "generic";
   const defaults = PRESETS[preset];
   const amr = [...(config?.mfa_amr ?? defaults.amr)].sort();
@@ -49,6 +49,7 @@ function mfaFields(
   return {
     preset,
     require_mfa: config?.require_mfa ?? false,
+    totp_fallback: config?.totp_fallback ?? false,
     mfa_amr: sameAmr ? "" : amr.join("\n"),
     acr_values: acr === defaults.acr ? "" : (acr ?? ""),
   };
@@ -193,6 +194,7 @@ export function OidcForm({
           require_mfa: fields.require_mfa,
           mfa_amr: parseAmr(fields.mfa_amr),
           acr_values: fields.acr_values.trim(),
+          totp_fallback: fields.totp_fallback,
         },
         csrf,
       );
@@ -395,6 +397,22 @@ export function OidcForm({
         <p id={`${id}-require-help`} className="small text-secondary">
           Refuse a sign-in whose ID token does not prove a second factor. Require MFA in the
           provider first, and test a sign-in in another window before you sign out here.
+        </p>
+        <label className="d-flex align-items-center gap-2">
+          <input
+            name="totp_fallback"
+            type="checkbox"
+            checked={fields.totp_fallback}
+            onChange={change}
+            disabled={!canStoreSecret}
+            aria-describedby={`${id}-totp-help`}
+          />
+          Ask for a code from an authenticator app when the provider does not prove MFA
+        </label>
+        <p id={`${id}-totp-help`} className="small text-secondary">
+          {canStoreSecret
+            ? "With Require MFA on, a sign-in the provider did not prove continues to a code from an authenticator app such as Authy. Each person sets one up at their first such sign-in, and gets recovery codes. Use this when the provider does not report MFA in amr."
+            : "Needs BALUARTE_SECRET_KEY_FILE, which seals each person's authenticator secret."}
         </p>
       </fieldset>
 

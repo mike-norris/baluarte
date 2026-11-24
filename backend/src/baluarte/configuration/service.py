@@ -162,6 +162,7 @@ def _oidc_out(settings: AuthSettings, secret: bool) -> OidcConfig:
         require_mfa=settings.mfa.required,
         mfa_amr=sorted(settings.mfa.amr),
         acr_values=settings.mfa.acr_values,
+        totp_fallback=settings.mfa.totp,
     )
 
 
@@ -186,6 +187,10 @@ def update_oidc(db: Session, update: OidcUpdate, actor: str, via: Via) -> OidcCo
     box = _secret_box()
     if update.client_secret is not None and box is None:
         raise SettingsConflict(CANNOT_STORE)
+    if update.totp_fallback and box is None:
+        raise SettingsConflict(
+            "Built-in TOTP needs BALUARTE_SECRET_KEY_FILE, which seals each authenticator's secret"
+        )
 
     groups = {
         "admin": sorted({group.strip() for group in update.admin_groups if group.strip()}),
@@ -202,7 +207,13 @@ def update_oidc(db: Session, update: OidcUpdate, actor: str, via: Via) -> OidcCo
             scopes=update.scopes,
             roles_claim=update.roles_claim,
             groups=groups,
-            mfa=mfa_policy(update.preset, update.require_mfa, update.mfa_amr, update.acr_values),
+            mfa=mfa_policy(
+                update.preset,
+                update.require_mfa,
+                update.mfa_amr,
+                update.acr_values,
+                totp=update.totp_fallback,
+            ),
         )
     except ConfigurationError as exc:
         raise SettingsInvalid(str(exc)) from exc
@@ -231,6 +242,7 @@ def update_oidc(db: Session, update: OidcUpdate, actor: str, via: Via) -> OidcCo
             # Stored as entered, so an empty value keeps following the preset.
             "mfa_amr": sorted({value.strip() for value in update.mfa_amr if value.strip()}),
             "acr_values": " ".join(update.acr_values.split()),
+            "totp_fallback": checked.mfa.totp,
         },
         actor,
     )
@@ -255,6 +267,7 @@ def update_oidc(db: Session, update: OidcUpdate, actor: str, via: Via) -> OidcCo
             "require_mfa": checked.mfa.required,
             "mfa_amr": sorted(checked.mfa.amr),
             "acr_values": checked.mfa.acr_values,
+            "totp_fallback": checked.mfa.totp,
             "admin_groups": groups["admin"],
             "analyst_groups": groups["analyst"],
             "auditor_groups": groups["auditor"],

@@ -89,6 +89,8 @@ export function errorReasons(error: unknown): string[] {
 /** A sentence for a failed change; the API's own reason is kept where it explains the refusal. */
 export function changeFailure(status: number, detail: string | null): string {
   switch (status) {
+    case 400:
+      return detail ?? "The request is not valid.";
     case 401:
       return "Your session has ended. Sign in again to continue.";
     case 403:

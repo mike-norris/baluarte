@@ -322,6 +322,7 @@ describe("identity provider step", () => {
       require_mfa: false,
       mfa_amr: [],
       acr_values: "",
+      totp_fallback: false,
     });
     expect(headersOf(calls, "/api/v1/setup/oidc")?.["X-CSRF-Token"]).toBe(CSRF);
   });

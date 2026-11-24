@@ -63,6 +63,7 @@ export interface OidcFields {
   /** Overrides, one per line or comma-separated; empty takes the preset's. */
   mfa_amr: string;
   acr_values: string;
+  totp_fallback: boolean;
 }
 
 /** What each preset sends and accepts, as the server defines them. */

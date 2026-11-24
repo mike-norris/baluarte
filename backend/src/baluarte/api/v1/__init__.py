@@ -24,6 +24,7 @@ from baluarte.api.v1 import (
     jobs,
     labels,
     manager,
+    mfa,
     notifications,
     observations,
     policies,
@@ -74,6 +75,7 @@ protected.include_router(register_mappings.router)
 protected.include_router(register_exports.router)
 protected.include_router(workspaces.router)
 protected.include_router(notifications.router)
+protected.include_router(mfa.router)
 protected.include_router(gitlab.router)
 protected.include_router(scope.router)
 protected.include_router(security_policies.router)

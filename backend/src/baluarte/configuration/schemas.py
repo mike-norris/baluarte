@@ -59,6 +59,8 @@ class OidcUpdate(BaseModel):
     # Empty takes the preset's: amr values that prove MFA, and acr_values that ask for it.
     mfa_amr: list[AmrValue] = Field(default=[], max_length=20)
     acr_values: str = Field(default="", max_length=512)
+    # Built-in TOTP when MFA is required and the provider does not prove it; needs the secret key.
+    totp_fallback: bool = False
 
 
 class OidcConfig(BaseModel):
@@ -79,6 +81,7 @@ class OidcConfig(BaseModel):
     require_mfa: bool
     mfa_amr: list[str]
     acr_values: str | None
+    totp_fallback: bool
 
 
 class OidcTest(BaseModel):

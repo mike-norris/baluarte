@@ -21,6 +21,7 @@ from sqlalchemy import (
     Index,
     Integer,
     LargeBinary,
+    SmallInteger,
     Text,
     UniqueConstraint,
     func,
@@ -2749,8 +2750,11 @@ class UserSession(Base):
         ),
         CheckConstraint("expires_at > created_at", name="expires_after_created"),
         CheckConstraint(
-            "mfa_method IS NULL OR mfa_method IN ('provider')", name="mfa_method_allowed"
+            "mfa_method IS NULL OR mfa_method IN ('provider', 'totp', 'recovery')",
+            name="mfa_method_allowed",
         ),
+        CheckConstraint("mfa_failures >= 0", name="mfa_failures_nonnegative"),
+        CheckConstraint("NOT mfa_pending OR mfa_method IS NULL", name="pending_without_method"),
     )
 
     id: Mapped[int] = pk()
@@ -2765,9 +2769,56 @@ class UserSession(Base):
     last_seen_at: Mapped[datetime] = utc_now()
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # How a second factor was proven at sign-in (migration 0044): "provider" when the ID
-    # token's amr proved it; None when none was.
+    # How a second factor was proven at sign-in (migrations 0044, 0045): "provider" when the ID
+    # token's amr proved it, "totp" or "recovery" for built-in TOTP; None when none was.
     mfa_method: Mapped[str | None] = mapped_column(Text)
+    # Signed in, with a TOTP code still to enter; such a session grants nothing else.
+    mfa_pending: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    # Wrong codes entered; the session ends at totp.MAX_FAILURES.
+    mfa_failures: Mapped[int] = mapped_column(SmallInteger, server_default=text("0"))
+
+
+class UserTotp(Base):
+    """A user's authenticator for built-in TOTP (docs/SECURITY.md#built-in-totp).
+
+    The shared secret is sealed like a stored secret, bound to ``totp:<user id>``. Until
+    ``confirmed_at`` the user has not yet entered a code from it. ``last_step`` is the last
+    accepted time step; only a later one is accepted, so a code works once.
+    """
+
+    __tablename__ = "user_totp"
+    __table_args__ = (
+        CheckConstraint("key_id ~ '^[0-9a-f]{16}$'", name="key_id_format"),
+        CheckConstraint("octet_length(nonce) = 12", name="nonce_length"),
+        CheckConstraint("octet_length(ciphertext) > 16", name="ciphertext_length"),
+        CheckConstraint("last_step IS NULL OR last_step >= 0", name="last_step_nonnegative"),
+        CheckConstraint(
+            "last_step IS NULL OR confirmed_at IS NOT NULL", name="steps_after_confirmation"
+        ),
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("app_user.id", ondelete="CASCADE"), primary_key=True
+    )
+    key_id: Mapped[str] = mapped_column(Text)
+    nonce: Mapped[bytes] = mapped_column(LargeBinary)
+    ciphertext: Mapped[bytes] = mapped_column(LargeBinary)
+    last_step: Mapped[int | None] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = utc_now()
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class UserRecoveryCode(Base):
+    """A one-time code for a lost authenticator; only its SHA-256 digest is stored."""
+
+    __tablename__ = "user_recovery_code"
+    __table_args__ = (sha256_hex("digest"), UniqueConstraint("user_id", "digest"))
+
+    id: Mapped[int] = pk()
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id", ondelete="CASCADE"), index=True)
+    digest: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = utc_now()
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class OidcLogin(Base):

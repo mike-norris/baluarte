@@ -48,6 +48,8 @@ export interface OidcConfig {
   mfa_amr?: string[];
   /** acr_values sent to ask for MFA; null sends none. */
   acr_values?: string | null;
+  /** Built-in TOTP when MFA is required and the provider does not prove it. */
+  totp_fallback?: boolean;
 }
 
 export type OidcPreset = "generic" | "okta" | "auth0";
@@ -70,6 +72,7 @@ export interface OidcUpdate {
   /** Empty takes the preset's. */
   mfa_amr: string[];
   acr_values: string;
+  totp_fallback: boolean;
 }
 
 export interface OidcTestResult {

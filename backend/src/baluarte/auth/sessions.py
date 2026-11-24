@@ -20,6 +20,8 @@ from baluarte.auth.settings import AuthSettings
 from baluarte.db.models import AppUser, OidcLogin, UserSession
 
 LOGIN_TTL = timedelta(minutes=10)
+# How long a signed-in session may wait for its TOTP code.
+MFA_TTL = timedelta(minutes=10)
 # Avoid a write on every request; idle expiry is accurate to within this interval.
 LAST_SEEN_RESOLUTION = timedelta(minutes=1)
 
@@ -81,12 +83,15 @@ def create_session(
     settings: AuthSettings,
     workspace_roles: Mapping[int, frozenset[Role]] | None = None,
     mfa_method: str | None = None,
+    mfa_pending: bool = False,
 ) -> str:
     """Start a session. ``roles`` is the union of ``workspace_roles``, the roles per workspace;
     without them, the roles are held in the default workspace. ``mfa_method`` says how a second
-    factor was proven, if one was."""
+    factor was proven, if one was. A session with ``mfa_pending`` grants nothing until a TOTP
+    code completes it (``complete_mfa``), and ends after ``MFA_TTL`` if none does."""
     token = secrets.token_urlsafe(32)
     now = utcnow()
+    lifetime = min(MFA_TTL, settings.session_lifetime) if mfa_pending else settings.session_lifetime
     db.add(
         UserSession(
             token_digest=sha256_hex(token),
@@ -98,10 +103,24 @@ def create_session(
             },
             created_at=now,
             last_seen_at=now,
-            expires_at=now + settings.session_lifetime,
+            expires_at=now + lifetime,
             mfa_method=mfa_method,
+            mfa_pending=mfa_pending,
         )
     )
+    return token
+
+
+def complete_mfa(session: UserSession, method: str, settings: AuthSettings) -> str:
+    """Complete a pending session with a second factor. The cookie value changes, so a value
+    seen before the code was entered is worthless; the session lifetime starts now."""
+    token = secrets.token_urlsafe(32)
+    now = utcnow()
+    session.token_digest = sha256_hex(token)
+    session.mfa_pending = False
+    session.mfa_method = method
+    session.last_seen_at = now
+    session.expires_at = now + settings.session_lifetime
     return token
 
 
@@ -111,8 +130,11 @@ class ActiveSession:
     user: AppUser
 
 
-def resolve_session(db: Session, token: str, settings: AuthSettings) -> ActiveSession | None:
-    """Return the live session for a cookie value, refreshing its idle timer."""
+def resolve_session(
+    db: Session, token: str, settings: AuthSettings, pending: bool = False
+) -> ActiveSession | None:
+    """Return the live session for a cookie value, refreshing its idle timer. A session waiting
+    for its TOTP code is found only with ``pending``, and a completed one only without it."""
     now = utcnow()
     row = db.execute(
         select(UserSession, AppUser)
@@ -122,6 +144,7 @@ def resolve_session(db: Session, token: str, settings: AuthSettings) -> ActiveSe
             UserSession.revoked_at.is_(None),
             UserSession.expires_at > now,
             UserSession.last_seen_at > now - settings.session_idle,
+            UserSession.mfa_pending.is_(pending),
         )
     ).one_or_none()
     if row is None:
