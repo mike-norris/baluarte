@@ -46,7 +46,7 @@ mkdir -p backups && sudo chown 70:70 backups       # the image runs as uid 70 (L
 BALUARTE_BACKUP_RECIPIENT=age1... docker compose --profile backup up -d
 ```
 
-The service backs up once at start, then every `BALUARTE_BACKUP_INTERVAL_HOURS`. Copy the files off the host with an [off-site target](#off-site-copies), or set `BALUARTE_BACKUP_DIR` to a mounted network share; either is the `backup-offsite` attestation. `secrets/backup_database_password` is created with the other secrets (README).
+The service backs up once at start, then every `BALUARTE_BACKUP_INTERVAL_HOURS`. Copy the files off the host with an [off-site target](#off-site-copies), whose result the `backup-offsite` check reads. If you copy them another way, such as a `BALUARTE_BACKUP_DIR` on a mounted network share, attest to it instead. `secrets/backup_database_password` is created with the other secrets (README).
 
 **Kubernetes:** create a PersistentVolumeClaim for the backup files, then `--set backup.enabled=true --set backup.recipient=age1... --set backup.existingClaim=baluarte-backups`. This adds a CronJob, daily at 02:17 by default. The chart does not create or delete the claim, so backups outlive the release.
 
@@ -85,19 +85,63 @@ BALUARTE_BACKUP_RECIPIENT=age1... \
 docker compose -f compose.yaml -f deploy/compose/offsite.yaml --profile backup up -d
 ```
 
-The container only provides the API. **What makes the copies off site is the storage behind `BALUARTE_OFFSITE_DIR`.** It must be a mount of storage that is not the host's own disk, such as a NAS share, a SAN or network block device, or a separately attached volume, so that losing the host does not lose the copies. The default `./offsite` directory is for trying it out only. `deploy/compose/offsite-test.sh` checks the whole path and runs in CI. The test backs up, copies, keeps the newest copies and downloads one, then confirms that it matches the recorded SHA-256 and decrypts with the offline key into a restorable dump.
+The container only provides the API. **What makes the copies off site is the storage behind `BALUARTE_OFFSITE_DIR`.** It must be a mount of storage that is not the host's own disk, such as a NAS share, a SAN or network block device, or a separately attached volume, so that losing the host does not lose the copies. The default `./offsite` directory is for trying it out only.
+
+`deploy/compose/offsite-test.sh` checks the whole path and runs in CI:
+
+- it backs up, copies, keeps the newest copies and downloads one, which must match the recorded SHA-256 and decrypt with the offline key into a restorable dump;
+- it runs a [restore test](#restore-tests) from the off-site copy, [lists](#listing-backups) the backups and [restores](#restoring) into an empty database;
+- it confirms that a replaced off-site copy and a rewritten audit row both fail the restore test.
 
 **Kubernetes:** set `backup.offsite.endpoint`, `backup.offsite.bucket` and `backup.offsite.existingSecret`, a Secret with `access-key-id` and `secret-access-key`.
 
+### Listing backups
+
+`baluarte-backup list` compares the recorded backups with what is stored. It shows one line per backup, newest first. Each line says whether the local file and the off-site copy are present and match the recorded size, and the SHA-256 for the off-site copy (`ok`, `missing` or `DIFFERS`). Files with no record are listed too.
+
+```sh
+docker compose --profile backup run --rm backup list
+```
+
+### Restore tests
+
+`baluarte-backup restore-test [FILE]` proves that a backup can be restored. It needs the age private key, mounted for that run only, so run it from the machine that keeps the key:
+
+```sh
+docker compose --profile backup run --rm \
+  -v "$PWD/baluarte-backup.key:/run/secrets/restore_identity:ro" backup restore-test
+```
+
+It takes the newest successful backup, or `FILE`, and:
+
+1. Fetches the off-site copy if the backup was copied there, otherwise the local file. An off-site copy that cannot be fetched fails the test rather than falling back.
+2. Checks its SHA-256 against `backup_run`.
+3. Decrypts it straight into a temporary PostgreSQL 17 inside the container (`BALUARTE_RESTORE_DIR`, `/tmp/baluarte-restore`, a tmpfs under Compose). It listens on a Unix socket only. No decrypted dump is written.
+4. Checks the alembic revision, the tables, that `audit_event` has its immutability triggers, and every audit event's `details_digest`, recomputed the way the application does.
+5. Deletes the temporary database and records a `restore_run`: the backup, where it came from and what was checked, or why it failed.
+
+Compliance > Backups lists the restore tests. The `restore-test` control is met while the latest restore test in the last 365 days succeeded. A recorded failure is not met, even with an attestation. Restore tests you run another way can still be attested.
+
+**Kubernetes:** `backup.restoreTest.enabled` adds a monthly CronJob. It needs the private key in a Secret (`backup.restoreTest.existingSecret`), so anyone who can read that Secret can decrypt every backup. If that is not acceptable, run the image from a trusted machine with the same environment as the backup CronJob.
+
 ### Restoring
 
-**Restore** a scheduled backup by decrypting it with the private key on a trusted machine, then follow the restore steps below:
+`baluarte-backup restore FILE [SHA256]` is the disaster recovery path. It restores into `BALUARTE_RESTORE_TARGET`, a libpq connection string with its password in `BALUARTE_RESTORE_TARGET_PASSWORD_FILE`, and it refuses a database that already holds tables. It does not need the live database. The expected SHA-256 comes from the argument, from `backup_run` if the old database still answers, or from the off-site copy's metadata. Without one it refuses, so an unverified file is never restored. The file is decrypted straight into `pg_restore`.
+
+```sh
+docker compose --profile backup run --rm \
+  -v "$PWD/baluarte-backup.key:/run/secrets/restore_identity:ro" \
+  -v "$PWD/secrets/postgres_password:/run/secrets/target_password:ro" \
+  -e BALUARTE_RESTORE_TARGET="host=db dbname=baluarte user=baluarte" \
+  -e BALUARTE_RESTORE_TARGET_PASSWORD_FILE=/run/secrets/target_password \
+  backup restore baluarte-<timestamp>.dump.age
+```
+
+Then run the `migrate` service so roles and grants are set again, and follow [Verifying a restore](#verifying-a-restore). To decrypt a backup by hand instead:
 
 ```sh
 age -d -i baluarte-backup.key baluarte-<timestamp>.dump.age > baluarte-<timestamp>.dump
 ```
-
-Rehearse a restore at least once a year, for example into a scratch database, and record it as the `restore-test` attestation.
 
 ## Manual backup and restore (Docker Compose)
 

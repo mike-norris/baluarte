@@ -153,6 +153,19 @@ _DELETE: list[tuple[str, str, str]] = [
                 ORDER BY l.finished_at DESC, l.id DESC LIMIT 1)
         """,
     ),
+    # Restore tests: the latest successful one is kept, since the restore-test check reads it.
+    (
+        "restore_run",
+        "evidence",
+        """
+        DELETE FROM restore_run r
+         WHERE r.finished_at < :cutoff
+           AND r.id IS DISTINCT FROM (
+               SELECT l.id FROM restore_run l
+                WHERE l.status = 'succeeded'
+                ORDER BY l.finished_at DESC, l.id DESC LIMIT 1)
+        """,
+    ),
     # Notifications and their deliveries (cascade) follow the audit period (FR-024); a delivery
     # still pending is kept.
     (

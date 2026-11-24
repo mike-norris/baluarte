@@ -69,6 +69,7 @@ TABLES = {
     "template_assignment",
     "template_exception",
     "template_change_set",
+    "restore_run",
     "saved_selection",
     "template_change_item",
     "time_cursor",

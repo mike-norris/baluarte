@@ -78,8 +78,8 @@ Each control is a **setting** (met when its setting meets the requirement), a **
 | `log-shipping` | check, or attestation (90 days) | CC7.2 | A.8.15 | AU-4, AU-9 | [Audit shipping](#audit-log-shipping) is on and nothing has waited more than 15 minutes (no event waiting, or the oldest waiting is under 15 minutes old and a delivery succeeded in the last 15 minutes). Or shipping is off and a current attestation says the platform's log collector ships the `baluarte.audit` stream |
 | `backup-frequency` | setting | A1.2 | A.8.13 | CP-9 | `backup_interval_hours` meets the maximum |
 | `backups` | check | A1.2 | A.8.13 | CP-9 | The [backup service](#backups) reported an encrypted backup within `backup_interval_hours` plus 2 hours |
-| `backup-offsite` | attestation (90 days) | A1.2 | A.8.13 | CP-9 | The backup files are copied off the database host |
-| `restore-test` | attestation (365 days) | A1.3 | A.8.13 | CP-4 | A backup was restored and checked in the last 12 months |
+| `backup-offsite` | check, or attestation (90 days) | A1.2 | A.8.13 | CP-9 | The backup files are copied off the database host |
+| `restore-test` | check, or attestation (365 days) | A1.3 | A.8.13 | CP-4 | A backup was restored and checked in the last 12 months |
 | `encryption-at-rest` | attestation (365 days) | CC6.1 | A.8.24 | SC-28 | Database and backup storage is encrypted |
 | `identity-mfa` | attestation (365 days) | CC6.1 | A.8.5 | IA-2(1), IA-2(2) | The identity provider requires MFA for everyone who can sign in |
 | `access-review` | attestation (90 days) | CC6.2, CC6.3 | A.5.18 | AC-2 | Membership of the groups mapped to Baluarte roles was reviewed |
@@ -138,7 +138,7 @@ Application logs (stdout) stay with the platform's log collector. If that collec
 
 ## Backups
 
-The `baluarte-backup` service runs `pg_dump` as the read-only `baluarte_backup` role, encrypts the dump to an [age](https://age-encryption.org) public key and records every run, failed or not, in `backup_run`. Baluarte never holds the private key, so neither it nor anyone with its database can read a backup. Compliance > Services gives the exact Compose and Helm steps and a configuration generated from `backup_interval_hours`; [OPERATIONS.md](OPERATIONS.md#scheduled-backups) describes the service. The service can copy each file to an off-site S3-compatible target and record whether it did ([OPERATIONS.md](OPERATIONS.md#off-site-copies)); attesting to that copy and testing a restore stay with you, as the `backup-offsite` and `restore-test` attestations.
+The `baluarte-backup` service runs `pg_dump` as the read-only `baluarte_backup` role, encrypts the dump to an [age](https://age-encryption.org) public key and records every run, failed or not, in `backup_run`. Baluarte never holds the private key, so neither it nor anyone with its database can read a backup. Compliance > Services gives the exact Compose and Helm steps and a configuration generated from `backup_interval_hours`; [OPERATIONS.md](OPERATIONS.md#scheduled-backups) describes the service. The service can copy each file to an off-site S3-compatible target and record whether it did ([OPERATIONS.md](OPERATIONS.md#off-site-copies)), which the `backup-offsite` check reads. `baluarte-backup restore-test` restores a backup into a temporary database, checks it and records the result, which the `restore-test` check reads ([OPERATIONS.md](OPERATIONS.md#restore-tests)). Either control can be attested instead when you do it another way. A recorded failure is not met, attestation or not.
 
 An access-review report is planned for a later release.
 

@@ -7,10 +7,13 @@ FROM postgres:17-alpine3.24
 # and is built with an old Go toolchain, so it is removed.
 # apk upgrade picks up Alpine security fixes released after the base image was built.
 # rclone copies the encrypted files to an S3-compatible off-site target, when one is configured.
-RUN apk upgrade --no-cache && apk add --no-cache age=1.3.2-r1 rclone=1.75.2-r0 \
+# python3 (standard library only) checks the audit digests in restore tests and formats list.
+RUN apk upgrade --no-cache \
+  && apk add --no-cache age=1.3.2-r1 rclone=1.75.2-r0 python3=3.14.10-r2 \
   && rm -f /usr/local/bin/gosu
 
 COPY --chmod=0555 baluarte-backup.sh /usr/local/bin/baluarte-backup
+COPY --chmod=0555 backup_tools.py /usr/local/lib/baluarte/backup_tools.py
 
 # The image's postgres user (uid 70). Writes only to /backups and /tmp.
 USER 70:70

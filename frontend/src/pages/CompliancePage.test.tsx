@@ -14,6 +14,7 @@ import {
   control,
   controlException,
   posture,
+  restoreRun,
   service,
 } from "../test/compliance";
 import { EVALUATION_FRESHNESS, evaluationFreshness, freshness } from "../test/freshness";
@@ -405,6 +406,45 @@ describe("compliance services and backups", () => {
     expect(rows[3]).toHaveTextContent("Not configured");
   });
 
+  it("lists restore tests with what they checked", async () => {
+    api(
+      admin,
+      () => posture(),
+      () => [],
+      {
+        "GET /api/v1/compliance/backups": () =>
+          json(
+            backups({
+              restores: [
+                restoreRun({
+                  id: 6,
+                  status: "failed",
+                  source: "offsite",
+                  schema_revision: null,
+                  table_count: null,
+                  audit_events: null,
+                  digest_mismatches: null,
+                  error: "baluarte-x.dump.age from offsite has SHA-256 b, but a was recorded",
+                }),
+                restoreRun(),
+              ],
+            }),
+          ),
+      },
+    );
+    renderAt("/compliance");
+
+    const panel = await screen.findByRole("region", { name: "Backups" });
+    const rows = within(within(panel).getByRole("table", { name: "Restore tests" })).getAllByRole(
+      "row",
+    );
+    expect(rows[1]).toHaveTextContent("Failed");
+    expect(rows[1]).toHaveTextContent("but a was recorded");
+    expect(rows[2]).toHaveTextContent("Succeeded");
+    expect(rows[2]).toHaveTextContent("Off site");
+    expect(rows[2]).toHaveTextContent("revision 0043, 66 tables, 1204 audit events, digests match");
+  });
+
   it("says when no backup has been reported", async () => {
     api(auditor);
     renderAt("/compliance");
@@ -412,6 +452,7 @@ describe("compliance services and backups", () => {
     const panel = await screen.findByRole("region", { name: "Backups" });
     expect(panel).toHaveTextContent("No successful backup has been reported.");
     expect(panel).toHaveTextContent("The backup service has not reported any runs.");
+    expect(panel).toHaveTextContent("No restore test has been reported.");
   });
 });
 

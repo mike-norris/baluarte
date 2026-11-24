@@ -13,9 +13,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from baluarte.compliance import operations
-from baluarte.db.models import BackupRun
+from baluarte.db.models import BackupRun, RestoreRun
 
 RECENT_RUNS = 20
+RECENT_RESTORES = 10
+# The restore-test control: a restore test this recent decides it.
+RESTORE_WITHIN = timedelta(days=365)
 # How long after the interval a backup may finish before it counts as missed.
 GRACE = timedelta(hours=2)
 KEEP = 14
@@ -28,6 +31,7 @@ class Backups:
     interval_hours: int
     last_success: BackupRun | None
     runs: list[BackupRun]
+    restores: list[RestoreRun]
 
 
 def interval_hours(db: Session) -> int:
@@ -53,8 +57,24 @@ def recent(db: Session, limit: int = RECENT_RUNS) -> list[BackupRun]:
     )
 
 
+def last_restore(db: Session) -> RestoreRun | None:
+    return db.scalars(
+        select(RestoreRun).order_by(RestoreRun.finished_at.desc(), RestoreRun.id.desc()).limit(1)
+    ).one_or_none()
+
+
+def recent_restores(db: Session, limit: int = RECENT_RESTORES) -> list[RestoreRun]:
+    return list(
+        db.scalars(
+            select(RestoreRun)
+            .order_by(RestoreRun.finished_at.desc(), RestoreRun.id.desc())
+            .limit(limit)
+        )
+    )
+
+
 def overview(db: Session) -> Backups:
-    return Backups(interval_hours(db), last_success(db), recent(db))
+    return Backups(interval_hours(db), last_success(db), recent(db), recent_restores(db))
 
 
 def due_by(run: BackupRun, hours: int) -> datetime:
@@ -143,8 +163,18 @@ runs first and creates the role.
    BALUARTE_BACKUP_RECIPIENT=age1... docker compose --profile backup up -d
    ```
 
-5. Copy the `backups` directory off this host (see **Backups are copied off the database \
-host**), and test a restore at least once a year.
+5. Copy each backup off this host with the off-site overlay \
+(`deploy/compose/offsite.yaml`, docs/OPERATIONS.md#off-site-copies). Each run then records \
+whether its copy was made, which **Backups are copied off the database host** checks.
+
+6. Test a restore at least once a year, from the machine that holds the private key. The \
+key is mounted only for that run, and the result is recorded for **A restore was tested in \
+the last 12 months**.
+
+   ```sh
+   docker compose --profile backup run --rm \\
+     -v "$PWD/baluarte-backup.key:/run/secrets/restore_identity:ro" backup restore-test
+   ```
 
 See {DOCS}.
 """
@@ -191,7 +221,12 @@ create or delete it, so backups outlive the release.
      --set backup.existingSecret=baluarte-backup --set backup.passwordKey=password
    ```
 
-5. Copy the backup volume off the cluster's storage, and test a restore at least once a year.
+5. Copy each backup off the cluster with `backup.offsite` (an S3-compatible bucket and a \
+Secret with its credentials, docs/OPERATIONS.md#off-site-copies).
+
+6. Test a restore at least once a year. `backup.restoreTest` runs one monthly in the \
+cluster, but needs the private key in a Secret there; otherwise run \
+`baluarte-backup restore-test` from a trusted machine (docs/OPERATIONS.md#restore-tests).
 
 See {DOCS}.
 """

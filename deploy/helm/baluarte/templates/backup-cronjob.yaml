@@ -5,15 +5,26 @@
 {{- fail "backup.recipient must be an age public key (age1...)" }}
 {{- end }}
 {{- $claim := required "backup.existingClaim must name a PersistentVolumeClaim for the backups (see docs/OPERATIONS.md#scheduled-backups)" .Values.backup.existingClaim }}
+{{- $restore := .Values.backup.restoreTest }}
+{{- /* The backup job, and the restore test (docs/OPERATIONS.md#restore-tests) when enabled: the
+same pod, with the age private key and a scratch volume added for the restore test. */}}
+{{- $jobs := list (dict "name" $name "component" "backup" "schedule" .Values.backup.schedule "args" (list "once") "restore" false) }}
+{{- if $restore.enabled }}
+{{- $identity := required "backup.restoreTest.existingSecret must name the Secret holding the age private key" $restore.existingSecret }}
+{{- $jobs = append $jobs (dict "name" (printf "%s-restore-test" (include "baluarte.fullname" .) | trunc 63 | trimSuffix "-") "component" "restore-test" "schedule" $restore.schedule "args" (list "restore-test") "restore" true) }}
+{{- end }}
+{{- range $job := $jobs }}
+{{- with $ }}
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: {{ $name }}
+  name: {{ $job.name }}
   labels:
     {{- include "baluarte.labels" . | nindent 4 }}
-    app.kubernetes.io/component: backup
+    app.kubernetes.io/component: {{ $job.component }}
 spec:
-  schedule: {{ .Values.backup.schedule | quote }}
+  schedule: {{ $job.schedule | quote }}
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
@@ -24,7 +35,7 @@ spec:
         metadata:
           labels:
             {{- include "baluarte.labels" . | nindent 12 }}
-            app.kubernetes.io/component: backup
+            app.kubernetes.io/component: {{ $job.component }}
         spec:
           restartPolicy: Never
           serviceAccountName: {{ include "baluarte.serviceAccountName" . }}
@@ -42,7 +53,7 @@ spec:
             - name: backup
               image: {{ include "baluarte.image" (dict "ctx" . "image" .Values.backup.image) | quote }}
               imagePullPolicy: {{ .Values.backup.image.pullPolicy }}
-              args: ["once"]
+              args: {{ toJson $job.args }}
               securityContext:
                 {{- toYaml .Values.containerSecurityContext | nindent 16 }}
               env:
@@ -80,6 +91,12 @@ spec:
                   value: /var/run/secrets/baluarte/offsite/{{ .secretAccessKeyKey }}
                 {{- end }}
                 {{- end }}
+                {{- if $job.restore }}
+                - name: BALUARTE_RESTORE_IDENTITY_FILE
+                  value: /var/run/secrets/baluarte/restore-identity/key.txt
+                - name: BALUARTE_RESTORE_DIR
+                  value: /restore
+                {{- end }}
               resources:
                 {{- toYaml .Values.backup.resources | nindent 16 }}
               volumeMounts:
@@ -95,6 +112,13 @@ spec:
                   mountPath: /var/run/secrets/baluarte/offsite
                   readOnly: true
                 {{- end }}
+                {{- if $job.restore }}
+                - name: restore-identity
+                  mountPath: /var/run/secrets/baluarte/restore-identity
+                  readOnly: true
+                - name: restore
+                  mountPath: /restore
+                {{- end }}
           volumes:
             - name: tmp
               emptyDir:
@@ -108,6 +132,19 @@ spec:
               secret:
                 secretName: {{ required "backup.offsite.existingSecret must name the Secret with the S3 credentials" .Values.backup.offsite.existingSecret | quote }}
             {{- end }}
+            {{- if $job.restore }}
+            - name: restore-identity
+              secret:
+                secretName: {{ $restore.existingSecret | quote }}
+                defaultMode: 0440
+                items:
+                  - key: {{ $restore.identityKey | quote }}
+                    path: key.txt
+            # The decrypted, restored database lives here only while the job runs.
+            - name: restore
+              emptyDir:
+                sizeLimit: {{ $restore.sizeLimit | quote }}
+            {{- end }}
           {{- with .Values.backup.nodeSelector }}
           nodeSelector:
             {{- toYaml . | nindent 12 }}
@@ -116,4 +153,6 @@ spec:
           tolerations:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+{{- end }}
+{{- end }}
 {{- end }}

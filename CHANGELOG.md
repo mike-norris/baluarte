@@ -9,6 +9,15 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Provable backups: `baluarte-backup restore-test` restores a backup into a temporary
+  PostgreSQL inside the backup container, preferring the off-site copy. It checks the file's
+  SHA-256, the schema revision, the tables, the audit triggers and every audit digest, and
+  records a `restore_run` (migration `0043`), shown on the Compliance page.
+  `baluarte-backup list` compares the recorded backups with the stored files, and
+  `baluarte-backup restore` recovers into an empty database without needing the live one.
+  `backup-offsite` and `restore-test` are now checks, with attestation still accepted when no
+  off-site target or restore test is recorded. Helm `backup.restoreTest` adds an optional
+  monthly restore test.
 - Off-site backup copies: the backup service copies each encrypted backup to an
   S3-compatible bucket with rclone when `BALUARTE_BACKUP_S3_ENDPOINT` is set (Helm:
   `backup.offsite`), reads it back to check its size and SHA-256, keeps the newest copies, and

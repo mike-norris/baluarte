@@ -1201,12 +1201,13 @@ export const helpTopics: readonly HelpTopic[] = [
             backups, met when the value meets the framework&apos;s minimum.
           </li>
           <li>
-            <strong>Checks</strong> Baluarte observes itself, such as audit log shipping.
+            <strong>Checks</strong> Baluarte observes itself, such as audit log shipping, off-site
+            backup copies and restore tests. Some also accept an attestation when you do it another
+            way.
           </li>
           <li>
             <strong>Attestations</strong> an administrator makes for what Baluarte cannot see, such
-            as offsite backups, restore tests or MFA at the identity provider. They expire and must
-            be renewed.
+            as encryption at rest or MFA at the identity provider. They expire and must be renewed.
           </li>
         </ul>
         <p>

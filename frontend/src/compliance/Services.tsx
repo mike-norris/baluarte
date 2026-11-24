@@ -1,7 +1,7 @@
 import { useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { Link } from "react-router";
 
-import type { BackupRun, Backups, Service, ServiceConfigFile } from "../api/compliance";
+import type { BackupRun, Backups, RestoreRun, Service, ServiceConfigFile } from "../api/compliance";
 import { saveDownload } from "../api/exports";
 import { cardClass, CopyValue } from "../settings/parts";
 import { formatTime } from "../time";
@@ -308,6 +308,73 @@ export function BackupsPanel({ backups }: { backups: Backups }) {
           </table>
         </div>
       )}
+      <h3 className="h4 mt-4">Restore tests</h3>
+      {backups.restores.length === 0 ? (
+        <p className="text-secondary">
+          No restore test has been reported. Run <code>baluarte-backup restore-test</code> with the
+          private key mounted for that run (docs/OPERATIONS.md#restore-tests).
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="table table-vcenter card-table mb-0">
+            <caption className="visually-hidden">Restore tests</caption>
+            <thead className="border-bottom small text-secondary text-uppercase">
+              <tr>
+                <th scope="col" className={cell}>
+                  Finished
+                </th>
+                <th scope="col" className={cell}>
+                  Status
+                </th>
+                <th scope="col" className={cell}>
+                  Backup
+                </th>
+                <th scope="col" className={cell}>
+                  From
+                </th>
+                <th scope="col" className={cell}>
+                  Checked
+                </th>
+                <th scope="col" className={cell}>
+                  Error
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {backups.restores.map((run) => (
+                <tr key={run.id}>
+                  <td className={`${cell} text-nowrap`}>{formatTime(run.finished_at)}</td>
+                  <td className={cell}>
+                    <Badge tone={run.status === "succeeded" ? "good" : "bad"}>
+                      {run.status === "succeeded" ? "Succeeded" : "Failed"}
+                    </Badge>
+                  </td>
+                  <td className={cell}>{run.file_name ?? ""}</td>
+                  <td className={cell}>
+                    {run.source === "offsite" ? "Off site" : run.source === "local" ? "Local" : ""}
+                  </td>
+                  <td className={cell}>{restoreChecked(run)}</td>
+                  <td className={`${cell} text-danger-emphasis`}>{run.error ?? ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
+}
+
+function restoreChecked(run: RestoreRun): string {
+  if (run.schema_revision === null) return "";
+  const parts = [`revision ${run.schema_revision}`];
+  if (run.table_count !== null) parts.push(`${String(run.table_count)} tables`);
+  if (run.audit_events !== null) {
+    parts.push(
+      run.digest_mismatches === 0
+        ? `${String(run.audit_events)} audit events, digests match`
+        : `${String(run.audit_events)} audit events, ${String(run.digest_mismatches ?? 0)} digests differ`,
+    );
+  }
+  return parts.join(", ");
 }

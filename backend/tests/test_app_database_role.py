@@ -158,9 +158,21 @@ def test_the_backup_role_reads_everything_and_only_records_backups(
             assert connection.execute(text("SELECT reported_by FROM backup_run")).scalar_one() == (
                 connection.execute(text("SELECT current_user")).scalar_one()
             )
+            # And the restore tests it reports.
+            connection.execute(
+                text(
+                    "INSERT INTO restore_run (started_at, status, backup_run_id, file_name, "
+                    "sha256, source, schema_revision, table_count, audit_events, "
+                    "digest_mismatches, error, host) VALUES (now(), 'succeeded', 1, "
+                    "'baluarte-20261102T000000Z.dump.age', repeat('a', 64), 'offsite', '0043', "
+                    "60, 12, 0, NULL, 'backup')"
+                )
+            )
         for statement in (
             "UPDATE backup_run SET status = 'failed'",
             "DELETE FROM backup_run",
+            "UPDATE restore_run SET status = 'failed'",
+            "DELETE FROM restore_run",
             "INSERT INTO app_setting (key, value, updated_by) VALUES ('x', '{}', 'x')",
             "DELETE FROM audit_event",
             "SELECT nextval(pg_get_serial_sequence('public.audit_event', 'id'))",

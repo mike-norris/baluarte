@@ -7,6 +7,7 @@ import type {
   ControlPosture,
   Posture,
   Profile,
+  RestoreRun,
   Service,
   ShippingStatus,
 } from "../api/compliance";
@@ -189,8 +190,29 @@ export function backupRun(extra: Partial<BackupRun> = {}): BackupRun {
   };
 }
 
+export function restoreRun(extra: Partial<RestoreRun> = {}): RestoreRun {
+  return {
+    id: 5,
+    started_at: "2026-11-03T03:00:00Z",
+    finished_at: "2026-11-03T03:01:30Z",
+    status: "succeeded",
+    backup_run_id: 3,
+    file_name: "baluarte-20261102T020000Z.dump.age",
+    sha256: "9f2c1b7e4a3d5c6b8e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d",
+    source: "offsite",
+    schema_revision: "0043",
+    table_count: 66,
+    audit_events: 1204,
+    digest_mismatches: 0,
+    error: null,
+    host: "backup",
+    reported_by: "baluarte_backup",
+    ...extra,
+  };
+}
+
 export function backups(extra: Partial<Backups> = {}): Backups {
-  return { interval_hours: 24, last_success: null, runs: [], ...extra };
+  return { interval_hours: 24, last_success: null, runs: [], restores: [], ...extra };
 }
 
 export function service(extra: Partial<Service> & { id: Service["id"] }): Service {
