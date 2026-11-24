@@ -39,6 +39,7 @@ from baluarte.api.v1 import (
     setup,
     system,
     tags,
+    templates,
     time,
     webhooks,
     workspaces,
@@ -91,6 +92,7 @@ protected.include_router(tags.router)
 protected.include_router(time.router)
 protected.include_router(issue_plans.router)
 protected.include_router(reviews.router)
+protected.include_router(templates.router)
 
 router = APIRouter(prefix="/api/v1")
 router.include_router(public)

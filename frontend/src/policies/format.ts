@@ -57,6 +57,7 @@ export const GOVERNANCE = "/governance";
 export const APPLY_VIEW = "/governance/where-baselines-apply";
 export const SECURITY_POLICIES_VIEW = "/governance/gitlab-security-policies";
 export const CHANGES_VIEW = "/governance/changes";
+export const TEMPLATES_VIEW = "/governance/templates";
 
 /** A person named in a change: their display name, else the recorded actor. */
 export function personText(person: Person | null | undefined): string {

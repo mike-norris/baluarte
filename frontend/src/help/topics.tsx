@@ -727,6 +727,53 @@ export const helpTopics: readonly HelpTopic[] = [
     ),
   },
   {
+    slug: "templates",
+    title: "Configuration templates",
+    summary: "Exact settings for repositories, where they apply and where each value comes from.",
+    group: "Govern",
+    paths: ["/governance/templates"],
+    body: (
+      <>
+        <p>
+          A <strong>configuration template</strong> names exactly how repositories should be set up:
+          visibility, default branch protection, merge request approvals, GitHub security features
+          and label consistency. A baseline says what is acceptable; a template says what to set.
+          Assigning a template changes nothing on GitLab or GitHub yet, and it does not make a
+          project compliant: baselines still judge that.
+        </p>
+        <h2 className="h3">Versions and inheritance</h2>
+        <p>
+          Saving changed YAML under a name adds its next version; saved versions never change. A
+          template can extend one exact version of another with <code>extends</code>, such as{" "}
+          <code>base-repository@2</code>, and replaces the settings it names.
+        </p>
+        <h2 className="h3">Where templates apply</h2>
+        <Steps>
+          <li>
+            In <Link to="/governance/templates">Governance, Templates</Link>, assign a version to
+            the whole connection, a group or a project. Each holds one template.
+          </li>
+          <li>
+            For each setting, the nearest assignment that sets it decides: the project&apos;s own,
+            then its group and that group&apos;s parents, then the connection.
+          </li>
+          <li>
+            An assignment can override settings for its target, with a reason of at least 20
+            characters.
+          </li>
+          <li>
+            Look up a project to see every setting in force, which template, version and assignment
+            decided it, and what it replaced.
+          </li>
+        </Steps>
+        <p>
+          Some settings have no equivalent on a provider, or depend on its plan; the page lists
+          which. Showing drift from templates, and applying them in bulk, come in later releases.
+        </p>
+      </>
+    ),
+  },
+  {
     slug: "labels",
     title: "Labels",
     summary: "One label taxonomy for every group, label drift, and reviewed label plans.",
