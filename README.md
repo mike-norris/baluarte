@@ -34,6 +34,8 @@ docker compose logs api | grep 'setup code'
 - Web UI: http://127.0.0.1:8080
 - API health: http://127.0.0.1:8000/api/v1/health (readiness, including migrations: `/api/v1/ready`)
 
+To run it over TLS instead, with HTTPS from nginx and PostgreSQL requiring client certificates, see [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#tls).
+
 Open the web UI and follow the setup wizard. It asks for the one-time setup code from the API log (or run `docker compose exec api baluarte-setup-code` for a new one), then for your identity provider and, optionally, your GitLab URL and `read_api` token. Register `http://127.0.0.1:8080/api/v1/auth/callback` with the provider. Setup completes when the first user in an admin group signs in; after that, admins change these settings on the Settings page.
 
 `secrets/postgres_password` is the schema owner's, used only by `migrate`. The API and worker connect as `baluarte_app` with `secrets/app_database_password`; it can read and write data but cannot change the schema or alter audit events.

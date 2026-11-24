@@ -170,6 +170,8 @@ jobs:
       - run: deploy/compose/smoke-test.sh
       - name: Backup and restore check
         run: deploy/compose/backup-restore-test.sh
+      - name: TLS overlay check
+        run: deploy/compose/tls-smoke-test.sh
 
   helm-smoke:
     name: Helm kind smoke test
