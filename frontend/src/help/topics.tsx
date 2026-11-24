@@ -768,7 +768,21 @@ export const helpTopics: readonly HelpTopic[] = [
         </Steps>
         <p>
           Some settings have no equivalent on a provider, or depend on its plan; the page lists
-          which. Showing drift from templates, and applying them in bulk, come in later releases.
+          which.
+        </p>
+        <h2 className="h3">Drift</h2>
+        <p>
+          Each setting in force is compared with what was last collected: <strong>aligned</strong>,{" "}
+          <strong>drift</strong>, <strong>excepted</strong>, <strong>unknown</strong> when the
+          evidence cannot tell (never counted as aligned), or <strong>unsupported</strong> when the
+          provider or plan has no such setting. <strong>Alignment</strong> sums this up for the
+          connection by template and group and lists the projects needing attention.
+        </p>
+        <p>
+          To let one project differ from one setting for a while, request an exception on its
+          drifting row with a justification. Someone else approves or rejects it; it waives that
+          drift until it ends, and the page flags those ending within 14 days. Applying templates in
+          bulk comes in a later release.
         </p>
       </>
     ),

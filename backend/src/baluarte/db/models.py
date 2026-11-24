@@ -606,6 +606,70 @@ class TemplateAssignment(Base):
     created_at: Mapped[datetime] = utc_now()
 
 
+class TemplateException(Base):
+    """A time-limited waiver of one template setting for one project, approved by someone else
+    (roadmap M14.2). The same lifecycle and trigger rules as ``PolicyException``; ``setting`` is
+    a template setting key such as ``merge_requests.min_approvals``."""
+
+    __tablename__ = "template_exception"
+    __table_args__ = (
+        Index(
+            "uq_template_exception_active",
+            "project_id",
+            "setting",
+            unique=True,
+            postgresql_where=text("state IN ('requested', 'approved')"),
+        ),
+        one_of("state", EXCEPTION_STATES),
+        CheckConstraint("length(justification) > 0", name="justified"),
+        CheckConstraint(
+            f"expires_at > requested_at AND expires_at <= requested_at + "
+            f"interval '{MAX_EXCEPTION_DAYS * 24} hours'",
+            name="expiry_bounded",
+        ),
+        CheckConstraint(
+            "decided_by_user_id IS NULL OR decided_by_user_id <> requested_by_user_id "
+            "OR development_decision",
+            name="decided_by_another_user",
+        ),
+        CheckConstraint(
+            "NOT development_decision OR decided_by_user_id = requested_by_user_id",
+            name="development_decision_by_proposer",
+        ),
+        CheckConstraint(
+            "(decided_at IS NULL) = (decided_by_user_id IS NULL)", name="decision_complete"
+        ),
+        CheckConstraint(
+            "state NOT IN ('approved', 'rejected') OR decided_at IS NOT NULL",
+            name="decided_has_decision",
+        ),
+        CheckConstraint(
+            "(state IN ('revoked', 'expired')) = (ended_at IS NOT NULL)", name="ended_has_time"
+        ),
+        CheckConstraint(
+            "(state = 'revoked') = (ended_by_user_id IS NOT NULL)", name="revoked_has_user"
+        ),
+    )
+
+    id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"), index=True)
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    project_id: Mapped[int] = mapped_column(ForeignKey("gitlab_project.id"), index=True)
+    setting: Mapped[str] = mapped_column(Text)
+    justification: Mapped[str] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(Text, server_default="requested")
+    requested_by_user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id"))
+    requested_at: Mapped[datetime] = utc_now()
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    decided_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    development_decision: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision_note: Mapped[str | None] = mapped_column(Text)
+    ended_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    end_note: Mapped[str | None] = mapped_column(Text)
+
+
 class PolicyAssignment(Base):
     """Pins one immutable policy version to the instance, a group or a project (BAL-018).
 

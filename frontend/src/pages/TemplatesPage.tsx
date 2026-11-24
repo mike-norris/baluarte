@@ -1,6 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 
-import { ApiError } from "../api/client";
 import { listProjects, type Project } from "../api/gitlab";
 import type { PolicyError, TargetType } from "../api/policies";
 import {
@@ -13,16 +12,24 @@ import {
   saveTemplate,
   unassignTemplate,
   type EffectiveSettings,
-  type Source,
+  type ProjectRef,
   type Support,
   type TemplateAssignment,
   type TemplateSummary,
 } from "../api/templates";
 import { useLoad } from "../api/useLoad";
-import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
-import { canWritePolicies } from "../policies/format";
 import { GovernanceHeader } from "../policies/GovernanceTabs";
+import { AlignmentPanel, DriftTable, ExceptionsPanel } from "../templates/DriftPanels";
+import {
+  failureText,
+  placeText,
+  settingLabels,
+  sourceText,
+  supportLabels,
+  useCsrf,
+  valueText,
+} from "../templates/format";
 import { TargetPicker, type Picked } from "../policies/TargetPicker";
 import { EmptyState } from "../ui/EmptyState";
 import { Loading } from "../ui/Loading";
@@ -43,52 +50,6 @@ spec:
 `;
 
 const MIN_REASON = 20;
-
-export const settingLabels: Record<string, string> = {
-  visibility: "Visibility",
-  default_branch_protected: "Default branch protected",
-  "merge_requests.min_approvals": "Approvals required",
-  "merge_requests.forbid_author_approval": "Authors cannot approve",
-  "merge_requests.forbid_committer_approval": "Committers cannot approve",
-  "merge_requests.reset_approvals_on_push": "Approvals reset on push",
-  "merge_requests.forbid_override": "Approval rules cannot be overridden per merge request",
-  security_features: "Security features enabled",
-  labels_consistent: "Labels follow the taxonomy",
-};
-
-const supportLabels: Record<Support, string> = {
-  supported: "Supported",
-  unsupported: "No equivalent",
-  plan: "Depends on the plan",
-};
-
-const originLabels: Record<Source["origin"], string> = {
-  override: "override",
-  template: "template",
-  extends: "inherited through extends",
-};
-
-export function valueText(value: unknown): string {
-  if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (Array.isArray(value)) return value.map(String).join(", ");
-  if (value === null || value === undefined) return "—";
-  return typeof value === "object" ? JSON.stringify(value) : String(value as string | number);
-}
-
-function placeText(target: { target_type: TargetType; path: string }): string {
-  if (target.target_type === "instance") return "Whole connection";
-  return `${target.target_type === "group" ? "Group" : "Project"} ${target.path}`;
-}
-
-function useCsrf(): { token: string | null; canWrite: boolean } {
-  const { session } = useAuth();
-  const user = session.status === "signed_in" ? session.user : null;
-  return { token: user?.csrf_token ?? null, canWrite: canWritePolicies(user) };
-}
-
-function failureText(error: unknown, fallback: string): string {
-  return error instanceof ApiError ? error.message : fallback;
-}
 
 // --- templates and versions ---
 
@@ -556,12 +517,6 @@ function Assignments({
 
 // --- effective settings ---
 
-function sourceText(source: Source): string {
-  return `${source.template} v${String(source.version)} (${originLabels[source.origin]}) on ${placeText(
-    source.assigned_to,
-  ).toLowerCase()}`;
-}
-
 function EffectiveTable({ effective }: { effective: EffectiveSettings }) {
   if (effective.settings.length === 0) {
     return <EmptyState title="No template applies to this project" />;
@@ -610,11 +565,20 @@ function EffectiveTable({ effective }: { effective: EffectiveSettings }) {
   );
 }
 
-function EffectiveLookup({ version }: { version: number }) {
+function EffectiveLookup({
+  version,
+  chosen,
+  onChoose,
+  onChanged,
+}: {
+  version: number;
+  chosen: ProjectRef | null;
+  onChoose: (project: ProjectRef) => void;
+  onChanged: (text: string) => void;
+}) {
   const id = useId();
   const [text, setText] = useState("");
   const [options, setOptions] = useState<Project[] | null>(null);
-  const [chosen, setChosen] = useState<Project | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
   const loaded = useLoad(
     `template-effective:${String(chosen?.id ?? 0)}#${String(version)}`,
@@ -646,7 +610,7 @@ function EffectiveLookup({ version }: { version: number }) {
   return (
     <section aria-labelledby={`${id}-title`} className="stack-2">
       <h2 id={`${id}-title`} className="h3">
-        A project&apos;s effective settings
+        A project&apos;s settings and drift
       </h2>
       <form
         onSubmit={(event) => void search(event)}
@@ -684,7 +648,11 @@ function EffectiveLookup({ version }: { version: number }) {
                 className={`btn btn-link p-0${chosen?.id === project.id ? " fw-bold" : ""}`}
                 aria-pressed={chosen?.id === project.id}
                 onClick={() => {
-                  setChosen(project);
+                  onChoose({
+                    id: project.id,
+                    gitlab_id: project.gitlab_id,
+                    path: project.path_with_namespace,
+                  });
                 }}
               >
                 {project.path_with_namespace}
@@ -704,6 +672,7 @@ function EffectiveLookup({ version }: { version: number }) {
             </p>
           )}
           <EffectiveTable effective={loaded.data} />
+          <DriftTable projectId={chosen.id} version={version} onChanged={onChanged} />
         </>
       )}
     </section>
@@ -755,6 +724,7 @@ export function TemplatesPage() {
   const [version, setVersion] = useState(0);
   const [message, setMessage] = useState<string | null>(null);
   const status = useRef<HTMLParagraphElement>(null);
+  const [chosen, setChosen] = useState<ProjectRef | null>(null);
   const loaded = useLoad(`templates#${String(version)}`, (signal) => listTemplates(signal));
 
   useEffect(() => {
@@ -796,7 +766,9 @@ export function TemplatesPage() {
       </section>
       {canWrite && <SaveForm onSaved={changed} />}
       <Assignments version={version} templates={templates} onChanged={changed} />
-      <EffectiveLookup version={version} />
+      <AlignmentPanel version={version} onShow={setChosen} />
+      <EffectiveLookup version={version} chosen={chosen} onChoose={setChosen} onChanged={changed} />
+      <ExceptionsPanel version={version} onChanged={changed} />
       <section aria-labelledby="support-title" className="stack-2">
         <h2 id="support-title" className="h3">
           Settings and providers
@@ -810,3 +782,5 @@ export function TemplatesPage() {
     </section>
   );
 }
+
+export { valueText };

@@ -139,6 +139,15 @@ def current_settings(db: Session) -> GitLabSettings | None:
         if primary is not None and (workspace_id is None or workspace_id == default_id):
             return primary
         return None
+    return settings_of(connection, primary)
+
+
+def settings_of(
+    connection: GitLabInstance, primary: GitLabSettings | None = None
+) -> GitLabSettings:
+    """A connection's settings for reads (URL and schedule, never its token): the primary
+    connection's own settings when it is that one. ``primary`` defaults to the configured one."""
+    primary = primary if primary is not None else configured_settings()
     if primary is not None and connection.base_url == primary.url:
         return primary
     return GitLabSettings(

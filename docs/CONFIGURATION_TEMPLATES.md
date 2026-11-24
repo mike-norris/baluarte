@@ -7,7 +7,7 @@ Roadmap milestone M14 ([ROADMAP.md](ROADMAP.md#m14--configuration-templates-and-
 | Step | What it delivers | State |
 |---|---|---|
 | M14.1 Templates | The template format, immutable versions, inheritance (`extends`), assignment to a connection, group or project with nearest-wins precedence and overrides with reasons; each project's effective settings with where each came from; settings a provider has no equivalent for, or that depend on the plan, shown as such; a Templates page (migration `0038`) | Done |
-| M14.2 Drift | Effective settings compared with collected evidence per project and setting: aligned, drift, unknown, unsupported or excepted; exceptions per setting with expiry warnings; alignment coverage by template, group and connection | Planned |
+| M14.2 Drift | Effective settings compared with collected evidence per project and setting: aligned, drift, unknown, unsupported or excepted; exceptions per setting with expiry warnings; alignment coverage by template, group and connection (migration `0039`) | Done |
 | M14.3 Change sets | Target selection by hierarchy, owner, provider, tags, business unit, policy and compliance status, and saved collections; a change set with the exact targets and before and after values from evidence; checks for permissions, capabilities, conflicting baselines and exceptions; warnings for changes that weaken protection, remove access or disrupt work; approval of the set, with a second approval for sensitive changes | Planned |
 | M14.4 Execution | Staged rollout to a first set of targets; background jobs with per-target progress, rate-limit handling, retries, cancellation and resumption; each setting read again before it is changed, concurrent changes flagged, previous values kept, rollback where the provider allows it and irreversible steps disclosed; behind its own switch and write token, off by default | Planned |
 | M14.5 Alignment and tags | Manual remediation of drift as a change set; automatic remediation per template assignment, off by default; settings verified after each change; Baluarte tags synchronized to GitLab topics or GitHub topics only when asked | Planned |
@@ -33,7 +33,7 @@ spec:
       reset_approvals_on_push: true
       forbid_override: true
     security_features: [secret_scanning, secret_scanning_push_protection]
-    labels_consistent: true       # the workspace's label taxonomy (LABELS.md)
+    labels_consistent: true       # the workspace's label taxonomy (LABELS.md); only true
 ```
 
 - **Only settings Baluarte reads.** Each setting is one Baluarte collects and the rule type that judges it ([POLICY_ENGINE.md](POLICY_ENGINE.md#rule-types)), so drift can rest on evidence. Unknown keys are refused. At least one setting is needed, counting inherited ones.
@@ -51,7 +51,7 @@ spec:
 | `security_features` | `github.repository.security_features` | Unsupported: a GitHub setting | Supported; code scanning depends on GitHub Advanced Security |
 | `labels_consistent` | `gitlab.labels.consistent` | Supported | Supported |
 
-The effective settings of every project list this support for its connection's provider. Whether a plan offers a setting is known only from what collection read, so "depends on the plan" becomes supported or unsupported per project in drift (M14.2).
+The effective settings of every project list this support for its connection's provider. Whether a plan offers a setting is known only from what collection read, so "depends on the plan" becomes supported or unsupported per project in drift.
 
 ## Versions
 
@@ -65,6 +65,26 @@ Templates are stored like baselines: each save of a changed document under the s
 - **Incomplete ancestry** is reported as for baselines: settings assigned above a gap may be missing.
 - **Permissions.** `findings:read` reads templates and effective settings; `policy:write` saves, assigns and unassigns. Templates do not yet follow the governance review setting; change sets (M14.3) are where review applies.
 
+## Drift
+
+Each effective setting of a project is compared with what was last collected, by the evaluator of the rule type that already judges it ([EVALUATION.md](EVALUATION.md)). The template's value becomes a probe rule, so stale or failed collection, a missing project, incomplete ancestry, a token that cannot read the setting and a plan without it give `unknown` or `unsupported` exactly as for baselines; they are never `aligned`.
+
+| Status | Meaning |
+|---|---|
+| `aligned` | The evidence shows exactly the template's value |
+| `drift` | The evidence shows another value |
+| `excepted` | Drift, waived by an approved, unexpired template exception |
+| `unknown` | The evidence cannot tell (the reason says why) |
+| `unsupported` | The provider or its plan has no such setting |
+
+Templates name exact values, so the probes check both sides: `min_approvals: 2` is aligned when requiring 2 approvals passes and requiring 3 fails (a project requiring more drifts too); a boolean set to `false` is aligned when the setting is off; `visibility` must match exactly; every listed `security_features` entry must be enabled; `labels_consistent: true` means no label drift reaches the project.
+
+A project is `drift` when any setting drifts, otherwise `unknown` when any setting is unknown, otherwise `aligned`. **Alignment** covers the connection the request works on: its active, monitored, unarchived projects, how many have templates and are aligned, drifting or cannot be told, setting counts by template version and by top-level group, the projects needing attention (drift first, at most 200), and approved exceptions ending within 14 days. It is computed on request from stored evidence; nothing is read from the provider.
+
+## Exceptions
+
+A template exception lets one project differ from one setting until it ends (at most 365 days), with a justification. It has the lifecycle of a policy exception ([POLICY_ENGINE.md](POLICY_ENGINE.md#exceptions)): requested with `exception:request`, approved or rejected by someone else with `exception:approve` (rejecting needs a note), revoked with a note, and expired at `expires_at`; a database trigger enforces the transitions, keeps the request unchanged and refuses deletion. Only a setting a template sets for the project can be excepted, and one project and setting holds at most one open exception. An approved exception turns `drift` into `excepted`; it never hides `unknown` or `unsupported`. Approved exceptions ending within 14 days are flagged. Every step is audited (`template_exception.requested`, `.approved`, `.rejected`, `.revoked`, `.expired`).
+
 ## API
 
 | Endpoint | Permission | Behaviour |
@@ -76,4 +96,9 @@ Templates are stored like baselines: each save of a changed document under the s
 | `POST /api/v1/template-assignments` | `policy:write` + CSRF | Body `{connection_id?, name, version, target_type, target_id?, overrides?, override_reason?}`; without `connection_id`, the connection the request works on. 201; 404 for an unknown version or target; 409 for a target that is not active |
 | `DELETE /api/v1/template-assignments/{id}` | `policy:write` + CSRF | 204 |
 | `GET /api/v1/templates/settings` | `findings:read` | Each setting's support on GitLab and GitHub, with why |
+| `GET /api/v1/templates/drift/{project_id}` | `findings:read` | Each effective setting's status, reason, evidence time, source and exception |
+| `GET /api/v1/templates/alignment` | `findings:read` | Alignment of the current connection |
+| `GET /api/v1/template-exceptions` | `findings:read` | Newest first, at most 500; `state` and `project_id` filters |
+| `POST /api/v1/template-exceptions` | `exception:request` + CSRF | Body `{project_id, setting, justification, expires_at}`. 201; 404 when no template sets the setting for the project; 409 when one is already open |
+| `POST /api/v1/template-exceptions/{id}/approve`, `/reject`, `/revoke` | `exception:approve` + CSRF | Body `{note}` (needed to reject or revoke). 403 for one's own request |
 | `GET /api/v1/templates/effective/{project_id}` | `findings:read` | The project's effective settings with provenance and provider support, and the ancestry |

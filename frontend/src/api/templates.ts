@@ -194,3 +194,153 @@ export async function assignTemplate(
 export async function unassignTemplate(id: number, csrfToken: string): Promise<void> {
   await sendJson("DELETE", `/api/v1/template-assignments/${String(id)}`, undefined, csrfToken);
 }
+
+// --- drift (M14.2) ---
+
+export type DriftStatus = "aligned" | "drift" | "excepted" | "unknown" | "unsupported";
+
+export interface ExceptionRef {
+  id: number;
+  state: string;
+  expires_at: string;
+  /** Approved and ending within 14 days. */
+  expiring: boolean;
+}
+
+export interface SettingDrift {
+  key: string;
+  expected: unknown;
+  status: DriftStatus;
+  reason: string;
+  rule_type: string;
+  observed_at: string | null;
+  decided_by: Source;
+  exception: ExceptionRef | null;
+}
+
+export interface ProjectRef {
+  id: number;
+  gitlab_id: number;
+  path: string;
+}
+
+export interface ProjectDrift {
+  project: ProjectRef;
+  connection_id: number;
+  provider: string;
+  ancestry: "complete" | "incomplete";
+  evaluated_at: string;
+  settings: SettingDrift[];
+  counts: Partial<Record<DriftStatus, number>>;
+  /** Null when no template applies. */
+  status: "aligned" | "drift" | "unknown" | null;
+}
+
+export type StatusTally = Record<DriftStatus, number>;
+
+export interface GroupTally {
+  name: string;
+  projects: number;
+  projects_drifting: number;
+  settings: StatusTally;
+}
+
+export interface Alignment {
+  connection_id: number;
+  provider: string;
+  evaluated_at: string;
+  projects: number;
+  projects_with_templates: number;
+  projects_aligned: number;
+  projects_drifting: number;
+  projects_unknown: number;
+  settings: StatusTally;
+  by_template: GroupTally[];
+  by_group: GroupTally[];
+  attention: {
+    project: ProjectRef;
+    status: "drift" | "unknown";
+    counts: Partial<Record<DriftStatus, number>>;
+  }[];
+  attention_truncated: boolean;
+  expiring_exceptions: number;
+}
+
+export type ExceptionState = "requested" | "approved" | "rejected" | "revoked" | "expired";
+
+export interface UserRef {
+  user_id: number;
+  display_name: string | null;
+}
+
+export interface TemplateException {
+  id: number;
+  connection_id: number;
+  project_id: number;
+  project_path: string;
+  setting: string;
+  justification: string;
+  state: ExceptionState;
+  expiring: boolean;
+  requested_by: UserRef;
+  requested_at: string;
+  expires_at: string;
+  decided_by: UserRef | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  development_decision: boolean;
+  ended_by: UserRef | null;
+  ended_at: string | null;
+  end_note: string | null;
+}
+
+export function getProjectDrift(projectId: number, signal?: AbortSignal): Promise<ProjectDrift> {
+  return getJson(`/api/v1/templates/drift/${String(projectId)}`, undefined, signal);
+}
+
+export function getAlignment(signal?: AbortSignal): Promise<Alignment> {
+  return getJson("/api/v1/templates/alignment", undefined, signal);
+}
+
+export function listTemplateExceptions(
+  signal?: AbortSignal,
+): Promise<{ exceptions: TemplateException[] }> {
+  return getJson("/api/v1/template-exceptions", undefined, signal);
+}
+
+export interface TemplateExceptionRequest {
+  project_id: number;
+  setting: string;
+  justification: string;
+  expires_at: string;
+}
+
+export async function requestTemplateException(
+  request: TemplateExceptionRequest,
+  csrfToken: string,
+): Promise<TemplateException> {
+  const result = await sendJson<TemplateException>(
+    "POST",
+    "/api/v1/template-exceptions",
+    request,
+    csrfToken,
+  );
+  if (result === null) throw new ApiError(204, "The API returned no content.");
+  return result;
+}
+
+export async function decideTemplateException(
+  id: number,
+  action: "approve" | "reject" | "revoke",
+  note: string | null,
+  csrfToken: string,
+): Promise<TemplateException> {
+  const result = await sendJson<TemplateException>(
+    "POST",
+    `/api/v1/template-exceptions/${String(id)}/${action}`,
+    note ? { note } : {},
+    csrfToken,
+  );
+  if (result === null) throw new ApiError(204, "The API returned no content.");
+  return result;
+}
