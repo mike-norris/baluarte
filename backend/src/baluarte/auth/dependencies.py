@@ -117,7 +117,7 @@ class Principal:
         return f"user:{self.user_id}"
 
 
-def _check_csrf(request: Request, settings: AuthSettings, expected: str) -> None:
+def check_csrf(request: Request, settings: AuthSettings, expected: str) -> None:
     origin = request.headers.get("Origin")
     if origin is not None and origin != settings.public_url:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Cross-origin request rejected")
@@ -139,7 +139,7 @@ def current_principal(
         raise _UNAUTHENTICATED
     csrf = csrf_token(token)
     if request.method not in SAFE_METHODS:
-        _check_csrf(request, settings, csrf)
+        check_csrf(request, settings, csrf)
     default_id = default_workspace_id(db)
     held = stored_roles(active.session.workspace_roles, active.session.roles, default_id)
     workspace = _workspace(request, db, held)

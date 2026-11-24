@@ -107,6 +107,7 @@ def auth_from_value(value: dict[str, Any], client_secret: str | None) -> AuthSet
             value.get("require_mfa") is True,
             [str(item) for item in value.get("mfa_amr") or []],
             str(value.get("acr_values") or ""),
+            totp=value.get("totp_fallback") is True,
         ),
     )
 

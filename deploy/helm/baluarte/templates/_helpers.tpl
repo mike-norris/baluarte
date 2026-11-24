@@ -244,6 +244,8 @@ https://{{ .Values.ingress.host }}
   value: {{ join "," (.amr | default list) | quote }}
 - name: BALUARTE_OIDC_ACR_VALUES
   value: {{ .acrValues | default "" | quote }}
+- name: BALUARTE_OIDC_MFA_TOTP
+  value: {{ ternary "true" "false" (.totp | default false) | quote }}
 {{- end }}
 {{- with .Values.auth.session.idleMinutes }}
 - name: BALUARTE_SESSION_IDLE_MINUTES

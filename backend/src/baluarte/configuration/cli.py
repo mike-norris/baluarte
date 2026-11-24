@@ -15,6 +15,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from baluarte import audit
+from baluarte.auth import mfa
 from baluarte.config import database_url
 from baluarte.configuration.crypto import Sealed, load_secret_box
 from baluarte.configuration.setup import issue_code
@@ -80,13 +81,19 @@ def reencrypt_secrets(argv: list[str] | None = None) -> int:
                 )
                 row.updated_by = ACTOR
                 changed.append(row.name)
-            if changed:
+            # Each authenticator's TOTP secret is sealed with the same key.
+            authenticators = mfa.reseal(db, box)
+            if changed or authenticators:
                 audit.record(
                     db,
                     actor=ACTOR,
                     action="settings.secrets_reencrypted",
                     resource_type="settings",
-                    details={"secrets": sorted(changed), "key_id": box.key_id},
+                    details={
+                        "secrets": sorted(changed),
+                        "authenticators": authenticators,
+                        "key_id": box.key_id,
+                    },
                 )
             db.commit()
         engine.dispose()
@@ -96,5 +103,8 @@ def reencrypt_secrets(argv: list[str] | None = None) -> int:
     except SQLAlchemyError as exc:
         print(f"baluarte-reencrypt-secrets: database error ({type(exc).__name__})", file=sys.stderr)
         return 1
-    print(f"Re-encrypted {len(changed)} of {len(rows)} stored secrets under key {box.key_id}")
+    print(
+        f"Re-encrypted {len(changed)} of {len(rows)} stored secrets and {authenticators} "
+        f"authenticator secrets under key {box.key_id}"
+    )
     return 0

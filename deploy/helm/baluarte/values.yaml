@@ -171,6 +171,9 @@ auth:
       # amr values that prove MFA, and acr_values that ask for it; empty takes the preset's.
       amr: []
       acrValues: ""
+      # With required: ask for a code from an authenticator app (built-in TOTP) when the ID token
+      # does not prove MFA, instead of refusing. Needs secretKey.
+      totp: false
   # Session idle and absolute expiry in minutes. Empty (the default) leaves them to the operating
   # profile chosen in the web UI; a value here overrides it there.
   session:

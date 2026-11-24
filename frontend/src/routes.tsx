@@ -11,6 +11,7 @@ import { NotFoundPage } from "./pages/NotFoundPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
 import { RouteErrorPage } from "./pages/RouteErrorPage";
 import { SetupPage } from "./pages/SetupPage";
+import { MfaPage } from "./pages/MfaPage";
 import { SignInPage } from "./pages/SignInPage";
 import {
   APPLY_VIEW,
@@ -95,6 +96,7 @@ export const routes: RouteObject[] = [
     errorElement: <RouteErrorPage />,
     children: [
       { path: "/sign-in", element: <SignInPage /> },
+      { path: "/mfa", element: <MfaPage /> },
       { path: "/setup", element: <SetupPage /> },
       {
         element: <RequireSession />,

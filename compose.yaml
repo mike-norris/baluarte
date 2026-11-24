@@ -103,6 +103,8 @@ services:
       BALUARTE_OIDC_REQUIRE_MFA: ${BALUARTE_OIDC_REQUIRE_MFA:-}
       BALUARTE_OIDC_MFA_AMR: ${BALUARTE_OIDC_MFA_AMR:-}
       BALUARTE_OIDC_ACR_VALUES: ${BALUARTE_OIDC_ACR_VALUES:-}
+      # Built-in TOTP when MFA is required and the provider does not prove it (needs secret_key).
+      BALUARTE_OIDC_MFA_TOTP: ${BALUARTE_OIDC_MFA_TOTP:-}
     secrets: [app_database_password, secret_key]
     depends_on:
       migrate:

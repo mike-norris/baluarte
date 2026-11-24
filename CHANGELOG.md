@@ -9,6 +9,11 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Built-in TOTP when MFA is required and the identity provider does not prove it: an
+  authenticator app (such as Authy) is set up at the first sign-in, with 10 one-time recovery
+  codes. Codes are never accepted twice, and 5 wrong codes end the sign-in. Administrators
+  reset a lost authenticator in Settings. Secrets are sealed with the secret key and re-sealed
+  by `baluarte-reencrypt-secrets` (migration `0045`).
 - MFA at sign-in: provider presets (`generic`, `okta`, `auth0`) ask for MFA with `acr_values`
   and read it from the ID token's `amr` claim. **Require MFA** refuses a sign-in without that
   proof. Each session records how MFA was proven (migration `0044`), and each sign-in audit

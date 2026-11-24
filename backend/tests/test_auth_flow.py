@@ -1,5 +1,6 @@
 """End-to-end sign-in, session and sign-out against PostgreSQL and the fake identity provider."""
 
+import time
 from collections.abc import Iterator
 from datetime import timedelta
 from typing import Any
@@ -9,14 +10,25 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 from oidc_fake import PUBLIC_URL, FakeIdP, make_settings
-from sqlalchemy import Engine, select, text, update
+from sqlalchemy import Engine, func, select, text, update
 from sqlalchemy.orm import Session
 
+from baluarte.api.v1 import auth as auth_api
 from baluarte.api.v1.auth import safe_return_to
 from baluarte.audit import details_digest
+from baluarte.auth import totp
 from baluarte.auth.dependencies import CSRF_HEADER, auth_settings, database_engine, oidc_client
+from baluarte.auth.sessions import sha256_hex
 from baluarte.auth.settings import AuthSettings, mfa_policy
-from baluarte.db.models import AppUser, AuditEvent, OidcLogin, UserSession
+from baluarte.configuration.crypto import SecretBox
+from baluarte.db.models import (
+    AppUser,
+    AuditEvent,
+    OidcLogin,
+    UserRecoveryCode,
+    UserSession,
+    UserTotp,
+)
 from baluarte.main import create_app
 
 SESSION_COOKIE = "__Host-baluarte_session"
@@ -407,3 +419,223 @@ def test_presets_ask_for_mfa_and_accept_it(migrated_engine: Engine, preset: str,
         assert harness.me().json()["mfa_method"] == "provider"
     finally:
         harness.client.close()
+
+
+# Built-in TOTP (docs/SECURITY.md#built-in-totp)
+
+
+class TotpHarness(Harness):
+    def status(self) -> dict[str, Any]:
+        response = self.client.get("/api/v1/auth/mfa")
+        assert response.status_code == 200, response.text
+        result: dict[str, Any] = response.json()
+        return result
+
+    def post(self, path: str, body: dict[str, Any] | None = None) -> httpx.Response:
+        csrf = self.status()["csrf_token"]
+        return self.client.post(f"/api/v1/auth/mfa{path}", json=body, headers={CSRF_HEADER: csrf})
+
+    def enroll(self) -> str:
+        response = self.post("/enroll")
+        assert response.status_code == 200, response.text
+        secret: str = response.json()["secret"]
+        return secret
+
+    def verify(self, code: str, return_to: str | None = None) -> httpx.Response:
+        return self.post("/verify", {"code": code, "return_to": return_to})
+
+
+def now_code(secret: str, offset: int = 0) -> str:
+    return totp.code_at(secret, totp.step_at(time.time()) + offset)
+
+
+def wrong_code(secret: str) -> str:
+    valid = {now_code(secret, offset) for offset in (-2, -1, 0, 1, 2)}
+    return next(code for code in ("000000", "111111", "222222", "333333") if code not in valid)
+
+
+@pytest.fixture
+def totp_harness(migrated_engine: Engine, monkeypatch: pytest.MonkeyPatch) -> Iterator[TotpHarness]:
+    box = SecretBox(bytes(range(32)))
+    monkeypatch.setattr(auth_api, "secret_box", lambda: box)
+    harness = TotpHarness(
+        migrated_engine, make_settings(mfa=mfa_policy("generic", True, totp=True))
+    )
+    yield harness
+    harness.client.close()
+
+
+def test_first_sign_in_sets_up_an_authenticator(totp_harness: TotpHarness) -> None:
+    h = totp_harness
+    response = h.sign_in("/findings")
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/mfa?return_to=%2Ffindings"
+    assert h.me().status_code == 401
+    assert h.status()["enrolled"] is False
+    assert h.status()["account"] == "ada@example.test"
+    started = h.post("/enroll").json()
+    assert started["uri"].startswith("otpauth://totp/Baluarte:ada@example.test?secret=")
+    assert len(started["qr"]) == len(started["qr"][0])
+    pending_cookie = h.client.cookies[SESSION_COOKIE]
+
+    assert h.verify(wrong_code(started["secret"])).status_code == 400
+    verified = h.verify(now_code(started["secret"]), "/findings")
+
+    assert verified.status_code == 200, verified.text
+    body = verified.json()
+    assert body["return_to"] == "/findings"
+    assert body["method"] == "totp"
+    assert len(body["recovery_codes"]) == 10
+    assert h.client.cookies[SESSION_COOKIE] != pending_cookie
+    assert h.me().json()["mfa_method"] == "totp"
+    assert h.client.get("/api/v1/auth/mfa").status_code == 401
+    actions = [action for _, action, _ in h.audit()]
+    assert actions == [
+        "auth.mfa_challenged",
+        "auth.mfa_failed",
+        "auth.mfa_enrolled",
+        "auth.login",
+    ]
+    assert h.audit()[-1][2]["mfa_method"] == "totp"
+    with Session(h.engine) as db:
+        session = db.scalars(select(UserSession)).one()
+        assert session.mfa_pending is False
+        assert session.expires_at - session.last_seen_at == timedelta(hours=8)
+        assert session.token_digest != sha256_hex(pending_cookie)
+        stored = db.scalars(select(UserTotp)).one()
+        assert started["secret"].encode() not in bytes(stored.ciphertext)
+        digests = db.scalars(select(UserRecoveryCode.digest)).all()
+        assert sorted(digests) == sorted(totp.recovery_digest(c) for c in body["recovery_codes"])
+
+
+def test_a_code_and_a_recovery_code_each_work_once(totp_harness: TotpHarness) -> None:
+    h = totp_harness
+    h.sign_in()
+    secret = h.enroll()
+    code = now_code(secret)
+    recovery = h.verify(code).json()["recovery_codes"]
+
+    h.sign_in()
+    assert h.status()["enrolled"] is True
+    assert h.post("/enroll").status_code == 409
+    assert h.verify(code).status_code == 400
+    used = h.verify(recovery[0].upper())
+    assert used.status_code == 200, used.text
+    assert used.json()["method"] == "recovery"
+    assert used.json()["recovery_codes_left"] == 9
+    assert h.me().json()["mfa_method"] == "recovery"
+    assert h.audit()[-1][2]["recovery_codes_left"] == 9
+
+    h.sign_in()
+    assert h.verify(recovery[0]).status_code == 400
+    assert h.verify(now_code(secret, 1)).status_code == 200
+
+
+def test_too_many_wrong_codes_end_the_sign_in(totp_harness: TotpHarness) -> None:
+    h = totp_harness
+    h.sign_in()
+    secret = h.enroll()
+    wrong = wrong_code(secret)
+
+    for left in (4, 3, 2, 1):
+        refused = h.verify(wrong)
+        assert refused.status_code == 400
+        assert f"{left} tr" in refused.json()["detail"]
+    ended = h.verify(wrong)
+
+    assert ended.status_code == 401
+    assert h.client.get("/api/v1/auth/mfa").status_code == 401
+    assert h.audit()[-1][2] == {"failures": 5, "session_ended": True}
+    with Session(h.engine) as db:
+        assert db.scalars(select(UserSession)).one().revoked_at is not None
+
+
+def test_a_waiting_sign_in_grants_nothing_and_needs_csrf(totp_harness: TotpHarness) -> None:
+    h = totp_harness
+    h.sign_in()
+
+    assert h.me().status_code == 401
+    assert h.client.get("/api/v1/findings").status_code == 401
+    assert h.client.post("/api/v1/auth/mfa/enroll").status_code == 403
+    assert h.client.post("/api/v1/auth/mfa/verify", json={"code": "123456"}).status_code == 403
+
+
+def test_a_waiting_sign_in_expires_after_ten_minutes(totp_harness: TotpHarness) -> None:
+    h = totp_harness
+    h.sign_in()
+    with Session(h.engine) as db:
+        session = db.scalars(select(UserSession)).one()
+        assert session.expires_at - session.created_at == timedelta(minutes=10)
+    h.sql(
+        update(UserSession).values(
+            created_at=text("now() - interval '11 minutes'"),
+            expires_at=text("now() - interval '1 minute'"),
+        )
+    )
+
+    assert h.client.get("/api/v1/auth/mfa").status_code == 401
+
+
+def test_mfa_proven_by_the_provider_skips_totp(totp_harness: TotpHarness) -> None:
+    h = totp_harness
+    h.idp.claims["amr"] = ["mfa"]
+
+    response = h.sign_in("/findings")
+
+    assert response.headers["location"] == "/findings"
+    assert h.me().json()["mfa_method"] == "provider"
+
+
+def test_totp_without_the_secret_key_refuses_sign_in(
+    totp_harness: TotpHarness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(auth_api, "secret_box", lambda: None)
+
+    assert redirect_error(totp_harness.sign_in()) == "mfa_required"
+    assert totp_harness.audit()[-1][2] == {"reason": "totp_without_secret_key"}
+
+
+def test_an_administrator_resets_another_users_authenticator(totp_harness: TotpHarness) -> None:
+    h = totp_harness
+    h.sign_in()
+    h.verify(now_code(h.enroll()))
+    with Session(h.engine) as db:
+        ada = db.scalars(select(AppUser)).one().id
+
+    h.idp.subject = "user-2"
+    h.idp.claims.update(email="grace@example.test", groups=["baluarte-admins"])
+    h.sign_in()
+    h.verify(now_code(h.enroll()))
+    admin = h.me().json()
+    headers = {CSRF_HEADER: admin["csrf_token"]}
+    # Signing in as someone else in this browser ended Ada's session; bring it back, as if she
+    # were signed in elsewhere.
+    h.sql(update(UserSession).where(UserSession.user_id == ada).values(revoked_at=None))
+
+    listed = h.client.get("/api/v1/settings/mfa/enrollments").json()
+    assert [(row["email"], row["recovery_codes_left"]) for row in listed] == [
+        ("ada@example.test", 10),
+        ("grace@example.test", 10),
+    ]
+    own = h.client.delete(f"/api/v1/settings/mfa/enrollments/{admin['user_id']}", headers=headers)
+    assert own.status_code == 403
+    reset = h.client.delete(f"/api/v1/settings/mfa/enrollments/{ada}", headers=headers)
+    assert reset.status_code == 204
+    assert h.audit()[-1][1:] == ("settings.mfa_reset", {"sessions_ended": 1})
+    again = h.client.delete(f"/api/v1/settings/mfa/enrollments/{ada}", headers=headers)
+    assert again.status_code == 404
+    with Session(h.engine) as db:
+        assert db.scalars(select(UserTotp.user_id)).all() == [admin["user_id"]]
+        assert (
+            db.scalar(
+                select(func.count())
+                .select_from(UserRecoveryCode)
+                .where(UserRecoveryCode.user_id == ada)
+            )
+            == 0
+        )
+        live = db.scalars(
+            select(UserSession).where(UserSession.user_id == ada, UserSession.revoked_at.is_(None))
+        ).all()
+        assert live == []

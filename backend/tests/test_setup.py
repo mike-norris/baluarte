@@ -20,6 +20,7 @@ from test_rbac import SETUP_ROUTES
 
 from baluarte.api.v1.gitlab import gitlab_transport
 from baluarte.api.v1.setup import oidc_transport
+from baluarte.auth import mfa
 from baluarte.auth.dependencies import (
     CSRF_HEADER,
     Principal,
@@ -32,14 +33,21 @@ from baluarte.auth.oidc import OidcClient
 from baluarte.auth.roles import Role
 from baluarte.auth.settings import AuthSettings
 from baluarte.configuration import cli, effective
-from baluarte.configuration.crypto import SecretUnavailable
+from baluarte.configuration.crypto import SecretUnavailable, load_secret_box
 from baluarte.configuration.setup import (
     FAILURE_WINDOW,
     issue_code,
     issue_startup_code,
     sha256_hex,
 )
-from baluarte.db.models import AuditEvent, SetupSession, SetupState, StoredSecret
+from baluarte.db.models import (
+    AppUser,
+    AuditEvent,
+    SetupSession,
+    SetupState,
+    StoredSecret,
+    UserTotp,
+)
 from baluarte.integrations.gitlab.settings import load_gitlab_settings
 from baluarte.main import create_app
 
@@ -339,6 +347,7 @@ def test_saving_the_identity_provider(harness: Harness) -> None:
         "require_mfa": False,
         "mfa_amr": ["mfa"],
         "acr_values": None,
+        "totp_fallback": False,
     }
     assert harness.client.get("/api/v1/setup/oidc").json() == response.json()
     # The operating profile is still to be chosen.
@@ -802,6 +811,27 @@ def test_the_identity_providers_mfa_settings_are_stored(harness: Harness) -> Non
     refused = client.put("/api/v1/settings/oidc", json=oidc_body(mfa_amr=["has space"]))
     assert refused.status_code == 422
 
+    totp_on = client.put(
+        "/api/v1/settings/oidc", json=oidc_body(require_mfa=True, totp_fallback=True)
+    )
+    assert totp_on.status_code == 200, totp_on.text
+    assert client.get("/api/v1/settings/oidc").json()["totp_fallback"] is True
+    assert harness.audit()[-1][2]["totp_fallback"] is True
+
+
+def test_built_in_totp_needs_the_secret_key(
+    harness: Harness, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    client = admin_client(harness, Role.ADMIN)
+    monkeypatch.delenv("BALUARTE_SECRET_KEY_FILE")
+
+    refused = client.put(
+        "/api/v1/settings/oidc", json=oidc_body(require_mfa=True, totp_fallback=True)
+    )
+
+    assert refused.status_code == 409
+    assert "BALUARTE_SECRET_KEY_FILE" in refused.json()["detail"]
+
 
 # Stored secrets
 
@@ -827,6 +857,15 @@ def test_rotating_the_key(
 ) -> None:
     harness.start()
     harness.put("/api/v1/setup/gitlab", gitlab_body())
+    with Session(harness.engine) as db:
+        user = AppUser(issuer="https://idp.example.test", subject="ada")
+        db.add(user)
+        db.flush()
+        box = load_secret_box()
+        assert box is not None
+        started = mfa.start_enrollment(db, box, user)
+        assert started is not None
+        db.commit()
     previous = tmp_path / "previous-key"
     previous.write_text(secret_key.read_text())
     write_key(secret_key)
@@ -834,13 +873,22 @@ def test_rotating_the_key(
     database_env(monkeypatch, harness.engine, tmp_path)
 
     assert cli.reencrypt_secrets([]) == 0
-    assert "Re-encrypted 1 of 1" in capsys.readouterr().out
+    assert "Re-encrypted 1 of 1 stored secrets and 1 authenticator secrets" in (
+        capsys.readouterr().out
+    )
+    assert harness.audit()[-1][2]["authenticators"] == 1
 
     monkeypatch.delenv("BALUARTE_SECRET_KEY_PREVIOUS_FILE")
     effective.invalidate()
     settings = load_gitlab_settings()
     assert settings is not None
     assert settings.token == GITLAB_TOKEN
+    current = load_secret_box()
+    assert current is not None
+    with Session(harness.engine) as db:
+        row = db.scalars(select(UserTotp)).one()
+        assert row.key_id == current.key_id
+        assert mfa.reseal(db, current) == 0
 
 
 def database_env(monkeypatch: pytest.MonkeyPatch, engine: Engine, tmp_path: Path) -> None:

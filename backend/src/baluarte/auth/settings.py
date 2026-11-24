@@ -63,6 +63,7 @@ PRESET_DEFAULTS: dict[Preset, PresetDefaults] = {
 PRESET_ENV = "BALUARTE_OIDC_PRESET"
 REQUIRE_MFA_ENV = "BALUARTE_OIDC_REQUIRE_MFA"
 MFA_AMR_ENV = "BALUARTE_OIDC_MFA_AMR"
+MFA_TOTP_ENV = "BALUARTE_OIDC_MFA_TOTP"
 ACR_VALUES_ENV = "BALUARTE_OIDC_ACR_VALUES"
 _AMR_VALUE = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
 _ACR_VALUES = re.compile(r"^[\x21-\x7e]+( [\x21-\x7e]+)*$")
@@ -75,6 +76,9 @@ class MfaPolicy:
     required: bool = False
     amr: frozenset[str] = MFA_AMR
     acr_values: str | None = None
+    # When MFA is required and the ID token does not prove it, ask for a code from the user's
+    # authenticator app instead of refusing (docs/SECURITY.md#built-in-totp).
+    totp: bool = False
 
     def proven(self, amr: object) -> list[str] | None:
         """The ID token's amr values when one of them proves MFA, else None."""
@@ -88,6 +92,7 @@ def mfa_policy(
     amr: Iterable[str] | None = None,
     acr_values: str | None = None,
     names: tuple[str, str, str] = ("preset", "mfa_amr", "acr_values"),
+    totp: bool = False,
 ) -> MfaPolicy:
     """Check an MFA policy. Empty ``amr`` and ``acr_values`` take the preset's."""
     preset_name, amr_name, acr_name = names
@@ -108,6 +113,7 @@ def mfa_policy(
         required=required,
         amr=values or defaults.amr,
         acr_values=acr or defaults.acr_values,
+        totp=totp,
     )
 
 
@@ -298,5 +304,6 @@ def load_auth_settings() -> AuthSettings | None:
             env(MFA_AMR_ENV).split(","),
             env(ACR_VALUES_ENV),
             (PRESET_ENV, MFA_AMR_ENV, ACR_VALUES_ENV),
+            _flag(MFA_TOTP_ENV),
         ),
     )

@@ -537,10 +537,16 @@ def _identity_mfa(db: Session, context: Context) -> Result:
                 UserSession.revoked_at.is_(None),
                 UserSession.expires_at > func.now(),
                 UserSession.mfa_method.is_(None),
+                # A session still waiting for its TOTP code grants nothing.
+                UserSession.mfa_pending.is_(False),
             )
         )
         evidence["live_sessions_without_mfa"] = without
+        evidence["totp_fallback"] = policy.totp
         accepted = ", ".join(sorted(policy.amr))
+        proof = f"the identity provider's amr claim ({accepted})"
+        if policy.totp:
+            proof += " or built-in TOTP"
         if without:
             return Result(
                 "not_met",
@@ -550,8 +556,7 @@ def _identity_mfa(db: Session, context: Context) -> Result:
             )
         return Result(
             "met",
-            f"Sign-in requires MFA, proven by the identity provider's amr claim ({accepted}); "
-            "every live session began with it.",
+            f"Sign-in requires MFA, proven by {proof}; every live session began with it.",
             evidence,
         )
     attested = _attested(
