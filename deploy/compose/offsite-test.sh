@@ -37,6 +37,8 @@ done
 deploy/compose/make-offsite-credentials.sh >/dev/null
 
 mkdir -p "$work/backups" "$work/offsite" "$work/download" "$work/age"
+# mktemp makes the directory 0700; the containers' users (uid 70) must reach inside it on Linux.
+chmod 755 "$work" "$work/age"
 chmod 777 "$work/backups" "$work/download"
 "${compose[@]}" build -q backup migrate
 # The tag compose.yaml gives the backup image.
