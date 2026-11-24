@@ -182,6 +182,9 @@ export function backupRun(extra: Partial<BackupRun> = {}): BackupRun {
     error: null,
     host: "backup",
     reported_by: "baluarte_backup",
+    offsite_status: null,
+    offsite_location: null,
+    offsite_error: null,
     ...extra,
   };
 }

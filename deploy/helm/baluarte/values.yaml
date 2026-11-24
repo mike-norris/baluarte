@@ -261,6 +261,22 @@ backup:
   # PersistentVolumeClaim for the backup files, created by you, so that backups outlive the
   # release and its storage class need not bind before the first run. Required when enabled.
   existingClaim: ""
+  # Off-site copies of each encrypted backup to an S3-compatible bucket
+  # (docs/OPERATIONS.md#off-site-copies). Off while endpoint is empty. The bucket's storage must
+  # not share failure with the cluster: another site, region or provider.
+  offsite:
+    # https://... (http only on a private network).
+    endpoint: ""
+    bucket: ""
+    prefix: baluarte/
+    region: us-east-1
+    # Copies kept: older ones are deleted. 0 never deletes, for a bucket with versioning or
+    # object lock whose credentials cannot delete.
+    keep: 30
+    # Secret you create with the access key ID and secret access key.
+    existingSecret: ""
+    accessKeyIdKey: access-key-id
+    secretAccessKeyKey: secret-access-key
   # The postgres user in the image.
   runAsUser: 70
   resources:

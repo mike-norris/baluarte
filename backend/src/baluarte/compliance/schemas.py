@@ -250,6 +250,10 @@ class BackupRunOut(BaseModel):
     error: str | None
     host: str | None
     reported_by: str
+    # The off-site copy: None when no off-site target is configured.
+    offsite_status: Literal["copied", "failed"] | None
+    offsite_location: str | None
+    offsite_error: str | None
 
 
 class BackupsOut(BaseModel):

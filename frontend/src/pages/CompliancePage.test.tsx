@@ -362,6 +362,49 @@ describe("compliance services and backups", () => {
     expect(rows[2]).toHaveTextContent("pg_dump: connection refused");
   });
 
+  it("shows each backup's off-site copy", async () => {
+    const copied = backupRun({
+      offsite_status: "copied",
+      offsite_location:
+        "s3://baluarte-backups/baluarte/baluarte-20261102T020000Z.dump.age (at offsite:8333)",
+    });
+    api(
+      admin,
+      () => posture(),
+      () => [],
+      {
+        "GET /api/v1/compliance/backups": () =>
+          json(
+            backups({
+              last_success: copied,
+              runs: [
+                copied,
+                backupRun({
+                  id: 2,
+                  offsite_status: "failed",
+                  offsite_location: "s3://baluarte-backups/baluarte/x.dump.age (at offsite:8333)",
+                  offsite_error: "copy failed: 403 Forbidden",
+                }),
+                backupRun({ id: 1 }),
+              ],
+            }),
+          ),
+      },
+    );
+    renderAt("/compliance");
+
+    const panel = await screen.findByRole("region", { name: "Backups" });
+    expect(panel).toHaveTextContent("encrypted, copied off site.");
+    expect(panel).toHaveTextContent("s3://baluarte-backups/baluarte/baluarte-20261102T020000Z");
+    const rows = within(within(panel).getByRole("table", { name: "Recent backups" })).getAllByRole(
+      "row",
+    );
+    expect(rows[1]).toHaveTextContent("Copied");
+    expect(rows[2]).toHaveTextContent("Failed");
+    expect(rows[2]).toHaveTextContent("copy failed: 403 Forbidden");
+    expect(rows[3]).toHaveTextContent("Not configured");
+  });
+
   it("says when no backup has been reported", async () => {
     api(auditor);
     renderAt("/compliance");

@@ -28,7 +28,8 @@ The `baluarte-backup` image (`deploy/backup/`) does the following on a schedule:
 1. Runs `pg_dump` as `baluarte_backup`, a role that can only read data and record its own runs.
 2. Pipes the dump straight into [age](https://age-encryption.org) for one recipient (a public key). No unencrypted copy is ever written.
 3. Writes `baluarte-<UTC timestamp>.dump.age` and keeps the newest `BALUARTE_BACKUP_KEEP` (14) files.
-4. Records each run, failed or not, in `backup_run` with its size and SHA-256.
+4. When an off-site target is configured, copies the encrypted file there and reads it back ([Off-site copies](#off-site-copies)).
+5. Records each run, failed or not, in `backup_run` with its size, SHA-256 and off-site outcome.
 
 The Compliance page reads those runs. Its `backups` control is met while the last successful run is within the profile's `backup_interval_hours` (24) plus 2 hours. It lists the runs and generates the configuration below.
 
@@ -45,7 +46,7 @@ mkdir -p backups && sudo chown 70:70 backups       # the image runs as uid 70 (L
 BALUARTE_BACKUP_RECIPIENT=age1... docker compose --profile backup up -d
 ```
 
-The service backs up once at start, then every `BALUARTE_BACKUP_INTERVAL_HOURS`. Set `BALUARTE_BACKUP_DIR` to storage that is copied off the host, such as a mounted network share, or copy `./backups` elsewhere yourself. That copy is the `backup-offsite` attestation. `secrets/backup_database_password` is created with the other secrets (README).
+The service backs up once at start, then every `BALUARTE_BACKUP_INTERVAL_HOURS`. Copy the files off the host with an [off-site target](#off-site-copies), or set `BALUARTE_BACKUP_DIR` to a mounted network share; either is the `backup-offsite` attestation. `secrets/backup_database_password` is created with the other secrets (README).
 
 **Kubernetes:** create a PersistentVolumeClaim for the backup files, then `--set backup.enabled=true --set backup.recipient=age1... --set backup.existingClaim=baluarte-backups`. This adds a CronJob, daily at 02:17 by default. The chart does not create or delete the claim, so backups outlive the release.
 
@@ -59,6 +60,36 @@ YAML
 ```
 
 With an external database, also set `backup.existingSecret` to a Secret holding a password for the `baluarte_backup` role, which the migration Job creates. A managed database's own backups can replace this; then attest to them.
+
+### Off-site copies
+
+A backup on the database host is lost with the host. Set an S3-compatible target and each new encrypted file is also copied there with [rclone](https://rclone.org). Only the encrypted file leaves the host, so the target never holds readable data. After copying, the service reads the object back and checks its size and the SHA-256 stored with it. The run records `copied` (with `s3://bucket/key` and the endpoint's host, never the credentials) or `failed` with the reason, and the Compliance page shows it for each run. A failed copy fails the run's health check, so it is noticed.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `BALUARTE_BACKUP_S3_ENDPOINT` | (off) | `https://…`; `http://` only on a private network |
+| `BALUARTE_BACKUP_S3_BUCKET` | | The bucket |
+| `BALUARTE_BACKUP_S3_PREFIX` | `baluarte/` | Key prefix inside the bucket |
+| `BALUARTE_BACKUP_S3_REGION` | `us-east-1` | Region, for targets that check it |
+| `BALUARTE_BACKUP_S3_KEEP` | the local keep | Copies kept; older ones are deleted. `0` never deletes |
+| `BALUARTE_BACKUP_S3_ACCESS_KEY_ID_FILE`, `_SECRET_ACCESS_KEY_FILE` | | Files holding the credentials |
+
+**Choosing the target.** Any S3-compatible service works: a cloud bucket, or the S3 service of a NAS. The best target is in another site or account. It has versioning or object lock, and its backup credentials can write but not delete, with `BALUARTE_BACKUP_S3_KEEP=0` and the target's own lifecycle rules removing old copies.
+
+**A local target for Docker Compose.** `deploy/compose/offsite.yaml` adds a [SeaweedFS](https://github.com/seaweedfs/seaweedfs) container (Apache 2.0) that serves the S3 API to the backup service only, on the Compose network:
+
+```sh
+deploy/compose/make-offsite-credentials.sh        # S3 keys, allowed only the backup bucket
+BALUARTE_OFFSITE_DIR=/mnt/nas/baluarte-offsite \
+BALUARTE_BACKUP_RECIPIENT=age1... \
+docker compose -f compose.yaml -f deploy/compose/offsite.yaml --profile backup up -d
+```
+
+The container only provides the API. **What makes the copies off site is the storage behind `BALUARTE_OFFSITE_DIR`.** It must be a mount of storage that is not the host's own disk, such as a NAS share, a SAN or network block device, or a separately attached volume, so that losing the host does not lose the copies. The default `./offsite` directory is for trying it out only. `deploy/compose/offsite-test.sh` checks the whole path and runs in CI. The test backs up, copies, keeps the newest copies and downloads one, then confirms that it matches the recorded SHA-256 and decrypts with the offline key into a restorable dump.
+
+**Kubernetes:** set `backup.offsite.endpoint`, `backup.offsite.bucket` and `backup.offsite.existingSecret`, a Secret with `access-key-id` and `secret-access-key`.
+
+### Restoring
 
 **Restore** a scheduled backup by decrypting it with the private key on a trusted machine, then follow the restore steps below:
 

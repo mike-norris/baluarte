@@ -9,6 +9,13 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Off-site backup copies: the backup service copies each encrypted backup to an
+  S3-compatible bucket with rclone when `BALUARTE_BACKUP_S3_ENDPOINT` is set (Helm:
+  `backup.offsite`), reads it back to check its size and SHA-256, keeps the newest copies, and
+  records `copied` or `failed` per run, shown on the Compliance page. A Compose overlay
+  (`deploy/compose/offsite.yaml`) adds a SeaweedFS container as a local S3 target, whose storage
+  must be a mount that is not the host's own disk; `deploy/compose/offsite-test.sh` checks it in
+  CI. Migration `0042`.
 - TLS for the Compose stack: `deploy/compose/tls.yaml` serves the site over HTTPS only (TLS 1.2
   and 1.3, HSTS) and makes PostgreSQL accept only TLS connections with a client certificate
   naming the role plus its password; every client connects with `sslmode=verify-full`.

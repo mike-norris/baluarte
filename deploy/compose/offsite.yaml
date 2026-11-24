@@ -1,0 +1,66 @@
+# Off-site copies of the encrypted backups to an S3-compatible target (docs/OPERATIONS.md).
+# This overlay adds a SeaweedFS container as that target and points the backup service at it:
+#
+#   deploy/compose/make-offsite-credentials.sh
+#   docker compose -f compose.yaml -f deploy/compose/offsite.yaml --profile backup up -d
+#
+# The container only provides the S3 API. What makes the copies off site is its storage:
+# BALUARTE_OFFSITE_DIR must be a mount of storage that is not this host's own disk, such as a
+# NAS share or a network block device, so the copies survive losing this host. The default
+# ./offsite directory is for trying it out only.
+#
+# To use another S3-compatible target instead (a cloud bucket, a NAS's S3 service), leave out
+# the offsite service and set BALUARTE_BACKUP_S3_ENDPOINT and the credential files.
+
+services:
+  offsite:
+    image: chrislusf/seaweedfs:4.53@sha256:ccad23e18639c8b98cee17e7100b95830a06077b56d8e5b006d6dcf8ec5e94a0
+    # One process with a master, a volume server, a filer and the S3 API on 8333. The image's
+    # entrypoint starts as root only to give /data to its seaweed user.
+    command:
+      - server
+      - -dir=/data
+      - -ip=offsite
+      - -ip.bind=0.0.0.0
+      - -s3
+      - -s3.port=8333
+      - -s3.config=/run/secrets/seaweedfs_s3_config
+      - -master.volumeSizeLimitMB=1024
+      - -volume.max=0
+    secrets: [seaweedfs_s3_config]
+    volumes:
+      - ${BALUARTE_OFFSITE_DIR:-./offsite}:/data
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]
+    security_opt: ["no-new-privileges:true"]
+    # Not published: only the backup service reaches it, on the Compose network.
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9333/cluster/status"]
+      interval: 10s
+      timeout: 3s
+      start_period: 20s
+      retries: 6
+
+  backup:
+    environment:
+      BALUARTE_BACKUP_S3_ENDPOINT: ${BALUARTE_BACKUP_S3_ENDPOINT:-http://offsite:8333}
+      BALUARTE_BACKUP_S3_BUCKET: ${BALUARTE_BACKUP_S3_BUCKET:-baluarte-backups}
+      BALUARTE_BACKUP_S3_PREFIX: ${BALUARTE_BACKUP_S3_PREFIX:-baluarte/}
+      BALUARTE_BACKUP_S3_REGION: ${BALUARTE_BACKUP_S3_REGION:-us-east-1}
+      BALUARTE_BACKUP_S3_KEEP: ${BALUARTE_BACKUP_S3_KEEP:-30}
+      BALUARTE_BACKUP_S3_ACCESS_KEY_ID_FILE: /run/secrets/offsite_access_key_id
+      BALUARTE_BACKUP_S3_SECRET_ACCESS_KEY_FILE: /run/secrets/offsite_secret_access_key
+    secrets: [backup_database_password, offsite_access_key_id, offsite_secret_access_key]
+    depends_on:
+      offsite:
+        condition: service_healthy
+
+secrets:
+  seaweedfs_s3_config:
+    file: ./secrets/seaweedfs_s3.json
+  offsite_access_key_id:
+    file: ./secrets/offsite_access_key_id
+  offsite_secret_access_key:
+    file: ./secrets/offsite_secret_access_key
