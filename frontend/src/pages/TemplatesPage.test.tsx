@@ -4,7 +4,10 @@ import { RouterProvider, createMemoryRouter } from "react-router";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type {
+  Alignment,
   EffectiveSettings,
+  ProjectDrift,
+  TemplateException,
   SettingSupport,
   TemplateAssignment,
   TemplateVersion,
@@ -23,6 +26,8 @@ const SUPPORT = "GET /api/v1/templates/settings";
 const ASSIGNMENTS = "GET /api/v1/template-assignments";
 const SAVE = "POST /api/v1/templates";
 const ASSIGN = "POST /api/v1/template-assignments";
+const ALIGNMENT = "GET /api/v1/templates/alignment";
+const EXCEPTIONS = "GET /api/v1/template-exceptions";
 
 const auditor: CurrentUser = {
   ...analyst,
@@ -68,6 +73,113 @@ const assignment: TemplateAssignment = {
   created_at: created,
 };
 
+const tally = { aligned: 0, drift: 0, excepted: 0, unknown: 0, unsupported: 0 };
+const svc = { id: 55, gitlab_id: 100, path: "platform/backend/svc" };
+const alignment: Alignment = {
+  connection_id: 1,
+  provider: "gitlab",
+  evaluated_at: created,
+  projects: 3,
+  projects_with_templates: 2,
+  projects_aligned: 1,
+  projects_drifting: 1,
+  projects_unknown: 0,
+  settings: { ...tally, aligned: 5, drift: 1 },
+  by_template: [
+    {
+      name: "service v1",
+      projects: 2,
+      projects_drifting: 1,
+      settings: { ...tally, aligned: 5, drift: 1 },
+    },
+  ],
+  by_group: [
+    {
+      name: "platform",
+      projects: 2,
+      projects_drifting: 1,
+      settings: { ...tally, aligned: 5, drift: 1 },
+    },
+  ],
+  attention: [{ project: svc, status: "drift", counts: { drift: 1, aligned: 1 } }],
+  attention_truncated: false,
+  expiring_exceptions: 1,
+};
+const svcDrift: ProjectDrift = {
+  project: svc,
+  connection_id: 1,
+  provider: "gitlab",
+  ancestry: "complete",
+  evaluated_at: created,
+  status: "drift",
+  counts: { drift: 1, aligned: 1 },
+  settings: [
+    {
+      key: "visibility",
+      expected: "private",
+      status: "drift",
+      reason: "Project platform/backend/svc is public; the policy allows private.",
+      rule_type: "gitlab.project.visibility",
+      observed_at: created,
+      decided_by: {
+        value: "private",
+        origin: "template",
+        template: "service",
+        version: 1,
+        assignment_id: 7,
+        assigned_to: assignment.target,
+      },
+      exception: null,
+    },
+    {
+      key: "default_branch_protected",
+      expected: true,
+      status: "aligned",
+      reason: "Default branch main is protected by main.",
+      rule_type: "gitlab.branch.default_protected",
+      observed_at: created,
+      decided_by: {
+        value: true,
+        origin: "template",
+        template: "service",
+        version: 1,
+        assignment_id: 7,
+        assigned_to: assignment.target,
+      },
+      exception: null,
+    },
+  ],
+};
+const svcEffective: EffectiveSettings = {
+  target: { target_type: "project", target_id: 100, path: svc.path, state: "active" },
+  provider: "gitlab",
+  ancestry: "complete",
+  gaps: [],
+  path: [],
+  assignments: [],
+  settings: [],
+};
+const requested: TemplateException = {
+  id: 9,
+  connection_id: 1,
+  project_id: 55,
+  project_path: svc.path,
+  setting: "visibility",
+  justification: "A public documentation site.",
+  state: "requested",
+  expiring: false,
+  requested_by: { user_id: 2, display_name: "Bea" },
+  requested_at: created,
+  expires_at: "2026-12-24T15:00:00Z",
+  decided_by: null,
+  decided_at: null,
+  decision_note: null,
+  development_decision: false,
+  ended_by: null,
+  ended_at: null,
+  end_note: null,
+};
+
 function api(user: CurrentUser, routes: Record<string, (init?: RequestInit) => Response> = {}) {
   return mockApi({
     [ME]: () => json(user),
@@ -80,6 +192,8 @@ function api(user: CurrentUser, routes: Record<string, (init?: RequestInit) => R
     [SERVICE_1]: () => json(service),
     [SUPPORT]: () => json(support),
     [ASSIGNMENTS]: () => json({ assignments: [assignment] }),
+    [ALIGNMENT]: () => json(alignment),
+    [EXCEPTIONS]: () => json({ exceptions: [] }),
     ...routes,
   });
 }
@@ -296,5 +410,95 @@ describe("helpers", () => {
       default_branch_protected: false,
       merge_requests: { min_approvals: 0 },
     });
+  });
+});
+
+describe("TemplatesPage drift", () => {
+  it("summarizes alignment and opens a drifting project's drift", async () => {
+    const user = userEvent.setup();
+    api(auditor, {
+      "GET /api/v1/templates/effective/55": () => json(svcEffective),
+      "GET /api/v1/templates/drift/55": () => json(svcDrift),
+    });
+    renderPage();
+
+    const attention = await screen.findByRole("table", { name: "Projects needing attention" });
+    expect(screen.getByText("1 exceptions end within 14 days")).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Alignment by template" })).toHaveTextContent(
+      "service v1",
+    );
+    await user.click(within(attention).getByRole("button", { name: "Show platform/backend/svc" }));
+
+    const table = await screen.findByRole("table", { name: "Drift of platform/backend/svc" });
+    expect(within(table).getByText("Drift")).toBeInTheDocument();
+    expect(within(table).getByText("Aligned")).toBeInTheDocument();
+    expect(within(table).getByText(/is public; the policy allows private/)).toBeInTheDocument();
+    // Auditors cannot request exceptions.
+    expect(
+      within(table).queryByRole("button", { name: /Request an exception/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("requests an exception for a drifting setting", async () => {
+    const user = userEvent.setup();
+    const requester: CurrentUser = {
+      ...analyst,
+      permissions: [...analyst.permissions, "exception:request"],
+    };
+    const calls = api(requester, {
+      "GET /api/v1/templates/effective/55": () => json(svcEffective),
+      "GET /api/v1/templates/drift/55": () => json(svcDrift),
+      "POST /api/v1/template-exceptions": () => json(requested, 201),
+    });
+    renderPage();
+
+    const attention = await screen.findByRole("table", { name: "Projects needing attention" });
+    await user.click(within(attention).getByRole("button", { name: "Show platform/backend/svc" }));
+    const table = await screen.findByRole("table", { name: "Drift of platform/backend/svc" });
+    await user.click(
+      within(table).getByRole("button", { name: "Request an exception for Visibility" }),
+    );
+    const form = within(table).getByRole("form", { name: "Request an exception for Visibility" });
+    const send = within(form).getByRole("button", { name: "Request exception" });
+    expect(send).toBeDisabled();
+    await user.type(
+      within(form).getByLabelText("Why this project may differ"),
+      "A public docs site.",
+    );
+    await user.click(send);
+
+    await screen.findByText("Requested an exception for Visibility. Someone else must approve it.");
+    const body = bodyOf(calls, "POST /api/v1/template-exceptions") as Record<string, unknown>;
+    expect(body).toMatchObject({
+      project_id: 55,
+      setting: "visibility",
+      justification: "A public docs site.",
+    });
+    expect(typeof body.expires_at).toBe("string");
+  });
+
+  it("lets an approver approve, and needs a note to reject", async () => {
+    const user = userEvent.setup();
+    const admin: CurrentUser = {
+      ...analyst,
+      roles: ["admin"],
+      permissions: [...analyst.permissions, "exception:approve"],
+    };
+    const calls = api(admin, {
+      [EXCEPTIONS]: () => json({ exceptions: [requested] }),
+      "POST /api/v1/template-exceptions/9/approve": () => json({ ...requested, state: "approved" }),
+    });
+    renderPage();
+
+    const table = await screen.findByRole("table", { name: "Template exceptions" });
+    expect(within(table).getByRole("button", { name: "Reject (with a note)" })).toBeDisabled();
+    await user.click(
+      within(table).getByRole("button", {
+        name: "Approve exception for Visibility on platform/backend/svc",
+      }),
+    );
+
+    await screen.findByText("Approved the exception for Visibility on platform/backend/svc.");
+    expect(calls.some((c) => c.url === "/api/v1/template-exceptions/9/approve")).toBe(true);
   });
 });

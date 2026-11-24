@@ -67,6 +67,7 @@ TABLES = {
     "tag",
     "tag_assignment",
     "template_assignment",
+    "template_exception",
     "time_cursor",
     "time_entry",
     "user_session",

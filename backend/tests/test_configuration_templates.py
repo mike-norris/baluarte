@@ -91,6 +91,7 @@ def test_the_format_names_exact_values_and_refuses_unknown_keys() -> None:
             "spec.settings.security_features[0]",
         ),
         (template("x", "merge_requests: {}"), "spec.settings.merge_requests"),
+        (template("x", "labels_consistent: false"), "spec.settings.labels_consistent"),
         (template("x", "visibility: private", extends="base"), "spec.extends"),
     ]:
         with pytest.raises(TemplateInvalid) as caught:

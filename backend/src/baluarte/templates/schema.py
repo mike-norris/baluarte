@@ -36,7 +36,7 @@ class Settings(_Strict):
     security_features: (
         Annotated[list[SecurityFeature], Field(min_length=1, max_length=4)] | None
     ) = None
-    labels_consistent: bool | None = None
+    labels_consistent: Literal[True] | None = None
 
     @model_validator(mode="after")
     def _unique(self) -> "Settings":

@@ -9,6 +9,15 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Template drift (roadmap M14.2): each project's effective template settings are compared
+  with collected evidence by the evaluators that judge baselines, so a setting is `aligned`,
+  `drift`, `excepted`, `unknown` or `unsupported`, never aligned without evidence. Exact values
+  are checked from both sides (a project needing more approvals than the template drifts).
+  Template exceptions waive one setting for one project until they end, with the policy
+  exception lifecycle and separate approval; approved ones ending within 14 days are flagged.
+  The Templates tab shows alignment across the connection by template and group, the projects
+  needing attention, each project's drift, and the exceptions. `labels_consistent` in a
+  template now accepts only `true`. Migration `0039`.
 - Configuration templates (roadmap M14.1, ADR-0016): versioned YAML documents
   (`kind: ConfigurationTemplate`) that name exact values for settings Baluarte reads
   (visibility, default branch protection, merge request approvals, GitHub security features and

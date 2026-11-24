@@ -8,7 +8,7 @@ once, so a batch of projects shares one reading. Persisting the results is BAL-0
 from collections.abc import Mapping
 from dataclasses import replace
 from datetime import datetime, timedelta
-from typing import get_args
+from typing import Literal, get_args
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -297,6 +297,52 @@ def github_observations(
     }
 
 
+def project_context(
+    db: Session,
+    project: GitLabProject,
+    ancestry: Literal["complete", "incomplete"],
+    collections: Mapping[str, CollectionContext],
+    capabilities: Mapping[str, CapabilityStatus] | None = None,
+    evaluated_at: datetime | None = None,
+    provider: str = "gitlab",
+    *,
+    changes: bool = False,
+    labels: bool = False,
+) -> EvaluationContext:
+    """What rules about ``project`` are judged from. Changes and label drift are read only when
+    asked for, because they are read only for projects a rule of that kind is in force for.
+
+    ``capabilities`` defaults to the instance's latest snapshot and ``evaluated_at`` to the
+    database clock.
+    """
+    if evaluated_at is None:
+        evaluated_at = db.execute(select(func.now())).scalar_one()
+    if capabilities is None:
+        capabilities = capability_statuses(db, project.instance_id)
+    facts = project_facts(
+        project,
+        branch_protection(db, project),
+        security_policies(db, project),
+        {source: project_observation(db, project, source) for source in ACCESS_SOURCES},
+    )
+    if provider == "github":
+        facts = replace(facts, provider=provider, github=github_observations(db, project))
+    if changes:
+        facts = replace(facts, changes=change_history(db, project, evaluated_at))
+    if labels:
+        facts = replace(facts, labels=label_facts(db, project, evaluated_at))
+    return EvaluationContext(
+        target=TargetRef(
+            target_type="project", gitlab_id=project.gitlab_id, path=project.path_with_namespace
+        ),
+        project=facts,
+        collections=collections,
+        ancestry=ancestry,
+        evaluated_at=evaluated_at,
+        capabilities=capabilities,
+    )
+
+
 def evaluate_project(
     db: Session,
     project: GitLabProject,
@@ -314,33 +360,6 @@ def evaluate_project(
     target = resolution.target
     if target.target_type != "project" or target.target_id != project.gitlab_id:
         raise ValueError("the resolution is not for this project")
-    if evaluated_at is None:
-        evaluated_at = db.execute(select(func.now())).scalar_one()
-    if capabilities is None:
-        capabilities = capability_statuses(db, project.instance_id)
-    context = EvaluationContext(
-        target=TargetRef(
-            target_type="project", gitlab_id=project.gitlab_id, path=project.path_with_namespace
-        ),
-        project=project_facts(
-            project,
-            branch_protection(db, project),
-            security_policies(db, project),
-            {source: project_observation(db, project, source) for source in ACCESS_SOURCES},
-        ),
-        collections=collections,
-        ancestry=resolution.ancestry,
-        evaluated_at=evaluated_at,
-        capabilities=capabilities,
-    )
-    if provider == "github" and context.project is not None:
-        context = replace(
-            context,
-            project=replace(
-                context.project, provider=provider, github=github_observations(db, project)
-            ),
-        )
-    evaluators = PROVIDER_EVALUATORS[provider]
     in_force = []
     for resolved in sorted(resolution.policies, key=lambda entry: entry.name):
         policy = db.get(Policy, resolved.policy_id)
@@ -353,22 +372,19 @@ def evaluate_project(
             yaml_digest=policy.yaml_digest,
         )
         in_force.append((ref, parse_policy(policy.source_yaml).document.spec.rules))
-    if context.project is not None and any(
-        rule.type in CHANGE_RULE_TYPES for _, rules in in_force for rule in rules
-    ):
-        # Changes are read only for a project a change rule is in force for.
-        context = replace(
-            context,
-            project=replace(context.project, changes=change_history(db, project, evaluated_at)),
-        )
-    if context.project is not None and any(
-        rule.type == LABELS_RULE_TYPE for _, rules in in_force for rule in rules
-    ):
-        # Label drift is read only for a project a label rule is in force for.
-        context = replace(
-            context,
-            project=replace(context.project, labels=label_facts(db, project, evaluated_at)),
-        )
+    types = {rule.type for _, rules in in_force for rule in rules}
+    context = project_context(
+        db,
+        project,
+        resolution.ancestry,
+        collections,
+        capabilities,
+        evaluated_at,
+        provider,
+        changes=bool(types & set(CHANGE_RULE_TYPES)),
+        labels=LABELS_RULE_TYPE in types,
+    )
+    evaluators = PROVIDER_EVALUATORS[provider]
     results: list[RuleResult] = []
     for ref, rules in in_force:
         for rule in rules:
