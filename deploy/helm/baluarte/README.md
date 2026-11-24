@@ -79,6 +79,7 @@ For evaluation only, `--set devDatabase.enabled=true` runs a single PostgreSQL p
 | `gitlab.labelWrites` | `false` | Allow approved label plans to be applied to GitLab; the write token is entered in the web UI (docs/LABELS.md) |
 | `gitlab.issueWrites` | `false` | Allow approved issue plans (the "missing time" label and estimates on closed issues) to be applied with the same write token (docs/TIME_TRACKING.md) |
 | `gitlab.remediationWrites` | `false` | Allow approved remediation plans to be applied to GitLab with their own write token, entered in the web UI (docs/REMEDIATION.md) |
+| `gitlab.templateWrites` | `false` | Allow approved template change sets to be applied to GitLab with their own write token, entered in the web UI (docs/CONFIGURATION_TEMPLATES.md) |
 | `timeTracking.perPerson` | `true` | Show time per person to managers and administrators; `false` shows only totals (docs/TIME_TRACKING.md) |
 | `networkPolicy.enabled` | `true` | NetworkPolicies so that only the web pod accepts connections from outside the release (needs a CNI that enforces them) |
 | `networkPolicy.webFrom` | `[]` | NetworkPolicy `from` peers allowed to reach the web pod; empty allows any source |

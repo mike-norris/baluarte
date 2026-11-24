@@ -70,6 +70,7 @@ TABLES = {
     "template_exception",
     "template_change_set",
     "saved_selection",
+    "template_change_item",
     "time_cursor",
     "time_entry",
     "user_session",

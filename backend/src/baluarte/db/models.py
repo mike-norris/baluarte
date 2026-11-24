@@ -109,6 +109,7 @@ SETTING_KEYS = (
     "time_tracking",
     "notifications",
     "remediation_write_token",
+    "template_write_token",
 )
 SECRET_NAMES = (
     "oidc_client_secret",
@@ -119,6 +120,7 @@ SECRET_NAMES = (
     "notifications_smtp_password",
     "notifications_webhook_url",
     "remediation_write_token",
+    "template_write_token",
 )
 NOTIFICATION_EVENTS = (
     "new_findings",
@@ -670,7 +672,30 @@ class TemplateException(Base):
     end_note: Mapped[str | None] = mapped_column(Text)
 
 
-CHANGE_SET_STATES = ("proposed", "approved", "rejected", "withdrawn", "expired")
+CHANGE_SET_STATES = (
+    "proposed",
+    "approved",
+    "rejected",
+    "withdrawn",
+    "expired",
+    "applying",
+    "paused",
+    "cancelled",
+    "finished",
+    "rolling_back",
+    "rolled_back",
+)
+CHANGE_ITEM_STATUSES = (
+    "pending",
+    "writing",
+    "applied",
+    "skipped",
+    "out_of_date",
+    "manual",
+    "failed",
+    "cancelled",
+)
+ROLLBACK_STATUSES = ("rolled_back", "not_rolled_back", "failed")
 MAX_CHANGE_SET_HOURS = 7 * 24
 
 
@@ -709,14 +734,39 @@ class TemplateChangeSet(Base):
             "(decided_at IS NULL) = (decided_by_user_id IS NULL)", name="decision_complete"
         ),
         CheckConstraint(
-            "state NOT IN ('approved', 'rejected') OR decided_at IS NOT NULL",
+            "state IN ('proposed', 'withdrawn') OR decided_at IS NOT NULL "
+            "OR (state = 'expired' AND approved_digest IS NULL)",
             name="decided_has_decision",
         ),
         CheckConstraint(
             "state <> 'rejected' OR length(decision_note) > 0", name="rejection_explained"
         ),
         CheckConstraint(
-            "state <> 'approved' OR approved_digest IS NOT NULL", name="approved_has_digest"
+            "state IN ('proposed', 'rejected', 'withdrawn', 'expired') "
+            "OR approved_digest IS NOT NULL",
+            name="approved_has_digest",
+        ),
+        CheckConstraint(
+            "state IN ('proposed', 'approved', 'rejected', 'withdrawn', 'expired') "
+            "OR (apply_started_at IS NOT NULL AND applied_by_user_id IS NOT NULL "
+            "AND stage_targets >= 1 AND runs >= 1)",
+            name="applying_has_start",
+        ),
+        CheckConstraint("stage_targets BETWEEN 0 AND targets", name="stage_bounded"),
+        CheckConstraint(
+            "(state IN ('finished', 'rolled_back')) = (finished_at IS NOT NULL) "
+            "OR state = 'rolling_back'",
+            name="finished_has_time",
+        ),
+        CheckConstraint(
+            "(cancelled_at IS NULL) = (cancelled_by_user_id IS NULL) "
+            "AND (state <> 'cancelled' OR cancelled_at IS NOT NULL)",
+            name="cancelled_has_user",
+        ),
+        CheckConstraint(
+            "(state IN ('rolling_back', 'rolled_back')) = (rollback_started_at IS NOT NULL) "
+            "AND (rollback_started_at IS NULL) = (rollback_by_user_id IS NULL)",
+            name="rollback_has_start",
         ),
         CheckConstraint(
             "state NOT IN ('proposed', 'rejected', 'withdrawn') OR approved_digest IS NULL",
@@ -772,6 +822,73 @@ class TemplateChangeSet(Base):
     # Development mode only: the creator gave an approval (baluarte.settings).
     development_decision: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Applying (M14.4): who started it, how many targets the stages allow so far, and how many
+    # runs (start, continue, rollback) have been queued.
+    applied_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    apply_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    stage_targets: Mapped[int] = mapped_column(Integer, server_default="0")
+    runs: Mapped[int] = mapped_column(Integer, server_default="0")
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancelled_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rollback_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    rollback_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Why the last run stopped before its stage was done (writes switched off, no token).
+    halt_reason: Mapped[str | None] = mapped_column(Text)
+
+
+class TemplateChangeItem(Base):
+    """One change of a template change set and its progress (roadmap M14.4).
+
+    What was approved (project, setting, ``before``, ``after``, ``irreversible``) never changes;
+    a trigger (migration 0041) enforces that and rejects ``DELETE``. ``previous`` is the value
+    read just before writing, kept for rollback; ``observed`` is what a read showed afterwards.
+    """
+
+    __tablename__ = "template_change_item"
+    __table_args__ = (
+        UniqueConstraint("change_set_id", "position"),
+        one_of("status", CHANGE_ITEM_STATUSES),
+        CheckConstraint(
+            "rollback_status IS NULL OR rollback_status IN "
+            "('rolled_back', 'not_rolled_back', 'failed')",
+            name="rollback_status_allowed",
+        ),
+        CheckConstraint(
+            "position >= 0 AND target_index >= 0 AND attempts >= 0", name="non_negative"
+        ),
+        CheckConstraint(
+            "(status IN ('pending', 'writing')) = (finished_at IS NULL)", name="finished_has_time"
+        ),
+        CheckConstraint(
+            "(rollback_status IS NULL) = (rolled_back_at IS NULL)", name="rollback_has_time"
+        ),
+    )
+
+    id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"), index=True)
+    change_set_id: Mapped[int] = mapped_column(ForeignKey("template_change_set.id"))
+    position: Mapped[int] = mapped_column(Integer)
+    # The target's place in the set's document; stages run targets in this order.
+    target_index: Mapped[int] = mapped_column(Integer)
+    project_id: Mapped[int] = mapped_column(ForeignKey("gitlab_project.id"))
+    project_gitlab_id: Mapped[int] = mapped_column(BigInteger)
+    project_path: Mapped[str] = mapped_column(Text)
+    setting: Mapped[str] = mapped_column(Text)
+    before: Mapped[Any] = mapped_column(JSONB)
+    after: Mapped[Any] = mapped_column(JSONB)
+    # Why this change cannot be fully undone, disclosed before applying; None when it can.
+    irreversible: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(Text, server_default="pending")
+    attempts: Mapped[int] = mapped_column(Integer, server_default="0")
+    request_status: Mapped[int | None] = mapped_column(Integer)
+    previous: Mapped[Any | None] = mapped_column(JSONB)
+    observed: Mapped[Any | None] = mapped_column(JSONB)
+    message: Mapped[str | None] = mapped_column(Text)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    rollback_status: Mapped[str | None] = mapped_column(Text)
+    rollback_message: Mapped[str | None] = mapped_column(Text)
+    rolled_back_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class SavedSelection(Base):

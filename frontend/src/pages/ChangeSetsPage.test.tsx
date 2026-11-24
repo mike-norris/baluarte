@@ -19,13 +19,13 @@ const CREATE = "POST /api/v1/template-change-sets";
 const planner: CurrentUser = {
   ...analyst,
   user_id: 1,
-  permissions: [...analyst.permissions, "remediation:plan"],
+  permissions: [...analyst.permissions, "changes:plan"],
 };
 const approver: CurrentUser = {
   ...analyst,
   user_id: 2,
   roles: ["admin"],
-  permissions: [...analyst.permissions, "remediation:plan", "remediation:approve"],
+  permissions: [...analyst.permissions, "changes:plan", "changes:approve"],
 };
 
 const created = "2026-11-24T15:00:00Z";
@@ -52,9 +52,22 @@ const summary: ChangeSetSummary = {
   decision_note: null,
   development_decision: false,
   ended_at: null,
+  changing_targets: 1,
+  stage_targets: 0,
+  applied_by: null,
+  apply_started_at: null,
+  finished_at: null,
+  cancelled_by: null,
+  cancelled_at: null,
+  rollback_by: null,
+  rollback_started_at: null,
+  halt_reason: null,
 };
 const changeSet: ChangeSet = {
   ...summary,
+  items: [],
+  irreversible: [],
+  write_refusals: [],
   document: {
     format: 1,
     connection: { id: 1, provider: "gitlab" },
@@ -254,5 +267,98 @@ describe("ChangeSetsPage", () => {
       "aria-current",
       "page",
     );
+  });
+
+  it("shows why an approved set cannot be applied while writes are off", async () => {
+    const user = userEvent.setup();
+    const approved: ChangeSet = {
+      ...changeSet,
+      state: "approved",
+      approvals_needed: 0,
+      write_refusals: ["writes_disabled", "token_missing"],
+    };
+    api(approver, {
+      [LIST]: () => json({ change_sets: [{ ...summary, state: "approved" }] }),
+      "GET /api/v1/template-change-sets/7": () => json(approved),
+    });
+    renderPage();
+
+    const list = await screen.findByRole("table", { name: "Change sets" });
+    await user.click(within(list).getByRole("button", { name: "Open Tighten platform" }));
+    expect(await screen.findByText("Cannot write now")).toBeInTheDocument();
+    expect(screen.getByText(/BALUARTE_TEMPLATE_WRITES/)).toBeInTheDocument();
+    expect(screen.getByText("No template write token is stored (Settings).")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Apply change set Tighten platform" }),
+    ).toBeDisabled();
+  });
+
+  it("applies in stages, shows progress and rolls back", async () => {
+    const user = userEvent.setup();
+    let current: ChangeSet = { ...changeSet, state: "approved", approvals_needed: 0 };
+    const item = {
+      id: 1,
+      position: 0,
+      target_index: 0,
+      project_path: "platform/site",
+      setting: "visibility",
+      before: "public",
+      after: "private",
+      irreversible: null,
+      status: "applied" as const,
+      attempts: 1,
+      request_status: 200,
+      observed: "private",
+      message: "Written and read back as wanted.",
+      finished_at: created,
+      rollback_status: null,
+      rollback_message: null,
+      rolled_back_at: null,
+    };
+    const paused: ChangeSet = {
+      ...current,
+      state: "paused",
+      stage_targets: 1,
+      applied_by: { user_id: 2, display_name: "Bea" },
+      apply_started_at: created,
+      items: [item],
+    };
+    const calls = api(approver, {
+      [LIST]: () => json({ change_sets: [{ ...summary, state: "approved" }] }),
+      "GET /api/v1/template-change-sets/7": () => json(current),
+      "POST /api/v1/template-change-sets/7/apply": () => {
+        current = paused;
+        return json(current);
+      },
+      "POST /api/v1/template-change-sets/7/rollback": () => {
+        current = {
+          ...paused,
+          state: "rolling_back",
+          rollback_by: { user_id: 2, display_name: "Bea" },
+        };
+        return json(current);
+      },
+    });
+    renderPage();
+
+    const list = await screen.findByRole("table", { name: "Change sets" });
+    await user.click(within(list).getByRole("button", { name: "Open Tighten platform" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Apply change set Tighten platform" }),
+    );
+    await screen.findByText("Started applying change set Tighten platform.");
+    expect(bodyOf(calls, "POST /api/v1/template-change-sets/7/apply")).toEqual({
+      stage_targets: 1,
+      acknowledge_irreversible: false,
+    });
+
+    const progress = await screen.findByRole("table", {
+      name: "Each change and what happened to it",
+    });
+    expect(within(progress).getByText("Applied")).toBeInTheDocument();
+    expect(screen.getByText(/1 of 1 projects included so far/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Roll back" }));
+    await screen.findByText("Started rolling back change set Tighten platform.");
   });
 });

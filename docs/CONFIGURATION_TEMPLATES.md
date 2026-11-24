@@ -9,7 +9,7 @@ Roadmap milestone M14 ([ROADMAP.md](ROADMAP.md#m14--configuration-templates-and-
 | M14.1 Templates | The template format, immutable versions, inheritance (`extends`), assignment to a connection, group or project with nearest-wins precedence and overrides with reasons; each project's effective settings with where each came from; settings a provider has no equivalent for, or that depend on the plan, shown as such; a Templates page (migration `0038`) | Done |
 | M14.2 Drift | Effective settings compared with collected evidence per project and setting: aligned, drift, unknown, unsupported or excepted; exceptions per setting with expiry warnings; alignment coverage by template, group and connection (migration `0039`) | Done |
 | M14.3 Change sets | Target selection by hierarchy, owner, provider, tags, business unit, policy and compliance status, and saved collections; a change set with the exact targets and before and after values from evidence; checks for permissions, capabilities, conflicting baselines and exceptions; warnings for changes that weaken protection, remove access or disrupt work; approval of the set, with a second approval for sensitive changes (migration `0040`) | Done |
-| M14.4 Execution | Staged rollout to a first set of targets; background jobs with per-target progress, rate-limit handling, retries, cancellation and resumption; each setting read again before it is changed, concurrent changes flagged, previous values kept, rollback where the provider allows it and irreversible steps disclosed; behind its own switch and write token, off by default | Planned |
+| M14.4 Execution | Staged rollout to a first set of targets; background jobs with per-target progress, rate-limit handling, retries, cancellation and resumption; each setting read again before it is changed, concurrent changes flagged, previous values kept, rollback where the provider allows it and irreversible steps disclosed; behind its own switch and write token, off by default (migration `0041`) | Done |
 | M14.5 Alignment and tags | Manual remediation of drift as a change set; automatic remediation per template assignment, off by default; settings verified after each change; Baluarte tags synchronized to GitLab topics or GitHub topics only when asked | Planned |
 | M14.6 Records and acceptance | Requester, approver, executor, rationale, template version, scope, timestamps, before and after values and per-target results recorded, linked to controls and in exports; the bulk governance workflow end to end, with a partial failure and an exception that stay visible | Planned |
 
@@ -87,7 +87,7 @@ A template exception lets one project differ from one setting until it ends (at 
 
 ## Change sets
 
-A change set lists the exact changes a template version, or settings written for the set, would make to chosen projects. It is built only from stored evidence; nothing is read from or written to the provider, and applying an approved set is M14.4.
+A change set lists the exact changes a template version, or settings written for the set, would make to chosen projects. It is built only from stored evidence; building and deciding it read nothing from and write nothing to the provider. An approved set is applied as described in [Execution](#execution).
 
 **Choosing projects.** A selection gives any of these criteria, and a project must meet every one given. Only active, monitored, unarchived projects of the current connection are ever chosen, at most 500 per set.
 
@@ -112,9 +112,30 @@ The provider is the connection's. A selection can be previewed and saved under a
 | `conflicts_with_baseline` | A baseline in force would fail with the wanted value |
 | `label_plans` | `labels_consistent`, which label plans change |
 
-Each change carries warnings: **weakens protection** (wider visibility, fewer approvals, a protection or approval rule turned off), **removes access** (narrower visibility) or **disrupts work** (a newly protected default branch, more approvals, new approval rules, push protection). Permissions are checked twice: the person needs `remediation:plan` to build a set and `remediation:approve` to decide one, and the reading token's access shows up as `unknown`; the write token and its role are checked when applying (M14.4).
+Each change carries warnings: **weakens protection** (wider visibility, fewer approvals, a protection or approval rule turned off), **removes access** (narrower visibility) or **disrupts work** (a newly protected default branch, more approvals, new approval rules, push protection). Permissions are checked twice: the person needs `changes:plan` to build a set and `changes:approve` to decide one, and the reading token's access shows up as `unknown`; the write token and its role are checked when applying.
 
 **Approval.** A set is `proposed` until someone other than its creator approves or rejects it (rejecting needs a note). A **sensitive** set, one with any change that weakens protection or removes access, needs two approvals by two different people, neither the creator; after the first it stays `proposed`. Approval names the set's digest and is refused when the set is stale: built again from today's evidence it no longer gives the same targets, values and skips. The creator may withdraw a proposed set; proposed and approved sets expire after their window (at most 7 days, 72 hours by default). The document, digest and decisions never change, rows are never deleted (a database trigger enforces this), and every step is audited (`template_change_set.created`, `.first_approval`, `.approved`, `.rejected`, `.withdrawn`, `.expired`; `saved_selection.created`, `.deleted`). In development mode the creator may give the approvals, recorded as `development_decision`.
+
+## Execution
+
+Applying an approved change set writes to GitLab. It is refused unless **all** of these hold:
+
+- `BALUARTE_TEMPLATE_WRITES=true` for the deployment (Helm: `gitlab.templateWrites`), off by default;
+- a **template write token** is stored on the Settings page. It is separate from the read-only token and the label and remediation write tokens, because a change set can widen visibility or remove a protection when two people approved that. Visibility needs the Owner role; protections and approval settings need Maintainer, with the `api` scope;
+- the set is approved and has not expired, and built again from today's evidence it still gives the same changes;
+- its connection is the primary GitLab connection, which the token belongs to (GitHub sets are not applied yet);
+- no other set of the connection is applying or rolling back;
+- changes that cannot be fully undone are acknowledged. Removing a branch protection is one: rollback protects the branch again with the recorded role levels, but not per-user or per-group access or its other options.
+
+Applying, continuing, cancelling and rolling back need `changes:approve`.
+
+**Stages.** Starting names how many projects the first stage covers. A background job applies their changes and the set becomes `paused`, or `finished` when no project remains; **Continue** adds more projects, or all that remain.
+
+**Each change** is read again with the read-only token first. If it already has the wanted value it is `skipped`. If it shows neither the value the set was built with nor the wanted one, someone changed it since: it is `out_of_date` and nothing is written. Otherwise the value read is kept, one write is sent with the template write token, and the setting is read back: `applied` only when it shows the wanted value, otherwise `failed`. On a rate limit (honouring `Retry-After`), a server error or no answer, the setting is read again and the write repeated only while the old value remains, at most three attempts. A change GitLab cannot make in one request (a protection by wildcard, several approval rules covering the branch) is `manual`. One failed change does not stop the others.
+
+**Cancelling** stops before the next change; changes not yet made become `cancelled`, and those made stay. **Resuming:** a run stopped by a worker restart carries on; a change left mid-write is read first and counted applied if the write took effect. A run that finds writes switched off or the token gone pauses with the reason (`halt_reason`) and nothing written.
+
+**Rolling back** a paused, cancelled or finished set undoes its applied changes in reverse order, each only while GitLab still shows the value written (otherwise `not_rolled_back`), and verifies each by reading back. Project discovery is queued after every run so drift and findings follow from evidence. Every write, every change's outcome and every run are audited (`template_change_set.apply_started`, `.write`, `.item`, `.paused`, `.continued`, `.finished`, `.halted`, `.cancelled`, `.rollback_started`, `.item_rolled_back`, `.rolled_back`). Change items, like the set, are never edited or deleted (a database trigger enforces this).
 
 ## API
 
@@ -132,13 +153,18 @@ Each change carries warnings: **weakens protection** (wider visibility, fewer ap
 | `GET /api/v1/template-exceptions` | `findings:read` | Newest first, at most 500; `state` and `project_id` filters |
 | `POST /api/v1/template-exceptions` | `exception:request` + CSRF | Body `{project_id, setting, justification, expires_at}`. 201; 404 when no template sets the setting for the project; 409 when one is already open |
 | `POST /api/v1/template-exceptions/{id}/approve`, `/reject`, `/revoke` | `exception:approve` + CSRF | Body `{note}` (needed to reject or revoke). 403 for one's own request |
-| `POST /api/v1/template-selections/preview` | `remediation:plan` + CSRF | Body: a selection. The number of projects and the first 200 |
+| `POST /api/v1/template-selections/preview` | `changes:plan` + CSRF | Body: a selection. The number of projects and the first 200 |
 | `GET /api/v1/template-selections` | `findings:read` | Saved selections of the current connection |
-| `POST /api/v1/template-selections`, `DELETE /api/v1/template-selections/{id}` | `remediation:plan` + CSRF | Body `{name, selection}`. 409 when the name is taken |
+| `POST /api/v1/template-selections`, `DELETE /api/v1/template-selections/{id}` | `changes:plan` + CSRF | Body `{name, selection}`. 409 when the name is taken |
 | `GET /api/v1/template-change-sets` | `findings:read` | Newest first, at most 200; `state` filter |
 | `GET /api/v1/template-change-sets/{id}` | `findings:read` | A change set with its document |
-| `POST /api/v1/template-change-sets` | `remediation:plan` + CSRF | Body `{title, selection, template \| settings, expires_in_hours}`. 201; 422 for an empty selection, no matching project, more than 500, unknown template, invalid settings or nothing to change |
-| `POST /api/v1/template-change-sets/{id}/approve` | `remediation:approve` + CSRF | Body `{digest, note?}`. 403 for the creator or a repeated approver; 409 when not proposed, the digest differs or the set is stale |
-| `POST /api/v1/template-change-sets/{id}/reject` | `remediation:approve` + CSRF | Body `{note}` |
-| `POST /api/v1/template-change-sets/{id}/withdraw` | `remediation:plan` + CSRF | Only the creator |
+| `POST /api/v1/template-change-sets` | `changes:plan` + CSRF | Body `{title, selection, template \| settings, expires_in_hours}`. 201; 422 for an empty selection, no matching project, more than 500, unknown template, invalid settings or nothing to change |
+| `POST /api/v1/template-change-sets/{id}/approve` | `changes:approve` + CSRF | Body `{digest, note?}`. 403 for the creator or a repeated approver; 409 when not proposed, the digest differs or the set is stale |
+| `POST /api/v1/template-change-sets/{id}/reject` | `changes:approve` + CSRF | Body `{note}` |
+| `POST /api/v1/template-change-sets/{id}/withdraw` | `changes:plan` + CSRF | Only the creator |
+| `POST /api/v1/template-change-sets/{id}/apply` | `changes:approve` + CSRF | Body `{stage_targets, acknowledge_irreversible?}`. 409 with the reasons when writes are off, no token is stored, the set is not approved, expired or stale, not on the primary connection, another set is running, or irreversible changes are not acknowledged |
+| `POST /api/v1/template-change-sets/{id}/continue` | `changes:approve` + CSRF | Body `{more_targets?}`; only a paused set |
+| `POST /api/v1/template-change-sets/{id}/cancel` | `changes:approve` + CSRF | Only an applying or paused set |
+| `POST /api/v1/template-change-sets/{id}/rollback` | `changes:approve` + CSRF | A paused, cancelled or finished set, or a rollback that stopped |
+| `GET`, `PUT`, `DELETE /api/v1/settings/template-write-token` | `settings:manage`, + CSRF to change | Never returns the token; `writes_enabled` is the switch |
 | `GET /api/v1/templates/effective/{project_id}` | `findings:read` | The project's effective settings with provenance and provider support, and the ancestry |

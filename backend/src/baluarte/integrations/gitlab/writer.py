@@ -33,6 +33,8 @@ class WriteResult:
     status: int | None
     body: Any = None
     error: str | None = None
+    # Seconds GitLab asked to wait before retrying (Retry-After on a 429), when it said.
+    retry_after: float | None = None
 
     @property
     def ok(self) -> bool:
@@ -81,7 +83,12 @@ class GitLabWriter:
         except ValueError:
             body = None
         logger.info("gitlab: %s %s -> %s", method, path, response.status_code)
-        return WriteResult(method, path, response.status_code, body)
+        retry_after = None
+        try:
+            retry_after = float(response.headers.get("retry-after", ""))
+        except ValueError:
+            pass
+        return WriteResult(method, path, response.status_code, body, retry_after=retry_after)
 
     def token_self(self) -> WriteResult:
         """``GET /personal_access_tokens/self`` with the write token: its scopes and expiry."""

@@ -45,6 +45,12 @@ from baluarte.notifications.delivery import NOTIFY_DELIVER, handle_deliver
 from baluarte.policy.evaluation.runner import EVALUATE, evaluate
 from baluarte.remediation.execute import make_apply_remediation_plan
 from baluarte.remediation.plans import APPLY_REMEDIATION_PLAN
+from baluarte.templates.execute import (
+    APPLY_CHANGE_SET,
+    ROLLBACK_CHANGE_SET,
+    make_apply_change_set,
+    make_rollback_change_set,
+)
 from baluarte.timetracking.issue_plans import APPLY_ISSUE_PLAN, make_apply_issue_plan
 
 Handler = Callable[[ClaimedJob, Engine], None]
@@ -64,6 +70,8 @@ HANDLERS: Mapping[str, Handler] = {
     APPLY_LABEL_PLAN: make_apply_label_plan(),
     APPLY_ISSUE_PLAN: make_apply_issue_plan(),
     APPLY_REMEDIATION_PLAN: make_apply_remediation_plan(),
+    APPLY_CHANGE_SET: make_apply_change_set(),
+    ROLLBACK_CHANGE_SET: make_rollback_change_set(),
     EVALUATE: evaluate,
     RETENTION_EXPIRE: handle_expire,
     AUDIT_SHIP: handle_ship,

@@ -30,6 +30,10 @@ x-app-env: &app-env
   # true lets approved remediation plans (restrict project visibility, protect the default
   # branch) be applied with their own write token (docs/REMEDIATION.md). Off by default.
   BALUARTE_REMEDIATION_WRITES: ${BALUARTE_REMEDIATION_WRITES:-false}
+  # true lets approved template change sets (visibility, default branch protection, approval
+  # settings) be applied with their own write token (docs/CONFIGURATION_TEMPLATES.md).
+  # Off by default.
+  BALUARTE_TEMPLATE_WRITES: ${BALUARTE_TEMPLATE_WRITES:-false}
   # false hides time per person everywhere (docs/TIME_TRACKING.md). On by default.
   BALUARTE_TIME_PER_PERSON: ${BALUARTE_TIME_PER_PERSON:-true}
 

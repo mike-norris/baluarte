@@ -33,6 +33,11 @@ class Permission(StrEnum):
     REMEDIATION_PLAN = "remediation:plan"
     # Approve or reject a submitted plan; never one's own (enforced separately).
     REMEDIATION_APPROVE = "remediation:approve"
+    # Build template change sets, save selections, and withdraw one's own proposed set.
+    CHANGES_PLAN = "changes:plan"
+    # Approve or reject change sets (never one's own), and apply, continue, cancel or roll back
+    # approved ones while template writes are switched on.
+    CHANGES_APPROVE = "changes:approve"
     SETTINGS_MANAGE = "settings:manage"
     AUDIT_LOG_READ = "audit_log:read"
     JOBS_READ = "jobs:read"
@@ -60,6 +65,7 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = {
         Permission.POLICY_WRITE,
         Permission.EXCEPTION_REQUEST,
         Permission.REMEDIATION_PLAN,
+        Permission.CHANGES_PLAN,
         Permission.EVIDENCE_PACKAGE,
         Permission.MANAGER_READ,
         Permission.TIME_READ,

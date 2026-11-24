@@ -298,8 +298,9 @@ https://{{ .Values.ingress.host }}
 {{- end }}
 {{- end }}
 
-{{/* API and worker: whether approved label, issue and remediation plans may be applied
-(docs/LABELS.md, docs/TIME_TRACKING.md, docs/REMEDIATION.md). */}}
+{{/* API and worker: whether approved label, issue and remediation plans and template change
+sets may be applied (docs/LABELS.md, docs/TIME_TRACKING.md, docs/REMEDIATION.md,
+docs/CONFIGURATION_TEMPLATES.md). */}}
 {{- define "baluarte.labelWritesEnv" -}}
 - name: BALUARTE_LABEL_WRITES
   value: {{ ternary "true" "false" (eq (toString .Values.gitlab.labelWrites) "true") | quote }}
@@ -307,6 +308,8 @@ https://{{ .Values.ingress.host }}
   value: {{ ternary "true" "false" (eq (toString (dig "issueWrites" false .Values.gitlab)) "true") | quote }}
 - name: BALUARTE_REMEDIATION_WRITES
   value: {{ ternary "true" "false" (eq (toString (dig "remediationWrites" false .Values.gitlab)) "true") | quote }}
+- name: BALUARTE_TEMPLATE_WRITES
+  value: {{ ternary "true" "false" (eq (toString (dig "templateWrites" false .Values.gitlab)) "true") | quote }}
 {{- end }}
 
 {{/* Worker: the largest issue attachment captured as evidence (docs/ISSUE_REGISTER.md). */}}
