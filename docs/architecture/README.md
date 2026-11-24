@@ -19,6 +19,7 @@ Record a decision here when it changes or establishes a foundational choice: run
 | [ADR-0013](ADR-0013-workspaces-and-connections.md) | Workspaces and several provider connections per deployment | Accepted |
 | [ADR-0014](ADR-0014-provider-integrations.md) | A common provider layer for GitLab and GitHub | Accepted |
 | [ADR-0015](ADR-0015-auditable-issue-register.md) | The auditable issue register: selection, visible exclusion, append-only decisions | Accepted |
+| [ADR-0016](ADR-0016-configuration-templates.md) | Configuration templates: exact values for settings Baluarte reads, pinned inheritance, nearest-wins precedence, change sets | Accepted |
 
 ## Template
 

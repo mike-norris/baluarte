@@ -9,6 +9,16 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Configuration templates (roadmap M14.1, ADR-0016): versioned YAML documents
+  (`kind: ConfigurationTemplate`) that name exact values for settings Baluarte reads
+  (visibility, default branch protection, merge request approvals, GitHub security features and
+  label consistency). A template can extend one exact version of another; versions are
+  immutable. A version is assigned to a connection, group or project, with optional overrides
+  that need a reason; for each setting the nearest assignment decides, and each project's
+  effective settings say which template, version and assignment decided every value and what it
+  replaced. Settings a provider has no equivalent for, or that depend on its plan, are shown as
+  such. Saving and assigning need `policy:write` and are audited; nothing is changed on GitLab or
+  GitHub. New Governance tab *Templates* and migration `0038`.
 - GitHub issues in the auditable issue register (roadmap M13.5): when a workspace has a
   register, each GitHub collection also reads its repositories' issues, pull requests left out,
   as an `issues` run, and captures the evidence of auditable ones: the description, comments,

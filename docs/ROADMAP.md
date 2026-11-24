@@ -106,7 +106,7 @@ Acceptance: the first vertical slice on GitHub, and a workspace with one GitLab 
 
 ### M14 — Configuration templates and bulk changes
 
-Builds on remediation plans and label plans.
+Builds on remediation plans and label plans. Decided in [ADR-0016](architecture/ADR-0016-configuration-templates.md); delivered in six steps (M14.1 to M14.6), with steps and status in [CONFIGURATION_TEMPLATES.md](CONFIGURATION_TEMPLATES.md). M14.1, templates with inheritance, precedence and overrides, is done.
 
 - Versioned templates for branch protection, required reviews, merge strategies, access, security features, labels, repository metadata and CI/CD settings, with inheritance, precedence, overrides and approved exceptions. Settings a provider or plan cannot hold are shown as unsupported.
 - Target selection by hierarchy, owner, provider, tags, business unit, policy and compliance status, and saved collections. Baluarte tags sync to provider topics or labels only when asked, and the UI shows which are internal.

@@ -3,13 +3,20 @@ import { Link, NavLink } from "react-router";
 
 import { listPolicyChanges } from "../api/policies";
 import { useLoad } from "../api/useLoad";
-import { APPLY_VIEW, CHANGES_VIEW, GOVERNANCE, SECURITY_POLICIES_VIEW } from "./format";
+import {
+  APPLY_VIEW,
+  CHANGES_VIEW,
+  GOVERNANCE,
+  SECURITY_POLICIES_VIEW,
+  TEMPLATES_VIEW,
+} from "./format";
 import { PageHeader } from "../ui/PageHeader";
 
 const tabs = [
   { to: GOVERNANCE, label: "Baselines" },
   { to: APPLY_VIEW, label: "Where baselines apply" },
   { to: SECURITY_POLICIES_VIEW, label: "GitLab security policies" },
+  { to: TEMPLATES_VIEW, label: "Templates" },
   { to: CHANGES_VIEW, label: "Changes" },
 ] as const;
 

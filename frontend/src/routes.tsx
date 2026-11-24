@@ -18,6 +18,7 @@ import {
   CHANGES_VIEW,
   GOVERNANCE,
   SECURITY_POLICIES_VIEW,
+  TEMPLATES_VIEW,
 } from "./policies/format";
 
 /** A page loaded on first visit, so the first screen doesn't download every page. */
@@ -219,6 +220,10 @@ export const routes: RouteObject[] = [
           {
             path: `${SECURITY_POLICIES_VIEW}/:policyId`,
             element: page(() => import("./pages/SecurityPolicyPage"), "SecurityPolicyPage"),
+          },
+          {
+            path: TEMPLATES_VIEW,
+            element: page(() => import("./pages/TemplatesPage"), "TemplatesPage"),
           },
           {
             path: CHANGES_VIEW,

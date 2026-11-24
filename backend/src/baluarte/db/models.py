@@ -549,6 +549,63 @@ class Policy(Base):
     created_at: Mapped[datetime] = utc_now()
 
 
+class ConfigurationTemplate(Base):
+    """An immutable configuration template version (roadmap M14.1, ADR-0016); a trigger refuses
+    any change or deletion. ``extends_id`` is the exact parent version it extends."""
+
+    __tablename__ = "configuration_template"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "name", "version"),
+        CheckConstraint("version >= 1", name="version_positive"),
+        sha256_hex("yaml_digest"),
+    )
+
+    id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"), index=True)
+    name: Mapped[str] = mapped_column(Text)
+    version: Mapped[int] = mapped_column(Integer)
+    source_yaml: Mapped[str] = mapped_column(Text)
+    yaml_digest: Mapped[str] = mapped_column(Text)
+    extends_id: Mapped[int | None] = mapped_column(ForeignKey("configuration_template.id"))
+    created_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = utc_now()
+
+
+class TemplateAssignment(Base):
+    """One template version pinned to a connection, group or project (roadmap M14.1).
+
+    ``target_id`` is the provider ID of a group or project, or the connection's row ID, as for
+    ``PolicyAssignment``. A target holds at most one template; ``overrides`` replace settings for
+    it and need ``override_reason``.
+    """
+
+    __tablename__ = "template_assignment"
+    __table_args__ = (
+        UniqueConstraint("instance_id", "target_type", "target_id"),
+        Index("ix_template_assignment_template_id", "template_id"),
+        one_of("target_type", TARGET_TYPES),
+        CheckConstraint(
+            "target_type <> 'instance' OR target_id = instance_id", name="instance_target"
+        ),
+        CheckConstraint(
+            "(overrides IS NULL) = (override_reason IS NULL) AND (override_reason IS NULL "
+            "OR char_length(override_reason) BETWEEN 20 AND 2000)",
+            name="override_reason",
+        ),
+    )
+
+    id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"), index=True)
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    template_id: Mapped[int] = mapped_column(ForeignKey("configuration_template.id"))
+    target_type: Mapped[str] = mapped_column(Text)
+    target_id: Mapped[int] = mapped_column(BigInteger)
+    overrides: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
+    override_reason: Mapped[str | None] = mapped_column(Text)
+    assigned_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = utc_now()
+
+
 class PolicyAssignment(Base):
     """Pins one immutable policy version to the instance, a group or a project (BAL-018).
 
