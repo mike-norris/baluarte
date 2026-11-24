@@ -9,6 +9,16 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Applying template change sets (roadmap M14.4): an approved set is applied in stages by a
+  background job, each setting read again first (already as wanted is skipped, a concurrent
+  change is flagged and left), written once with a separate template write token and verified
+  by reading back, with retries on rate limits and server errors. Sets can be continued,
+  cancelled, resumed after a restart and rolled back in reverse order; changes that cannot be
+  fully undone are disclosed and must be acknowledged. Off unless
+  `BALUARTE_TEMPLATE_WRITES=true` (Helm: `gitlab.templateWrites`) and a template write token is
+  stored on the Settings page. Change sets now have their own permissions: `changes:plan`
+  (analysts) builds and withdraws, `changes:approve` (admins) decides and applies; they no
+  longer use the remediation permissions. Migration `0041`.
 - Template change sets (roadmap M14.3): choose projects by group, path, tag (owner, business
   unit), template, drift and findings, preview and save the selection, and build a change set
   from a template version or settings. Each project's current value comes from stored

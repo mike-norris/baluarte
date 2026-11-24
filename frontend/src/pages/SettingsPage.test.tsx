@@ -818,3 +818,36 @@ describe("remediation write token in settings", () => {
     ).toHaveLength(0);
   });
 });
+
+describe("template write token in settings", () => {
+  it("is a separate card that names its own switch and saves its own token", async () => {
+    const calls = api(admin, {
+      [WRITE_TOKEN]: () => json(tokenStatus({ set: true, scopes: ["api"] })),
+      "GET /api/v1/settings/template-write-token": () =>
+        json(tokenStatus({ writes_enabled: false })),
+      "PUT /api/v1/settings/template-write-token": () =>
+        json(tokenStatus({ set: true, writes_enabled: false, scopes: ["api"] })),
+    });
+    const user = userEvent.setup();
+    renderSettings();
+
+    const section = await card("Template write token");
+    expect(await within(section).findByText("Not set")).toBeInTheDocument();
+    expect(section).toHaveTextContent("BALUARTE_TEMPLATE_WRITES=true");
+    expect(section).toHaveTextContent("can widen visibility or remove a protection");
+    await user.type(within(section).getByLabelText("Write token"), "glpat-example-template");
+    await user.click(within(section).getByRole("button", { name: "Save token" }));
+
+    expect(
+      await within(section).findByText("Write token saved and checked with GitLab."),
+    ).toBeInTheDocument();
+    expect(bodyOf(calls, "PUT", "/api/v1/settings/template-write-token")).toEqual({
+      token: "glpat-example-template",
+    });
+    expect(
+      calls.filter(
+        (call) => call.url.endsWith("/remediation-write-token") && call.init?.method === "PUT",
+      ),
+    ).toHaveLength(0);
+  });
+});

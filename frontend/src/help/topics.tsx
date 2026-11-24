@@ -794,7 +794,14 @@ export const helpTopics: readonly HelpTopic[] = [
         <p>
           Someone other than its creator approves a set; one that weakens protection or removes
           access needs two such people. Approval is refused if the evidence has moved since the set
-          was built. Applying approved sets comes in a later release.
+          was built.
+        </p>
+        <p>
+          An approved set is applied in stages only when the deployment turns template writes on and
+          an admin stores a template write token in Settings. Each setting is read again first, a
+          value someone changed since is left alone, and each write is read back. A set can be
+          continued, cancelled and rolled back; changes that cannot be fully undone are named before
+          applying.
         </p>
       </>
     ),

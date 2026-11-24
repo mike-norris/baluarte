@@ -46,6 +46,7 @@ from baluarte.labels import write_token
 from baluarte.policy import changes
 from baluarte.remediation import write_token as remediation_token
 from baluarte.settings import ConfigurationError, load_logging_settings
+from baluarte.templates import write_token as template_token
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -428,3 +429,46 @@ def delete_remediation_write_token(principal: Admin, db: Database) -> Response:
     return _remove_token(
         remediation_token.TOKEN, principal, db, "No remediation write token is stored"
     )
+
+
+@router.get(
+    "/template-write-token",
+    response_model=TokenStatus,
+    summary="Whether a template write token is stored, and what GitLab reported about it",
+    description="Never returns the token. `writes_enabled` is the deployment's "
+    "`BALUARTE_TEMPLATE_WRITES`; change sets are applied only while it is true and a token is "
+    "stored.",
+)
+def read_template_write_token(_: Admin, db: Database) -> TokenStatus:
+    return _token_status(db, template_token.TOKEN)
+
+
+@router.put(
+    "/template-write-token",
+    response_model=TokenStatus,
+    summary="Store or replace the template write token",
+    description="Separate from the read token and the label and remediation write tokens. The "
+    "token is sealed (ADR-0008) and used only to apply, continue and roll back approved change "
+    "sets. It is checked with `GET /personal_access_tokens/self` and stored even when the check "
+    "fails; `check_error` then says why. 422 `token_invalid` for an empty or overlong token; 409 "
+    "when secrets cannot be stored. Audited as `settings.template_write_token_set` or "
+    "`_replaced`, without the token.",
+)
+def write_template_write_token(
+    body: WriteTokenIn,
+    principal: Admin,
+    db: Database,
+    transport: Annotated[httpx.BaseTransport | None, Depends(gitlab_transport)],
+) -> TokenStatus:
+    return _save_token(template_token.TOKEN, body, principal, db, transport)
+
+
+@router.delete(
+    "/template-write-token",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Remove the template write token",
+    description="Change sets cannot be applied until a token is stored again. Audited as "
+    "`settings.template_write_token_removed`; 404 when none is stored.",
+)
+def delete_template_write_token(principal: Admin, db: Database) -> Response:
+    return _remove_token(template_token.TOKEN, principal, db, "No template write token is stored")

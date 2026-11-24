@@ -57,7 +57,9 @@ you, is in [COMPLIANCE.md](COMPLIANCE.md).
    and only if you use those plans ([GITLAB_INTEGRATION.md](GITLAB_INTEGRATION.md)). Remediation
    writes (`BALUARTE_REMEDIATION_WRITES`) use a third token, which needs Owner on the projects it
    fixes. Limit it to those groups, give it an expiry, and turn the switch on only while you apply
-   plans from Baluarte ([REMEDIATION.md](REMEDIATION.md#applying-a-plan)).
+   plans from Baluarte ([REMEDIATION.md](REMEDIATION.md#applying-a-plan)). Template writes
+   (`BALUARTE_TEMPLATE_WRITES`) use a fourth token with the same care
+   ([CONFIGURATION_TEMPLATES.md](CONFIGURATION_TEMPLATES.md#execution)).
 6. **Map roles to dedicated identity provider groups**, and keep the admin group small. Review its
    membership at least quarterly; the operating profile's `access-review` attestation records it.
 7. **Leave development mode off.** `BALUARTE_DEVELOPMENT_MODE=true` lets one person decide their

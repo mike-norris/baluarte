@@ -19,6 +19,7 @@ import { ErrorMessage } from "../components/ErrorMessage";
 import { ChangeEvidenceCard } from "../settings/ChangeEvidenceCard";
 import { LabelWriteTokenCard } from "../settings/LabelWriteTokenCard";
 import { RemediationWriteTokenCard } from "../settings/RemediationWriteTokenCard";
+import { TemplateWriteTokenCard } from "../settings/TemplateWriteTokenCard";
 import { ManagerScopesCard } from "../settings/ManagerScopesCard";
 import { NotificationsCard } from "../settings/NotificationsCard";
 import { TimeSettingsCard } from "../settings/TimeSettingsCard";
@@ -433,6 +434,7 @@ function SettingsContent({ csrf }: { csrf: string }) {
       <ChangeEvidenceCard csrf={csrf} />
       <LabelWriteTokenCard csrf={csrf} secretKey={secretKey} />
       <RemediationWriteTokenCard csrf={csrf} secretKey={secretKey} />
+      <TemplateWriteTokenCard csrf={csrf} secretKey={secretKey} />
       <ManagerScopesCard csrf={csrf} />
       <TimeSettingsCard csrf={csrf} />
       <ComplianceCard csrf={csrf} />

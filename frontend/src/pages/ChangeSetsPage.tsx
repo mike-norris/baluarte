@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 
 import {
+  applyChangeSet,
+  continueChangeSet,
   createChangeSet,
   decideChangeSet,
   deleteSavedSelection,
@@ -8,16 +10,20 @@ import {
   listChangeSets,
   listSavedSelections,
   previewSelection,
+  runChangeSet,
   saveSelection,
+  type ChangeItem,
   type ChangeSet,
   type ChangeSetState,
   type ChangeSetSummary,
   type ChangeTarget,
   type DriftFilter,
+  type ItemStatus,
   type Selection,
   type SelectionPreview,
   type SkipCode,
   type WarningCode,
+  type WriteRefusal,
 } from "../api/changeSets";
 import { useLoad } from "../api/useLoad";
 import { useAuth } from "../auth/context";
@@ -37,7 +43,44 @@ const stateTones: Record<ChangeSetState, Tone> = {
   rejected: "danger",
   withdrawn: "secondary",
   expired: "secondary",
+  applying: "info",
+  paused: "warning",
+  cancelled: "secondary",
+  finished: "success",
+  rolling_back: "info",
+  rolled_back: "secondary",
 };
+
+export const itemLabels: Record<ItemStatus, string> = {
+  pending: "Waiting",
+  writing: "Writing",
+  applied: "Applied",
+  skipped: "Already as wanted",
+  out_of_date: "Changed since built",
+  manual: "Change by hand",
+  failed: "Failed",
+  cancelled: "Not applied",
+};
+
+const itemTones: Record<ItemStatus, Tone> = {
+  pending: "secondary",
+  writing: "info",
+  applied: "success",
+  skipped: "secondary",
+  out_of_date: "warning",
+  manual: "warning",
+  failed: "danger",
+  cancelled: "secondary",
+};
+
+export const refusalLabels: Record<WriteRefusal, string> = {
+  writes_disabled: "Template writes are off for this deployment (BALUARTE_TEMPLATE_WRITES).",
+  token_missing: "No template write token is stored (Settings).",
+  not_primary: "Change sets are applied only to the primary GitLab connection.",
+  busy: "Another change set of this connection is applying or rolling back.",
+};
+
+const RUNNING: ChangeSetState[] = ["applying", "rolling_back"];
 
 export const warningLabels: Record<WarningCode, string> = {
   weakens_protection: "Weakens protection",
@@ -60,8 +103,8 @@ function usePermissions() {
   return {
     token: user?.csrf_token ?? null,
     userId: user?.user_id ?? null,
-    canPlan: permissions.includes("remediation:plan"),
-    canApprove: permissions.includes("remediation:approve"),
+    canPlan: permissions.includes("changes:plan"),
+    canApprove: permissions.includes("changes:approve"),
   };
 }
 
@@ -625,6 +668,238 @@ function Decisions({ set, onChanged }: { set: ChangeSet; onChanged: (text: strin
   );
 }
 
+function Progress({ items }: { items: ChangeItem[] }) {
+  if (items.length === 0) return null;
+  const columns: Column<ChangeItem>[] = [
+    { key: "project", header: "Project", render: (item) => item.project_path, rowHeader: true },
+    { key: "setting", header: "Setting", render: (item) => settingName(item.setting) },
+    {
+      key: "change",
+      header: "Change",
+      render: (item) => `${valueText(item.before)} → ${valueText(item.after)}`,
+    },
+    {
+      key: "status",
+      header: "Status",
+      render: (item) => (
+        <>
+          <Badge tone={itemTones[item.status]}>{itemLabels[item.status]}</Badge>
+          {item.rollback_status && (
+            <>
+              {" "}
+              <Badge tone={item.rollback_status === "rolled_back" ? "secondary" : "warning"}>
+                {item.rollback_status === "rolled_back"
+                  ? "Rolled back"
+                  : item.rollback_status === "failed"
+                    ? "Rollback failed"
+                    : "Not rolled back"}
+              </Badge>
+            </>
+          )}
+        </>
+      ),
+    },
+    {
+      key: "message",
+      header: "Details",
+      priority: 2,
+      render: (item) => [item.message, item.rollback_message].filter(Boolean).join(" "),
+    },
+  ];
+  return (
+    <div>
+      <h3 className="h4">Progress</h3>
+      <ResponsiveTable
+        caption="Each change and what happened to it"
+        columns={columns}
+        rows={items}
+        rowKey={(item) => item.id}
+      />
+    </div>
+  );
+}
+
+function Execution({ set, onChanged }: { set: ChangeSet; onChanged: (text: string) => void }) {
+  const { token, canApprove } = usePermissions();
+  const [stage, setStage] = useState(String(Math.min(5, Math.max(1, set.changing_targets))));
+  const [more, setMore] = useState("");
+  const [acknowledged, setAcknowledged] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const stageId = useId();
+  const moreId = useId();
+  const startable = set.state === "approved";
+  const executing = !["proposed", "rejected", "withdrawn", "expired"].includes(set.state);
+  if (!canApprove || (!startable && !executing)) return null;
+  const blocked = set.write_refusals.length > 0;
+
+  async function act(run: (csrf: string) => Promise<ChangeSet>, done: string) {
+    if (!token) return;
+    setFailure(null);
+    try {
+      await run(token);
+      onChanged(done);
+    } catch (error) {
+      setFailure(failureText(error, "The change set could not be changed."));
+    }
+  }
+
+  const stageCount = Number.parseInt(stage, 10);
+  const moreCount = more.trim() ? Number.parseInt(more, 10) : null;
+  return (
+    <section aria-labelledby={`${stageId}-heading`} className="stack-1">
+      <h3 id={`${stageId}-heading`} className="h4">
+        Applying
+      </h3>
+      {blocked && (
+        <Notice tone="info" title="Cannot write now">
+          <ul className="mb-0">
+            {set.write_refusals.map((code) => (
+              <li key={code}>{refusalLabels[code]}</li>
+            ))}
+          </ul>
+        </Notice>
+      )}
+      {set.halt_reason && (
+        <Notice tone="warning" title="The last run stopped">
+          {set.halt_reason}
+        </Notice>
+      )}
+      {executing && (
+        <p>
+          {`${String(set.stage_targets)} of ${String(set.changing_targets)} projects included so far.`}
+          {set.applied_by && ` Started by ${set.applied_by.display_name ?? "someone"}.`}
+          {set.cancelled_by && ` Cancelled by ${set.cancelled_by.display_name ?? "someone"}.`}
+          {set.rollback_by && ` Rollback started by ${set.rollback_by.display_name ?? "someone"}.`}
+        </p>
+      )}
+      {startable && (
+        <>
+          {set.irreversible.length > 0 && (
+            <Notice tone="warning" title="Cannot be fully undone">
+              <ul>
+                {set.irreversible.map((found) => (
+                  <li key={`${found.project}:${found.setting}`}>
+                    {`${found.project}, ${settingName(found.setting)}: ${found.why}`}
+                  </li>
+                ))}
+              </ul>
+              <label className="form-check">
+                <input
+                  type="checkbox"
+                  className="form-check-input"
+                  checked={acknowledged}
+                  onChange={(event) => {
+                    setAcknowledged(event.target.checked);
+                  }}
+                />
+                <span className="form-check-label">I understand these cannot be fully undone</span>
+              </label>
+            </Notice>
+          )}
+          <div className="d-flex flex-wrap gap-2 align-items-end">
+            <label className="form-label mb-0" htmlFor={stageId}>
+              Projects in the first stage
+              <input
+                id={stageId}
+                type="number"
+                min={1}
+                max={set.changing_targets}
+                className="form-control mt-1"
+                value={stage}
+                onChange={(event) => {
+                  setStage(event.target.value);
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={
+                blocked || !(stageCount >= 1) || (set.irreversible.length > 0 && !acknowledged)
+              }
+              onClick={() =>
+                void act(
+                  (csrf) => applyChangeSet(set.id, stageCount, acknowledged, csrf),
+                  `Started applying change set ${set.title}.`,
+                )
+              }
+            >
+              {`Apply change set ${set.title}`}
+            </button>
+          </div>
+        </>
+      )}
+      {set.state === "paused" && (
+        <div className="d-flex flex-wrap gap-2 align-items-end">
+          <label className="form-label mb-0" htmlFor={moreId}>
+            More projects (empty for all that remain)
+            <input
+              id={moreId}
+              type="number"
+              min={1}
+              className="form-control mt-1"
+              value={more}
+              onChange={(event) => {
+                setMore(event.target.value);
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={blocked || (moreCount !== null && !(moreCount >= 1))}
+            onClick={() =>
+              void act(
+                (csrf) => continueChangeSet(set.id, moreCount, csrf),
+                `Continued change set ${set.title}.`,
+              )
+            }
+          >
+            Continue
+          </button>
+        </div>
+      )}
+      <div className="d-flex flex-wrap gap-2">
+        {(set.state === "applying" || set.state === "paused") && (
+          <button
+            type="button"
+            className="btn"
+            onClick={() =>
+              void act(
+                (csrf) => runChangeSet(set.id, "cancel", csrf),
+                `Cancelled change set ${set.title}.`,
+              )
+            }
+          >
+            Cancel
+          </button>
+        )}
+        {(["paused", "cancelled", "finished"].includes(set.state) ||
+          (set.state === "rolling_back" && set.halt_reason !== null)) && (
+          <button
+            type="button"
+            className="btn btn-danger"
+            disabled={blocked}
+            onClick={() =>
+              void act(
+                (csrf) => runChangeSet(set.id, "rollback", csrf),
+                `Started rolling back change set ${set.title}.`,
+              )
+            }
+          >
+            Roll back
+          </button>
+        )}
+      </div>
+      {failure && (
+        <p role="alert" className="text-danger-emphasis">
+          {failure}
+        </p>
+      )}
+    </section>
+  );
+}
+
 function ChangeSetDetail({
   id,
   version,
@@ -634,9 +909,20 @@ function ChangeSetDetail({
   version: number;
   onChanged: (text: string) => void;
 }) {
-  const loaded = useLoad(`change-set:${String(id)}#${String(version)}`, (signal) =>
+  const [tick, setTick] = useState(0);
+  const loaded = useLoad(`change-set:${String(id)}#${String(version)}.${String(tick)}`, (signal) =>
     getChangeSet(id, signal),
   );
+  const running = loaded.data ? RUNNING.includes(loaded.data.state) : false;
+  useEffect(() => {
+    if (!running) return;
+    const timer = window.setTimeout(() => {
+      setTick((value) => value + 1);
+    }, 5000);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [running, tick]);
   if (loaded.error) return <ErrorMessage error={loaded.error} retry={loaded.retry} />;
   if (!loaded.data) return <Loading rows={3} />;
   const set = loaded.data;
@@ -661,6 +947,8 @@ function ChangeSetDetail({
       )}
       <DigestDisplay value={set.digest} />
       <Decisions set={set} onChanged={onChanged} />
+      <Execution set={set} onChanged={onChanged} />
+      <Progress items={set.items} />
       {changing.map((target) => (
         <TargetDetail key={target.project.id} target={target} />
       ))}

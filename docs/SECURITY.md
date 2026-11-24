@@ -30,6 +30,8 @@ Roles come from the identity provider's groups claim (`BALUARTE_OIDC_ADMIN_GROUP
 | `exception:approve` (approve, reject, revoke; never one's own request) | yes | no | no | no |
 | `remediation:plan` (create and submit dry-run remediation plans) | yes | yes | no | no |
 | `remediation:approve` (approve or reject a plan; never one's own) | yes | no | no | no |
+| `changes:plan` (build template change sets and save selections; withdraw one's own set) | yes | yes | no | no |
+| `changes:approve` (approve or reject a change set, never one's own; apply, continue, cancel and roll back approved sets) | yes | no | no | no |
 | `evidence:export` | yes | no | yes | no |
 | `audit_log:read` | yes | no | yes | no |
 | `settings:manage` (includes running GitLab diagnostics) | yes | no | no | no |

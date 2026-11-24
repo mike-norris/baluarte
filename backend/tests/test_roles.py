@@ -35,6 +35,7 @@ def test_every_role_has_permissions() -> None:
                 Permission.POLICY_WRITE,
                 Permission.EXCEPTION_REQUEST,
                 Permission.REMEDIATION_PLAN,
+                Permission.CHANGES_PLAN,
                 Permission.EVIDENCE_PACKAGE,
             },
             {
@@ -43,6 +44,7 @@ def test_every_role_has_permissions() -> None:
                 Permission.AUDIT_LOG_READ,
                 Permission.EXCEPTION_APPROVE,
                 Permission.REMEDIATION_APPROVE,
+                Permission.CHANGES_APPROVE,
             },
         ),
         (
@@ -60,6 +62,8 @@ def test_every_role_has_permissions() -> None:
                 Permission.EXCEPTION_APPROVE,
                 Permission.REMEDIATION_PLAN,
                 Permission.REMEDIATION_APPROVE,
+                Permission.CHANGES_PLAN,
+                Permission.CHANGES_APPROVE,
             },
         ),
     ],
