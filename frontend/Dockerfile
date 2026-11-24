@@ -13,7 +13,9 @@ FROM nginxinc/nginx-unprivileged:1.31-alpine
 USER root
 RUN apk upgrade --no-cache
 USER 101
+COPY nginx/http.conf /etc/nginx/conf.d/00-http.conf
 COPY nginx/default.conf /etc/nginx/conf.d/default.conf
+COPY nginx/locations.conf /etc/nginx/locations.conf
 COPY nginx/security-headers.conf /etc/nginx/security-headers.conf
 COPY nginx/api-upstream.conf /etc/nginx/api-upstream.conf
 COPY nginx/api-proxy-headers.conf /etc/nginx/api-proxy-headers.conf

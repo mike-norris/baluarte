@@ -9,6 +9,12 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- TLS for the Compose stack: `deploy/compose/tls.yaml` serves the site over HTTPS only (TLS 1.2
+  and 1.3, HSTS) and makes PostgreSQL accept only TLS connections with a client certificate
+  naming the role plus its password; every client connects with `sslmode=verify-full`.
+  `deploy/compose/make-tls-certs.sh` creates a local CA and the certificates for testing, and
+  `deploy/compose/tls-smoke-test.sh` checks it in CI. The web image's nginx configuration is
+  split so the plain and TLS servers share their locations.
 - Applying template change sets (roadmap M14.4): an approved set is applied in stages by a
   background job, each setting read again first (already as wanted is skipped, a concurrent
   change is flagged and left), written once with a separate template write token and verified

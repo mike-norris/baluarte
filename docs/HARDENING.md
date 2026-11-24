@@ -42,8 +42,11 @@ you, is in [COMPLIANCE.md](COMPLIANCE.md).
    common cloud load balancers do.
 2. **Do not expose the Compose stack as it ships.** It binds to 127.0.0.1 and keeps its secret
    files world-readable for convenience. On a server, prefer the Helm chart. If you must use
-   Compose, put a TLS reverse proxy in front of the web port and keep the API port (8000) closed.
-3. **Use an external PostgreSQL** with TLS, backups and point-in-time recovery. The chart's
+   Compose, use the TLS overlay with your own certificates ([DEPLOYMENT.md](DEPLOYMENT.md#tls)),
+   which serves only HTTPS and keeps the API port (8000) closed, or put a TLS reverse proxy in
+   front of the web port.
+3. **Use an external PostgreSQL** with TLS (`sslmode=verify-full`, ideally with client
+   certificates as in [DEPLOYMENT.md](DEPLOYMENT.md#tls)), backups and point-in-time recovery. The chart's
    `devDatabase` is for evaluation only. Give the migration user `CREATEROLE`, or create the app and
    backup roles yourself ([DEPLOYMENT.md](DEPLOYMENT.md#database-roles)).
 4. **Keep the secret key with the backups.** `secrets/secret_key`, or the chart's generated

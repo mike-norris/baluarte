@@ -44,6 +44,24 @@ cosign verify ghcr.io/mike-norris/baluarte-app:0.1.1 \
 
 Install the chart with `helm install baluarte oci://ghcr.io/mike-norris/charts/baluarte --version 0.1.1 -f values.yaml`; it pulls the images of the same version from `ghcr.io/mike-norris` (`global.imageRegistry`, which a mirror or air-gapped registry overrides). To run the Compose stack from released images instead of building them, set `BALUARTE_IMAGE_PREFIX=ghcr.io/mike-norris/` and `BALUARTE_VERSION=0.1.0`, then `docker compose pull` and `docker compose up -d --no-build --wait`.
 
+## TLS
+
+The Compose overlay `deploy/compose/tls.yaml` encrypts both hops of the local stack:
+
+- **Web.** nginx serves the site over TLS 1.2 or 1.3 on `https://localhost:8443` (`BALUARTE_TLS_PORT`), with HSTS. Plain HTTP is not served, and the API's plain port 8000 is not published.
+- **Database.** PostgreSQL accepts only TLS connections (`hostssl` in `deploy/compose/tls/pg_hba.conf`), and each needs a client certificate from the CA whose common name is the role it signs in as (`clientcert=verify-full`) **and** that role's password. `migrate`, the API, the worker and the backup each have their own certificate and connect with `sslmode=verify-full`, so the server's name is checked too. The `tls-database` compliance check then reports met.
+
+For local testing, `deploy/compose/make-tls-certs.sh` creates a local CA and every certificate in `secrets/tls/` (one year, `BALUARTE_TLS_DAYS`; `--force` makes new ones):
+
+```sh
+deploy/compose/make-tls-certs.sh
+docker compose -f compose.yaml -f deploy/compose/tls.yaml up -d --build --wait
+```
+
+Trust `secrets/tls/ca.crt` in your browser or system, then set the public URL on the Settings page to `https://localhost:8443` and register `https://localhost:8443/api/v1/auth/callback` with your identity provider; the `tls-web` check follows the public URL. Keys are readable by their owner only. On a Linux host, give each key to the container user that reads it; the script lists the commands. `deploy/compose/tls-smoke-test.sh` checks the overlay end to end and runs in CI.
+
+**Production.** The local CA is for testing. Use certificates from your organisation's CA or a public one, with the same layout: a server certificate for the web host, one for the database host (its name must match the host in `BALUARTE_DATABASE_URL`), and a client certificate per role. Keep CA keys off the hosts. With the Helm chart, terminate TLS at the Ingress and add `sslmode=verify-full` with `sslrootcert`, `sslcert` and `sslkey` to the database URL ([HARDENING.md](HARDENING.md)).
+
 ## Production
 
 See [HARDENING.md](HARDENING.md) for what the images and chart already enforce and the checklist for operators.

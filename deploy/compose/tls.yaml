@@ -1,0 +1,75 @@
+# TLS for the local stack: HTTPS from nginx, and TLS with client certificates to PostgreSQL.
+# Create the certificates first, then start with both files:
+#
+#   deploy/compose/make-tls-certs.sh
+#   docker compose -f compose.yaml -f deploy/compose/tls.yaml up -d
+#
+# The site is then https://localhost:8443 (BALUARTE_TLS_PORT). Set the public URL on the
+# Settings page to that address, and register its sign-in redirect with your identity provider.
+# PostgreSQL accepts only TLS connections that present a certificate from the local CA naming
+# the role, plus the role's password; every client connects with sslmode=verify-full.
+# For local testing only; see docs/DEPLOYMENT.md#tls for production.
+
+services:
+  db:
+    # Starts as root only to hand the key to the postgres user, as PostgreSQL requires; the
+    # image's entrypoint then runs the server as postgres.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        install -d -o postgres -g postgres -m 700 /tmp/tls &&
+        install -o postgres -g postgres -m 600 /tls/db.key /tmp/tls/db.key &&
+        exec docker-entrypoint.sh postgres
+        -c ssl=on
+        -c ssl_min_protocol_version=TLSv1.2
+        -c ssl_cert_file=/tls/db.crt
+        -c ssl_key_file=/tmp/tls/db.key
+        -c ssl_ca_file=/tls/ca.crt
+        -c hba_file=/etc/baluarte/pg_hba.conf
+    tmpfs: [/tmp]
+    volumes:
+      - ./secrets/tls/ca.crt:/tls/ca.crt:ro
+      - ./secrets/tls/db.crt:/tls/db.crt:ro
+      - ./secrets/tls/db.key:/tls/db.key:ro
+      - ./deploy/compose/tls/pg_hba.conf:/etc/baluarte/pg_hba.conf:ro
+
+  migrate:
+    environment:
+      BALUARTE_DATABASE_URL: postgresql://baluarte@db:5432/baluarte?sslmode=verify-full&sslrootcert=/tls/ca.crt&sslcert=/tls/client.crt&sslkey=/tls/client.key
+    volumes:
+      - ./secrets/tls/ca.crt:/tls/ca.crt:ro
+      - ./secrets/tls/client-baluarte.crt:/tls/client.crt:ro
+      - ./secrets/tls/client-baluarte.key:/tls/client.key:ro
+
+  api:
+    # Reached only through nginx over TLS: the plain port 8000 is not published.
+    ports: !reset []
+    environment: &app-database
+      BALUARTE_DATABASE_URL: postgresql://baluarte_app@db:5432/baluarte?sslmode=verify-full&sslrootcert=/tls/ca.crt&sslcert=/tls/client.crt&sslkey=/tls/client.key
+    volumes: &app-tls
+      - ./secrets/tls/ca.crt:/tls/ca.crt:ro
+      - ./secrets/tls/client-baluarte_app.crt:/tls/client.crt:ro
+      - ./secrets/tls/client-baluarte_app.key:/tls/client.key:ro
+
+  worker:
+    environment: *app-database
+    volumes: *app-tls
+
+  backup:
+    environment:
+      PGSSLMODE: verify-full
+      PGSSLROOTCERT: /tls/ca.crt
+      PGSSLCERT: /tls/client.crt
+      PGSSLKEY: /tls/client.key
+    volumes:
+      - ./secrets/tls/ca.crt:/tls/ca.crt:ro
+      - ./secrets/tls/client-baluarte_backup.crt:/tls/client.crt:ro
+      - ./secrets/tls/client-baluarte_backup.key:/tls/client.key:ro
+
+  web:
+    ports: !override
+      - "127.0.0.1:${BALUARTE_TLS_PORT:-8443}:8443"
+    volumes:
+      - ./deploy/compose/tls/nginx-tls.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./secrets/tls/web.crt:/etc/nginx/tls/web.crt:ro
+      - ./secrets/tls/web.key:/etc/nginx/tls/web.key:ro
