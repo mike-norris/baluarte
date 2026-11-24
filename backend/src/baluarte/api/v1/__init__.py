@@ -10,6 +10,7 @@ from baluarte.api.v1 import (
     audit_events,
     audit_shipping,
     auth,
+    change_sets,
     changes,
     compliance,
     connections,
@@ -95,6 +96,7 @@ protected.include_router(issue_plans.router)
 protected.include_router(reviews.router)
 protected.include_router(templates.router)
 protected.include_router(template_drift.router)
+protected.include_router(change_sets.router)
 
 router = APIRouter(prefix="/api/v1")
 router.include_router(public)

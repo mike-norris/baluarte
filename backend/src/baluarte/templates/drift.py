@@ -19,6 +19,7 @@ An approved, unexpired template exception for the project and setting turns ``dr
 
 from collections import Counter
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
 
@@ -187,6 +188,93 @@ class _Judge:
                 at,
             )
         return more, more_reason, at  # type: ignore[return-value]
+
+    def current(self, key: str, value: Any) -> "Current":
+        """The value the evidence shows for ``key`` (``value`` is the template's, used for the
+        security features it names), or why it cannot be told."""
+        if key == "visibility":
+            outcome, reason, at = self.run(_visibility(str(value)))
+            if outcome not in ("pass", "fail") or self.context.project is None:
+                return Current(None, outcome, reason, at)
+            return Current(self.context.project.visibility, outcome, reason, at)
+        if key == "default_branch_protected":
+            rule: Rule = DefaultBranchProtectedRule(
+                id="template-default-branch", type="gitlab.branch.default_protected", required=True
+            )
+            return self._holds(rule)
+        if key == "merge_requests.min_approvals":
+            return self._approvals_required()
+        if key.startswith("merge_requests."):
+            return self._holds(_approvals(0, key.removeprefix("merge_requests.")))
+        if key == "security_features":
+            enabled: list[str] = []
+            last = Current(None, "unsupported", "", None)
+            for feature in value:
+                features: Rule = GitHubSecurityFeaturesRule(
+                    id="template-security-features",
+                    type="github.repository.security_features",
+                    features=[feature],
+                )
+                found = self._holds(features)
+                if found.value is None:
+                    return found
+                if found.value:
+                    enabled.append(feature)
+                last = found
+            return Current(enabled, last.outcome, last.reason, last.observed_at)
+        raise ValueError(f"{key} has no single current value")
+
+    def _holds(self, rule: Rule) -> "Current":
+        outcome, reason, at = self.run(rule)
+        if outcome not in ("pass", "fail"):
+            return Current(None, outcome, reason, at)
+        return Current(outcome == "pass", outcome, reason, at)
+
+    def _approvals_required(self) -> "Current":
+        """The approvals merge requests need, found by probing: the largest ``n`` for which
+        requiring ``n`` passes, up to one above the schema's limit."""
+        outcome, reason, at = self.run(_approvals(1))
+        if outcome not in ("pass", "fail"):
+            return Current(None, outcome, reason, at)
+        low, high = (0, 0) if outcome == "fail" else (1, MAX_APPROVALS + 1)
+        while low < high:
+            middle = (low + high + 1) // 2
+            found, why, _ = self.run(_approvals(middle))
+            if found == "pass":
+                low = middle
+            elif found == "fail":
+                high = middle - 1
+            else:
+                return Current(None, found, why, at)
+        return Current(low, "pass", reason, at)
+
+
+@dataclass(frozen=True)
+class Current:
+    """A setting's value as the evidence shows it; None when it cannot be told (``outcome`` is
+    then unknown or unsupported and ``reason`` says why)."""
+
+    value: Any
+    outcome: str
+    reason: str
+    observed_at: datetime | None
+
+
+def judge_for(
+    db: Session,
+    instance: GitLabInstance,
+    project: GitLabProject,
+    collections: Mapping[str, CollectionContext],
+    capabilities: Mapping[str, CapabilityStatus] | None,
+    ancestry: Literal["complete", "incomplete"],
+    *,
+    labels: bool = False,
+) -> "_Judge":
+    """A judge for ``project``'s stored evidence, for callers outside this module."""
+    context = project_context(
+        db, project, ancestry, collections, capabilities, None, instance.provider, labels=labels
+    )
+    return _Judge(context, instance.provider)
 
 
 def _decided(outcome: str) -> Status:

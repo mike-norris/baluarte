@@ -9,6 +9,14 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Template change sets (roadmap M14.3): choose projects by group, path, tag (owner, business
+  unit), template, drift and findings, preview and save the selection, and build a change set
+  from a template version or settings. Each project's current value comes from stored
+  evidence, with the wanted value, warnings for changes that weaken protection, remove access
+  or disrupt work, and skips for unknown values, unsupported settings, approved exceptions and
+  baseline conflicts. Someone other than the creator approves the set's digest; a sensitive set
+  needs two such approvers, and approval is refused once the evidence has moved. Nothing is
+  applied yet. A Change sets tab under Governance. Migration `0040`.
 - Template drift (roadmap M14.2): each project's effective template settings are compared
   with collected evidence by the evaluators that judge baselines, so a setting is `aligned`,
   `drift`, `excepted`, `unknown` or `unsupported`, never aligned without evidence. Exact values

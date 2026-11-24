@@ -731,7 +731,7 @@ export const helpTopics: readonly HelpTopic[] = [
     title: "Configuration templates",
     summary: "Exact settings for repositories, where they apply and where each value comes from.",
     group: "Govern",
-    paths: ["/governance/templates"],
+    paths: ["/governance/templates", "/governance/change-sets"],
     body: (
       <>
         <p>
@@ -781,8 +781,20 @@ export const helpTopics: readonly HelpTopic[] = [
         <p>
           To let one project differ from one setting for a while, request an exception on its
           drifting row with a justification. Someone else approves or rejects it; it waives that
-          drift until it ends, and the page flags those ending within 14 days. Applying templates in
-          bulk comes in a later release.
+          drift until it ends, and the page flags those ending within 14 days.
+        </p>
+        <h2 className="h3">Change sets</h2>
+        <p>
+          In <Link to="/governance/change-sets">Governance, Change sets</Link>, choose projects by
+          group, path, tag (such as owner or business unit), template, drift or findings, and the
+          values wanted (a template version or settings). Baluarte lists each project&apos;s current
+          value from evidence and the value after, and skips what it cannot tell, what an approved
+          exception allows, what a baseline would forbid and what the provider lacks.
+        </p>
+        <p>
+          Someone other than its creator approves a set; one that weakens protection or removes
+          access needs two such people. Approval is refused if the evidence has moved since the set
+          was built. Applying approved sets comes in a later release.
         </p>
       </>
     ),
