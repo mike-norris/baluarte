@@ -433,10 +433,45 @@ describe("TemplatesPage drift", () => {
     expect(within(table).getByText("Drift")).toBeInTheDocument();
     expect(within(table).getByText("Aligned")).toBeInTheDocument();
     expect(within(table).getByText(/is public; the policy allows private/)).toBeInTheDocument();
-    // Auditors cannot request exceptions.
+    // Auditors cannot propose fixes or request exceptions.
+    expect(screen.queryByRole("button", { name: /Propose a fix/ })).not.toBeInTheDocument();
     expect(
       within(table).queryByRole("button", { name: /Request an exception/ }),
     ).not.toBeInTheDocument();
+  });
+
+  it("proposes a change set that fixes a project's drift", async () => {
+    const user = userEvent.setup();
+    const planner: CurrentUser = {
+      ...analyst,
+      permissions: [...analyst.permissions, "changes:plan"],
+    };
+    const calls = api(planner, {
+      "GET /api/v1/templates/effective/55": () => json(svcEffective),
+      "GET /api/v1/templates/drift/55": () => json(svcDrift),
+      "POST /api/v1/template-change-sets": () => json({ id: 7 }, 201),
+      "GET /api/v1/template-change-sets": () => json({ change_sets: [] }),
+      "GET /api/v1/template-selections": () => json({ selections: [] }),
+      "GET /api/v1/template-change-sets/7": () => json({ detail: "gone" }, 404),
+    });
+    renderPage();
+
+    expect(
+      await screen.findByRole("button", { name: "Propose a fix for drifting projects" }),
+    ).toBeInTheDocument();
+    const attention = await screen.findByRole("table", { name: "Projects needing attention" });
+    await user.click(within(attention).getByRole("button", { name: "Show platform/backend/svc" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Propose a fix for platform/backend/svc" }),
+    );
+
+    await screen.findByText("No change sets yet");
+    expect(bodyOf(calls, "POST /api/v1/template-change-sets")).toEqual({
+      title: "Fix template drift in platform/backend/svc",
+      selection: { projects: ["platform/backend/svc"] },
+      effective: true,
+      expires_in_hours: 72,
+    });
   });
 
   it("requests an exception for a drifting setting", async () => {

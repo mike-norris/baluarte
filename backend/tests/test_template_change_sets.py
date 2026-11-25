@@ -20,7 +20,14 @@ from test_template_drift import (  # noqa: F401
 )
 
 from baluarte.auth.roles import Role
-from baluarte.db.models import AuditEvent, TemplateChangeSet
+from baluarte.db.models import (
+    AuditEvent,
+    ConfigurationTemplate,
+    GitLabInstance,
+    TemplateChangeSet,
+)
+from baluarte.policy.assignments import Target
+from baluarte.templates.store import assign
 
 pytestmark = pytest.mark.db
 
@@ -38,7 +45,7 @@ SETTINGS = {
 def create(engine: Engine, user_id: int, **body: Any) -> Any:
     payload = {"title": "Tighten platform", "selection": {"projects": [SITE, API, LEGACY]}}
     payload.update(body)
-    if "template" not in payload and "settings" not in payload:
+    if not {"template", "settings", "effective"} & payload.keys():
         payload["settings"] = SETTINGS
     return client(engine, user_id, Role.ANALYST).post("/api/v1/template-change-sets", json=payload)
 
@@ -133,6 +140,7 @@ def test_requests_are_validated(migrated_engine: Engine, world: int) -> None:
     ana = user(migrated_engine, "ana")
     assert create(migrated_engine, ana, selection={}).status_code == 422
     assert create(migrated_engine, ana, template="service@1", settings=SETTINGS).status_code == 422
+    assert create(migrated_engine, ana, effective=True, settings=SETTINGS).status_code == 422
     assert create(migrated_engine, ana, template="nope@1").status_code == 422
     bad = create(migrated_engine, ana, settings={"visibility": "secret"})
     assert bad.status_code == 422
@@ -362,3 +370,61 @@ def test_development_mode_relaxes_only_the_creators_own_approvals(
     assert approved.status_code == 200, approved.text
     assert approved.json()["state"] == "approved"
     assert approved.json()["development_decision"] is True
+
+
+def test_effective_settings_remediate_drift(migrated_engine: Engine, world: int) -> None:
+    ana, bea = user(migrated_engine, "ana"), user(migrated_engine, "bea")
+    with Session(migrated_engine) as db:
+        instance = db.get_one(GitLabInstance, world)
+        template = db.scalars(select(ConfigurationTemplate)).one()
+        site = Target(target_type="project", target_id=101, path=SITE, state="active")
+        assign(
+            db,
+            instance,
+            template,
+            site,
+            {"merge_requests": {"min_approvals": 3}},
+            "The site takes three approvals while it is migrated.",
+            "test",
+        )
+        db.commit()
+
+    response = create(
+        migrated_engine, ana, effective=True, selection={"drift": ["drift", "unknown"]}
+    )
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert (body["source"], body["source_kind"]) == (None, "effective")
+    assert body["document"]["source"]["effective"] is True
+    targets = by_path(body["document"])
+    # Only projects drifting or unknown are chosen; the aligned API project is left alone.
+    assert API not in targets
+    changes = {change["key"]: change for change in targets[SITE]["changes"]}
+    # The project's own override (3 approvals) is wanted, not the template's 2.
+    assert "merge_requests.min_approvals" in targets[SITE]["unchanged"]
+    assert (changes["visibility"]["before"], changes["visibility"]["after"]) == (
+        "public",
+        "private",
+    )
+    assert changes["visibility"]["decided_by"]["template"] == "service@1"
+    assert changes["visibility"]["decided_by"]["origin"] == "template"
+    assert changes["visibility"]["decided_by"]["assigned_to"] == SITE
+
+    # Changing what is in force makes the set stale.
+    with Session(migrated_engine) as db:
+        instance = db.get_one(GitLabInstance, world)
+        template = db.scalars(select(ConfigurationTemplate)).one()
+        assign(db, instance, template, site, None, None, "test")
+        db.commit()
+    stale = client(migrated_engine, bea, Role.ADMIN).post(
+        f"/api/v1/template-change-sets/{body['id']}/approve", json={"digest": body["digest"]}
+    )
+    assert stale.status_code == 409, stale.text
+
+
+def test_effective_settings_need_a_template_in_force(migrated_engine: Engine, fresh: int) -> None:
+    ana = user(migrated_engine, "ana")
+    response = create(migrated_engine, ana, effective=True, selection={"projects": [SITE]})
+    assert response.status_code == 422
+    assert "No template sets anything" in response.json()["detail"]

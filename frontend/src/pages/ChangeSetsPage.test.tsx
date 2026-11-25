@@ -41,6 +41,7 @@ const summary: ChangeSetSummary = {
   sensitive: true,
   approvals_needed: 2,
   source: "service@1",
+  source_kind: "template",
   created_by: { user_id: 1, display_name: "Ana" },
   created_at: created,
   expires_at: "2026-11-27T15:00:00Z",
@@ -68,6 +69,7 @@ const changeSet: ChangeSet = {
   items: [],
   irreversible: [],
   write_refusals: [],
+  verification: [],
   document: {
     format: 1,
     connection: { id: 1, provider: "gitlab" },
@@ -257,6 +259,61 @@ describe("ChangeSetsPage", () => {
     ).toBeInTheDocument();
   });
 
+  it("builds a change set from each project's templates to fix drift", async () => {
+    const user = userEvent.setup();
+    const [site] = changeSet.document.targets;
+    const [visibility] = site?.changes ?? [];
+    if (!site || !visibility) throw new Error("The fixture has a change to platform/site");
+    const effective: ChangeSet = {
+      ...changeSet,
+      source: null,
+      source_kind: "effective",
+      document: {
+        ...changeSet.document,
+        source: { template: null, template_id: null, settings: {}, effective: true },
+        targets: [
+          {
+            ...site,
+            changes: [
+              {
+                ...visibility,
+                decided_by: {
+                  template: "service@1",
+                  origin: "override",
+                  assignment_id: 4,
+                  assigned_to: "platform/site",
+                },
+              },
+            ],
+          },
+        ],
+      },
+    };
+    const calls = api(planner, {
+      [CREATE]: () => json(effective, 201),
+      "GET /api/v1/template-change-sets/7": () => json(effective),
+    });
+    renderPage();
+
+    const form = await screen.findByRole("form", { name: "Build a change set" });
+    await user.type(within(form).getByLabelText("Title"), "Fix drift");
+    await user.click(within(form).getByRole("checkbox", { name: "drift" }));
+    await user.click(
+      within(form).getByRole("radio", { name: "Each project's templates (fix drift)" }),
+    );
+    await user.click(within(form).getByRole("button", { name: "Build change set" }));
+    await screen.findByText("Built change set Tighten platform: 2 changes.");
+    expect(bodyOf(calls, CREATE)).toEqual({
+      title: "Fix drift",
+      selection: { drift: ["drift"] },
+      effective: true,
+      expires_in_hours: 72,
+    });
+    expect(await screen.findByText(/Source: each project's templates/)).toBeInTheDocument();
+    const table = screen.getByRole("table", { name: "Changes to platform/site" });
+    expect(within(table).getByText("service@1 (override) on platform/site")).toBeInTheDocument();
+  });
+
   it("hides building from those who cannot plan", async () => {
     api({ ...analyst, roles: ["auditor"], permissions: ["findings:read"] });
     renderPage();
@@ -322,6 +379,18 @@ describe("ChangeSetsPage", () => {
       applied_by: { user_id: 2, display_name: "Bea" },
       apply_started_at: created,
       items: [item],
+      verification: [
+        {
+          item_id: 1,
+          project_path: "platform/site",
+          setting: "visibility",
+          after: "private",
+          status: "awaiting_collection",
+          observed: "public",
+          observed_at: created,
+          reason: "No evidence has been collected since the write.",
+        },
+      ],
     };
     const calls = api(approver, {
       [LIST]: () => json({ change_sets: [{ ...summary, state: "approved" }] }),
@@ -356,6 +425,10 @@ describe("ChangeSetsPage", () => {
       name: "Each change and what happened to it",
     });
     expect(within(progress).getByText("Applied")).toBeInTheDocument();
+    const check = screen.getByRole("table", {
+      name: "Applied changes against collected evidence",
+    });
+    expect(within(check).getByText("Awaiting collection")).toBeInTheDocument();
     expect(screen.getByText(/1 of 1 projects included so far/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Roll back" }));

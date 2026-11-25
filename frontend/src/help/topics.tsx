@@ -783,13 +783,19 @@ export const helpTopics: readonly HelpTopic[] = [
           drifting row with a justification. Someone else approves or rejects it; it waives that
           drift until it ends, and the page flags those ending within 14 days.
         </p>
+        <p>
+          To put drift right, choose <strong>Propose a fix</strong> on a project&apos;s drift, or
+          for every drifting project under Alignment. It builds a change set from each
+          project&apos;s own templates and overrides, to review and approve like any other.
+        </p>
         <h2 className="h3">Change sets</h2>
         <p>
           In <Link to="/governance/change-sets">Governance, Change sets</Link>, choose projects by
           group, path, tag (such as owner or business unit), template, drift or findings, and the
-          values wanted (a template version or settings). Baluarte lists each project&apos;s current
-          value from evidence and the value after, and skips what it cannot tell, what an approved
-          exception allows, what a baseline would forbid and what the provider lacks.
+          values wanted (a template version, settings, or each project&apos;s own templates to fix
+          drift). Baluarte lists each project&apos;s current value from evidence and the value
+          after, and skips what it cannot tell, what an approved exception allows, what a baseline
+          would forbid and what the provider lacks.
         </p>
         <p>
           Someone other than its creator approves a set; one that weakens protection or removes
@@ -802,6 +808,11 @@ export const helpTopics: readonly HelpTopic[] = [
           value someone changed since is left alone, and each write is read back. A set can be
           continued, cancelled and rolled back; changes that cannot be fully undone are named before
           applying.
+        </p>
+        <p>
+          After each stage, discovery collects the projects again. The{" "}
+          <strong>evidence check</strong> then shows each applied change as verified, changed again,
+          awaiting collection, or cannot tell.
         </p>
       </>
     ),

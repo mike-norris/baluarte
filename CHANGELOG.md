@@ -9,6 +9,12 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Fixing template drift: a change set can take each project's own effective settings (its
+  templates and overrides) instead of one template or set of values, and each change names the
+  template and assignment that decided it. **Propose a fix** on a project's drift, or for all
+  drifting projects, builds one for review. Applied changes are checked again against the
+  evidence discovery collects after the run: verified, changed again, awaiting collection or
+  cannot tell.
 - Built-in TOTP when MFA is required and the identity provider does not prove it: an
   authenticator app (such as Authy) is set up at the first sign-in, with 10 one-time recovery
   codes. Codes are never accepted twice, and 5 wrong codes end the sign-in. Administrators

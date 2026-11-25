@@ -11,10 +11,10 @@ from urllib.parse import parse_qs, unquote
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, select, text, update
+from sqlalchemy import Engine, func, select, text, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
-from test_evaluation_access import GOOD_SETTINGS
+from test_evaluation_access import GOOD_SETTINGS, approval_rule
 from test_evaluation_project import fresh, instance_id  # noqa: F401
 from test_template_change_sets import API, SETTINGS, SITE
 from test_template_drift import (  # noqa: F401
@@ -28,7 +28,7 @@ from test_template_drift import (  # noqa: F401
 
 from baluarte.api.v1.gitlab import gitlab_transport
 from baluarte.auth.roles import Role
-from baluarte.db.models import AuditEvent, CollectionJob, TemplateChangeItem
+from baluarte.db.models import AuditEvent, CollectionJob, GitLabProject, TemplateChangeItem
 from baluarte.integrations.gitlab.jobs import DISCOVER_PROJECTS
 from baluarte.jobs.worker import Worker
 from baluarte.templates.execute import (
@@ -326,6 +326,27 @@ def test_stages_apply_verify_and_finish(
         kinds = db.scalars(select(CollectionJob.kind)).all()
     assert kinds.count(DISCOVER_PROJECTS) == 2
     assert admin.post(f"{path}/continue", json={}).status_code == 409
+
+    # The evidence check waits for collection after the writes, then follows it.
+    assert {v["status"] for v in done["verification"]} == {"awaiting_collection"}
+    for gitlab_id, required in ((100, 4), (101, 2)):
+        observe_approvals(
+            migrated_engine,
+            world,
+            gitlab_id,
+            {
+                "branch": "main",
+                "branch_protected": True,
+                "settings": GOOD_SETTINGS,
+                "rules": [approval_rule(required)],
+            },
+        )
+    with Session(migrated_engine) as db:  # discovery saw both projects again
+        db.execute(update(GitLabProject).values(last_seen_at=func.now()))
+        db.commit()
+    checked = {v["project_path"]: v for v in admin.get(path).json()["verification"]}
+    assert (checked[API]["status"], checked[API]["observed"]) == ("verified", 4)
+    assert (checked[SITE]["status"], checked[SITE]["observed"]) == ("drift", 2)
 
 
 def first_id(item: dict[str, Any]) -> int:

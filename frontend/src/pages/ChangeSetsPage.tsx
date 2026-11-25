@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useSearchParams } from "react-router";
 
 import {
   applyChangeSet,
@@ -22,6 +23,8 @@ import {
   type Selection,
   type SelectionPreview,
   type SkipCode,
+  type Verification,
+  type VerificationStatus,
   type WarningCode,
   type WriteRefusal,
 } from "../api/changeSets";
@@ -267,7 +270,7 @@ function BuildForm({
   );
   const [title, setTitle] = useState("");
   const [form, setForm] = useState<SelectionForm>(EMPTY);
-  const [kind, setKind] = useState<"template" | "settings">("template");
+  const [kind, setKind] = useState<"template" | "settings" | "effective">("template");
   const [template, setTemplate] = useState("");
   const [settings, setSettings] = useState("");
   const [hours, setHours] = useState("72");
@@ -335,7 +338,11 @@ function BuildForm({
         {
           title: title.trim(),
           selection,
-          ...(kind === "template" ? { template: template.trim() } : { settings: parsed }),
+          ...(kind === "template"
+            ? { template: template.trim() }
+            : kind === "settings"
+              ? { settings: parsed }
+              : { effective: true }),
           expires_in_hours: Number(hours),
         },
         token,
@@ -466,8 +473,24 @@ function BuildForm({
             />
             <span className="form-check-label">Settings</span>
           </label>
+          <label className="form-check">
+            <input
+              type="radio"
+              className="form-check-input"
+              checked={kind === "effective"}
+              onChange={() => {
+                setKind("effective");
+              }}
+            />
+            <span className="form-check-label">Each project&apos;s templates (fix drift)</span>
+          </label>
         </div>
-        {kind === "template" ? (
+        {kind === "effective" ? (
+          <p className="small text-secondary mb-0">
+            Each project gets the settings its own templates and overrides put in force, so drift is
+            put right without choosing one template for all.
+          </p>
+        ) : kind === "template" ? (
           <label className="form-label">
             Template version
             <input
@@ -522,7 +545,8 @@ function BuildForm({
             busy ||
             empty ||
             !title.trim() ||
-            (kind === "template" ? !template.trim() : !settings.trim())
+            (kind === "template" && !template.trim()) ||
+            (kind === "settings" && !settings.trim())
           }
         >
           {busy ? "Working…" : "Build change set"}
@@ -539,6 +563,19 @@ function TargetDetail({ target }: { target: ChangeTarget }) {
     { key: "setting", header: "Setting", rowHeader: true, render: (row) => settingName(row.key) },
     { key: "before", header: "Now", render: (row) => valueText(row.before) },
     { key: "after", header: "After", render: (row) => valueText(row.after) },
+    ...(target.changes.some((change) => change.decided_by)
+      ? [
+          {
+            key: "decided",
+            header: "Decided by",
+            priority: 3 as const,
+            render: (row: ChangeTarget["changes"][number]) =>
+              row.decided_by
+                ? `${row.decided_by.template}${row.decided_by.origin === "override" ? " (override)" : ""} on ${row.decided_by.assigned_to}`
+                : "",
+          },
+        ]
+      : []),
     {
       key: "warnings",
       header: "Warnings",
@@ -714,6 +751,68 @@ function Progress({ items }: { items: ChangeItem[] }) {
         columns={columns}
         rows={items}
         rowKey={(item) => item.id}
+      />
+    </div>
+  );
+}
+
+export const verificationLabels: Record<VerificationStatus, string> = {
+  verified: "Verified",
+  drift: "Changed again",
+  awaiting_collection: "Awaiting collection",
+  unknown: "Cannot tell",
+};
+
+const verificationTones: Record<VerificationStatus, Tone> = {
+  verified: "success",
+  drift: "danger",
+  awaiting_collection: "secondary",
+  unknown: "warning",
+};
+
+export function sourceText(set: ChangeSetSummary): string {
+  if (set.source_kind === "effective") return "each project's templates";
+  return set.source ?? "settings";
+}
+
+function EvidenceCheck({ checks }: { checks: Verification[] }) {
+  if (checks.length === 0) return null;
+  const columns: Column<Verification>[] = [
+    { key: "project", header: "Project", render: (row) => row.project_path, rowHeader: true },
+    { key: "setting", header: "Setting", render: (row) => settingName(row.setting) },
+    { key: "after", header: "Written", render: (row) => valueText(row.after) },
+    {
+      key: "status",
+      header: "Evidence",
+      render: (row) => (
+        <>
+          <Badge tone={verificationTones[row.status]}>{verificationLabels[row.status]}</Badge>
+          {row.status === "drift" && ` Now ${valueText(row.observed)}.`}
+        </>
+      ),
+    },
+    {
+      key: "reason",
+      header: "Details",
+      priority: 2,
+      render: (row) =>
+        row.observed_at
+          ? `${row.reason} Collected ${new Date(row.observed_at).toLocaleString()}.`
+          : row.reason,
+    },
+  ];
+  return (
+    <div>
+      <h3 className="h4">Evidence check</h3>
+      <p className="text-secondary">
+        Each applied change compared with what discovery collected after the write. Discovery runs
+        after every stage.
+      </p>
+      <ResponsiveTable
+        caption="Applied changes against collected evidence"
+        columns={columns}
+        rows={checks}
+        rowKey={(row) => row.item_id}
       />
     </div>
   );
@@ -935,7 +1034,7 @@ function ChangeSetDetail({
       </h2>
       <p>
         <Badge tone={stateTones[set.state]}>{set.state}</Badge>{" "}
-        {`${String(set.changes)} changes to ${String(set.targets)} projects, ${String(set.skipped)} skipped. Source: ${set.source ?? "settings"}. Until ${new Date(set.expires_at).toLocaleString()}.`}
+        {`${String(set.changes)} changes to ${String(set.targets)} projects, ${String(set.skipped)} skipped. Source: ${sourceText(set)}. Until ${new Date(set.expires_at).toLocaleString()}.`}
       </p>
       {set.sensitive && (
         <Notice tone="warning" title="Sensitive">
@@ -949,6 +1048,7 @@ function ChangeSetDetail({
       <Decisions set={set} onChanged={onChanged} />
       <Execution set={set} onChanged={onChanged} />
       <Progress items={set.items} />
+      <EvidenceCheck checks={set.verification} />
       {changing.map((target) => (
         <TargetDetail key={target.project.id} target={target} />
       ))}
@@ -1034,8 +1134,12 @@ function ChangeSetList({ version, onOpen }: { version: number; onOpen: (id: numb
 
 export function ChangeSetsPage() {
   const { canPlan } = usePermissions();
+  const [params] = useSearchParams();
   const [version, setVersion] = useState(0);
-  const [open, setOpen] = useState<number | null>(null);
+  const [open, setOpen] = useState<number | null>(() => {
+    const asked = Number(params.get("open"));
+    return Number.isInteger(asked) && asked > 0 ? asked : null;
+  });
   const [message, setMessage] = useState<string | null>(null);
   const status = useRef<HTMLParagraphElement>(null);
 
