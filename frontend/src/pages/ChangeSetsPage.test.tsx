@@ -43,6 +43,7 @@ const summary: ChangeSetSummary = {
   source: "service@1",
   source_kind: "template",
   created_by: { user_id: 1, display_name: "Ana" },
+  created_by_system: false,
   created_at: created,
   expires_at: "2026-11-27T15:00:00Z",
   first_approved_by: null,
@@ -312,6 +313,19 @@ describe("ChangeSetsPage", () => {
     expect(await screen.findByText(/Source: each project's templates/)).toBeInTheDocument();
     const table = screen.getByRole("table", { name: "Changes to platform/site" });
     expect(within(table).getByText("service@1 (override) on platform/site")).toBeInTheDocument();
+  });
+
+  it("says when Baluarte proposed a set itself, and lets anyone with approval decide it", async () => {
+    const automatic: ChangeSet = { ...changeSet, created_by: null, created_by_system: true };
+    api(approver, { "GET /api/v1/template-change-sets/7": () => json(automatic) });
+    renderPage();
+    const user = userEvent.setup();
+    const list = await screen.findByRole("table", { name: "Change sets" });
+    await user.click(within(list).getByRole("button", { name: "Open Tighten platform" }));
+    expect(
+      await screen.findByText(/Proposed automatically by Baluarte for drift/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Approve/ })).toBeInTheDocument();
   });
 
   it("hides building from those who cannot plan", async () => {

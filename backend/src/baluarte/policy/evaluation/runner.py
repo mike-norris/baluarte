@@ -49,6 +49,7 @@ from baluarte.policy.evaluation.project import (
 from baluarte.policy.evaluation.store import Tally, close_archived, close_excluded, store_project
 from baluarte.policy.exceptions import expire_due
 from baluarte.scope.exclusions import coverage
+from baluarte.templates import auto
 from baluarte.workspaces import configured_settings
 
 logger = logging.getLogger(__name__)
@@ -224,7 +225,32 @@ def evaluate_all(
     finish_run(engine, run_id, "succeeded", projects, tally)
     if before is not None:
         _notify_new_findings(engine, run_id, instance_id, before)
+    _propose_drift_fixes(engine, instance_id)
     return run_id, tally
+
+
+def _propose_drift_fixes(engine: Engine, instance_id: int) -> None:
+    """Propose a change set fixing drift of auto-remediated settings (M14.5). It is only
+    proposed, never approved or applied, and a failure never fails the evaluation."""
+    try:
+        with Session(engine) as db:
+            instance = db.get(GitLabInstance, instance_id)
+            if instance is None or instance.removed_at is not None:
+                return
+            proposed = auto.propose(db, instance)
+            db.commit()
+            if proposed is not None:
+                logger.info(
+                    "proposed change set %s fixing template drift of connection %s",
+                    proposed.id,
+                    instance_id,
+                )
+    except Exception as exc:
+        logger.warning(
+            "automatic remediation of connection %s not proposed (%s)",
+            instance_id,
+            type(exc).__name__,
+        )
 
 
 def _open_findings(db: Session, instance_id: int) -> set[int] | None:

@@ -246,6 +246,7 @@ function AssignForm({
   const [picked, setPicked] = useState<Picked | null>(null);
   const [form, setForm] = useState<OverrideForm>(NO_OVERRIDES);
   const [reason, setReason] = useState("");
+  const [autoRemediate, setAutoRemediate] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -267,6 +268,7 @@ function AssignForm({
           target_type: targetType,
           ...(targetType === "instance" || !picked ? {} : { target_id: picked.gitlabId }),
           ...(overrides ? { overrides, override_reason: reason.trim() } : {}),
+          ...(autoRemediate ? { auto_remediate: true } : {}),
         },
         token,
       );
@@ -275,6 +277,7 @@ function AssignForm({
       );
       setForm(NO_OVERRIDES);
       setReason("");
+      setAutoRemediate(false);
     } catch (error) {
       setFailure(failureText(error, "The template could not be assigned."));
     } finally {
@@ -393,6 +396,21 @@ function AssignForm({
             </label>
           )}
         </fieldset>
+        <label className="form-check">
+          <input
+            type="checkbox"
+            className="form-check-input"
+            checked={autoRemediate}
+            onChange={(event) => {
+              setAutoRemediate(event.target.checked);
+            }}
+          />
+          <span className="form-check-label">Propose fixes for drift automatically</span>
+          <span className="form-hint">
+            After each evaluation, Baluarte builds a change set fixing drift of what this assignment
+            decides. People still approve and apply it.
+          </span>
+        </label>
         {failure && (
           <p role="alert" className="text-danger-emphasis">
             {failure}
@@ -464,6 +482,17 @@ function Assignments({
           </>
         ) : (
           <span className="text-secondary">None</span>
+        ),
+    },
+    {
+      key: "auto",
+      header: "Drift fixes",
+      priority: 2,
+      render: (row) =>
+        row.auto_remediate ? (
+          "Proposed automatically"
+        ) : (
+          <span className="text-secondary">By hand</span>
         ),
     },
     ...(canWrite

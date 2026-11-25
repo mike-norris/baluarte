@@ -170,6 +170,8 @@ def assign(
     overrides: dict[str, Any] | None,
     reason: str | None,
     actor: str,
+    *,
+    auto_remediate: bool = False,
 ) -> Assigned:
     """Pin ``template`` to ``target``, replacing the target's template. The caller commits."""
     cleaned = validated_overrides(overrides, reason)
@@ -194,6 +196,7 @@ def assign(
         target_id=target.target_id,
         overrides=cleaned,
         override_reason=reason.strip() if cleaned is not None and reason else None,
+        auto_remediate=auto_remediate,
         assigned_by=actor,
     )
     db.add(assignment)
@@ -213,6 +216,7 @@ def assign(
             "target_path": target.path,
             "overrides": cleaned,
             "override_reason": assignment.override_reason,
+            "auto_remediate": auto_remediate,
             "replaced": (
                 {
                     "assignment_id": replaced.id,

@@ -605,6 +605,8 @@ class TemplateAssignment(Base):
     target_id: Mapped[int] = mapped_column(BigInteger)
     overrides: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
     override_reason: Mapped[str | None] = mapped_column(Text)
+    # Propose (never apply) a change set fixing drift of the settings this assignment decides.
+    auto_remediate: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     assigned_by: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = utc_now()
 
@@ -796,6 +798,13 @@ class TemplateChangeSet(Base):
         CheckConstraint(
             "(state IN ('withdrawn', 'expired')) = (ended_at IS NOT NULL)", name="ended_has_time"
         ),
+        CheckConstraint(
+            "(created_by_user_id IS NULL) = created_by_system", name="system_or_user_creator"
+        ),
+        CheckConstraint(
+            "NOT (created_by_system AND development_decision)",
+            name="system_sets_not_development",
+        ),
     )
 
     id: Mapped[int] = pk()
@@ -810,7 +819,9 @@ class TemplateChangeSet(Base):
     changes: Mapped[int] = mapped_column(Integer)
     skipped: Mapped[int] = mapped_column(Integer)
     sensitive: Mapped[bool] = mapped_column(Boolean)
-    created_by_user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id"))
+    # None for a set Baluarte proposed itself (automatic remediation, created_by_system).
+    created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))
+    created_by_system: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     created_at: Mapped[datetime] = utc_now()
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     first_approved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("app_user.id"))

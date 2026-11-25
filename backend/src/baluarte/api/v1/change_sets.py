@@ -268,7 +268,9 @@ class ChangeSetSummary(BaseModel):
     source: str | None
     # template, settings, or effective (each project's own effective settings).
     source_kind: Literal["template", "settings", "effective"]
-    created_by: UserRef
+    # None, with created_by_system, for a set Baluarte proposed itself (automatic remediation).
+    created_by: UserRef | None
+    created_by_system: bool
     created_at: datetime
     expires_at: datetime
     first_approved_by: UserRef | None
@@ -399,6 +401,7 @@ def _summaries(
                 "source": row.document["source"]["template"],
                 "source_kind": _source_kind(row.document["source"]),
                 "created_by": user(row.created_by_user_id),
+                "created_by_system": row.created_by_system,
                 "created_at": row.created_at,
                 "expires_at": row.expires_at,
                 "first_approved_by": user(row.first_approved_by_user_id),

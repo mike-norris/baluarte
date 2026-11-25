@@ -100,6 +100,8 @@ class Source:
     template_id: int | None
     # Each project's own effective settings instead of one set of values (remediating drift).
     effective: bool = False
+    # With ``effective``: only settings these assignments decide (automatic remediation).
+    assignments: tuple[int, ...] = ()
 
     def document(self) -> dict[str, Any]:
         found: dict[str, Any] = {
@@ -109,6 +111,8 @@ class Source:
         }
         if self.effective:
             found["effective"] = True
+        if self.assignments:
+            found["assignments"] = list(self.assignments)
         return found
 
 
@@ -147,7 +151,9 @@ def source_of(
 def _stored_source(db: Session, document: Mapping[str, Any]) -> Source:
     source = document["source"]
     if source.get("effective"):
-        return EFFECTIVE
+        return Source(
+            {}, None, None, effective=True, assignments=tuple(source.get("assignments", ()))
+        )
     if source["template_id"] is not None:
         row = db.get(ConfigurationTemplate, source["template_id"])
         if row is not None:  # versions are immutable and never deleted
@@ -286,10 +292,14 @@ def _target(
     wanted_values: Mapping[str, Any] = source.settings
     decided: dict[str, dict[str, Any]] = {}
     if source.effective:
-        effective = effective_settings(db, instance, project)
-        if not effective.settings:
+        in_force = [
+            setting
+            for setting in effective_settings(db, instance, project).settings
+            if not source.assignments or setting.decided_by.assignment_id in source.assignments
+        ]
+        if not in_force:
             return None
-        wanted_values = {setting.key: setting.value for setting in effective.settings}
+        wanted_values = {setting.key: setting.value for setting in in_force}
         decided = {
             setting.key: {
                 "template": f"{setting.decided_by.template}@{setting.decided_by.version}",
@@ -297,7 +307,7 @@ def _target(
                 "assignment_id": setting.decided_by.assignment_id,
                 "assigned_to": setting.decided_by.assigned_to.path,
             }
-            for setting in effective.settings
+            for setting in in_force
         }
     ancestry = resolve_project(db, instance, project).ancestry
     judge = judge_for(db, instance, project, collections, capabilities, ancestry)
@@ -503,9 +513,10 @@ def create(
     selection: Selection,
     source: Source,
     hours: int,
-    user_id: int,
+    user_id: int | None,
     actor: str,
 ) -> TemplateChangeSet:
+    """Build and store a proposed set. ``user_id`` is None when Baluarte proposes it itself."""
     if not 1 <= hours <= MAX_CHANGE_SET_HOURS:
         raise ChangeSetRefused(f"A change set lasts 1 to {MAX_CHANGE_SET_HOURS} hours")
     expire_due(db)
@@ -528,6 +539,7 @@ def create(
         skipped=counted.skipped,
         sensitive=counted.sensitive,
         created_by_user_id=user_id,
+        created_by_system=user_id is None,
         created_at=now,
         expires_at=now + timedelta(hours=hours),
     )

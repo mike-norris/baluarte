@@ -123,7 +123,9 @@ export interface ChangeSetSummary {
   approvals_needed: number;
   source: string | null;
   source_kind: "template" | "settings" | "effective";
-  created_by: UserRef;
+  /** Null when Baluarte proposed the set itself (created_by_system). */
+  created_by: UserRef | null;
+  created_by_system: boolean;
   created_at: string;
   expires_at: string;
   first_approved_by: UserRef | null;

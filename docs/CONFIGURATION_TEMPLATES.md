@@ -10,7 +10,7 @@ Roadmap milestone M14 ([ROADMAP.md](ROADMAP.md#m14--configuration-templates-and-
 | M14.2 Drift | Effective settings compared with collected evidence per project and setting: aligned, drift, unknown, unsupported or excepted; exceptions per setting with expiry warnings; alignment coverage by template, group and connection (migration `0039`) | Done |
 | M14.3 Change sets | Target selection by hierarchy, owner, provider, tags, business unit, policy and compliance status, and saved collections; a change set with the exact targets and before and after values from evidence; checks for permissions, capabilities, conflicting baselines and exceptions; warnings for changes that weaken protection, remove access or disrupt work; approval of the set, with a second approval for sensitive changes (migration `0040`) | Done |
 | M14.4 Execution | Staged rollout to a first set of targets; background jobs with per-target progress, rate-limit handling, retries, cancellation and resumption; each setting read again before it is changed, concurrent changes flagged, previous values kept, rollback where the provider allows it and irreversible steps disclosed; behind its own switch and write token, off by default (migration `0041`) | Done |
-| M14.5 Alignment and tags | Manual remediation of drift as a change set; settings verified against collected evidence after each change; automatic remediation per template assignment, off by default; Baluarte tags synchronized to GitLab topics or GitHub topics only when asked | Drift fixes and verification done; automatic remediation and tags planned |
+| M14.5 Alignment and tags | Manual remediation of drift as a change set; settings verified against collected evidence after each change; automatic remediation per template assignment, off by default; Baluarte tags synchronized to GitLab topics or GitHub topics only when asked | Drift fixes, verification and automatic proposals done (migration `0046`); tags planned |
 | M14.6 Records and acceptance | Requester, approver, executor, rationale, template version, scope, timestamps, before and after values and per-target results recorded, linked to controls and in exports; the bulk governance workflow end to end, with a partial failure and an exception that stay visible | Planned |
 
 ## Template format
@@ -63,6 +63,7 @@ Templates are stored like baselines: each save of a changed document under the s
 - **Overrides.** An assignment may override settings for its target, with a reason of 20 to 2,000 characters. Overrides use the template format's `settings` and are validated the same way.
 - **Effective settings.** A project's path is walked nearest first, as for baselines ([POLICY_ENGINE.md](POLICY_ENGINE.md#resolution)): the project, its groups, the connection. For each setting (each field of `merge_requests` separately) the nearest assignment that sets it decides, through its overrides or its template chain (the child before its parent). Each effective setting names the value, the template and version, the assignment and target, and whether it came from an override, `extends` or the template itself; the values it replaced are listed beneath it.
 - **Incomplete ancestry** is reported as for baselines: settings assigned above a gap may be missing.
+- **Automatic proposals.** An assignment may set `auto_remediate`, off by default: Baluarte then proposes fixes for drift of the settings it decides ([Automatic proposals](#automatic-proposals)).
 - **Permissions.** `findings:read` reads templates and effective settings; `policy:write` saves, assigns and unassigns. Templates do not yet follow the governance review setting; change sets are where review applies.
 
 ## Drift
@@ -118,6 +119,14 @@ Each change carries warnings: **weakens protection** (wider visibility, fewer ap
 
 **Approval.** A set is `proposed` until someone other than its creator approves or rejects it (rejecting needs a note). A **sensitive** set, one with any change that weakens protection or removes access, needs two approvals by two different people, neither the creator; after the first it stays `proposed`. Approval names the set's digest and is refused when the set is stale: built again from today's evidence it no longer gives the same targets, values and skips. The creator may withdraw a proposed set; proposed and approved sets expire after their window (at most 7 days, 72 hours by default). The document, digest and decisions never change, rows are never deleted (a database trigger enforces this), and every step is audited (`template_change_set.created`, `.first_approval`, `.approved`, `.rejected`, `.withdrawn`, `.expired`; `saved_selection.created`, `.deleted`). In development mode the creator may give the approvals, recorded as `development_decision`.
 
+## Automatic proposals
+
+Automatic remediation **proposes only**. After every successful evaluation, when at least one assignment of the connection has `auto_remediate`, Baluarte builds a change set exactly as **Propose a fix** would: the drifting projects (`drift: [drift]`), each project's effective settings, but only the settings an auto-remediated assignment decides. The set is created by Baluarte itself (`created_by_system`, no creating user, audited as `system:template-auto-remediation`). It is then reviewed like any other: anyone with `changes:approve` approves or rejects it, and a sensitive set still needs two different people. Nothing is approved, and nothing is applied, automatically. Applying still needs the switch and the template write token.
+
+- **No repeats.** Nothing is proposed while an earlier automatic set of the connection is open (proposed, approved, applying, paused or rolling back). A set identical to one people rejected (same targets, values and skips) is not proposed again; a different drift is.
+- **Too many projects.** When more than 500 projects drift, nothing is proposed, and `template_change_set.auto_skipped` is audited with the reason.
+- **Failures** are logged and never fail the evaluation.
+
 ## Execution
 
 Applying an approved change set writes to GitLab. It is refused unless **all** of these hold:
@@ -149,7 +158,7 @@ Applying, continuing, cancelling and rolling back need `changes:approve`.
 | `GET /api/v1/templates/{name}/versions/{version}` | `findings:read` | The source, its digest, its parsed settings and its resolved chain |
 | `POST /api/v1/templates` | `policy:write` + CSRF | Body `{source_yaml}`. 201 with the new version, 200 when identical to the latest; 422 with the problems when invalid |
 | `GET /api/v1/template-assignments` | `findings:read` | Every assignment of the workspace, with its target's state |
-| `POST /api/v1/template-assignments` | `policy:write` + CSRF | Body `{connection_id?, name, version, target_type, target_id?, overrides?, override_reason?}`; without `connection_id`, the connection the request works on. 201; 404 for an unknown version or target; 409 for a target that is not active |
+| `POST /api/v1/template-assignments` | `policy:write` + CSRF | Body `{connection_id?, name, version, target_type, target_id?, overrides?, override_reason?, auto_remediate?}`; without `connection_id`, the connection the request works on. 201; 404 for an unknown version or target; 409 for a target that is not active |
 | `DELETE /api/v1/template-assignments/{id}` | `policy:write` + CSRF | 204 |
 | `GET /api/v1/templates/settings` | `findings:read` | Each setting's support on GitLab and GitHub, with why |
 | `GET /api/v1/templates/drift/{project_id}` | `findings:read` | Each effective setting's status, reason, evidence time, source and exception |

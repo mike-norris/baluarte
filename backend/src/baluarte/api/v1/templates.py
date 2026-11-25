@@ -225,6 +225,13 @@ class AssignmentIn(BaseModel):
     ] = None
     overrides: dict[str, Any] | None = None
     override_reason: Annotated[str, Field(max_length=2000)] | None = None
+    auto_remediate: Annotated[
+        bool,
+        Field(
+            description="Propose (never apply) a change set fixing drift of the settings this "
+            "assignment decides, after each evaluation"
+        ),
+    ] = False
 
     @model_validator(mode="after")
     def _target(self) -> "AssignmentIn":
@@ -241,6 +248,7 @@ class AssignmentOut(BaseModel):
     target: Target
     overrides: dict[str, Any] | None
     override_reason: str | None
+    auto_remediate: bool
     assigned_by: str
     created_at: datetime
 
@@ -283,6 +291,7 @@ def _assignment_out(db: Session, row: TemplateAssignment) -> AssignmentOut:
         ),
         overrides=row.overrides,
         override_reason=row.override_reason,
+        auto_remediate=row.auto_remediate,
         assigned_by=row.assigned_by,
         created_at=row.created_at,
     )
@@ -305,7 +314,9 @@ def list_assignments(_: Reader, db: Annotated[Session, Depends(database)]) -> As
     status_code=status.HTTP_201_CREATED,
     summary="Assign a template version to a connection, group or project",
     description="Replaces the target's template. Overrides use the template's `settings` "
-    "format and need `override_reason` (20 to 2,000 characters). Requires the `X-CSRF-Token` "
+    "format and need `override_reason` (20 to 2,000 characters). With `auto_remediate`, "
+    "Baluarte proposes change sets fixing drift of what the assignment decides; people still "
+    "approve and apply them. Requires the `X-CSRF-Token` "
     "header. Audited.",
     responses={
         404: {"description": "No such connection, template version or target"},
@@ -328,7 +339,14 @@ def create_assignment(
         raise HTTPException(status.HTTP_409_CONFLICT, f"The target is {target.state}")
     try:
         assigned = assign(
-            db, instance, template, target, body.overrides, body.override_reason, principal.actor
+            db,
+            instance,
+            template,
+            target,
+            body.overrides,
+            body.override_reason,
+            principal.actor,
+            auto_remediate=body.auto_remediate,
         )
     except TemplateInvalid as invalid:
         raise _invalid(invalid) from None

@@ -631,7 +631,7 @@ function Decisions({ set, onChanged }: { set: ChangeSet; onChanged: (text: strin
   const [note, setNote] = useState("");
   const [failure, setFailure] = useState<string | null>(null);
   if (set.state !== "proposed") return null;
-  const own = userId === set.created_by.user_id;
+  const own = set.created_by !== null && userId === set.created_by.user_id;
 
   async function act(action: "approve" | "reject" | "withdraw") {
     if (!token) return;
@@ -1034,7 +1034,7 @@ function ChangeSetDetail({
       </h2>
       <p>
         <Badge tone={stateTones[set.state]}>{set.state}</Badge>{" "}
-        {`${String(set.changes)} changes to ${String(set.targets)} projects, ${String(set.skipped)} skipped. Source: ${sourceText(set)}. Until ${new Date(set.expires_at).toLocaleString()}.`}
+        {`${String(set.changes)} changes to ${String(set.targets)} projects, ${String(set.skipped)} skipped. Source: ${sourceText(set)}.${set.created_by_system ? " Proposed automatically by Baluarte for drift; it applies nothing until people approve and apply it." : ""} Until ${new Date(set.expires_at).toLocaleString()}.`}
       </p>
       {set.sensitive && (
         <Notice tone="warning" title="Sensitive">
