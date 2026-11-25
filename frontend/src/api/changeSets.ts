@@ -38,6 +38,13 @@ export interface Change {
   after: unknown;
   observed_at: string | null;
   warnings: { code: WarningCode; text: string }[];
+  /** For a set built from each project's effective settings: what decided the wanted value. */
+  decided_by?: {
+    template: string;
+    origin: "override" | "template" | "extends";
+    assignment_id: number;
+    assigned_to: string;
+  };
 }
 
 export type SkipCode =
@@ -58,6 +65,7 @@ export interface ChangeSetDocument {
     template: string | null;
     template_id: number | null;
     settings: Record<string, unknown>;
+    effective?: boolean;
   };
   targets: ChangeTarget[];
 }
@@ -114,6 +122,7 @@ export interface ChangeSetSummary {
   sensitive: boolean;
   approvals_needed: number;
   source: string | null;
+  source_kind: "template" | "settings" | "effective";
   created_by: UserRef;
   created_at: string;
   expires_at: string;
@@ -137,11 +146,26 @@ export interface ChangeSetSummary {
   halt_reason: string | null;
 }
 
+export type VerificationStatus = "verified" | "drift" | "awaiting_collection" | "unknown";
+
+/** An applied change checked against evidence collected since the write. */
+export interface Verification {
+  item_id: number;
+  project_path: string;
+  setting: string;
+  after: unknown;
+  status: VerificationStatus;
+  observed: unknown;
+  observed_at: string | null;
+  reason: string;
+}
+
 export interface ChangeSet extends ChangeSetSummary {
   document: ChangeSetDocument;
   items: ChangeItem[];
   irreversible: { project: string; setting: string; why: string }[];
   write_refusals: WriteRefusal[];
+  verification: Verification[];
 }
 
 export interface ChangeSetRequest {
@@ -149,6 +173,8 @@ export interface ChangeSetRequest {
   selection: Selection;
   template?: string;
   settings?: Record<string, unknown>;
+  /** Each project's own effective settings: remediates drift. */
+  effective?: boolean;
   expires_in_hours: number;
 }
 

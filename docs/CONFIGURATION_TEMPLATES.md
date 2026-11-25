@@ -10,7 +10,7 @@ Roadmap milestone M14 ([ROADMAP.md](ROADMAP.md#m14--configuration-templates-and-
 | M14.2 Drift | Effective settings compared with collected evidence per project and setting: aligned, drift, unknown, unsupported or excepted; exceptions per setting with expiry warnings; alignment coverage by template, group and connection (migration `0039`) | Done |
 | M14.3 Change sets | Target selection by hierarchy, owner, provider, tags, business unit, policy and compliance status, and saved collections; a change set with the exact targets and before and after values from evidence; checks for permissions, capabilities, conflicting baselines and exceptions; warnings for changes that weaken protection, remove access or disrupt work; approval of the set, with a second approval for sensitive changes (migration `0040`) | Done |
 | M14.4 Execution | Staged rollout to a first set of targets; background jobs with per-target progress, rate-limit handling, retries, cancellation and resumption; each setting read again before it is changed, concurrent changes flagged, previous values kept, rollback where the provider allows it and irreversible steps disclosed; behind its own switch and write token, off by default (migration `0041`) | Done |
-| M14.5 Alignment and tags | Manual remediation of drift as a change set; automatic remediation per template assignment, off by default; settings verified after each change; Baluarte tags synchronized to GitLab topics or GitHub topics only when asked | Planned |
+| M14.5 Alignment and tags | Manual remediation of drift as a change set; settings verified against collected evidence after each change; automatic remediation per template assignment, off by default; Baluarte tags synchronized to GitLab topics or GitHub topics only when asked | Drift fixes and verification done; automatic remediation and tags planned |
 | M14.6 Records and acceptance | Requester, approver, executor, rationale, template version, scope, timestamps, before and after values and per-target results recorded, linked to controls and in exports; the bulk governance workflow end to end, with a partial failure and an exception that stay visible | Planned |
 
 ## Template format
@@ -87,7 +87,7 @@ A template exception lets one project differ from one setting until it ends (at 
 
 ## Change sets
 
-A change set lists the exact changes a template version, or settings written for the set, would make to chosen projects. It is built only from stored evidence; building and deciding it read nothing from and write nothing to the provider. An approved set is applied as described in [Execution](#execution).
+A change set lists the exact changes a template version, settings written for the set, or each project's own effective settings would make to chosen projects. It is built only from stored evidence; building and deciding it read nothing from and write nothing to the provider. An approved set is applied as described in [Execution](#execution).
 
 **Choosing projects.** A selection gives any of these criteria, and a project must meet every one given. Only active, monitored, unarchived projects of the current connection are ever chosen, at most 500 per set.
 
@@ -101,6 +101,8 @@ A change set lists the exact changes a template version, or settings written for
 | `findings`, `policy` | Projects with (`open`) or without (`none`) open baseline findings, optionally of one baseline |
 
 The provider is the connection's. A selection can be previewed and saved under a name for reuse; a change set keeps the criteria it was built from.
+
+**Fixing drift.** With `effective` as the source, each project gets the settings its own assignments put in force ([Assignment and precedence](#assignment-and-precedence)), so one set can put drift right across projects governed by different templates and overrides. Each change names what decided its value (`decided_by`: the template version, whether it came from an override, the template or `extends`, the assignment and its target). Projects where no template sets anything are left out. Changing an assignment after the set was built changes the wanted values, so approval is then refused as stale. **Propose a fix** on a project's drift, or for every drifting project under Alignment, builds such a set (selection `projects` or `drift: [drift]`).
 
 **What a set records.** For each project and setting, the current value read from evidence through the same evaluators as drift (`before`), the wanted value (`after`) and the time of the evidence; or that it is unchanged; or a skip with its reason:
 
@@ -137,6 +139,8 @@ Applying, continuing, cancelling and rolling back need `changes:approve`.
 
 **Rolling back** a paused, cancelled or finished set undoes its applied changes in reverse order, each only while GitLab still shows the value written (otherwise `not_rolled_back`), and verifies each by reading back. Project discovery is queued after every run so drift and findings follow from evidence. Every write, every change's outcome and every run are audited (`template_change_set.apply_started`, `.write`, `.item`, `.paused`, `.continued`, `.finished`, `.halted`, `.cancelled`, `.rollback_started`, `.item_rolled_back`, `.rolled_back`). Change items, like the set, are never edited or deleted (a database trigger enforces this).
 
+**Evidence check.** Reading a setting back after writing it shows the write took; the discovery queued after every run gives a second, independent check from the evidence drift and findings rest on. Each applied change that was not rolled back is shown as `verified` (evidence collected after the write shows the value written), `drift` (it shows another value: changed again, or the write did not hold), `awaiting_collection` (nothing collected since the write) or `unknown` (the evidence cannot tell). It is computed on request from stored evidence (`verification` on a change set).
+
 ## API
 
 | Endpoint | Permission | Behaviour |
@@ -157,8 +161,8 @@ Applying, continuing, cancelling and rolling back need `changes:approve`.
 | `GET /api/v1/template-selections` | `findings:read` | Saved selections of the current connection |
 | `POST /api/v1/template-selections`, `DELETE /api/v1/template-selections/{id}` | `changes:plan` + CSRF | Body `{name, selection}`. 409 when the name is taken |
 | `GET /api/v1/template-change-sets` | `findings:read` | Newest first, at most 200; `state` filter |
-| `GET /api/v1/template-change-sets/{id}` | `findings:read` | A change set with its document |
-| `POST /api/v1/template-change-sets` | `changes:plan` + CSRF | Body `{title, selection, template \| settings, expires_in_hours}`. 201; 422 for an empty selection, no matching project, more than 500, unknown template, invalid settings or nothing to change |
+| `GET /api/v1/template-change-sets/{id}` | `findings:read` | A change set with its document, each change's progress and the evidence check of applied changes |
+| `POST /api/v1/template-change-sets` | `changes:plan` + CSRF | Body `{title, selection, template \| settings \| effective, expires_in_hours}`, exactly one source. 201; 422 for an empty selection, no matching project, more than 500, unknown template, invalid settings, no template in force (`effective`) or nothing to change |
 | `POST /api/v1/template-change-sets/{id}/approve` | `changes:approve` + CSRF | Body `{digest, note?}`. 403 for the creator or a repeated approver; 409 when not proposed, the digest differs or the set is stale |
 | `POST /api/v1/template-change-sets/{id}/reject` | `changes:approve` + CSRF | Body `{note}` |
 | `POST /api/v1/template-change-sets/{id}/withdraw` | `changes:plan` + CSRF | Only the creator |

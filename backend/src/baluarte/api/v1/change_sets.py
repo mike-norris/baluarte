@@ -45,6 +45,7 @@ from baluarte.templates.change_sets import (
 from baluarte.templates.drift import ProjectRef
 from baluarte.templates.loader import TemplateInvalid
 from baluarte.templates.selection import Selection, select_projects
+from baluarte.templates.verify import verify
 from baluarte.workspaces import current_connection, settings_of, workspace_of
 
 router = APIRouter(tags=["templates"])
@@ -234,6 +235,13 @@ class ChangeSetIn(BaseModel):
         dict[str, Any] | None,
         Field(description="Settings in the template `settings` format, instead of a template"),
     ] = None
+    effective: Annotated[
+        bool,
+        Field(
+            description="Each project's own effective settings, instead of a template or "
+            "settings: remediates drift"
+        ),
+    ] = False
     expires_in_hours: Annotated[int, Field(ge=1, le=change_sets.MAX_CHANGE_SET_HOURS)] = (
         DEFAULT_HOURS
     )
@@ -258,6 +266,8 @@ class ChangeSetSummary(BaseModel):
     # Approvals still needed while proposed: 2 or 1 for a sensitive set, else 1; 0 otherwise.
     approvals_needed: int
     source: str | None
+    # template, settings, or effective (each project's own effective settings).
+    source_kind: Literal["template", "settings", "effective"]
     created_by: UserRef
     created_at: datetime
     expires_at: datetime
@@ -309,6 +319,17 @@ class Irreversible(BaseModel):
     why: str
 
 
+class VerificationOut(BaseModel):
+    item_id: int
+    project_path: str
+    setting: str
+    after: Any
+    status: Literal["verified", "drift", "awaiting_collection", "unknown"]
+    observed: Any
+    observed_at: datetime | None
+    reason: str
+
+
 class ChangeSetOut(ChangeSetSummary):
     document: dict[str, Any]
     # Progress per change, once applying started.
@@ -318,10 +339,18 @@ class ChangeSetOut(ChangeSetSummary):
     # Why this deployment cannot write this set now (writes_disabled, token_missing,
     # not_primary, busy); empty when it can.
     write_refusals: list[str]
+    # Each applied change that was not rolled back, checked against evidence collected since.
+    verification: list[VerificationOut]
 
 
 class ChangeSetList(BaseModel):
     change_sets: list[ChangeSetSummary]
+
+
+def _source_kind(source: dict[str, Any]) -> Literal["template", "settings", "effective"]:
+    if source.get("effective"):
+        return "effective"
+    return "template" if source["template"] is not None else "settings"
 
 
 def _summaries(
@@ -368,6 +397,7 @@ def _summaries(
                 "sensitive": row.sensitive,
                 "approvals_needed": needed,
                 "source": row.document["source"]["template"],
+                "source_kind": _source_kind(row.document["source"]),
                 "created_by": user(row.created_by_user_id),
                 "created_at": row.created_at,
                 "expires_at": row.expires_at,
@@ -397,17 +427,22 @@ def _summaries(
 def _out(db: Session, row: TemplateChangeSet) -> ChangeSetOut:
     state = change_sets.current_state(db, row)
     summary = _summaries(db, [row], {row.id: state})[0]
-    items = db.scalars(
-        select(TemplateChangeItem)
-        .where(TemplateChangeItem.change_set_id == row.id)
-        .order_by(TemplateChangeItem.position)
+    items = list(
+        db.scalars(
+            select(TemplateChangeItem)
+            .where(TemplateChangeItem.change_set_id == row.id)
+            .order_by(TemplateChangeItem.position)
+        )
     )
+    instance = db.get(GitLabInstance, row.instance_id)
+    checked = verify(db, instance, items) if instance is not None else []
     return ChangeSetOut(
         **summary,
         document=row.document,
         items=[ChangeItemOut.model_validate(item, from_attributes=True) for item in items],
         irreversible=[Irreversible(**found) for found in execute.irreversible_changes(row)],
         write_refusals=execute.write_refusals(db, row),
+        verification=[VerificationOut(**vars(found)) for found in checked],
     )
 
 
@@ -457,7 +492,8 @@ def read_change_set(
     status_code=status.HTTP_201_CREATED,
     summary="Build a change set from stored evidence",
     description="For the current connection: the selection's projects, each setting of the "
-    "template version or the settings given, with before and after values, skips and warnings. "
+    "template version, the settings given, or each project's own effective settings "
+    "(`effective`, which remediates drift), with before and after values, skips and warnings. "
     "Nothing is changed on the provider. Requires the `X-CSRF-Token` header. Audited.",
     responses={
         404: {"description": "No connection is configured"},
@@ -472,7 +508,7 @@ def create_change_set(
 ) -> ChangeSetOut:
     instance = _connection(db)
     try:
-        source = source_of(db, body.template, body.settings)
+        source = source_of(db, body.template, body.settings, body.effective)
         row = change_sets.create(
             db,
             instance,

@@ -1,5 +1,7 @@
 import { useId, useState, type FormEvent } from "react";
+import { useNavigate } from "react-router";
 
+import { createChangeSet, type Selection } from "../api/changeSets";
 import {
   decideTemplateException,
   getAlignment,
@@ -30,6 +32,64 @@ import {
 } from "./format";
 
 const DEFAULT_DAYS = 30;
+
+/** Builds a change set from each chosen project's own templates and opens it for review. */
+export function FixDriftButton({
+  title,
+  selection,
+  label,
+}: {
+  title: string;
+  selection: Selection;
+  label: string;
+}) {
+  const { token, canPlan } = useCsrf();
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  if (!canPlan) return null;
+
+  async function propose() {
+    if (!token) return;
+    setBusy(true);
+    setFailure(null);
+    try {
+      const created = await createChangeSet(
+        { title, selection, effective: true, expires_in_hours: 72 },
+        token,
+      );
+      void navigate(`/governance/change-sets?open=${String(created.id)}`);
+    } catch (error) {
+      setFailure(failureText(error, "The change set could not be built."));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="stack-1">
+      <div>
+        <button
+          type="button"
+          className="btn btn-sm"
+          disabled={busy}
+          onClick={() => {
+            void propose();
+          }}
+        >
+          {busy ? "Building…" : label}
+        </button>
+      </div>
+      <p className="small text-secondary mb-0">
+        Builds a change set to review and approve; nothing changes until it is applied.
+      </p>
+      {failure && (
+        <p role="alert" className="text-danger-emphasis mb-0">
+          {failure}
+        </p>
+      )}
+    </div>
+  );
+}
 
 function StatusBadge({ status }: { status: DriftStatus }) {
   return <Badge tone={driftTones[status]}>{driftLabels[status]}</Badge>;
@@ -132,6 +192,13 @@ export function AlignmentPanel({
               />
             </div>
           </div>
+          {loaded.data.projects_drifting > 0 && (
+            <FixDriftButton
+              title="Fix template drift"
+              selection={{ drift: ["drift"] }}
+              label="Propose a fix for drifting projects"
+            />
+          )}
           {loaded.data.attention.length > 0 && (
             <ResponsiveTable
               columns={[
@@ -355,13 +422,22 @@ export function DriftTable({
     },
   ];
   return (
-    <ResponsiveTable
-      columns={columns}
-      rows={drift.settings}
-      rowKey={(row) => row.key}
-      caption={`Drift of ${drift.project.path}`}
-      showCaption
-    />
+    <div className="stack-2">
+      <ResponsiveTable
+        columns={columns}
+        rows={drift.settings}
+        rowKey={(row) => row.key}
+        caption={`Drift of ${drift.project.path}`}
+        showCaption
+      />
+      {drift.settings.some((row) => row.status === "drift") && (
+        <FixDriftButton
+          title={`Fix template drift in ${drift.project.path}`}
+          selection={{ projects: [drift.project.path] }}
+          label={`Propose a fix for ${drift.project.path}`}
+        />
+      )}
+    </div>
   );
 }
 

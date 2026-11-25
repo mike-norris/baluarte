@@ -2,9 +2,10 @@
 (roadmap M14.3, docs/CONFIGURATION_TEMPLATES.md#change-sets).
 
 A change set is built from stored evidence, never from a call to the provider: nothing here
-uses an HTTP client. Its source is a template version (its settings with what it inherits) or
-settings written for the set. For every selected project (``baluarte.templates.selection``) and
-setting it records one of:
+uses an HTTP client. Its source is a template version (its settings with what it inherits),
+settings written for the set, or each project's own effective settings, which remediates drift
+(roadmap M14.5): every change then names the template and assignment that decided it. For every
+selected project (``baluarte.templates.selection``) and setting it records one of:
 
 - a **change**: the value the evidence shows (``before``) and the value wanted (``after``),
   with warnings when the change weakens protection, removes access or disrupts work;
@@ -56,6 +57,7 @@ from baluarte.settings import development_mode, own_decision_refused
 from baluarte.templates.drift import judge_for
 from baluarte.templates.exceptions import open_for_project
 from baluarte.templates.loader import parse_settings
+from baluarte.templates.resolve import effective_settings
 from baluarte.templates.schema import SUPPORT, flatten, split_extends
 from baluarte.templates.selection import Selection, select_projects
 from baluarte.templates.store import chain_settings, find_version
@@ -96,19 +98,37 @@ class Source:
     settings: dict[str, Any]
     template: str | None
     template_id: int | None
+    # Each project's own effective settings instead of one set of values (remediating drift).
+    effective: bool = False
 
     def document(self) -> dict[str, Any]:
-        return {
+        found: dict[str, Any] = {
             "template": self.template,
             "template_id": self.template_id,
             "settings": self.settings,
         }
+        if self.effective:
+            found["effective"] = True
+        return found
 
 
-def source_of(db: Session, template: str | None, settings: Mapping[str, Any] | None) -> Source:
-    """The wanted values: a template version (``name@version``) or settings, not both."""
-    if (template is None) == (settings is None):
-        raise ChangeSetRefused("Give either a template version or settings, not both")
+EFFECTIVE = Source({}, None, None, effective=True)
+
+
+def source_of(
+    db: Session,
+    template: str | None,
+    settings: Mapping[str, Any] | None,
+    effective: bool = False,
+) -> Source:
+    """The wanted values: a template version (``name@version``), settings, or each project's
+    effective settings; exactly one."""
+    if (template is not None) + (settings is not None) + effective != 1:
+        raise ChangeSetRefused(
+            "Give exactly one of a template version, settings or each project's effective settings"
+        )
+    if effective:
+        return EFFECTIVE
     if template is not None:
         try:
             name, version = split_extends(template)
@@ -126,6 +146,8 @@ def source_of(db: Session, template: str | None, settings: Mapping[str, Any] | N
 
 def _stored_source(db: Session, document: Mapping[str, Any]) -> Source:
     source = document["source"]
+    if source.get("effective"):
+        return EFFECTIVE
     if source["template_id"] is not None:
         row = db.get(ConfigurationTemplate, source["template_id"])
         if row is not None:  # versions are immutable and never deleted
@@ -258,7 +280,25 @@ def _target(
     source: Source,
     collections: Mapping[str, CollectionContext],
     capabilities: Mapping[str, CapabilityStatus],
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
+    """One project's changes, skips and unchanged settings; None when the source is the
+    effective settings and no template sets anything for the project."""
+    wanted_values: Mapping[str, Any] = source.settings
+    decided: dict[str, dict[str, Any]] = {}
+    if source.effective:
+        effective = effective_settings(db, instance, project)
+        if not effective.settings:
+            return None
+        wanted_values = {setting.key: setting.value for setting in effective.settings}
+        decided = {
+            setting.key: {
+                "template": f"{setting.decided_by.template}@{setting.decided_by.version}",
+                "origin": setting.decided_by.origin,
+                "assignment_id": setting.decided_by.assignment_id,
+                "assigned_to": setting.decided_by.assigned_to.path,
+            }
+            for setting in effective.settings
+        }
     ancestry = resolve_project(db, instance, project).ancestry
     judge = judge_for(db, instance, project, collections, capabilities, ancestry)
     waivers = open_for_project(db, project.id)
@@ -266,7 +306,7 @@ def _target(
     changes: list[dict[str, Any]] = []
     skipped: list[dict[str, str]] = []
     unchanged: list[str] = []
-    for key, after in source.settings.items():
+    for key, after in wanted_values.items():
         support, note = SUPPORT[key][instance.provider]
         if key == "labels_consistent":
             skipped.append(
@@ -305,15 +345,16 @@ def _target(
         if conflict is not None:
             skipped.append(_skip(key, "conflicts_with_baseline", conflict))
             continue
-        changes.append(
-            {
-                "key": key,
-                "before": before,
-                "after": wanted,
-                "observed_at": current.observed_at.isoformat() if current.observed_at else None,
-                "warnings": _warnings(key, before, wanted),
-            }
-        )
+        change: dict[str, Any] = {
+            "key": key,
+            "before": before,
+            "after": wanted,
+            "observed_at": current.observed_at.isoformat() if current.observed_at else None,
+            "warnings": _warnings(key, before, wanted),
+        }
+        if key in decided:
+            change["decided_by"] = decided[key]
+        changes.append(change)
     return {
         "project": {
             "id": project.id,
@@ -342,9 +383,12 @@ def build(
             f"The selection matches {len(projects)} projects; a change set holds at most "
             f"{MAX_TARGETS}. Narrow it."
         )
-    targets = [
+    built = (
         _target(db, instance, project, source, collections, capabilities) for project in projects
-    ]
+    )
+    targets = [target for target in built if target is not None]
+    if not targets:
+        raise NothingToChange("No template sets anything for the selected projects")
     return {
         "format": FORMAT,
         "connection": {"id": instance.id, "provider": instance.provider},

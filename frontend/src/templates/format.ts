@@ -48,6 +48,7 @@ export function useCsrf(): {
   canWrite: boolean;
   canRequest: boolean;
   canApprove: boolean;
+  canPlan: boolean;
 } {
   const { session } = useAuth();
   const user = session.status === "signed_in" ? session.user : null;
@@ -57,6 +58,7 @@ export function useCsrf(): {
     canWrite: canWritePolicies(user),
     canRequest: permissions.includes("exception:request"),
     canApprove: permissions.includes("exception:approve"),
+    canPlan: permissions.includes("changes:plan"),
   };
 }
 
