@@ -1506,9 +1506,9 @@ types-pyyaml==6.0.12.20261122 \
     --hash=sha256:689fbbe883b60471166dede9dba6ac0dbdbcf0ea98062d7ec195430f5bbdb009 \
     --hash=sha256:7fa577c893a1db255cbb02320884ffcb97b7a219fe515bec6c5f15d5d3af41ed
     # via baluarte (pyproject.toml)
-types-reportlab==5.1.0.20261104 \
-    --hash=sha256:5a214b6a53a4f719ce0e8a0081107b54a6d44e0fed25b8e167332a95e3163b17 \
-    --hash=sha256:d1410bafa695bc6f38a3f38426b8393f7311ca69a350e99cefadf6103e254202
+types-reportlab==5.1.0.20261122 \
+    --hash=sha256:648577b042c7008df45763bcc2c74d2e74ed83c41c8e1dcfb5da5ed11015b484 \
+    --hash=sha256:78237a2ac7d3458315f61cce242f74eae3d8fb8afc6204aef2dac0b2561a29aa
     # via baluarte (pyproject.toml)
 typing-extensions==4.16.0 \
     --hash=sha256:481caa481374e813c1b176ada14e97f1f67a4539ce9cfeb3f350d78d6370c2e8 \
