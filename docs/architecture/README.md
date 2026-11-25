@@ -20,6 +20,7 @@ Record a decision here when it changes or establishes a foundational choice: run
 | [ADR-0014](ADR-0014-provider-integrations.md) | A common provider layer for GitLab and GitHub | Accepted |
 | [ADR-0015](ADR-0015-auditable-issue-register.md) | The auditable issue register: selection, visible exclusion, append-only decisions | Accepted |
 | [ADR-0016](ADR-0016-configuration-templates.md) | Configuration templates: exact values for settings Baluarte reads, pinned inheritance, nearest-wins precedence, change sets | Accepted |
+| [ADR-0017](ADR-0017-release-governance.md) | Release governance: declared release practices, separation of duties as GitLab records it, audit release exports | Accepted |
 
 ## Template
 
