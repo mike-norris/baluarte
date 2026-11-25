@@ -270,7 +270,8 @@ function BuildForm({
   );
   const [title, setTitle] = useState("");
   const [form, setForm] = useState<SelectionForm>(EMPTY);
-  const [kind, setKind] = useState<"template" | "settings" | "effective">("template");
+  const [kind, setKind] = useState<"template" | "settings" | "effective" | "topics">("template");
+  const [topicKeys, setTopicKeys] = useState("");
   const [template, setTemplate] = useState("");
   const [settings, setSettings] = useState("");
   const [hours, setHours] = useState("72");
@@ -342,7 +343,9 @@ function BuildForm({
             ? { template: template.trim() }
             : kind === "settings"
               ? { settings: parsed }
-              : { effective: true }),
+              : kind === "topics"
+                ? { topics: { keys: list(topicKeys) } }
+                : { effective: true }),
           expires_in_hours: Number(hours),
         },
         token,
@@ -484,8 +487,36 @@ function BuildForm({
             />
             <span className="form-check-label">Each project&apos;s templates (fix drift)</span>
           </label>
+          <label className="form-check">
+            <input
+              type="radio"
+              className="form-check-input"
+              checked={kind === "topics"}
+              onChange={() => {
+                setKind("topics");
+              }}
+            />
+            <span className="form-check-label">Tags to GitLab topics</span>
+          </label>
         </div>
-        {kind === "effective" ? (
+        {kind === "topics" ? (
+          <label className="form-label">
+            Tag keys to synchronize (comma-separated)
+            <input
+              type="text"
+              className="form-control mt-1"
+              placeholder="team, tier"
+              value={topicKeys}
+              onChange={(event) => {
+                setTopicKeys(event.target.value);
+              }}
+            />
+            <span className="form-hint">
+              Each project gets a key:value topic for each of these tags it carries. Topics of these
+              keys that no longer match a tag are removed; other topics are kept.
+            </span>
+          </label>
+        ) : kind === "effective" ? (
           <p className="small text-secondary mb-0">
             Each project gets the settings its own templates and overrides put in force, so drift is
             put right without choosing one template for all.
@@ -546,7 +577,8 @@ function BuildForm({
             empty ||
             !title.trim() ||
             (kind === "template" && !template.trim()) ||
-            (kind === "settings" && !settings.trim())
+            (kind === "settings" && !settings.trim()) ||
+            (kind === "topics" && list(topicKeys).length === 0)
           }
         >
           {busy ? "Working…" : "Build change set"}
@@ -770,8 +802,12 @@ const verificationTones: Record<VerificationStatus, Tone> = {
   unknown: "warning",
 };
 
-export function sourceText(set: ChangeSetSummary): string {
+export function sourceText(set: ChangeSet): string {
   if (set.source_kind === "effective") return "each project's templates";
+  if (set.source_kind === "topics") {
+    const keys = set.document.source.topics?.keys ?? [];
+    return `tags to GitLab topics (${keys.join(", ")})`;
+  }
   return set.source ?? "settings";
 }
 

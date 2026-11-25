@@ -70,9 +70,16 @@ class GitLabWriter:
     def __exit__(self, *_: object) -> None:
         self.close()
 
-    def _send(self, method: str, path: str, data: dict[str, Any]) -> WriteResult:
+    def _send(
+        self, method: str, path: str, data: dict[str, Any], *, as_json: bool = False
+    ) -> WriteResult:
+        """One request; ``as_json`` sends ``data`` as a JSON body (for arrays, including an
+        empty one, which a form cannot express)."""
         try:
-            response = self._http.request(method, path, data=data)
+            if as_json:
+                response = self._http.request(method, path, json=data)
+            else:
+                response = self._http.request(method, path, data=data)
         except httpx.TransportError as exc:
             logger.warning("gitlab: %s %s failed (%s)", method, path, type(exc).__name__)
             return WriteResult(

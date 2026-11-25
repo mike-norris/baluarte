@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-from sqlalchemy import Engine, select, text
+from sqlalchemy import Engine, select, text, update
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 from test_evaluation_access import GOOD_SETTINGS, approval_rule
@@ -24,6 +24,7 @@ from baluarte.db.models import (
     AuditEvent,
     ConfigurationTemplate,
     GitLabInstance,
+    GitLabProject,
     TemplateChangeSet,
 )
 from baluarte.policy.assignments import Target
@@ -45,7 +46,7 @@ SETTINGS = {
 def create(engine: Engine, user_id: int, **body: Any) -> Any:
     payload = {"title": "Tighten platform", "selection": {"projects": [SITE, API, LEGACY]}}
     payload.update(body)
-    if not {"template", "settings", "effective"} & payload.keys():
+    if not {"template", "settings", "effective", "topics"} & payload.keys():
         payload["settings"] = SETTINGS
     return client(engine, user_id, Role.ANALYST).post("/api/v1/template-change-sets", json=payload)
 
@@ -428,3 +429,39 @@ def test_effective_settings_need_a_template_in_force(migrated_engine: Engine, fr
     response = create(migrated_engine, ana, effective=True, selection={"projects": [SITE]})
     assert response.status_code == 422
     assert "No template sets anything" in response.json()["detail"]
+
+
+def test_tags_become_topics_only_for_the_keys_asked(migrated_engine: Engine, world: int) -> None:
+    ana = user(migrated_engine, "ana")
+    planner = client(migrated_engine, ana, Role.ANALYST)
+    with Session(migrated_engine) as db:
+        for gitlab_id, topics in ((100, ["team:payments", "tier:1"]), (101, ["docs", "tier:2"])):
+            db.execute(
+                update(GitLabProject)
+                .where(GitLabProject.gitlab_id == gitlab_id)
+                .values(topics=topics)
+            )
+        db.commit()
+    for key, value, target in (("team", "payments", 100), ("team", "web", 101), ("tier", "3", 101)):
+        tag = planner.post("/api/v1/tags", json={"key": key, "value": value}).json()
+        planner.post(
+            f"/api/v1/tags/{tag['id']}/assign",
+            json={"targets": [{"type": "project", "gitlab_id": target}]},
+        )
+
+    response = create(migrated_engine, ana, topics={"keys": ["team"]})
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["source_kind"] == "topics" and body["sensitive"] is False
+    targets = by_path(body["document"])
+    assert targets[API]["unchanged"] == ["topics"]
+    site = targets[SITE]["changes"][0]
+    # Only team topics are managed; docs and tier:2 stay although tier=3 is tagged.
+    assert (site["before"], site["after"]) == (["docs", "tier:2"], ["docs", "team:web", "tier:2"])
+    assert [s["code"] for s in targets[LEGACY]["skipped"]] == ["unknown"]
+
+    assert create(migrated_engine, ana, topics={"keys": ["Team"]}).status_code == 422
+    assert create(migrated_engine, ana, topics={"keys": []}).status_code == 422
+    both = create(migrated_engine, ana, topics={"keys": ["team"]}, settings=SETTINGS)
+    assert both.status_code == 422

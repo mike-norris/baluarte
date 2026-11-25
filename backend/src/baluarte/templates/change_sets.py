@@ -4,7 +4,8 @@
 A change set is built from stored evidence, never from a call to the provider: nothing here
 uses an HTTP client. Its source is a template version (its settings with what it inherits),
 settings written for the set, or each project's own effective settings, which remediates drift
-(roadmap M14.5): every change then names the template and assignment that decided it. For every
+(roadmap M14.5): every change then names the template and assignment that decided it; or the
+project topics its Baluarte tags call for, for chosen tag keys (``topics``, M14.5). For every
 selected project (``baluarte.templates.selection``) and setting it records one of:
 
 - a **change**: the value the evidence shows (``before``) and the value wanted (``after``),
@@ -54,6 +55,9 @@ from baluarte.policy.schema import (
     Rule,
 )
 from baluarte.settings import development_mode, own_decision_refused
+from baluarte.tags import NAME as TAG_NAME
+from baluarte.tags import TagIndex
+from baluarte.tags import index as tag_index
 from baluarte.templates.drift import judge_for
 from baluarte.templates.exceptions import open_for_project
 from baluarte.templates.loader import parse_settings
@@ -102,6 +106,8 @@ class Source:
     effective: bool = False
     # With ``effective``: only settings these assignments decide (automatic remediation).
     assignments: tuple[int, ...] = ()
+    # Synchronize these tag keys to project topics, as ``key:value`` (tags and topics).
+    topic_keys: tuple[str, ...] = ()
 
     def document(self) -> dict[str, Any]:
         found: dict[str, Any] = {
@@ -113,6 +119,8 @@ class Source:
             found["effective"] = True
         if self.assignments:
             found["assignments"] = list(self.assignments)
+        if self.topic_keys:
+            found["topics"] = {"keys": list(self.topic_keys)}
         return found
 
 
@@ -124,15 +132,23 @@ def source_of(
     template: str | None,
     settings: Mapping[str, Any] | None,
     effective: bool = False,
+    topic_keys: Sequence[str] | None = None,
 ) -> Source:
-    """The wanted values: a template version (``name@version``), settings, or each project's
-    effective settings; exactly one."""
-    if (template is not None) + (settings is not None) + effective != 1:
+    """The wanted values: a template version (``name@version``), settings, each project's
+    effective settings, or topics from tags; exactly one."""
+    given = (template is not None) + (settings is not None) + effective + (topic_keys is not None)
+    if given != 1:
         raise ChangeSetRefused(
-            "Give exactly one of a template version, settings or each project's effective settings"
+            "Give exactly one of a template version, settings, each project's effective "
+            "settings or tag keys for topics"
         )
     if effective:
         return EFFECTIVE
+    if topic_keys is not None:
+        keys = tuple(sorted(set(topic_keys)))
+        if not keys or not all(TAG_NAME.fullmatch(key) for key in keys):
+            raise ChangeSetRefused("Name at least one tag key, in lowercase tag key form")
+        return Source({}, None, None, topic_keys=keys)
     if template is not None:
         try:
             name, version = split_extends(template)
@@ -154,6 +170,8 @@ def _stored_source(db: Session, document: Mapping[str, Any]) -> Source:
         return Source(
             {}, None, None, effective=True, assignments=tuple(source.get("assignments", ()))
         )
+    if source.get("topics"):
+        return Source({}, None, None, topic_keys=tuple(source["topics"]["keys"]))
     if source["template_id"] is not None:
         row = db.get(ConfigurationTemplate, source["template_id"])
         if row is not None:  # versions are immutable and never deleted
@@ -377,6 +395,63 @@ def _target(
     }
 
 
+TOPICS = "topics"
+
+
+def topic_of(key: str, value: str) -> str:
+    return f"{key}:{value}"
+
+
+def _topics_target(
+    instance: GitLabInstance, project: GitLabProject, keys: Sequence[str], tags: TagIndex
+) -> dict[str, Any]:
+    """The project's topics with those of ``keys`` made to match its tags, other topics kept."""
+    target: dict[str, Any] = {
+        "project": {
+            "id": project.id,
+            "gitlab_id": project.gitlab_id,
+            "path": project.path_with_namespace,
+        },
+        "changes": [],
+        "skipped": [],
+        "unchanged": [],
+    }
+    if instance.provider != "gitlab":
+        target["skipped"].append(
+            _skip(TOPICS, "unsupported", "Tags are synchronized to GitLab topics only so far.")
+        )
+        return target
+    if project.topics is None:
+        target["skipped"].append(
+            _skip(
+                TOPICS,
+                "unknown",
+                "The project's topics have not been collected yet; run project discovery.",
+            )
+        )
+        return target
+    managed = set(keys)
+    wanted_tags = {
+        topic_of(tag.key, tag.value) for tag in tags.of_project(project.id) if tag.key in managed
+    }
+    kept = {topic for topic in project.topics if topic.split(":", 1)[0] not in managed}
+    before = sorted(project.topics)
+    after = sorted(kept | wanted_tags)
+    if before == after:
+        target["unchanged"].append(TOPICS)
+    else:
+        target["changes"].append(
+            {
+                "key": TOPICS,
+                "before": before,
+                "after": after,
+                "observed_at": project.last_seen_at.isoformat(),
+                "warnings": [],
+            }
+        )
+    return target
+
+
 def build(
     db: Session, instance: GitLabInstance, selection: Selection, source: Source
 ) -> dict[str, Any]:
@@ -393,10 +468,15 @@ def build(
             f"The selection matches {len(projects)} projects; a change set holds at most "
             f"{MAX_TARGETS}. Narrow it."
         )
-    built = (
-        _target(db, instance, project, source, collections, capabilities) for project in projects
-    )
-    targets = [target for target in built if target is not None]
+    if source.topic_keys:
+        tags = tag_index(db, instance.id)
+        targets = [_topics_target(instance, p, source.topic_keys, tags) for p in projects]
+    else:
+        built = (
+            _target(db, instance, project, source, collections, capabilities)
+            for project in projects
+        )
+        targets = [target for target in built if target is not None]
     if not targets:
         raise NothingToChange("No template sets anything for the selected projects")
     return {

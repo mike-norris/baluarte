@@ -10,7 +10,7 @@ Roadmap milestone M14 ([ROADMAP.md](ROADMAP.md#m14--configuration-templates-and-
 | M14.2 Drift | Effective settings compared with collected evidence per project and setting: aligned, drift, unknown, unsupported or excepted; exceptions per setting with expiry warnings; alignment coverage by template, group and connection (migration `0039`) | Done |
 | M14.3 Change sets | Target selection by hierarchy, owner, provider, tags, business unit, policy and compliance status, and saved collections; a change set with the exact targets and before and after values from evidence; checks for permissions, capabilities, conflicting baselines and exceptions; warnings for changes that weaken protection, remove access or disrupt work; approval of the set, with a second approval for sensitive changes (migration `0040`) | Done |
 | M14.4 Execution | Staged rollout to a first set of targets; background jobs with per-target progress, rate-limit handling, retries, cancellation and resumption; each setting read again before it is changed, concurrent changes flagged, previous values kept, rollback where the provider allows it and irreversible steps disclosed; behind its own switch and write token, off by default (migration `0041`) | Done |
-| M14.5 Alignment and tags | Manual remediation of drift as a change set; settings verified against collected evidence after each change; automatic remediation per template assignment, off by default; Baluarte tags synchronized to GitLab topics or GitHub topics only when asked | Drift fixes, verification and automatic proposals done (migration `0046`); tags planned |
+| M14.5 Alignment and tags | Manual remediation of drift as a change set; settings verified against collected evidence after each change; automatic remediation per template assignment, off by default; Baluarte tags synchronized to GitLab topics or GitHub topics only when asked | Done (migrations `0046` and `0047`) |
 | M14.6 Records and acceptance | Requester, approver, executor, rationale, template version, scope, timestamps, before and after values and per-target results recorded, linked to controls and in exports; the bulk governance workflow end to end, with a partial failure and an exception that stay visible | Planned |
 
 ## Template format
@@ -119,6 +119,16 @@ Each change carries warnings: **weakens protection** (wider visibility, fewer ap
 
 **Approval.** A set is `proposed` until someone other than its creator approves or rejects it (rejecting needs a note). A **sensitive** set, one with any change that weakens protection or removes access, needs two approvals by two different people, neither the creator; after the first it stays `proposed`. Approval names the set's digest and is refused when the set is stale: built again from today's evidence it no longer gives the same targets, values and skips. The creator may withdraw a proposed set; proposed and approved sets expire after their window (at most 7 days, 72 hours by default). The document, digest and decisions never change, rows are never deleted (a database trigger enforces this), and every step is audited (`template_change_set.created`, `.first_approval`, `.approved`, `.rejected`, `.withdrawn`, `.expired`; `saved_selection.created`, `.deleted`). In development mode the creator may give the approvals, recorded as `development_decision`.
 
+## Tags and topics
+
+Baluarte tags ([TAGS.md](TAGS.md)) stay in Baluarte unless someone asks for them on the provider. A change set with `topics: {keys: [...]}` as its source synchronizes the chosen tag keys to GitLab project topics, written `key:value` (`team:payments`):
+
+- each selected project gets a topic for each tag of those keys it carries, directly or from a group above;
+- topics of those keys that no longer match a tag are removed (`team:old` once the project is tagged `team=web`);
+- every other topic, including those of keys not chosen, is kept.
+
+Topics are collected by project discovery (`gitlab_project.topics`, migration `0047`, and the project evidence). A project whose topics have not been collected yet is skipped as `unknown`; a GitHub connection is skipped as `unsupported`, since sets are applied to GitLab only. Topic changes carry no warnings and never make a set sensitive. The set is reviewed, approved, applied in stages, verified, checked against evidence and rolled back like any other: the write is `PUT /projects/:id` with only `topics`, sent with the template write token, and rollback writes the previous list back.
+
 ## Automatic proposals
 
 Automatic remediation **proposes only**. After every successful evaluation, when at least one assignment of the connection has `auto_remediate`, Baluarte builds a change set exactly as **Propose a fix** would: the drifting projects (`drift: [drift]`), each project's effective settings, but only the settings an auto-remediated assignment decides. The set is created by Baluarte itself (`created_by_system`, no creating user, audited as `system:template-auto-remediation`). It is then reviewed like any other: anyone with `changes:approve` approves or rejects it, and a sensitive set still needs two different people. Nothing is approved, and nothing is applied, automatically. Applying still needs the switch and the template write token.
@@ -132,7 +142,7 @@ Automatic remediation **proposes only**. After every successful evaluation, when
 Applying an approved change set writes to GitLab. It is refused unless **all** of these hold:
 
 - `BALUARTE_TEMPLATE_WRITES=true` for the deployment (Helm: `gitlab.templateWrites`), off by default;
-- a **template write token** is stored on the Settings page. It is separate from the read-only token and the label and remediation write tokens, because a change set can widen visibility or remove a protection when two people approved that. Visibility needs the Owner role; protections and approval settings need Maintainer, with the `api` scope;
+- a **template write token** is stored on the Settings page. It is separate from the read-only token and the label and remediation write tokens, because a change set can widen visibility or remove a protection when two people approved that. Visibility needs the Owner role; protections, approval settings and topics need Maintainer, with the `api` scope;
 - the set is approved and has not expired, and built again from today's evidence it still gives the same changes;
 - its connection is the primary GitLab connection, which the token belongs to (GitHub sets are not applied yet);
 - no other set of the connection is applying or rolling back;
@@ -171,7 +181,7 @@ Applying, continuing, cancelling and rolling back need `changes:approve`.
 | `POST /api/v1/template-selections`, `DELETE /api/v1/template-selections/{id}` | `changes:plan` + CSRF | Body `{name, selection}`. 409 when the name is taken |
 | `GET /api/v1/template-change-sets` | `findings:read` | Newest first, at most 200; `state` filter |
 | `GET /api/v1/template-change-sets/{id}` | `findings:read` | A change set with its document, each change's progress and the evidence check of applied changes |
-| `POST /api/v1/template-change-sets` | `changes:plan` + CSRF | Body `{title, selection, template \| settings \| effective, expires_in_hours}`, exactly one source. 201; 422 for an empty selection, no matching project, more than 500, unknown template, invalid settings, no template in force (`effective`) or nothing to change |
+| `POST /api/v1/template-change-sets` | `changes:plan` + CSRF | Body `{title, selection, template \| settings \| effective \| topics, expires_in_hours}`, exactly one source; `topics` is `{keys: [...]}`, 1 to 20 tag keys. 201; 422 for an empty selection, no matching project, more than 500, unknown template, invalid settings, no template in force (`effective`) or nothing to change |
 | `POST /api/v1/template-change-sets/{id}/approve` | `changes:approve` + CSRF | Body `{digest, note?}`. 403 for the creator or a repeated approver; 409 when not proposed, the digest differs or the set is stale |
 | `POST /api/v1/template-change-sets/{id}/reject` | `changes:approve` + CSRF | Body `{note}` |
 | `POST /api/v1/template-change-sets/{id}/withdraw` | `changes:plan` + CSRF | Only the creator |

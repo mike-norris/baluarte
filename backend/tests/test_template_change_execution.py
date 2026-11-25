@@ -3,6 +3,7 @@
 verification, concurrent changes, retries, cancelling, resuming and rolling back."""
 
 import base64
+import json
 import os
 from pathlib import Path
 from typing import Any
@@ -51,8 +52,20 @@ class GitLab:
 
     def __init__(self) -> None:
         self.projects = {
-            100: {"id": 100, "visibility": "private", "archived": False, "default_branch": "main"},
-            101: {"id": 101, "visibility": "public", "archived": False, "default_branch": "main"},
+            100: {
+                "id": 100,
+                "visibility": "private",
+                "archived": False,
+                "default_branch": "main",
+                "topics": ["team:payments"],
+            },
+            101: {
+                "id": 101,
+                "visibility": "public",
+                "archived": False,
+                "default_branch": "main",
+                "topics": ["docs", "team:old"],
+            },
         }
         self.protections: dict[int, list[dict[str, Any]]] = {
             100: [self._protection("main", 40)],
@@ -99,7 +112,10 @@ class GitLab:
     def handler(self, request: httpx.Request) -> httpx.Response:
         path = unquote(request.url.path.removeprefix("/api/v4"))
         token = request.headers.get("PRIVATE-TOKEN")
-        form = {k: v[0] for k, v in parse_qs(request.content.decode()).items()}
+        if request.headers.get("content-type", "").startswith("application/json"):
+            form = json.loads(request.content)
+        else:
+            form = {k: v[0] for k, v in parse_qs(request.content.decode()).items()}
         method = request.method
         self.requests.append((method, path, token, form))
         if (method, path) in self.failures:
@@ -114,7 +130,7 @@ class GitLab:
         if not rest and method == "GET":
             return httpx.Response(200, json=project)
         if not rest and method == "PUT":
-            project["visibility"] = form["visibility"]
+            project.update(form)
             return httpx.Response(200, json=project)
         if rest == ["protected_branches"] and method == "GET":
             return httpx.Response(200, json=self.protections[gitlab_id])
@@ -554,3 +570,89 @@ def test_a_stale_or_busy_set_is_refused_and_items_are_immutable(
                 {"id": one["id"]},
             )
         db.rollback()
+
+
+def topics_set(engine: Engine, projects: list[str]) -> dict[str, Any]:
+    """An approved set synchronizing the team tag to topics; the site carries team=web."""
+    n = next(_people)
+    ana, bea = (user(engine, f"{name}{n}") for name in ("ana", "bea"))
+    with Session(engine) as db:
+        for gitlab_id, topics in ((100, ["team:payments"]), (101, ["docs", "team:old"])):
+            db.execute(
+                update(GitLabProject)
+                .where(GitLabProject.gitlab_id == gitlab_id)
+                .values(topics=topics)
+            )
+        db.commit()
+    planner = client(engine, ana, Role.ANALYST)
+    tag = planner.post("/api/v1/tags", json={"key": "team", "value": "web"}).json()
+    assigned = planner.post(
+        f"/api/v1/tags/{tag['id']}/assign",
+        json={"targets": [{"type": "project", "gitlab_id": 101}]},
+    )
+    assert assigned.status_code == 200, assigned.text
+    created = planner.post(
+        SETS,
+        json={
+            "title": "Team topics",
+            "selection": {"projects": projects},
+            "topics": {"keys": ["team"]},
+        },
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    decided = client(engine, bea, Role.ADMIN).post(
+        f"{SETS}/{body['id']}/approve", json={"digest": body["digest"]}
+    )
+    assert decided.json()["state"] == "approved", decided.text
+    result: dict[str, Any] = decided.json()
+    return result
+
+
+def test_tags_are_written_to_topics_and_rolled_back(
+    migrated_engine: Engine, world: int, gitlab: GitLab, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    body = topics_set(migrated_engine, [API, SITE])
+    # The API project has no team tag, so its team topic goes; the site gets team:web.
+    changes = {
+        t["project"]["path"]: (t["changes"][0]["before"], t["changes"][0]["after"])
+        for t in body["document"]["targets"]
+    }
+    assert changes == {
+        API: (["team:payments"], []),
+        SITE: (["docs", "team:old"], ["docs", "team:web"]),
+    }
+    admin = as_admin(migrated_engine, user(migrated_engine, "dee"), gitlab)
+    writes_on(monkeypatch, admin)
+    path = f"{SETS}/{body['id']}"
+    assert admin.post(f"{path}/apply", json={"stage_targets": 2}).status_code == 200
+    run(migrated_engine, gitlab)
+
+    done = admin.get(path).json()
+    assert done["state"] == "finished"
+    assert {i["status"] for i in done["items"]} == {"applied"}
+    assert gitlab.projects[100]["topics"] == []
+    assert gitlab.projects[101]["topics"] == ["docs", "team:web"]
+    assert [(m, p) for m, p, _, _ in gitlab.writes()] == [
+        ("PUT", "/projects/100"),
+        ("PUT", "/projects/101"),
+    ]
+    assert all(token == WRITE_TOKEN for _, _, token, _ in gitlab.writes())
+
+    # The evidence check follows the next discovery's topics.
+    assert {v["status"] for v in done["verification"]} == {"awaiting_collection"}
+    with Session(migrated_engine) as db:
+        for gitlab_id, topics in ((100, []), (101, ["docs", "team:old"])):
+            db.execute(
+                update(GitLabProject)
+                .where(GitLabProject.gitlab_id == gitlab_id)
+                .values(topics=topics, last_seen_at=func.now())
+            )
+        db.commit()
+    checked = {v["project_path"]: v["status"] for v in admin.get(path).json()["verification"]}
+    assert checked == {API: "verified", SITE: "drift"}
+
+    assert admin.post(f"{path}/rollback", json={}).status_code == 200
+    run(migrated_engine, gitlab, ROLLBACK_CHANGE_SET)
+    assert gitlab.projects[100]["topics"] == ["team:payments"]
+    assert gitlab.projects[101]["topics"] == ["docs", "team:old"]

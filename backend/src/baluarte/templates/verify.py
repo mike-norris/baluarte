@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from baluarte.db.models import GitLabInstance, GitLabProject, TemplateChangeItem
 from baluarte.policy.assignments import resolve_project
 from baluarte.policy.evaluation.project import capability_statuses, collection_contexts
-from baluarte.templates.drift import judge_for
+from baluarte.templates.drift import Current, judge_for
 from baluarte.workspaces import settings_of
 
 VerificationStatus = Literal["verified", "drift", "awaiting_collection", "unknown"]
@@ -44,6 +44,14 @@ def _same(setting: str, observed: Any, after: Any) -> bool:
     if setting == "security_features":
         return sorted(observed) == sorted(after)
     return bool(observed == after)
+
+
+def _topics(db: Session, item: TemplateChangeItem) -> Current:
+    """A project's topics as the last discovery read them."""
+    project = db.get(GitLabProject, item.project_id)
+    if project is None or project.topics is None:
+        return Current(None, "unknown", "The project's topics have not been collected.", None)
+    return Current(sorted(project.topics), "pass", "", project.last_seen_at)
 
 
 def verify(
@@ -68,7 +76,11 @@ def verify(
             ancestry = resolve_project(db, instance, project).ancestry
             judge = judge_for(db, instance, project, collections, capabilities, ancestry)
             judges[item.project_id] = judge
-        current = judge.current(item.setting, item.after)
+        current = (
+            _topics(db, item)
+            if item.setting == "topics"
+            else judge.current(item.setting, item.after)
+        )
         status: VerificationStatus
         if current.value is None:
             status, reason = "unknown", current.reason
