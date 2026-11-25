@@ -328,6 +328,61 @@ describe("ChangeSetsPage", () => {
     expect(screen.getByRole("button", { name: /^Approve/ })).toBeInTheDocument();
   });
 
+  it("builds a change set that synchronizes tags to GitLab topics", async () => {
+    const user = userEvent.setup();
+    const [site] = changeSet.document.targets;
+    if (!site) throw new Error("The fixture has a target");
+    const topics: ChangeSet = {
+      ...changeSet,
+      source: null,
+      source_kind: "topics",
+      sensitive: false,
+      document: {
+        ...changeSet.document,
+        source: { template: null, template_id: null, settings: {}, topics: { keys: ["team"] } },
+        targets: [
+          {
+            ...site,
+            changes: [
+              {
+                key: "topics",
+                before: ["docs", "team:old"],
+                after: ["docs", "team:web"],
+                observed_at: created,
+                warnings: [],
+              },
+            ],
+            skipped: [],
+          },
+        ],
+      },
+    };
+    const calls = api(planner, {
+      [CREATE]: () => json(topics, 201),
+      "GET /api/v1/template-change-sets/7": () => json(topics),
+    });
+    renderPage();
+
+    const form = await screen.findByRole("form", { name: "Build a change set" });
+    await user.type(within(form).getByLabelText("Title"), "Team topics");
+    await user.type(within(form).getByLabelText("Groups"), "platform");
+    await user.click(within(form).getByRole("radio", { name: "Tags to GitLab topics" }));
+    const build = within(form).getByRole("button", { name: "Build change set" });
+    expect(build).toBeDisabled();
+    await user.type(within(form).getByLabelText(/Tag keys to synchronize/), "team, tier");
+    await user.click(build);
+    await screen.findByText(/Built change set Tighten platform/);
+    expect(bodyOf(calls, CREATE)).toEqual({
+      title: "Team topics",
+      selection: { groups: ["platform"] },
+      topics: { keys: ["team", "tier"] },
+      expires_in_hours: 72,
+    });
+    expect(await screen.findByText(/Source: tags to GitLab topics \(team\)/)).toBeInTheDocument();
+    const table = screen.getByRole("table", { name: "Changes to platform/site" });
+    expect(within(table).getByText("docs, team:web")).toBeInTheDocument();
+  });
+
   it("hides building from those who cannot plan", async () => {
     api({ ...analyst, roles: ["auditor"], permissions: ["findings:read"] });
     renderPage();

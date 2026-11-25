@@ -9,6 +9,11 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Tags to GitLab topics, only when asked: a change set can synchronize chosen tag keys to
+  project topics as `key:value`, adding what tags call for and removing stale topics of those
+  keys while keeping every other topic. It is reviewed, applied with the template write token,
+  verified and rolled back like other change sets. Project discovery now collects topics
+  (migration `0047`).
 - Automatic drift proposals: a template assignment can be set to **propose fixes for drift
   automatically**. After each evaluation Baluarte builds a change set for the drifting settings
   that assignment decides, marked as proposed by Baluarte, for people to approve and apply as

@@ -4,7 +4,8 @@
 label and remediation write tokens, and is built only by the change set applier
 (``baluarte.templates.execute``). It can make exactly the changes a template setting names:
 
-- ``PUT /projects/:id`` with only ``visibility``;
+- ``PUT /projects/:id`` with only ``visibility``, or only ``topics`` (tags synchronized to
+  topics, M14.5);
 - ``POST /projects/:id/protected_branches`` for one branch by name, with the access levels given
   (Maintainer for a new protection), and ``DELETE`` of one protection by its exact name;
 - ``POST /projects/:id/approvals`` with one approval setting;
@@ -42,6 +43,11 @@ class TemplateWriter(GitLabWriter):
         if visibility not in VISIBILITIES:
             raise ValueError("visibility is private, internal or public")
         return self._send("PUT", f"/projects/{project_id}", {"visibility": visibility})
+
+    def set_topics(self, project_id: int, topics: list[str]) -> WriteResult:
+        if not all(isinstance(topic, str) and topic.strip() for topic in topics):
+            raise ValueError("topics are non-empty strings")
+        return self._send("PUT", f"/projects/{project_id}", {"topics": list(topics)}, as_json=True)
 
     def protect_branch(
         self, project_id: int, branch: str, levels: dict[str, int] | None = None

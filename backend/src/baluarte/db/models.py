@@ -413,6 +413,8 @@ class GitLabProject(Base):
     visibility: Mapped[str | None] = mapped_column(Text)
     archived: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     default_branch: Mapped[str | None] = mapped_column(Text)
+    # Sorted, without duplicates; None until a discovery has read them (migration 0047).
+    topics: Mapped[list[str] | None] = mapped_column(ARRAY(Text))
     state: Mapped[str] = mapped_column(Text, server_default="active")
     first_seen_at: Mapped[datetime] = utc_now()
     last_seen_at: Mapped[datetime] = utc_now()

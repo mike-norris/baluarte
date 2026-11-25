@@ -43,6 +43,7 @@ def _row(instance_id: int, project: dict[str, Any]) -> dict[str, Any]:
         )
     visibility = project.get("visibility")
     default_branch = project.get("default_branch")
+    topics = project.get("topics")
     return {
         "instance_id": instance_id,
         "gitlab_id": gitlab_id,
@@ -56,6 +57,10 @@ def _row(instance_id: int, project: dict[str, Any]) -> dict[str, Any]:
         "archived": project.get("archived") is True,
         # Empty repositories have no default branch.
         "default_branch": default_branch if isinstance(default_branch, str) else None,
+        # Topics (GitLab 14 and later); unknown rather than empty when not reported.
+        "topics": (
+            sorted({t for t in topics if isinstance(t, str)}) if isinstance(topics, list) else None
+        ),
         "state": "active",
     }
 
@@ -75,6 +80,7 @@ PROJECTS = ResourceKind(
         "visibility",
         "archived",
         "default_branch",
+        "topics",
     ),
     target="project_id",
     evidence_fields=(
@@ -86,6 +92,7 @@ PROJECTS = ResourceKind(
         "visibility",
         "archived",
         "default_branch",
+        "topics",
     ),
 )
 

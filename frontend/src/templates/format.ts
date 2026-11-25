@@ -17,6 +17,7 @@ export const settingLabels: Record<string, string> = {
   "merge_requests.forbid_override": "Approval rules cannot be overridden per merge request",
   security_features: "Security features enabled",
   labels_consistent: "Labels follow the taxonomy",
+  topics: "Topics",
 };
 
 export const supportLabels: Record<Support, string> = {
@@ -33,7 +34,7 @@ export const originLabels: Record<Source["origin"], string> = {
 
 export function valueText(value: unknown): string {
   if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (Array.isArray(value)) return value.map(String).join(", ");
+  if (Array.isArray(value)) return value.length === 0 ? "None" : value.map(String).join(", ");
   if (value === null || value === undefined) return "—";
   return typeof value === "object" ? JSON.stringify(value) : String(value as string | number);
 }

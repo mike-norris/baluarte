@@ -24,7 +24,7 @@ HOUR = timedelta(hours=1)
 
 PAGES = [
     [
-        project(10, "platform/api", 1, visibility="internal"),
+        project(10, "platform/api", 1, visibility="internal", topics=["team:a", "docs", "docs"]),
         project(11, "platform/backend/billing", 2, archived=True),
     ],
     [
@@ -78,6 +78,8 @@ def test_discovers_projects_with_keyset_pagination(migrated_engine: Engine) -> N
     }
     assert stored[13].default_branch is None
     assert stored[10].default_branch == "main"
+    # Topics are kept sorted without duplicates; not reported is unknown, not empty.
+    assert (stored[10].topics, stored[11].topics) == (["docs", "team:a"], None)
     assert {row.state for row in stored.values()} == {"active"}
 
 

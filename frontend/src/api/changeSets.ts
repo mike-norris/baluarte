@@ -66,6 +66,7 @@ export interface ChangeSetDocument {
     template_id: number | null;
     settings: Record<string, unknown>;
     effective?: boolean;
+    topics?: { keys: string[] };
   };
   targets: ChangeTarget[];
 }
@@ -122,7 +123,7 @@ export interface ChangeSetSummary {
   sensitive: boolean;
   approvals_needed: number;
   source: string | null;
-  source_kind: "template" | "settings" | "effective";
+  source_kind: "template" | "settings" | "effective" | "topics";
   /** Null when Baluarte proposed the set itself (created_by_system). */
   created_by: UserRef | null;
   created_by_system: boolean;
@@ -177,6 +178,8 @@ export interface ChangeSetRequest {
   settings?: Record<string, unknown>;
   /** Each project's own effective settings: remediates drift. */
   effective?: boolean;
+  /** Synchronize these tag keys to GitLab project topics, as key:value. */
+  topics?: { keys: string[] };
   expires_in_hours: number;
 }
 

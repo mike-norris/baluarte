@@ -797,10 +797,11 @@ export const helpTopics: readonly HelpTopic[] = [
         <p>
           In <Link to="/governance/change-sets">Governance, Change sets</Link>, choose projects by
           group, path, tag (such as owner or business unit), template, drift or findings, and the
-          values wanted (a template version, settings, or each project&apos;s own templates to fix
-          drift). Baluarte lists each project&apos;s current value from evidence and the value
-          after, and skips what it cannot tell, what an approved exception allows, what a baseline
-          would forbid and what the provider lacks.
+          values wanted (a template version, settings, each project&apos;s own templates to fix
+          drift, or chosen tag keys written to GitLab topics as key:value). Baluarte lists each
+          project&apos;s current value from evidence and the value after, and skips what it cannot
+          tell, what an approved exception allows, what a baseline would forbid and what the
+          provider lacks.
         </p>
         <p>
           Someone other than its creator approves a set; one that weakens protection or removes

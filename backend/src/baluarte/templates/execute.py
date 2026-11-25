@@ -98,7 +98,7 @@ FLAGS: dict[str, tuple[str, bool]] = {
     ),
 }
 APPLICABLE = frozenset(
-    {"visibility", "default_branch_protected", "merge_requests.min_approvals", *FLAGS}
+    {"visibility", "default_branch_protected", "merge_requests.min_approvals", "topics", *FLAGS}
 )
 
 REFUSALS = {
@@ -186,6 +186,11 @@ def read_live(client: GitLabClient, item: TemplateChangeItem) -> Live:
     key = item.setting
     if key == "visibility":
         return Live(project.get("visibility"))
+    if key == "topics":
+        topics = project.get("topics")
+        if not isinstance(topics, list):
+            return Live(problem="GitLab did not report the project's topics.")
+        return Live(sorted({t for t in topics if isinstance(t, str)}))
     branch = project.get("default_branch")
     if not isinstance(branch, str) or not branch:
         return Live(problem="The project has no default branch.")
@@ -249,6 +254,8 @@ def forward(
     previous = {"value": live.value, **live.detail}
     if key == "visibility":
         return (lambda: writer.set_visibility(gitlab_id, after)), previous
+    if key == "topics":
+        return (lambda: writer.set_topics(gitlab_id, list(after))), previous
     if key == "default_branch_protected":
         branch = live.detail["branch"]
         if after:
@@ -285,6 +292,8 @@ def backward(writer: TemplateWriter, item: TemplateChangeItem, live: Live) -> Wr
     before = previous.get("value", item.before)
     if key == "visibility":
         return lambda: writer.set_visibility(gitlab_id, before)
+    if key == "topics":
+        return lambda: writer.set_topics(gitlab_id, list(before))
     if key == "default_branch_protected":
         branch = live.detail["branch"]
         if item.after:  # it was protected by this set: remove that protection

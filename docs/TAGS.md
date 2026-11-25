@@ -4,7 +4,7 @@ GitLab groups follow how code is organized, which is not always how an organizat
 
 Implemented in `backend/src/baluarte/tags.py` (migration `0023`) and `backend/src/baluarte/api/v1/tags.py`.
 
-Tags never change GitLab, and they are not evidence of compliance: they only group results.
+Tags change nothing on GitLab unless someone asks: a reviewed change set can synchronize chosen tag keys to project topics ([CONFIGURATION_TEMPLATES.md](CONFIGURATION_TEMPLATES.md#tags-and-topics)). They are not evidence of compliance: they group results.
 
 ## Keys and values
 

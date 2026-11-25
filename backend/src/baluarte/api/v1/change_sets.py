@@ -225,6 +225,10 @@ def delete_selection(
 # --- change sets ---
 
 
+class TopicsIn(BaseModel):
+    keys: Annotated[list[Annotated[str, Field(max_length=63)]], Field(min_length=1, max_length=20)]
+
+
 class ChangeSetIn(BaseModel):
     title: Annotated[str, Field(min_length=1, max_length=200)]
     selection: Selection
@@ -242,6 +246,13 @@ class ChangeSetIn(BaseModel):
             "settings: remediates drift"
         ),
     ] = False
+    topics: Annotated[
+        TopicsIn | None,
+        Field(
+            description="Synchronize these tag keys to GitLab project topics (`key:value`), "
+            "instead of template settings"
+        ),
+    ] = None
     expires_in_hours: Annotated[int, Field(ge=1, le=change_sets.MAX_CHANGE_SET_HOURS)] = (
         DEFAULT_HOURS
     )
@@ -267,7 +278,7 @@ class ChangeSetSummary(BaseModel):
     approvals_needed: int
     source: str | None
     # template, settings, or effective (each project's own effective settings).
-    source_kind: Literal["template", "settings", "effective"]
+    source_kind: Literal["template", "settings", "effective", "topics"]
     # None, with created_by_system, for a set Baluarte proposed itself (automatic remediation).
     created_by: UserRef | None
     created_by_system: bool
@@ -349,9 +360,13 @@ class ChangeSetList(BaseModel):
     change_sets: list[ChangeSetSummary]
 
 
-def _source_kind(source: dict[str, Any]) -> Literal["template", "settings", "effective"]:
+def _source_kind(
+    source: dict[str, Any],
+) -> Literal["template", "settings", "effective", "topics"]:
     if source.get("effective"):
         return "effective"
+    if source.get("topics"):
+        return "topics"
     return "template" if source["template"] is not None else "settings"
 
 
@@ -496,7 +511,8 @@ def read_change_set(
     summary="Build a change set from stored evidence",
     description="For the current connection: the selection's projects, each setting of the "
     "template version, the settings given, or each project's own effective settings "
-    "(`effective`, which remediates drift), with before and after values, skips and warnings. "
+    "(`effective`, which remediates drift), or tag keys synchronized to GitLab topics "
+    "(`topics`), with before and after values, skips and warnings. "
     "Nothing is changed on the provider. Requires the `X-CSRF-Token` header. Audited.",
     responses={
         404: {"description": "No connection is configured"},
@@ -511,7 +527,13 @@ def create_change_set(
 ) -> ChangeSetOut:
     instance = _connection(db)
     try:
-        source = source_of(db, body.template, body.settings, body.effective)
+        source = source_of(
+            db,
+            body.template,
+            body.settings,
+            body.effective,
+            body.topics.keys if body.topics is not None else None,
+        )
         row = change_sets.create(
             db,
             instance,

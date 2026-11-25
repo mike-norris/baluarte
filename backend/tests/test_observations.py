@@ -43,6 +43,7 @@ PROJECT_FIELDS = {
     "visibility",
     "archived",
     "default_branch",
+    "topics",
 }
 
 PAGES = [
@@ -142,6 +143,8 @@ def test_discovery_records_allowlisted_evidence_for_each_project(migrated_engine
         "visibility": "internal",
         "archived": False,
         "default_branch": "main",
+        # Not reported by this GitLab: unknown, not an empty list.
+        "topics": None,
     }
     assert (api.source, api.source_ref, api.collection_status) == (
         "GET /projects",
