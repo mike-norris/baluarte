@@ -9,6 +9,11 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Automatic drift proposals: a template assignment can be set to **propose fixes for drift
+  automatically**. After each evaluation Baluarte builds a change set for the drifting settings
+  that assignment decides, marked as proposed by Baluarte, for people to approve and apply as
+  usual; nothing is approved or applied automatically. An open or identical rejected proposal
+  is not repeated (migration `0046`).
 - Fixing template drift: a change set can take each project's own effective settings (its
   templates and overrides) instead of one template or set of values, and each change names the
   template and assignment that decided it. **Propose a fix** on a project's drift, or for all

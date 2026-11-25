@@ -69,6 +69,7 @@ const assignment: TemplateAssignment = {
   target: { target_type: "group", target_id: 11, path: "platform/backend", state: "active" },
   overrides: null,
   override_reason: null,
+  auto_remediate: false,
   assigned_by: "user:1",
   created_at: created,
 };
@@ -309,6 +310,39 @@ describe("TemplatesPage", () => {
       target_type: "instance",
       overrides: { visibility: "public" },
       override_reason: "The SDK repository must stay public.",
+    });
+  });
+
+  it("assigns with automatic drift proposals", async () => {
+    const user = userEvent.setup();
+    const calls = api(analyst, {
+      [ASSIGN]: () =>
+        json(
+          {
+            ...assignment,
+            auto_remediate: true,
+            target: {
+              ...assignment.target,
+              target_type: "instance",
+              path: "https://gitlab.example.test",
+            },
+          },
+          201,
+        ),
+    });
+    renderPage();
+
+    const form = await screen.findByRole("form", { name: "Assign a template" });
+    await user.click(
+      within(form).getByRole("checkbox", { name: /Propose fixes for drift automatically/ }),
+    );
+    await user.click(within(form).getByRole("button", { name: "Assign" }));
+    await screen.findByText("Assigned service v1 to whole connection.");
+    expect(bodyOf(calls, ASSIGN)).toEqual({
+      name: "service",
+      version: 1,
+      target_type: "instance",
+      auto_remediate: true,
     });
   });
 

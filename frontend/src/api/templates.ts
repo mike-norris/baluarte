@@ -51,6 +51,8 @@ export interface TemplateAssignment {
   target: Target;
   overrides: Record<string, unknown> | null;
   override_reason: string | null;
+  /** Baluarte proposes change sets fixing drift of what this assignment decides. */
+  auto_remediate: boolean;
   assigned_by: string;
   created_at: string;
 }
@@ -62,6 +64,7 @@ export interface TemplateAssignmentRequest {
   target_id?: number;
   overrides?: Record<string, unknown>;
   override_reason?: string;
+  auto_remediate?: boolean;
 }
 
 export interface Source {

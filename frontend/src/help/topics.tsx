@@ -788,6 +788,11 @@ export const helpTopics: readonly HelpTopic[] = [
           for every drifting project under Alignment. It builds a change set from each
           project&apos;s own templates and overrides, to review and approve like any other.
         </p>
+        <p>
+          An assignment can also <strong>propose fixes for drift automatically</strong>. After each
+          evaluation, Baluarte builds such a change set for what that assignment decides. People
+          still approve and apply it; a rejected proposal is not repeated unless the drift changes.
+        </p>
         <h2 className="h3">Change sets</h2>
         <p>
           In <Link to="/governance/change-sets">Governance, Change sets</Link>, choose projects by
