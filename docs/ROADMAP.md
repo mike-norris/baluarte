@@ -129,6 +129,19 @@ Builds on remediation plans and label plans. Decided in [ADR-0016](architecture/
 
 Acceptance: the bulk governance workflow in the requirements, including a partial failure and an exception that stay visible.
 
+M14.6 also requires that whoever applies a change set is not one of its approvers (decided 2026-11-25).
+
+### Release governance
+
+Decided 2026-11-25, after M14.5 and before M14.6 ([ADR-0017](architecture/ADR-0017-release-governance.md)); steps and status in [RELEASE_GOVERNANCE.md](RELEASE_GOVERNANCE.md).
+
+- Release practices, presets and custom (merge request to the default branch; protected release tag with deployment approval; release branch), assigned to the connection, a group or a project, with the groups and projects that follow each and what their releases actually show.
+- Release evidence, read-only: protected tags, protected environments of projects and their groups, the self-approval setting, and for each production deployment its tag, approvals, deployer, tag creator and GitLab release.
+- Each production release judged against its practice, including separation of duties as GitLab records it: the tag creator does not approve, and the deployer is not an approver.
+- An audit release export per production release, never source code, with small pipeline reports (tests, SBOM, security scans) and checksums.
+
+Acceptance: a tag-gated release with a group-level deployment approval passes; one approved by its tag creator fails with the people named; its audit release verifies offline.
+
 ### M15 — Assessments and evidence management
 
 - Framework versions as data, with licensing respected for catalogue text.
