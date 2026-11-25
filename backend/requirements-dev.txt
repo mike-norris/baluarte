@@ -1502,9 +1502,9 @@ starlette==1.10.0 \
     # via
     #   -c requirements.txt
     #   fastapi
-types-pyyaml==6.0.12.20261113 \
-    --hash=sha256:0828be2580fd94151182364f4d0158e4de62fdbeeb8d4296f7f7d2b6c22bb640 \
-    --hash=sha256:3600749e613748afdc4327f0b17c3296cf880cdbc7335f320007abd9dd815f67
+types-pyyaml==6.0.12.20261122 \
+    --hash=sha256:689fbbe883b60471166dede9dba6ac0dbdbcf0ea98062d7ec195430f5bbdb009 \
+    --hash=sha256:7fa577c893a1db255cbb02320884ffcb97b7a219fe515bec6c5f15d5d3af41ed
     # via baluarte (pyproject.toml)
 types-reportlab==5.1.0.20261104 \
     --hash=sha256:5a214b6a53a4f719ce0e8a0081107b54a6d44e0fed25b8e167332a95e3163b17 \
