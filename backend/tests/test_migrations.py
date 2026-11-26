@@ -58,6 +58,8 @@ TABLES = {
     "provider_team",
     "register_cursor",
     "register_decision",
+    "release_practice",
+    "release_practice_assignment",
     "register_issue",
     "register_rule",
     "remediation_plan",

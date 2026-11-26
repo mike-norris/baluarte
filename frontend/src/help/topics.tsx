@@ -824,6 +824,47 @@ export const helpTopics: readonly HelpTopic[] = [
     ),
   },
   {
+    slug: "release-practices",
+    title: "Release practices",
+    summary: "How projects are meant to reach production, and whether their releases do.",
+    group: "Govern",
+    paths: ["/governance/release-practices"],
+    body: (
+      <>
+        <p>
+          A <strong>release practice</strong> says how projects are meant to reach production. Start
+          from a preset and adjust its parameters, or build a custom one:
+        </p>
+        <ul>
+          <li>
+            <strong>Merge request to the default branch</strong>: production deploys the default
+            branch, and each change is reviewed by someone other than its author.
+          </li>
+          <li>
+            <strong>Protected release tag with deployment approval</strong>: production deploys a
+            tag such as <code>*-release</code>, approved through GitLab&apos;s deployment approvals.
+            Whoever created the tag may not approve it, and the deployer may not be an approver.
+          </li>
+          <li>
+            <strong>Release branch</strong>: production deploys a branch such as{" "}
+            <code>release/*</code>.
+          </li>
+        </ul>
+        <p>
+          Assign a practice to the whole connection, a group or a project; the nearest assignment
+          decides. Changing a practice is audited with its values before and after.
+        </p>
+        <p>
+          <strong>Projects and their releases</strong> compares each project&apos;s production
+          deployments in the last 90 days with its practice: it follows it, differs (with the refs
+          it did not expect), is not known, or has no releases. The deployer is who GitLab records
+          on the deployment: a deploy job that runs automatically after approval is recorded as
+          whoever started the pipeline, for a tag its creator.
+        </p>
+      </>
+    ),
+  },
+  {
     slug: "labels",
     title: "Labels",
     summary: "One label taxonomy for every group, label drift, and reviewed label plans.",

@@ -613,6 +613,59 @@ class TemplateAssignment(Base):
     created_at: Mapped[datetime] = utc_now()
 
 
+RELEASE_PRESETS = ("merge_request", "release_tag", "release_branch", "custom")
+
+
+class ReleasePractice(Base):
+    """How projects are meant to reach production (release governance RG.2, ADR-0017).
+
+    ``settings`` holds the practice's parameters, validated by ``baluarte.releases.practices``.
+    Unlike templates, a practice is edited in place; every change is audited with its values.
+    """
+
+    __tablename__ = "release_practice"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "name"),
+        one_of("preset", RELEASE_PRESETS),
+        CheckConstraint("char_length(name) BETWEEN 1 AND 63", name="name_length"),
+    )
+
+    id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"), index=True)
+    name: Mapped[str] = mapped_column(Text)
+    preset: Mapped[str] = mapped_column(Text)
+    description: Mapped[str | None] = mapped_column(Text)
+    settings: Mapped[dict[str, Any]] = mapped_column(JSONB)
+    created_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = utc_now()
+    updated_by: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[datetime] = utc_now()
+
+
+class ReleasePracticeAssignment(Base):
+    """One release practice for a connection, group or project; the nearest on a project's path
+    decides. ``target_id`` is as for ``TemplateAssignment``."""
+
+    __tablename__ = "release_practice_assignment"
+    __table_args__ = (
+        UniqueConstraint("instance_id", "target_type", "target_id"),
+        Index("ix_release_practice_assignment_practice_id", "practice_id"),
+        one_of("target_type", TARGET_TYPES),
+        CheckConstraint(
+            "target_type <> 'instance' OR target_id = instance_id", name="instance_target"
+        ),
+    )
+
+    id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"), index=True)
+    instance_id: Mapped[int] = mapped_column(ForeignKey("gitlab_instance.id"))
+    practice_id: Mapped[int] = mapped_column(ForeignKey("release_practice.id"))
+    target_type: Mapped[str] = mapped_column(Text)
+    target_id: Mapped[int] = mapped_column(BigInteger)
+    assigned_by: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = utc_now()
+
+
 class TemplateException(Base):
     """A time-limited waiver of one template setting for one project, approved by someone else
     (roadmap M14.2). The same lifecycle and trigger rules as ``PolicyException``; ``setting`` is

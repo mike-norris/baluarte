@@ -9,6 +9,13 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Release practices (release governance step RG.2): **Governance, Release practices** defines
+  how projects are meant to reach production, from three presets (merge request to the default
+  branch; protected release tag with deployment approval; release branch) or a custom practice,
+  with ref patterns, environments, required approvals and who may approve. A practice is assigned
+  to the connection, a group or a project, nearest first, and each project's production
+  deployments of the last 90 days are compared with it: follows, differs (with the refs it did
+  not expect), not known or no releases. Changes are audited (migration `0048`).
 - Release evidence (release governance step RG.1, read-only): each production deployment now
   records who GitLab says deployed it, whether it deployed a tag, its deployment approvals
   (GitLab Premium or Ultimate), who started its pipeline (for a tag, the tag's creator) and the

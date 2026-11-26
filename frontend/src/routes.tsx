@@ -19,6 +19,7 @@ import {
   CHANGES_VIEW,
   GOVERNANCE,
   SECURITY_POLICIES_VIEW,
+  RELEASE_PRACTICES_VIEW,
   TEMPLATES_VIEW,
   CHANGE_SETS_VIEW,
 } from "./policies/format";
@@ -231,6 +232,10 @@ export const routes: RouteObject[] = [
           {
             path: CHANGE_SETS_VIEW,
             element: page(() => import("./pages/ChangeSetsPage"), "ChangeSetsPage"),
+          },
+          {
+            path: RELEASE_PRACTICES_VIEW,
+            element: page(() => import("./pages/ReleasePracticesPage"), "ReleasePracticesPage"),
           },
           {
             path: CHANGES_VIEW,
