@@ -41,7 +41,9 @@ from baluarte.integrations.gitlab.discovery import Discovery
 from baluarte.integrations.gitlab.freshness import report as freshness_report
 from baluarte.integrations.gitlab.groups import discover_groups
 from baluarte.integrations.gitlab.instances import instance_for, instance_id_for
+from baluarte.integrations.gitlab.project_reads import collect_project_reads
 from baluarte.integrations.gitlab.projects import discover_projects
+from baluarte.integrations.gitlab.release_protections import release_protection_reader
 from baluarte.integrations.gitlab.runs import RunKind, RunOutcome, finish_run, start_run
 from baluarte.integrations.gitlab.settings import GitLabSettings, load_gitlab_settings
 from baluarte.jobs import queue
@@ -368,10 +370,22 @@ def make_collect_changes(transport: httpx.BaseTransport | None = None) -> GitLab
                 result = changes.collect(
                     client, engine, instance_id, options, Provenance(run_id, job.id)
                 )
+                # Release protections, for release governance (docs/RELEASE_GOVERNANCE.md).
+                protections: dict[str, int] = {}
+                if not result.rejected:
+                    reader = release_protection_reader(client, engine, instance_id)
+                    reads = collect_project_reads(
+                        client, engine, instance_id, [reader], Provenance(run_id, job.id)
+                    )
+                    protections = reads.as_counts(reader.key)
         except Exception as exc:
             _unexpected(engine, run_id, exc)
             raise
         problems = []
+        if protections.get("failed"):
+            problems.append(
+                f"release protections of {protections['failed']} projects could not be read"
+            )
         if result.failed_projects:
             problems.append(f"changes of {result.failed_projects} projects could not be listed")
         failed_parts = sum(count for key, count in result.parts.items() if key.endswith(":failed"))
@@ -386,7 +400,7 @@ def make_collect_changes(transport: httpx.BaseTransport | None = None) -> GitLab
             run_id,
             outcome,
             seen=result.projects,
-            counts=result.as_counts(),
+            counts=result.as_counts() | {"release_protections": protections},
             error="; ".join(problems) or None,
         )
         logger.info(

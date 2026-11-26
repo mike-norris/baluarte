@@ -18,9 +18,21 @@ A merge request is identified by every commit that can stand for it (`shas`): it
 
 The `gitlab.collect_changes` job runs after every project discovery, once per discovery run, as a collection run of kind `changes`. For each active, unarchived project in monitoring scope that has a default branch, it calls only `GET`:
 
-1. **Deployments.** `GET /projects/:id/deployments?environment=<name>&status=success&finished_after=<t>&order_by=finished_at`, for each production environment.
+1. **Deployments.** `GET /projects/:id/deployments?environment=<name>&status=success&finished_after=<t>&order_by=finished_at`, for each production environment. Each new deployment is then read for release governance ([RELEASE_GOVERNANCE.md](RELEASE_GOVERNANCE.md)):
+   - `GET /projects/:id/deployments/:id`: who GitLab records as the deployer, whether its job ran for a tag, and its approvals (GitLab Premium or Ultimate);
+   - `GET /projects/:id/pipelines/:id` for the pipeline it ran in: who started it and how (for a tag pipeline, the tag's creator);
+   - for a tag, `GET /projects/:id/releases/:tag`: the release's notes, author, GitLab release evidence and asset links. A tag without a release is recorded as having none.
+
+   A deployment recorded before these were read, or with one that failed, is read again by the next collection (at most 200 per project).
 2. **Merge requests.** `GET /projects/:id/merge_requests?state=merged&target_branch=<default>&updated_after=<t>&order_by=updated_at`, then for each one `GET .../merge_requests/:iid/approvals`, `GET .../merge_requests/:iid/pipelines` (the newest pipeline for its last commit), `GET /projects/:id/pipelines/:id` and, once the pipeline has finished, `GET /projects/:id/pipelines/:id/test_report_summary`.
 3. **Direct pushes.** `GET /projects/:id/repository/commits?ref_name=<default>&first_parent=true&since=<t>`. A commit that is not one of the merge requests' commits is looked up with `GET /projects/:id/repository/commits/:sha/merge_requests`; if no merged merge request into the default branch brought it, it is a direct push, read with `GET /projects/:id/pipelines?sha=&ref=` and the pipeline reads above.
+
+After the changes, the same job reads each active project's **release protections** with `GET` only, as one observation per project (source `GET release protections`):
+- `GET /projects/:id/protected_tags`;
+- `GET /projects/:id/protected_environments`, and `GET /groups/:id/protected_environments` for each group above the project, each group read once per collection;
+- `GET /projects/:id` for `allow_pipeline_trigger_approve_deployment`.
+
+Each part has its own status, and the observation is `partial` when one was refused, for example on GitLab Free. Access entries are kept by kind and role, never names or IDs.
 
 ### History and the cursor
 
@@ -81,7 +93,7 @@ Capability detection adds probes for these reads (`merge_requests.read`, `merge_
 |---|---|---|---|
 | Review | At least `min_approvals` approvals by people other than the author. | The author approved it (when forbidden), too few approvals, or a direct push (unless allowed). | Approvals not read, or the author not known. |
 | Pipeline | The newest pipeline for the change's last commit succeeded (and, with `require_tests`, has a test report with no failed or erroring tests). | It failed or was canceled, no pipeline ran, or required tests are missing or failed. | The pipeline or a required test report was not read. |
-| Deployment | It deployed a commit of a change that passes review. | It deployed a change that fails review, or a ref other than the default branch. | It deployed a default-branch commit Baluarte has not recorded (it may predate the history), or the change cannot be judged. |
+| Deployment | It deployed a commit of a change that passes review. | It deployed a change that fails review, or a branch other than the default branch. | It deployed a commit Baluarte has not recorded (a default-branch commit before the history, or a release tag, which the release checks judge), its ref was recorded before tags were, or the change cannot be judged. |
 
 A failure outranks unknown, and unknown outranks pass. `reasons` explains the deciding checks.
 

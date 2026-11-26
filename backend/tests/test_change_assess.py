@@ -83,7 +83,9 @@ def direct_push(sha: str = "d" * 40, ran: dict[str, Any] | None = None) -> dict[
     }
 
 
-def deployment(sha: str, ref: str = "main", gitlab_id: int = 300) -> dict[str, Any]:
+def deployment(
+    sha: str, ref: str = "main", gitlab_id: int = 300, tag: bool | None = False
+) -> dict[str, Any]:
     return {
         "kind": "deployment",
         "id": gitlab_id,
@@ -94,6 +96,7 @@ def deployment(sha: str, ref: str = "main", gitlab_id: int = 300) -> dict[str, A
         "sha": sha,
         "created_at": "2026-10-31T08:00:00Z",
         "finished_at": "2026-10-31T09:00:00Z",
+        "tag": tag,
     }
 
 
@@ -235,10 +238,29 @@ def test_a_deployment_of_an_unreviewed_change_or_another_branch_fails() -> None:
     assert assess.deployed_change(deployment(push["sha"]), shas, "main")[1][0] == "fail"
     assert assess.deployed_change(deployment("f" * 40, ref="feature"), {}, "main")[1] == (
         "fail",
-        "deployment 300 (ffffffff) deployed feature, not the default branch",
+        "deployment 300 (ffffffff) deployed the branch feature, not the default branch",
     )
     # A commit of the default branch Baluarte has not recorded: may predate the history.
     assert assess.deployed_change(deployment("f" * 40), {}, "main")[1][0] == "unknown"
+
+
+def test_a_tag_deployment_is_not_a_failure_in_itself() -> None:
+    push = direct_push()
+    reviewed = {push["sha"]: push}
+    tagged = deployment("f" * 40, ref="v1.2-release", tag=True)
+
+    # A release tag whose commit is not recorded: the release checks judge it, not this one.
+    assert assess.deployed_change(tagged, {}, "main")[1] == (
+        "unknown",
+        "deployment 300 (ffffffff) deployed the tag v1.2-release, whose commit is not among the "
+        "recorded changes of the default branch",
+    )
+    # A tag on a recorded commit is judged by that change, as before.
+    on_push = deployment(push["sha"], ref="v1.2-release", tag=True)
+    assert assess.deployed_change(on_push, reviewed, "main")[1][0] == "fail"
+    # Recorded before tags were: another ref is unknown, not a failure.
+    untold = deployment("f" * 40, ref="v1.2-release", tag=None)
+    assert assess.deployed_change(untold, {}, "main")[1][0] == "unknown"
 
 
 # Rule values over a window

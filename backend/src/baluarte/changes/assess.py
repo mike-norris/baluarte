@@ -16,7 +16,13 @@ Payloads:
   to the production environments).
 - ``direct_push``: a first-parent commit on the default branch that no merged merge request
   brought: sha, title, author_name, committed_at, branch and its ``pipeline``.
-- ``deployment``: one successful deployment: id, iid, environment, status, ref, sha, finished_at.
+- ``deployment``: one successful deployment: id, iid, environment, status, ref, sha, created_at,
+  finished_at, ``tag`` (whether its job ran for a tag), ``deployer`` (the deployment's user), job,
+  pipeline_id, and three parts read for release governance: ``deployment_approvals`` (who approved
+  or rejected it and when, pending_approval_count and the approval rules), ``trigger`` (the user
+  and source of the pipeline it ran in; for a tag pipeline, the tag's creator) and ``release`` (the
+  tag's GitLab release: notes, author, release evidence and asset links; ``none`` when the
+  deployment was not of a tag or the tag has no release).
 """
 
 from collections.abc import Mapping, Sequence
@@ -173,8 +179,22 @@ def deployed_change(
     found = changes.get(sha) if isinstance(sha, str) else None
     if found is None:
         ref = deployment.get("ref")
+        tag = deployment.get("tag")
+        if tag is True:
+            # A release tag is a legitimate path to production; the release checks judge it.
+            return None, (
+                "unknown",
+                f"{name} deployed the tag {ref}, whose commit is not among the recorded changes "
+                "of the default branch",
+            )
         if isinstance(ref, str) and default_branch is not None and ref != default_branch:
-            return None, ("fail", f"{name} deployed {ref}, not the default branch")
+            if tag is None:
+                return None, (
+                    "unknown",
+                    f"{name} deployed {ref}, not the default branch; whether {ref} is a tag "
+                    "is not recorded",
+                )
+            return None, ("fail", f"{name} deployed the branch {ref}, not the default branch")
         return None, (
             "unknown",
             f"{name} deployed a commit that is not among the recorded changes; it may predate "
@@ -196,7 +216,14 @@ def incomplete(payload: Mapping[str, Any]) -> bool:
     """Whether a part failed in a way the next read may fix."""
     return any(
         _part(payload, name).get("status") in TRANSIENT
-        for name in ("approvals", "pipeline", "deployments")
+        for name in (
+            "approvals",
+            "pipeline",
+            "deployments",
+            "deployment_approvals",
+            "trigger",
+            "release",
+        )
         if name in payload
     )
 
