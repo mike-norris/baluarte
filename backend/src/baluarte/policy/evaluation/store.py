@@ -311,9 +311,35 @@ def backed_by_changes(
             f"{len(altered)} stored change observations of project {path} fail their integrity "
             "check, so they cannot back this value.",
         ), None
-    rebuilt = change_rules.summarise(
-        result.rule_type, result.expected, read.payload, entries, (start, end)
-    )
+    release: dict[str, Any] | None = None
+    protections: Observation | None = None
+    if result.rule_type == change_rules.RELEASE_RULE_TYPE:
+        # The practice is recorded in the value; the protections are an observation of their own.
+        protections_id = observed.get("protections_observation_id")
+        if protections_id is not None:
+            protections = db.get(Observation, protections_id)
+            if (
+                protections is None
+                or protections.project_id != project_id
+                or not verify(protections)
+            ):
+                return _unbacked(
+                    result,
+                    "evidence_digest_mismatch",
+                    f"The release protections observation of project {path} is missing or fails "
+                    "its integrity check, so it cannot back this value.",
+                ), None
+        release = {
+            "practice": observed.get("practice"),
+            "protections": protections.payload if protections is not None else None,
+            "protections_observation_id": protections_id,
+        }
+    try:
+        rebuilt = change_rules.summarise(
+            result.rule_type, result.expected, read.payload, entries, (start, end), release
+        )
+    except ValueError:
+        rebuilt = None
     if rebuilt != observed:
         return _unbacked(
             result,
@@ -321,6 +347,8 @@ def backed_by_changes(
             f"The stored change observations of project {path} do not match the judged value.",
         ), None
     chosen = [observations[entry.observation_id] for entry in used]
+    if protections is not None:
+        chosen.append(protections)
     return result, ManyEvidence([o.id for o in chosen], combined_digest(chosen))
 
 

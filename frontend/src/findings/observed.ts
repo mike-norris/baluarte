@@ -49,12 +49,7 @@ function approvals(observed: Payload): string | null {
       "committers can't approve",
       "committers can approve",
     ],
-    [
-      "reset_approvals_on_push",
-      true,
-      "a push removes approvals",
-      "approvals survive a push",
-    ],
+    ["reset_approvals_on_push", true, "a push removes approvals", "approvals survive a push"],
     [
       "disable_overriding_approvers_per_merge_request",
       true,
@@ -197,6 +192,18 @@ function changes(observed: Payload): string | null {
   return `${count(total, "change", "changes")} in the window: ${parts.join(", ")}`;
 }
 
+function releases(observed: Payload): string | null {
+  const total = whole(observed.changes);
+  if (total === null) return null;
+  const practice = isRecord(observed.practice) ? observed.practice.name : null;
+  const under = typeof practice === "string" ? ` under practice ${practice}` : "";
+  if (total === 0) return `No production releases in the window${under}`;
+  const parts = (["passed", "failed", "unknown"] as const).map(
+    (key) => `${String(whole(observed[key]) ?? 0)} ${key}`,
+  );
+  return `${count(total, "release", "releases")} in the window${under}: ${parts.join(", ")}`;
+}
+
 export function observedSummary(ruleType: string, observed: unknown): string | null {
   if (ruleType === "gitlab.project.access_tokens") return tokens(observed);
   if (!isRecord(observed)) return null;
@@ -213,6 +220,8 @@ export function observedSummary(ruleType: string, observed: unknown): string | n
     case "gitlab.change.pipeline_passed":
     case "gitlab.change.deployed_after_review":
       return changes(observed);
+    case "gitlab.release.follows_practice":
+      return releases(observed);
     default:
       return null;
   }

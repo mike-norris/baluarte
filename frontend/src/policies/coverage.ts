@@ -11,6 +11,7 @@ import {
   MEMBERS_TYPE,
   PIPELINE_TYPE,
   PROJECT_APPROVALS_TYPE,
+  RELEASE_TYPE,
   REVIEWED_TYPE,
   SCAN_TYPE,
   TOKENS_TYPE,
@@ -96,6 +97,11 @@ export const ruleTypeInfo: Record<string, { name: string; proves: string }> = {
   [DEPLOYED_TYPE]: {
     name: "Deployed after review",
     proves: "What reached production was a reviewed change.",
+  },
+  [RELEASE_TYPE]: {
+    name: "Releases follow practice",
+    proves:
+      "Each production release followed its release practice, with separate creator, approver and deployer.",
   },
   [SCAN_TYPE]: {
     name: "Scan execution policy",

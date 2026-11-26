@@ -120,6 +120,17 @@ class ChangeHistory:
 
 
 @dataclass(frozen=True)
+class ReleaseFacts:
+    """The release practice in force for a project and its release protections, for
+    ``gitlab.release.follows_practice``."""
+
+    # The practice as ``Resolved.as_dict`` records it, or None when none applies.
+    practice: dict[str, Any] | None
+    # The project's latest release protections observation; None when never read.
+    protections: "ProjectObservation | None"
+
+
+@dataclass(frozen=True)
 class LabelFacts:
     """The label drift that reaches a project, for ``gitlab.labels.consistent``."""
 
@@ -158,6 +169,8 @@ class ProjectFacts:
     changes: ChangeHistory | None = None
     # Loaded only when a label rule is in force; None otherwise.
     labels: LabelFacts | None = None
+    # Loaded only when the release rule is in force; None otherwise.
+    release: ReleaseFacts | None = None
     # The connection's provider, and for GitHub its observations by source (each None when
     # never read): the repository's default-branch settings and the organization.
     provider: str = "gitlab"

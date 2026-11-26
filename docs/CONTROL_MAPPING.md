@@ -114,6 +114,12 @@ Mapping version `2026.11.1` adds the change rules:
 | `gitlab.change.pipeline_passed` | CC8.1 | A.8.29 | SA-11 |
 | `gitlab.change.deployed_after_review` | CC8.1 | A.8.32 | CM-3 |
 
+Mapping version `2026.11.2` adds the release rule ([RELEASE_GOVERNANCE.md](RELEASE_GOVERNANCE.md)):
+
+| Rule type | SOC 2 | ISO/IEC 27001:2022 | NIST SP 800-53 |
+|---|---|---|---|
+| `gitlab.release.follows_practice` | CC8.1 | A.8.32 | CM-3, AC-5 |
+
 ## Changes
 
 An organization changes the mapping through `control_mapping_change` rows. Each names a control and carries a justification of 20 to 2,000 characters.

@@ -216,7 +216,7 @@ The capability status comes from the instance's latest capability snapshot (`cap
 
 ## Change rules
 
-`gitlab.change.reviewed`, `gitlab.change.pipeline_passed` and `gitlab.change.deployed_after_review` judge a window of a project's recorded changes (collection kind `changes`). A failing change fails the rule; a change that cannot be judged, a listing that could not be read, or a window that starts before the project's collected history makes it `unknown`. The stored result lists every change observation it rests on (`observation_ids`) with their combined `evidence_digest`; each digest is checked and the value rebuilt before a `pass` or `fail` is stored. See [CHANGE_EVIDENCE.md](CHANGE_EVIDENCE.md).
+`gitlab.change.reviewed`, `gitlab.change.pipeline_passed`, `gitlab.change.deployed_after_review` and `gitlab.release.follows_practice` judge a window of a project's recorded changes (collection kind `changes`). A failing change fails the rule; a change that cannot be judged, a listing that could not be read, or a window that starts before the project's collected history makes it `unknown`. The stored result lists every change observation it rests on (`observation_ids`) with their combined `evidence_digest`; each digest is checked and the value rebuilt before a `pass` or `fail` is stored. The release rule also records the practice in force and rests on the project's release protections observation, whose digest is checked too. See [CHANGE_EVIDENCE.md](CHANGE_EVIDENCE.md) and [RELEASE_GOVERNANCE.md](RELEASE_GOVERNANCE.md).
 
 ## Reading results as of a moment
 

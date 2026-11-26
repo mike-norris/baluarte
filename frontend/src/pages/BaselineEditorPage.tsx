@@ -164,6 +164,10 @@ function YamlHelp() {
           optional <code className="font-monospace">window_days</code>.
         </li>
         <li>
+          Rule <code className="font-monospace">gitlab.release.follows_practice</code> with optional{" "}
+          <code className="font-monospace">window_days</code>; it needs a release practice assigned.
+        </li>
+        <li>
           Each rule has a unique <code className="font-monospace">id</code> and an optional{" "}
           <code className="font-monospace">severity</code> (low, medium, high or critical) and{" "}
           <code className="font-monospace">description</code>.

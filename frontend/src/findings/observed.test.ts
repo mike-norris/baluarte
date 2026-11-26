@@ -130,6 +130,16 @@ describe("observed value summaries", () => {
     expect(observedSummary("gitlab.group.two_factor_required", {})).toBeNull();
   });
 
+  it("summarizes releases under their practice", () => {
+    const observed = { changes: 3, passed: 1, failed: 1, unknown: 1, practice: { name: "tags" } };
+    expect(observedSummary("gitlab.release.follows_practice", observed)).toBe(
+      "3 releases in the window under practice tags: 1 passed, 1 failed, 1 unknown",
+    );
+    expect(observedSummary("gitlab.release.follows_practice", { changes: 0 })).toBe(
+      "No production releases in the window",
+    );
+  });
+
   it("leaves other rule types to the generic rendering", () => {
     expect(observedSummary("gitlab.project.visibility", "private")).toBeNull();
     expect(observedSummary("gitlab.branch.default_protected", { protected: true })).toBeNull();

@@ -9,6 +9,16 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Release checks (release governance step RG.3): the baseline rule
+  `gitlab.release.follows_practice` judges each production release against the project's
+  release practice: the ref it expects, a protected tag for a tag practice, the required
+  deployment approvals given before it finished, no approval by whoever started the release or
+  by the deployer unless the practice allows it, and a reviewed change when required. Failing
+  releases name who started, approved and deployed them; what cannot be read is unknown, and a
+  project with no practice is unknown. The result rests on the deployment and change
+  observations and the release protections observation, each checked before it is stored. It
+  maps to SOC 2 CC8.1, ISO/IEC 27001 A.8.32 and NIST CM-3 and AC-5 (control mapping version
+  `2026.11.2`), and the baseline editor offers it, off by default.
 - Release practices (release governance step RG.2): **Governance, Release practices** defines
   how projects are meant to reach production, from three presets (merge request to the default
   branch; protected release tag with deployment approval; release branch) or a custom practice,

@@ -34,6 +34,7 @@ from baluarte.integrations.gitlab.access import (
 from baluarte.integrations.gitlab.branches import PROTECTION_SOURCE
 from baluarte.integrations.gitlab.changes import CHANGE_READ_SOURCE
 from baluarte.integrations.gitlab.freshness import kind_freshness, report
+from baluarte.integrations.gitlab.release_protections import RELEASE_PROTECTION_SOURCE
 from baluarte.integrations.gitlab.runs import RunKind
 from baluarte.integrations.gitlab.security_policies import PROJECT_SOURCE as SECURITY_POLICY_SOURCE
 from baluarte.integrations.gitlab.settings import GitLabSettings
@@ -43,6 +44,7 @@ from baluarte.policy.evaluation.changes import (
     CHANGE_EVALUATORS,
     CHANGE_RULE_TYPES,
     MAX_WINDOW_DAYS,
+    RELEASE_RULE_TYPE,
 )
 from baluarte.policy.evaluation.default_branch import DEFAULT_BRANCH_PROTECTED
 from baluarte.policy.evaluation.engine import (
@@ -52,6 +54,7 @@ from baluarte.policy.evaluation.engine import (
     EvaluationContext,
     ProjectFacts,
     ProjectObservation,
+    ReleaseFacts,
     RuleEvaluator,
     SecurityPolicies,
     evaluate_rule,
@@ -71,6 +74,7 @@ from baluarte.policy.evaluation.model import (
 from baluarte.policy.evaluation.security_policy import APPROVAL_POLICY, SCAN_EXECUTION_POLICY
 from baluarte.policy.evaluation.visibility import VISIBILITY
 from baluarte.policy.loader import parse_policy
+from baluarte.releases import practices as release_practices
 
 # Rule types that can be evaluated; adding a rule type adds its evaluator here. Rules of other
 # types are not evaluated (and produce no result) until their evaluator exists.
@@ -238,6 +242,16 @@ def change_history(db: Session, project: GitLabProject, as_of: datetime) -> Chan
     )
 
 
+def release_facts(db: Session, project: GitLabProject) -> ReleaseFacts:
+    """The release practice in force for the project and its release protections."""
+    instance = db.get_one(GitLabInstance, project.instance_id)
+    resolved = release_practices.resolve(db, instance, project)
+    return ReleaseFacts(
+        practice=resolved.as_dict() if resolved is not None else None,
+        protections=project_observation(db, project, RELEASE_PROTECTION_SOURCE),
+    )
+
+
 def project_facts(
     project: GitLabProject,
     protection: BranchProtection | None = None,
@@ -308,6 +322,7 @@ def project_context(
     *,
     changes: bool = False,
     labels: bool = False,
+    release: bool = False,
 ) -> EvaluationContext:
     """What rules about ``project`` are judged from. Changes and label drift are read only when
     asked for, because they are read only for projects a rule of that kind is in force for.
@@ -331,6 +346,8 @@ def project_context(
         facts = replace(facts, changes=change_history(db, project, evaluated_at))
     if labels:
         facts = replace(facts, labels=label_facts(db, project, evaluated_at))
+    if release:
+        facts = replace(facts, release=release_facts(db, project))
     return EvaluationContext(
         target=TargetRef(
             target_type="project", gitlab_id=project.gitlab_id, path=project.path_with_namespace
@@ -383,6 +400,7 @@ def evaluate_project(
         provider,
         changes=bool(types & set(CHANGE_RULE_TYPES)),
         labels=LABELS_RULE_TYPE in types,
+        release=provider == "gitlab" and RELEASE_RULE_TYPE in types,
     )
     evaluators = PROVIDER_EVALUATORS[provider]
     results: list[RuleResult] = []
