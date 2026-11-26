@@ -8,6 +8,7 @@ import {
   CHANGE_SETS_VIEW,
   CHANGES_VIEW,
   GOVERNANCE,
+  RELEASE_PRACTICES_VIEW,
   SECURITY_POLICIES_VIEW,
   TEMPLATES_VIEW,
 } from "./format";
@@ -19,6 +20,7 @@ const tabs = [
   { to: SECURITY_POLICIES_VIEW, label: "GitLab security policies" },
   { to: TEMPLATES_VIEW, label: "Templates" },
   { to: CHANGE_SETS_VIEW, label: "Change sets" },
+  { to: RELEASE_PRACTICES_VIEW, label: "Release practices" },
   { to: CHANGES_VIEW, label: "Changes" },
 ] as const;
 
