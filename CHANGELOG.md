@@ -9,6 +9,13 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Release evidence (release governance step RG.1, read-only): each production deployment now
+  records who GitLab says deployed it, whether it deployed a tag, its deployment approvals
+  (GitLab Premium or Ultimate), who started its pipeline (for a tag, the tag's creator) and the
+  tag's GitLab release. Deployments recorded earlier are read again once. The change-evidence job
+  also records each project's protected tags, protected environments (the project's and its
+  groups') and whether the pipeline triggerer may approve deployments.
+
 - Tags to GitLab topics, only when asked: a change set can synchronize chosen tag keys to
   project topics as `key:value`, adding what tags call for and removing stale topics of those
   keys while keeping every other topic. It is reviewed, applied with the template write token,
@@ -212,6 +219,9 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Fixed
 
+- A production deployment of a release tag whose commit is not among the recorded changes of the
+  default branch is now `unknown`, for the release checks to judge, instead of failing because
+  its ref is not the default branch. A deployment of another branch still fails.
 - The Remediation page description and the policy engine docs still said plans never change
   GitLab.
 

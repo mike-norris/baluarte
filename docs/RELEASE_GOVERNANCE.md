@@ -6,7 +6,7 @@ Roadmap milestone **Release governance** ([ROADMAP.md](ROADMAP.md#release-govern
 
 | Step | What it delivers | State |
 |---|---|---|
-| RG.1 Release evidence | Protected tags, protected environments (project and groups) and the self-approval setting per project; each production deployment with its tag, approvals, deployer, tag pipeline user and GitLab release; a tag deployment no longer fails because its ref is not the default branch | Planned |
+| RG.1 Release evidence | Protected tags, protected environments (project and groups) and the self-approval setting per project; each production deployment with its tag, approvals, deployer, tag pipeline user and GitLab release; a tag deployment no longer fails because its ref is not the default branch | Done |
 | RG.2 Release practices | Presets and custom practices with parameters, assigned to the connection, a group or a project (nearest wins); a Release practices page listing which groups and projects follow which practice, and what their releases actually show | Planned |
 | RG.3 Release checks | Each production release judged against its practice: protected ref, approvals required and given before deploying, tag creator not an approver, deployer not an approver, optional merge-request review; findings, the auditor report and evidence packages | Planned |
 | RG.4 Audit release export | One package per production release: the release, its notes and GitLab release evidence, its merge requests with approvals, pipelines and tests, who created, approved and deployed it, the protections in force, and small pipeline reports (test reports, SBOM, security scans) with checksums; verified offline | Planned |

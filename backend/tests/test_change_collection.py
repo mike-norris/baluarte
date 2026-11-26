@@ -18,6 +18,7 @@ from baluarte.db.models import (
     ChangeRecord,
     CollectionJob,
     CollectionRun,
+    GitLabGroup,
     GitLabProject,
     Observation,
 )
@@ -26,6 +27,7 @@ from baluarte.integrations.gitlab import changes
 from baluarte.integrations.gitlab.client import GitLabClient
 from baluarte.integrations.gitlab.instances import instance_for
 from baluarte.integrations.gitlab.jobs import COLLECT_CHANGES, make_collect_changes, queue_changes
+from baluarte.integrations.gitlab.release_protections import RELEASE_PROTECTION_SOURCE
 from baluarte.jobs.worker import Worker
 from baluarte.policy.evaluation.runner import EVALUATE
 
@@ -83,6 +85,14 @@ class Repository:
     # Merge requests that brought each commit (GET /repository/commits/:sha/merge_requests).
     commit_merge_requests: dict[str, Any] = field(default_factory=dict)
     deployments: list[dict[str, Any]] = field(default_factory=list)
+    # Release governance: fields only the single deployment read returns (approvals), releases
+    # by tag, protected tags and environments, and group environments by group ID.
+    deployment_details: dict[int, dict[str, Any]] = field(default_factory=dict)
+    releases: dict[str, dict[str, Any]] = field(default_factory=dict)
+    protected_tags: list[dict[str, Any]] = field(default_factory=list)
+    environments: list[dict[str, Any]] = field(default_factory=list)
+    group_environments: dict[int, Any] = field(default_factory=dict)
+    project: dict[str, Any] = field(default_factory=dict)
     # Paths answered with a status instead, e.g. {"/merge_requests": 401}.
     errors: dict[str, int] = field(default_factory=dict)
     requests: list[httpx.Request] = field(default_factory=list)
@@ -111,7 +121,16 @@ class Repository:
             },
         )
 
-    def deploy(self, deployment_id: int, commit_sha: str, ref: str = "main") -> None:
+    def deploy(
+        self,
+        deployment_id: int,
+        commit_sha: str,
+        ref: str = "main",
+        *,
+        tag: bool = False,
+        deployer: str = "dev",
+        pipeline_id: int | None = None,
+    ) -> None:
         self.deployments.append(
             {
                 "id": deployment_id,
@@ -121,8 +140,14 @@ class Repository:
                 "status": "success",
                 "created_at": ago(days=1),
                 "updated_at": ago(days=1),
+                "user": {"username": deployer, "name": "Not kept"},
                 "environment": {"name": "production"},
-                "deployable": {"finished_at": ago(days=1)},
+                "deployable": {
+                    "name": "deploy",
+                    "tag": tag,
+                    "finished_at": ago(days=1),
+                    "pipeline": {"id": pipeline_id} if pipeline_id is not None else None,
+                },
             }
         )
 
@@ -141,6 +166,28 @@ class Repository:
             if path == prefix:
                 return httpx.Response(status, json={"message": f"{status}"})
         params = request.url.params
+        if found := re.fullmatch(r"/api/v4/groups/(\d+)/protected_environments", path):
+            body = self.group_environments.get(int(found[1]), [])
+            if isinstance(body, int):
+                return httpx.Response(body, json={"message": str(body)})
+            return httpx.Response(200, json=body)
+        if path == "":
+            return httpx.Response(200, json={"id": PROJECT, **self.project})
+        if path == "/protected_tags":
+            return httpx.Response(200, json=self.protected_tags)
+        if path == "/protected_environments":
+            return httpx.Response(200, json=self.environments)
+        if found := re.fullmatch(r"/deployments/(\d+)", path):
+            number = int(found[1])
+            listed = next((d for d in self.deployments if d["id"] == number), None)
+            if listed is None or number not in self.deployment_details:
+                return httpx.Response(404, json={"message": "404 Not Found"})
+            return httpx.Response(200, json=listed | self.deployment_details[number])
+        if found := re.fullmatch(r"/releases/(.+)", path):
+            release = self.releases.get(found[1])
+            if release is None:
+                return httpx.Response(404, json={"message": "404 Not Found"})
+            return httpx.Response(200, json=release)
         if path == "/deployments":
             assert params["status"] == "success"
             return httpx.Response(200, json=self.deployments)
@@ -573,3 +620,263 @@ def test_change_collection_is_queued_once_per_discovery(migrated_engine: Engine)
         first = queue_changes(db, 41)
         assert queue_changes(db, 41) == first
         assert queue_changes(db, 42) != first
+
+
+# Release governance (docs/RELEASE_GOVERNANCE.md) -------------------------------------------------
+
+
+def tag_release_repository() -> Repository:
+    """A merge request, then a release tag created by ``dev``, approved by ``lead``, deployed."""
+    repo = Repository()
+    repo.merge_requests = [mr(1, merge_commit=sha("m1"))]
+    repo.approvals = {1: approved("reviewer")}
+    repo.pipeline(sha("1h"), 101)
+    repo.commit(sha("m1"))
+    # The tag pipeline, started by whoever pushed the tag.
+    repo.pipelines.setdefault(sha("m1"), []).insert(
+        0,
+        {
+            "id": 500,
+            "sha": sha("m1"),
+            "status": "success",
+            "source": "push",
+            "ref": "v1-release",
+            "tag": True,
+            "user": {"username": "dev", "name": "Not kept"},
+            "created_at": ago(days=1, hours=2),
+            "finished_at": ago(days=1),
+        },
+    )
+    repo.deploy(300, sha("m1"), ref="v1-release", tag=True, deployer="dev", pipeline_id=500)
+    repo.deployment_details[300] = {
+        "approvals": [
+            {
+                "user": {"username": "lead", "name": "Not kept"},
+                "status": "approved",
+                "created_at": ago(days=1, hours=1),
+                "comment": "Release window approved",
+            }
+        ],
+        "pending_approval_count": 0,
+        "approval_summary": {
+            "rules": [
+                {
+                    "access_level": 40,
+                    "required_approvals": 1,
+                    "deployment_approvals": [{"status": "approved"}],
+                }
+            ]
+        },
+    }
+    repo.releases["v1-release"] = {
+        "tag_name": "v1-release",
+        "name": "Release 1",
+        "description": "Fixes and features",
+        "author": {"username": "dev", "name": "Not kept"},
+        "created_at": ago(days=1, hours=2),
+        "released_at": ago(days=1, hours=2),
+        "evidences": [
+            {"sha": "e" * 40, "filepath": "https://x/evidence.json", "collected_at": ago(days=1)}
+        ],
+        "assets": {"links": [{"name": "SBOM", "link_type": "other", "url": "https://x/sbom.json"}]},
+    }
+    return repo
+
+
+def deployment_payload_of(engine: Engine) -> dict[str, Any]:
+    record = records(engine)[("deployment", 300)]
+    found = versions(engine, record)[-1].payload
+    assert found is not None
+    return found
+
+
+def test_a_tag_deployment_records_who_created_approved_and_deployed_it(
+    migrated_engine: Engine, instance_id: int
+) -> None:
+    repo = tag_release_repository()
+
+    collect(migrated_engine, instance_id, repo)
+
+    payload = deployment_payload_of(migrated_engine)
+    assert (payload["tag"], payload["ref"], payload["deployer"], payload["pipeline_id"]) == (
+        True,
+        "v1-release",
+        "dev",
+        500,
+    )
+    approvals = payload["deployment_approvals"]
+    assert approvals["status"] == "ok"
+    assert [(a["username"], a["status"], a["comment"]) for a in approvals["approvals"]] == [
+        ("lead", "approved", "Release window approved")
+    ]
+    assert approvals["rules"] == [
+        {"kind": "role", "access_level": 40, "required_approvals": 1, "approved": 1}
+    ]
+    trigger = payload["trigger"]
+    assert (trigger["status"], trigger["user"], trigger["source"], trigger["tag"]) == (
+        "ok",
+        "dev",
+        "push",
+        True,
+    )
+    release = payload["release"]
+    assert (release["status"], release["tag_name"], release["author"], release["notes"]) == (
+        "ok",
+        "v1-release",
+        "dev",
+        "Fixes and features",
+    )
+    assert release["evidences"][0]["sha"] == "e" * 40
+    assert release["links"] == [
+        {"name": "SBOM", "link_type": "other", "url": "https://x/sbom.json"}
+    ]
+    # Usernames only, never display names.
+    assert "Not kept" not in str(payload)
+    # The tag deployed the reviewed merge request: judged by it, not failed for its ref.
+    assert records(migrated_engine)[("deployment", 300)].outcome == "pass"
+
+
+def test_a_tag_without_a_release_and_a_tier_without_approvals_are_answers(
+    migrated_engine: Engine, instance_id: int
+) -> None:
+    repo = tag_release_repository()
+    repo.releases.clear()
+    repo.deployment_details[300] = {}  # GitLab Free: no approvals in the deployment
+
+    collect(migrated_engine, instance_id, repo)
+
+    payload = deployment_payload_of(migrated_engine)
+    assert payload["release"] == {"status": "none"}
+    assert payload["deployment_approvals"]["status"] == "not_supported"
+    assert records(migrated_engine)[("deployment", 300)].complete
+
+
+def test_a_tag_deployment_of_an_unrecorded_commit_is_unknown_not_failed(
+    migrated_engine: Engine, instance_id: int
+) -> None:
+    repo = tag_release_repository()
+    repo.deployments[0]["sha"] = sha("z")
+
+    collect(migrated_engine, instance_id, repo)
+
+    record = records(migrated_engine)[("deployment", 300)]
+    assert record.outcome == "unknown"
+    assert "deployed the tag v1-release" in record.reasons[0]
+
+
+def test_deployments_recorded_before_release_evidence_are_read_again(
+    migrated_engine: Engine, instance_id: int
+) -> None:
+    repo = tag_release_repository()
+    details = dict(repo.deployment_details)
+    repo.deployment_details.clear()  # the single read fails: recorded without approvals
+    repo.errors["/pipelines/500"] = 500
+
+    collect(migrated_engine, instance_id, repo)
+    first = deployment_payload_of(migrated_engine)
+    assert first["deployment_approvals"]["status"] == "not_found"
+    assert first["trigger"]["status"] == "failed"
+    assert not records(migrated_engine)[("deployment", 300)].complete
+
+    repo.deployment_details.update(details)
+    del repo.errors["/pipelines/500"]
+    collect(migrated_engine, instance_id, repo)
+
+    record = records(migrated_engine)[("deployment", 300)]
+    assert len(versions(migrated_engine, record)) == 2
+    again = deployment_payload_of(migrated_engine)
+    assert again["deployment_approvals"]["status"] == "ok"
+    assert again["trigger"]["user"] == "dev"
+    assert record.complete
+
+    # Complete now: not read again.
+    before = len(repo.params("/deployments/300"))
+    collect(migrated_engine, instance_id, repo)
+    assert len(repo.params("/deployments/300")) == before
+
+
+def protections(engine: Engine) -> Observation:
+    with Session(engine) as db:
+        return db.scalars(
+            select(Observation)
+            .where(Observation.source == RELEASE_PROTECTION_SOURCE)
+            .order_by(Observation.id.desc())
+        ).first() or pytest.fail("no release protection observation")
+
+
+def test_the_job_reads_release_protections_with_the_group_environments(
+    migrated_engine: Engine, instance_id: int, gitlab_env: None
+) -> None:
+    with Session(migrated_engine) as db:
+        db.add(GitLabGroup(instance_id=instance_id, gitlab_id=4, full_path="acme", name="acme"))
+        db.commit()
+    repo = tag_release_repository()
+    repo.protected_tags = [
+        {"name": "*-release", "create_access_levels": [{"id": 1, "access_level": 40}]},
+        {"name": "latest", "create_access_levels": [{"id": 2, "user_id": 9, "access_level": None}]},
+    ]
+    repo.environments = [
+        {"name": "production", "required_approval_count": 0, "deploy_access_levels": []}
+    ]
+    repo.group_environments[4] = [
+        {
+            "name": "production",
+            "required_approval_count": 0,
+            "approval_rules": [{"id": 3, "access_level": 40, "required_approvals": 1}],
+            "deploy_access_levels": [{"id": 5, "group_id": 8, "access_level": None}],
+        }
+    ]
+    repo.project = {"allow_pipeline_trigger_approve_deployment": True}
+
+    job, run = run_job(migrated_engine, repo)
+
+    assert job.state == "succeeded" and run.status == "succeeded"
+    assert run.counts["release_protections"] == {"ok": 1}
+    found = protections(migrated_engine)
+    assert found.collection_status == "ok" and verify(found)
+    payload = found.payload
+    assert payload is not None
+    assert payload["protected_tags"]["items"] == [
+        {"name": "*-release", "create_access_levels": [{"kind": "role", "access_level": 40}]},
+        {"name": "latest", "create_access_levels": [{"kind": "user", "access_level": None}]},
+    ]
+    assert payload["environments"]["items"][0]["approval_rules"] == []
+    assert payload["group_environments"] == {
+        "status": "ok",
+        "groups": [
+            {
+                "path": "acme",
+                "environments": [
+                    {
+                        "name": "production",
+                        "required_approval_count": 0,
+                        "approval_rules": [
+                            {"kind": "role", "access_level": 40, "required_approvals": 1}
+                        ],
+                        "deploy_access_levels": [{"kind": "group", "access_level": None}],
+                    }
+                ],
+            }
+        ],
+    }
+    assert payload["pipeline_trigger_approval"] == {"status": "ok", "allowed": True}
+    # IDs of users and groups are not kept.
+    assert "user_id" not in str(payload) and "group_id" not in str(payload)
+
+
+def test_release_protections_gitlab_refuses_are_partial_not_failed(
+    migrated_engine: Engine, instance_id: int, gitlab_env: None
+) -> None:
+    repo = tag_release_repository()
+    repo.errors["/protected_environments"] = 403
+    repo.group_environments[4] = 403
+
+    _job, run = run_job(migrated_engine, repo)
+
+    assert run.status == "succeeded"
+    found = protections(migrated_engine)
+    assert found.collection_status == "partial"
+    assert found.payload is not None
+    assert found.payload["environments"]["status"] == "forbidden"
+    assert found.payload["group_environments"]["status"] == "forbidden"
+    assert found.payload["protected_tags"]["status"] == "ok"

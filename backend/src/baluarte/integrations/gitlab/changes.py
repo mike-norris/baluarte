@@ -6,7 +6,12 @@ read incrementally from its ``change_cursor``; its first collection looks back
 ``lookback_days`` (``baluarte.changes.settings``), and its change history starts there.
 
 - Deployments: ``GET /projects/:id/deployments`` with ``status=success``, for each production
-  environment, finished since the cursor. Each is recorded as a ``deployment`` change.
+  environment, finished since the cursor. Each is recorded as a ``deployment`` change, read again
+  singly (``GET /projects/:id/deployments/:id``) for who deployed it, whether it deployed a tag,
+  and its approvals (Premium or Ultimate); then the pipeline it ran in
+  (``GET /projects/:id/pipelines/:id``) for who started that pipeline (for a tag, its creator),
+  and for a tag its release (``GET /projects/:id/releases/:tag``). A deployment recorded before
+  these were read, or with one that failed, is read again (docs/RELEASE_GOVERNANCE.md).
 - Merge requests merged into the default branch since the cursor
   (``GET /projects/:id/merge_requests?state=merged&target_branch=...&updated_after=...``), and
   again for ``redeploy_days`` after they merge, so a later deployment is recorded. For each:
@@ -36,8 +41,8 @@ from collections import Counter
 from collections.abc import Callable, Collection, Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Protocol
-from urllib.parse import urlparse
+from typing import Any, Protocol, overload
+from urllib.parse import quote, urlparse
 
 from sqlalchemy import Engine, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -86,6 +91,10 @@ DEPLOYMENT_OVERLAP = timedelta(hours=1)
 MAX_CONSECUTIVE_FAILURES = 20
 # Incomplete changes read again per project and collection.
 MAX_REREAD = 200
+# Release notes kept per deployment, in characters.
+MAX_NOTES = 20_000
+# The deployment parts read for release governance (docs/RELEASE_GOVERNANCE.md).
+RELEASE_PARTS = ("deployment_approvals", "trigger", "release")
 FINISHED_PIPELINES = ("success", "failed", "canceled", "skipped", "manual")
 
 
@@ -256,11 +265,12 @@ def deployment_payload(body: dict[str, Any]) -> dict[str, Any] | None:
     sha = _text(body.get("sha"))
     environment = body.get("environment")
     deployable = body.get("deployable")
-    finished = (
-        _text(deployable.get("finished_at")) if isinstance(deployable, dict) else None
-    ) or _text(body.get("updated_at"))
+    job = deployable if isinstance(deployable, dict) else {}
+    finished = _text(job.get("finished_at")) or _text(body.get("updated_at"))
     if gitlab_id is None or sha is None:
         return None
+    tag = job.get("tag")
+    pipeline = job.get("pipeline")
     return {
         "kind": "deployment",
         "id": gitlab_id,
@@ -271,7 +281,122 @@ def deployment_payload(body: dict[str, Any]) -> dict[str, Any] | None:
         "sha": sha,
         "created_at": _text(body.get("created_at")),
         "finished_at": finished,
+        # Whether the deployment's job ran for a tag; null when GitLab did not say.
+        "tag": tag if isinstance(tag, bool) else None,
+        # Who GitLab records as having deployed: the deployment's user.
+        "deployer": _username(body.get("user")),
+        "job": _text(job.get("name")),
+        "pipeline_id": _int(pipeline.get("id")) if isinstance(pipeline, dict) else None,
     }
+
+
+def deployment_approvals_part(body: Any) -> dict[str, Any]:
+    """Who approved or rejected a deployment and when; GitLab Premium or Ultimate."""
+    if not isinstance(body, dict):
+        raise InvalidResponse("GET /projects/:id/deployments/:id did not return an object")
+    if not isinstance(body.get("approvals"), list):
+        return {
+            "status": "not_supported",
+            "error": "GitLab did not report deployment approvals (Premium or Ultimate)",
+        }
+    approvals = sorted(
+        (
+            {
+                "username": _username(entry.get("user")),
+                "status": _text(entry.get("status")),
+                "created_at": _text(entry.get("created_at")),
+                "comment": (_text(entry.get("comment")) or None),
+            }
+            for entry in body["approvals"]
+            if isinstance(entry, dict)
+        ),
+        key=lambda entry: (entry["created_at"] or "", entry["username"] or ""),
+    )
+    summary = body.get("approval_summary")
+    rules = summary.get("rules") if isinstance(summary, dict) else None
+    return {
+        "status": "ok",
+        "approvals": approvals,
+        "pending_approval_count": _int(body.get("pending_approval_count")),
+        "rules": [
+            {
+                "kind": _rule_kind(rule),
+                "access_level": _int(rule.get("access_level")),
+                "required_approvals": _int(rule.get("required_approvals")),
+                "approved": sum(
+                    1
+                    for entry in rule.get("deployment_approvals") or []
+                    if isinstance(entry, dict) and entry.get("status") == "approved"
+                ),
+            }
+            for rule in rules or []
+            if isinstance(rule, dict)
+        ],
+    }
+
+
+def _rule_kind(rule: Mapping[str, Any]) -> str:
+    if rule.get("user_id") is not None:
+        return "user"
+    if rule.get("group_id") is not None:
+        return "group"
+    return "role"
+
+
+def trigger_part(body: Any) -> dict[str, Any]:
+    """Who started the pipeline a deployment ran in: for a tag pipeline, the tag's creator."""
+    if not isinstance(body, dict):
+        raise InvalidResponse("GET /projects/:id/pipelines/:id did not return an object")
+    return {
+        "status": "ok",
+        "id": _int(body.get("id")),
+        "user": _username(body.get("user")),
+        "source": _text(body.get("source")),
+        "ref": _text(body.get("ref")),
+        "tag": body.get("tag") if isinstance(body.get("tag"), bool) else None,
+        "created_at": _text(body.get("created_at")),
+    }
+
+
+def release_part(body: Any) -> dict[str, Any]:
+    """A tag's GitLab release: its notes, author, GitLab's release evidence and asset links."""
+    if not isinstance(body, dict):
+        raise InvalidResponse("GET /projects/:id/releases/:tag did not return an object")
+    notes = _text(body.get("description"))
+    assets = body.get("assets")
+    links = assets.get("links") if isinstance(assets, dict) else None
+    return {
+        "status": "ok",
+        "tag_name": _text(body.get("tag_name")),
+        "name": _text(body.get("name")),
+        "author": _username(body.get("author")),
+        "created_at": _text(body.get("created_at")),
+        "released_at": _text(body.get("released_at")),
+        "notes": notes[:MAX_NOTES] if notes is not None else None,
+        "notes_truncated": notes is not None and len(notes) > MAX_NOTES,
+        "evidences": [
+            {"sha": _text(item.get("sha")), "collected_at": _text(item.get("collected_at"))}
+            for item in body.get("evidences") or []
+            if isinstance(item, dict)
+        ],
+        "links": [
+            {
+                "name": _text(link.get("name")),
+                "link_type": _text(link.get("link_type")),
+                "url": _text(link.get("url")),
+            }
+            for link in links or []
+            if isinstance(link, dict)
+        ],
+    }
+
+
+def needs_release_read(payload: Mapping[str, Any]) -> bool:
+    """Whether a recorded deployment lacks its release parts, or one of them failed."""
+    return any(
+        not isinstance(payload.get(name), dict) or payload[name].get("status") in assess.TRANSIENT
+        for name in RELEASE_PARTS
+    )
 
 
 def merge_request_fields(body: dict[str, Any]) -> dict[str, Any]:
@@ -426,9 +551,10 @@ class ProjectReader:
                 deployment_state = listed
                 continue
             for body in listed["items"]:
-                payload = deployment_payload(body) if isinstance(body, dict) else None
-                if payload is None or payload["id"] in deployments:
+                listed_payload = deployment_payload(body) if isinstance(body, dict) else None
+                if listed_payload is None or listed_payload["id"] in deployments:
                     continue
+                payload = self.deployment(target, listed_payload["id"], body)
                 deployments[payload["id"]] = payload
                 result.changes.append(payload)
                 finished = parse_time(payload["finished_at"])
@@ -440,6 +566,18 @@ class ProjectReader:
             "status": deployment_state["status"],
             "error": deployment_state.get("error"),
         }
+        # Deployments recorded before their release parts were read, or with one that failed.
+        listed_now = {payload["id"] for payload in result.changes}
+        stale = [
+            gitlab_id
+            for gitlab_id, payload in sorted(known.deployments.items())
+            if gitlab_id not in listed_now and needs_release_read(payload)
+        ]
+        for gitlab_id in stale[:MAX_REREAD]:
+            again = self.deployment(target, gitlab_id, None)
+            if again is not None:
+                deployments[gitlab_id] = again
+                result.changes.append(again)
 
         # Merge requests merged since the cursor, and again while a deployment may follow.
         reread_since = self.now - timedelta(days=self.settings.redeploy_days)
@@ -544,6 +682,58 @@ class ProjectReader:
 
     def _single(self, path: str) -> Callable[[], dict[str, Any]]:
         return lambda: {"status": "ok", "body": self.client.get_json(path)}
+
+    @overload
+    def deployment(
+        self, target: ProjectTarget, gitlab_id: int, listed: dict[str, Any]
+    ) -> dict[str, Any]: ...
+    @overload
+    def deployment(
+        self, target: ProjectTarget, gitlab_id: int, listed: None
+    ) -> dict[str, Any] | None: ...
+    def deployment(
+        self, target: ProjectTarget, gitlab_id: int, listed: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        """A deployment with who deployed, approved and triggered it, and its release.
+
+        ``listed`` is its body from the listing, used when the single read fails; without it (a
+        recorded deployment read again) a failed single read gives None, keeping the record.
+        """
+        base = f"/projects/{target.gitlab_id}"
+        single = self.parts.read(
+            "deployment_details", self._single(f"{base}/deployments/{gitlab_id}")
+        )
+        detail = single.get("body") if single["status"] == "ok" else None
+        body = detail if isinstance(detail, dict) else listed
+        payload = deployment_payload(body) if isinstance(body, dict) else None
+        if payload is None:
+            return None
+        if isinstance(detail, dict):
+            payload["deployment_approvals"] = self.parts.read(
+                "deployment_details", lambda: deployment_approvals_part(detail)
+            )
+        else:
+            error = single.get("error") or "GitLab did not return the deployment"
+            payload["deployment_approvals"] = {"status": single["status"], "error": error}
+            if single["status"] == "ok":
+                payload["deployment_approvals"]["status"] = "failed"
+        pipeline_id = payload["pipeline_id"]
+        if pipeline_id is None:
+            payload["trigger"] = {"status": "none"}
+        else:
+            path = f"{base}/pipelines/{pipeline_id}"
+            payload["trigger"] = self.parts.read(
+                "pipelines", lambda: trigger_part(self.client.get_json(path))
+            )
+        ref = payload["ref"]
+        if payload["tag"] is not True or ref is None:
+            payload["release"] = {"status": "none"}
+        else:
+            path = f"{base}/releases/{quote(ref, safe='')}"
+            found = self.parts.read("releases", lambda: release_part(self.client.get_json(path)))
+            # A tag without a release is an answer, not a failure.
+            payload["release"] = {"status": "none"} if found["status"] == "not_found" else found
+        return payload
 
     def merge_request(
         self,
@@ -761,7 +951,7 @@ def write(
             outcome, reasons = judge(payload, shas, target.default_branch)
             reviewed = review_of(payload)
             complete = not assess.incomplete(payload)
-            for name in ("approvals", "pipeline", "deployments"):
+            for name in ("approvals", "pipeline", "deployments", *RELEASE_PARTS):
                 part = payload.get(name)
                 if isinstance(part, dict):
                     tally.parts[f"{name}:{part.get('status')}"] += 1
