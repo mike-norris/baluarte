@@ -6,7 +6,7 @@ The mapping is guidance for an organization and its auditor. A met control means
 
 ## Catalogue
 
-The catalogue (`baluarte.controls.catalogue`) holds the controls that source code governance in GitLab can support. Titles are short paraphrases written for Baluarte, not the text of the standards; read the standard for the control itself. `MAPPING_VERSION` (now `2026.11`) changes whenever a control or a default pair changes, and every change records the version it was made against.
+The catalogue (`baluarte.controls.catalogue`) holds the controls that source code governance in GitLab can support. Titles are short paraphrases written for Baluarte, not the text of the standards; read the standard for the control itself. `MAPPING_VERSION` (now `2026.11.3`) changes whenever a control or a default pair changes, and every change records the version it was made against. Each framework edition is also stored as data (migration `0050`): every change and issue mapping records the framework version it was made against, and a later edition is added beside the current one ([EVIDENCE_MANAGEMENT.md](EVIDENCE_MANAGEMENT.md#framework-versions-m151)).
 
 | Framework | Control | Title | Area |
 |---|---|---|---|
@@ -168,7 +168,7 @@ Counts are results (one per project and rule): `pass`, `fail`, `unknown` (includ
 | Endpoint | Needs | Does |
 |---|---|---|
 | `GET /api/v1/controls?framework=` | `findings:read` | Every control with its status, mapped rule types, removed default pairs (`unmapped`, with the change to withdraw), its status change and counts; and `mapping_version`, `evaluation_run_id` and the frameworks. |
-| `GET /api/v1/controls/{framework}/{control_id}` | `findings:read` | The same for one control, plus `rules` (each baseline rule and version that produced results, with counts) and `changes` (its history, newest first). |
+| `GET /api/v1/controls/{framework}/{control_id}` | `findings:read` | The same for one control, plus `rules` (each baseline rule and version that produced results, with counts), `changes` (its history, newest first, each with its `framework_version`), the current `framework_version` and the organization's own `description` of the control. |
 | `GET /api/v1/control-mapping/changes` | `findings:read` | Changes newest first: `items`, `review_required` and `next_before_id`. Filters: `state`, `framework`, `control_id`, `before_id`, `limit`. |
 | `POST /api/v1/control-mapping/changes` | `policy:write` | Proposes a change: 201 with the change. A body that does not fit its kind is 422. |
 | `POST /api/v1/control-mapping/changes/{id}/approve` | `policy:write` | `{}` or `{"note": ...}`. |

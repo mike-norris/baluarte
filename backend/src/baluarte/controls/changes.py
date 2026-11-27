@@ -20,6 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from baluarte import audit
+from baluarte.controls import versions
 from baluarte.controls.catalogue import MAPPING_VERSION, control, is_default, known_rule_type
 from baluarte.db.models import ControlMappingChange
 from baluarte.policy.changes import Actor, ChangeConflict, NotAllowed, review_required
@@ -230,6 +231,7 @@ def propose(db: Session, proposal: Proposal, by: Actor) -> ControlMappingChange:
         review_required=required,
         self_approved=not required,
         mapping_version=MAPPING_VERSION,
+        framework_version_id=versions.current_version_id(db, proposal.framework),
         proposed_by=by.actor,
         proposed_by_user_id=by.user_id,
     )

@@ -1447,6 +1447,89 @@ class PolicyChange(Base):
     decision_note: Mapped[str | None] = mapped_column(Text)
 
 
+class FrameworkVersion(Base):
+    """An edition of a framework (roadmap M15.1, docs/EVIDENCE_MANAGEMENT.md): its publisher, a
+    licence note and whether the catalogue may carry the publisher's control text. One version
+    per framework is ``current``; a new one is added beside the old, and records keep the version
+    they were made against. Only ``current`` ever changes, and nothing is deleted (a trigger)."""
+
+    __tablename__ = "framework_version"
+    __table_args__ = (
+        UniqueConstraint("framework", "version"),
+        Index(
+            "uq_framework_version_current",
+            "framework",
+            unique=True,
+            postgresql_where=text("current"),
+        ),
+        one_of("framework", MAPPING_FRAMEWORKS),
+        CheckConstraint("length(version) BETWEEN 1 AND 40", name="version_length"),
+    )
+
+    id: Mapped[int] = pk()
+    framework: Mapped[str] = mapped_column(Text)
+    version: Mapped[str] = mapped_column(Text)
+    edition: Mapped[str] = mapped_column(Text)
+    publisher: Mapped[str] = mapped_column(Text)
+    licence_note: Mapped[str] = mapped_column(Text)
+    text_redistributable: Mapped[bool] = mapped_column(Boolean)
+    current: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    added_at: Mapped[datetime] = utc_now()
+
+
+FRAMEWORK_TEXT_SOURCES = ("baluarte", "publisher")
+
+
+class FrameworkControl(Base):
+    """A control of a framework version. ``title`` is Baluarte's paraphrase (``text_source``
+    ``baluarte``) unless the version's licence allows the publisher's text. Never changed or
+    deleted (a trigger)."""
+
+    __tablename__ = "framework_control"
+    __table_args__ = (
+        UniqueConstraint("framework_version_id", "control_id"),
+        one_of("text_source", FRAMEWORK_TEXT_SOURCES),
+    )
+
+    id: Mapped[int] = pk()
+    framework_version_id: Mapped[int] = mapped_column(ForeignKey("framework_version.id"))
+    control_id: Mapped[str] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(Text)
+    area: Mapped[str] = mapped_column(Text)
+    text_source: Mapped[str] = mapped_column(Text, server_default="baluarte")
+
+
+MAX_CONTROL_DESCRIPTION = 4000
+
+
+class FrameworkControlDescription(Base):
+    """An organization's own description of a control, for its own use; never part of the
+    built-in catalogue. The latest row for a control is in force (an empty one clears it); none
+    is changed or deleted (a trigger)."""
+
+    __tablename__ = "framework_control_description"
+    __table_args__ = (
+        Index(
+            "ix_framework_control_description_control",
+            "workspace_id",
+            "framework_control_id",
+            "id",
+        ),
+        CheckConstraint(
+            f"length(description) BETWEEN 0 AND {MAX_CONTROL_DESCRIPTION}",
+            name="description_length",
+        ),
+    )
+
+    id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"))
+    framework_control_id: Mapped[int] = mapped_column(ForeignKey("framework_control.id"))
+    description: Mapped[str] = mapped_column(Text)
+    added_by: Mapped[str] = mapped_column(Text)
+    added_by_user_id: Mapped[int] = mapped_column(BigInteger)
+    added_at: Mapped[datetime] = utc_now()
+
+
 class ControlMappingChange(Base):
     """An organization's change to the control mapping, with its justification.
 
@@ -1560,6 +1643,8 @@ class ControlMappingChange(Base):
     self_approved: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     # The catalogue version (``baluarte.controls.catalogue.MAPPING_VERSION``) proposed against.
     mapping_version: Mapped[str] = mapped_column(Text)
+    # The framework version the change was made against; never changes (a trigger).
+    framework_version_id: Mapped[int] = mapped_column(ForeignKey("framework_version.id"))
     proposed_by: Mapped[str] = mapped_column(Text)
     proposed_by_user_id: Mapped[int] = mapped_column(BigInteger)
     proposed_at: Mapped[datetime] = utc_now()
@@ -2337,6 +2422,8 @@ class IssueControlMapping(Base):
     self_approved: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     development_decision: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
     mapping_version: Mapped[str] = mapped_column(Text)
+    # The framework version the mapping was made against; never changes (a trigger).
+    framework_version_id: Mapped[int] = mapped_column(ForeignKey("framework_version.id"))
     proposed_by: Mapped[str] = mapped_column(Text)
     proposed_by_user_id: Mapped[int] = mapped_column(BigInteger)
     proposed_at: Mapped[datetime] = utc_now()

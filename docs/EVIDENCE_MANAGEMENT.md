@@ -10,7 +10,7 @@ Automated results and human assessments stay separate. A rule result says what B
 
 | Step | Delivers | Status |
 |---|---|---|
-| M15.1 | Framework versions as data: each framework edition a row, its controls rows, the mapping and every record pinned to a version; catalogue text limited to what its licence allows | Planned |
+| M15.1 | Framework versions as data: each framework edition a row, its controls rows, the mapping and every record pinned to a version; catalogue text limited to what its licence allows (migration `0050`) | Done |
 | M15.2 | Evidence items: uploaded files (stored in the database, 25 MB each, by SHA-256) and external references, with owner, control links, review status, freshness, retention and access | Planned |
 | M15.3 | Control assessments: an assessor's conclusion for a control and period, citing uploaded and collected evidence, approved by a separate reviewer before it counts | Planned |
 | M15.4 | Evidence gaps: missing, stale, inaccessible and incomplete evidence per control and period, on a page and through the API | Planned |
@@ -22,6 +22,26 @@ Automated results and human assessments stay separate. A rule result says what B
 - `framework_version`: framework ID, version label (for example `2022`), edition text, publisher, licence note, and whether the catalogue may carry the control text (`text_redistributable`). The current editions (SOC 2 TSC 2017 with 2022 points of focus, ISO/IEC 27001:2022 Annex A, NIST SP 800-53 Rev. 5 moderate) are seeded from the built-in catalogue.
 - `framework_control`: per version, the control ID, area and title. Titles stay Baluarte's paraphrases unless the version allows redistribution (NIST, as a US government work). An organization may add its own description of a control for its own use; that text is marked `organization` and never ships in the built-in catalogue.
 - The mapping in force, assessments, evidence links and exports record the framework version they refer to. A new version is added beside the old one, never in place of it; records against the old version keep pointing at it.
+
+As built (M15.1):
+
+| Framework | Version | Publisher's text may be carried |
+|---|---|---|
+| `soc2` | `2017-r2022` | No (AICPA copyright) |
+| `iso27001` | `2022` | No (ISO copyright) |
+| `nist_800_53_moderate` | `rev5-moderate` | Yes (a US government work), though titles are still Baluarte's paraphrases |
+
+- `control_mapping_change` and `issue_control_mapping` carry `framework_version_id`; rows made before migration `0050` take the seeded version of their framework, and a trigger keeps it fixed. Mapping changes in the API and issue mappings in the register export (`issue_controls.csv`, and the manifest's controls) show `framework_version`.
+- Catalogue rows never change except which version is current, and are never deleted (triggers). A test keeps the seeded rows equal to the built-in catalogue (`baluarte.controls.catalogue`).
+- An organization's description of a control is a `framework_control_description` row per workspace: each one kept, the latest in force, an empty one clearing it, audited as `framework_control.described` or `framework_control.description_cleared`. The control page shows it under **In our words**; those with `policy:write` edit it.
+
+| Method and path | Permission | Notes |
+|---|---|---|
+| `GET /api/v1/frameworks` | `findings:read` | Every framework version with its edition, publisher, licence note, `text_redistributable`, `current` and number of controls |
+| `GET /api/v1/frameworks/{framework}/{version}` | `findings:read` | One version and its controls (`items`), each with the organization's description in force or null; 404 for an unknown version |
+| `PUT /api/v1/frameworks/{framework}/{version}/controls/{control_id}/description` | `policy:write` + CSRF | Body `{description}`, at most 4,000 characters; empty clears it. 404 for an unknown version or control |
+
+`GET /api/v1/controls/{framework}/{control_id}` adds `framework_version` (the current version) and `description`.
 
 ## Evidence items (M15.2)
 

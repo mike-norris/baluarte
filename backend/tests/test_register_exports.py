@@ -81,6 +81,7 @@ def test_one_issue_exports_its_mappings_evidence_and_files_and_verifies(
         index = {r["mapping_id"]: r for r in rows(archive, "issue_controls.csv")}
         assert set(index) == {str(inside["id"]), str(later["id"])}
         assert index[str(inside["id"])]["framework_edition"].startswith("AICPA")
+        assert index[str(inside["id"])]["framework_version"] == "2017-r2022"
         assert index[str(inside["id"])]["cited_in_period"] == "2"
         cited = rows(archive, "mapping_evidence.csv")
         timings = {(r["mapping_id"], r["item_key"]): r["timing"] for r in cited}

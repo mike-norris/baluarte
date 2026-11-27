@@ -18,6 +18,7 @@ from baluarte.api.v1 import (
     evaluations,
     exceptions,
     exports,
+    frameworks,
     gitlab,
     health,
     issue_plans,
@@ -92,6 +93,7 @@ protected.include_router(exports.router)
 protected.include_router(remediation.router)
 protected.include_router(compliance.router)
 protected.include_router(controls.router)
+protected.include_router(frameworks.router)
 protected.include_router(labels.router)
 protected.include_router(manager.router)
 protected.include_router(tags.router)
