@@ -209,6 +209,34 @@ describe("control detail", () => {
     );
   });
 
+  it("describes a control in the organization's own words", async () => {
+    const user = userEvent.setup();
+    const words = "Our change advisory board approves every production change.";
+    let current: ControlDetail = { ...detail, framework_version: "2017-r2022", description: null };
+    const PUT = "PUT /api/v1/frameworks/soc2/2017-r2022/controls/CC8.1/description";
+    const calls = api({
+      [DETAIL]: () => json(current),
+      [PUT]: () => {
+        current = { ...current, description: words };
+        return json({
+          control_id: "CC8.1",
+          description: { text: words, added_by: null, added_at: "2026-11-27T10:00:00Z" },
+        });
+      },
+    });
+    renderAt("/controls/soc2/CC8.1");
+
+    const section = await screen.findByRole("region", { name: "In our words" });
+    expect(within(section).getByText(/Framework version 2017-r2022/)).toBeInTheDocument();
+    expect(within(section).getByText("No description of our own yet.")).toBeInTheDocument();
+    await user.click(within(section).getByRole("button", { name: "Edit description" }));
+    await user.type(within(section).getByLabelText("How this control applies here"), words);
+    await user.click(within(section).getByRole("button", { name: "Save description" }));
+    expect(await screen.findByText("Saved the description.")).toBeInTheDocument();
+    expect(await screen.findByText(words)).toBeInTheDocument();
+    expect(bodyOf(calls, PUT)).toEqual({ description: words });
+  });
+
   it("offers no changes to users without policy:write", async () => {
     api({ [DETAIL]: () => json(detail) }, auditor);
     renderAt("/controls/soc2/CC8.1");
@@ -216,6 +244,7 @@ describe("control detail", () => {
     await screen.findByRole("list", { name: "Mapped rule types" });
     expect(screen.queryByRole("heading", { name: "Adjust the mapping" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Remove/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit description" })).not.toBeInTheDocument();
   });
 
   it("maps a rule type with a justification and says it waits for review", async () => {

@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router";
 
 import {
   frameworkIds,
+  describeControl,
   getControl,
+  MAX_DESCRIPTION,
   policyName,
   type ControlDetail,
   type FrameworkId,
@@ -361,6 +363,101 @@ function Actions({
   );
 }
 
+/** The organization's own description of the control, for its own use: never the standard's
+ * text. Those who can change baselines may edit it; every version is kept. */
+function OwnDescription({
+  control,
+  canWrite,
+  onSaved,
+}: {
+  control: ControlDetail;
+  canWrite: boolean;
+  onSaved: (text: string) => void;
+}) {
+  const { session } = useAuth();
+  const csrf = session.status === "signed_in" ? session.user.csrf_token : "";
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(control.description ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const version = control.framework_version;
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    if (!version) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await describeControl(control.framework, version, control.id, text.trim(), csrf);
+      setEditing(false);
+      onSaved(text.trim() ? "Saved the description." : "Cleared the description.");
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section aria-labelledby="description-title" className="mb-3">
+      <h2 id="description-title" className="card-title">
+        In our words
+      </h2>
+      {version && (
+        <p className="text-secondary mb-1">{`Framework version ${version}. Titles are paraphrases, not the standard's text.`}</p>
+      )}
+      {editing ? (
+        <form onSubmit={(event) => void save(event)} aria-label="Describe this control">
+          <label className="form-label" htmlFor="own-description">
+            How this control applies here
+          </label>
+          <textarea
+            id="own-description"
+            className="form-control mb-2"
+            rows={4}
+            maxLength={MAX_DESCRIPTION}
+            value={text}
+            onChange={(event) => {
+              setText(event.target.value);
+            }}
+          />
+          {error && <p className="text-danger">{error}</p>}
+          <div className="btn-list">
+            <button type="submit" className="btn btn-primary" disabled={saving}>
+              Save description
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setEditing(false);
+                setText(control.description ?? "");
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      ) : (
+        <>
+          <p>{control.description ?? "No description of our own yet."}</p>
+          {canWrite && version && (
+            <button
+              type="button"
+              className="btn btn-sm"
+              onClick={() => {
+                setEditing(true);
+              }}
+            >
+              Edit description
+            </button>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 /** One control: its status, the rules behind it, its results and the organization's changes. */
 export function ControlDetailPage() {
   const { framework = "", controlId = "" } = useParams();
@@ -450,6 +547,17 @@ export function ControlDetailPage() {
         </p>
       )}
       <AsOfResult answer={control} />
+      <fieldset disabled={past} className="d-contents">
+        <OwnDescription
+          key={control.description ?? ""}
+          control={control}
+          canWrite={canWrite && !past}
+          onSaved={(text) => {
+            setMessage(text);
+            setReload((value) => value + 1);
+          }}
+        />
+      </fieldset>
       <Decision control={control} />
       <fieldset disabled={past} className="d-contents">
         <MappedRules control={control} canWrite={canWrite} open={setIntent} />

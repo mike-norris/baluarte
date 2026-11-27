@@ -24,6 +24,7 @@ from baluarte.auth.dependencies import (
 )
 from baluarte.auth.roles import Role
 from baluarte.compliance.catalogue import FRAMEWORK_IDS
+from baluarte.controls import versions
 from baluarte.controls.catalogue import (
     CONTROLS,
     DEFAULT_MAPPING,
@@ -547,6 +548,7 @@ def test_approval_checks_the_change_again(world: World) -> None:
             review_required=True,
             self_approved=False,
             mapping_version=MAPPING_VERSION,
+            framework_version_id=versions.current_version_id(db, "soc2"),
             proposed_by="user:1",
             proposed_by_user_id=1,
         )
@@ -618,6 +620,7 @@ def test_an_overdue_status_shows_until_it_is_renewed(world: World) -> None:
             review_required=False,
             self_approved=True,
             mapping_version=MAPPING_VERSION,
+            framework_version_id=versions.current_version_id(db, "soc2"),
             proposed_by="user:1",
             proposed_by_user_id=1,
             decided_by="user:1",

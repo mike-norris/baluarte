@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from baluarte.auth.dependencies import Principal, database, require
 from baluarte.auth.roles import Permission
 from baluarte.compliance.catalogue import FRAMEWORKS, FrameworkId
-from baluarte.controls import changes
+from baluarte.controls import changes, versions
 from baluarte.controls.catalogue import MAPPING_VERSION, control
 from baluarte.controls.changes import (
     Actor,
@@ -152,6 +152,8 @@ class ChangeOut(BaseModel):
     review_required: bool
     self_approved: bool
     mapping_version: str
+    # The framework version the change was made against.
+    framework_version: str
     proposed_by: Person
     proposed_at: datetime
     decided_by: Person | None
@@ -160,6 +162,10 @@ class ChangeOut(BaseModel):
 
 
 class ControlDetail(ControlOut):
+    # The current version of the control's framework, and the organization's own description
+    # of the control in it (null when none is in force).
+    framework_version: str
+    description: str | None
     # Results per baseline rule of a mapped type, from the same evaluation run.
     rules: list[RuleOut]
     # Every change made to this control, newest first. With ``as_of``, those proposed by then,
@@ -316,6 +322,7 @@ def change_out(
     db: Session, rows: Sequence[ControlMappingChange], as_of: datetime | None = None
 ) -> list[ChangeOut]:
     names = _names(db, rows)
+    labels = {v.id: v.version for v in versions.versions(db)}
     if as_of is not None:
         rows = [row for row in rows if row.proposed_at <= as_of]
         ended = {
@@ -343,6 +350,7 @@ def change_out(
             review_required=row.review_required,
             self_approved=row.self_approved,
             mapping_version=row.mapping_version,
+            framework_version=labels[row.framework_version_id],
             proposed_by=_person(row.proposed_by, names),
             proposed_at=row.proposed_at,
             decided_by=_person(row.decided_by, names) if row.decided_by else None,
@@ -426,8 +434,14 @@ def read_control(
         )
         .order_by(ControlMappingChange.id.desc())
     ).all()
+    in_force = versions.current(db, framework)
+    row = versions.control_row(db, in_force.id, control_id)
+    described = versions.descriptions(db, [row.id]) if row is not None else {}
+    own = described.get(row.id) if row is not None else None
     return ControlDetail(
         **control_out(found).model_dump(by_alias=True),
+        framework_version=in_force.version,
+        description=own.description if own is not None else None,
         rules=[
             RuleOut(
                 policy=PolicyRef(name=rule.policy, version=rule.version),

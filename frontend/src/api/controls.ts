@@ -4,7 +4,7 @@
  */
 
 import { ApiError, getJson } from "./client";
-import { changeFailure, detailText } from "./send";
+import { changeFailure, detailText, sendJson } from "./send";
 import type { Person } from "./policies";
 import type { AsOfAnswer } from "../asof/format";
 import { scopeHeaders } from "./workspaceChoice";
@@ -114,6 +114,8 @@ export interface MappingChange {
   decision_note: string | null;
   self_approved: boolean;
   mapping_version: string;
+  /** The framework version the change was made against. */
+  framework_version?: string;
 }
 
 /** The rules behind a control's results: a policy's rule of a mapped type, with its counts. */
@@ -128,6 +130,34 @@ export interface ControlRule {
 export interface ControlDetail extends Control, AsOfAnswer {
   rules: ControlRule[];
   changes: MappingChange[];
+  /** The current version of the control's framework. */
+  framework_version?: string;
+  /** The organization's own description of the control, or null. */
+  description?: string | null;
+}
+
+/** The organization's description of a control as the API returns it after a change. */
+export interface DescribedControl {
+  control_id: string;
+  description: { text: string; added_by: string | null; added_at: string } | null;
+}
+
+export const MAX_DESCRIPTION = 4000;
+
+/** Describe a control in the organization's own words; an empty text clears it. */
+export async function describeControl(
+  framework: string,
+  version: string,
+  controlId: string,
+  description: string,
+  csrfToken: string,
+): Promise<DescribedControl | null> {
+  return sendJson<DescribedControl>(
+    "PUT",
+    `/api/v1/frameworks/${encodeURIComponent(framework)}/${encodeURIComponent(version)}/controls/${encodeURIComponent(controlId)}/description`,
+    { description },
+    csrfToken,
+  );
 }
 
 export interface MappingChangeList {

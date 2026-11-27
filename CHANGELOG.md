@@ -9,6 +9,12 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Framework versions as data (step M15.1): each framework edition and its controls are stored,
+  one version per framework is current, and control mapping changes and issue mappings record
+  the version they were made against (shown in the API and the register export). A later
+  edition is added beside the current one. An organization can describe a control in its own
+  words on the control page (In our words), kept per workspace and audited; titles stay
+  Baluarte's paraphrases. New endpoints under `/api/v1/frameworks`. Migration `0050`.
 - Change set records (step M14.6, finishing configuration templates): a change set now needs a
   rationale (20 to 2,000 characters, never changed), and records each apply, continue and
   rollback with who started it. Whoever approved a set can no longer apply, continue or roll it

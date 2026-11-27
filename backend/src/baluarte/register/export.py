@@ -39,6 +39,7 @@ from sqlalchemy import select, tuple_
 from sqlalchemy.orm import Session
 
 from baluarte import __version__
+from baluarte.controls import versions
 from baluarte.controls.catalogue import EDITIONS, MAPPING_VERSION, control
 from baluarte.db.models import (
     AppUser,
@@ -440,6 +441,7 @@ class Builder:
                     "framework": f,
                     "control_id": c,
                     "framework_edition": EDITIONS[f],
+                    "framework_version": versions.current(self.db, f).version,
                     "title": found.title if (found := control(f, c)) else None,
                 }
                 for f, c in controls
@@ -541,6 +543,9 @@ class Builder:
             ).all()
         )
 
+    def _labels(self) -> dict[int, str]:
+        return {v.id: v.version for v in versions.versions(self.db)}
+
     def _index(
         self,
         mappings: Sequence[IssueControlMapping],
@@ -562,6 +567,7 @@ class Builder:
                 "iid": m.issue_iid,
                 "framework": m.framework,
                 "framework_edition": EDITIONS.get(m.framework),
+                "framework_version": self._labels()[m.framework_version_id],
                 "control_id": m.control_id,
                 "control_title": found.title if found else None,
                 "catalogue_version": m.mapping_version,
@@ -860,6 +866,7 @@ INDEX_COLUMNS = (
     "iid",
     "framework",
     "framework_edition",
+    "framework_version",
     "control_id",
     "control_title",
     "catalogue_version",
