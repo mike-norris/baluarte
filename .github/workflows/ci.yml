@@ -17,8 +17,8 @@ jobs:
   backend:
     name: Backend lint, typecheck and tests
     runs-on: ubuntu-24.04
-    # The whole job takes 13 to 18 minutes on a hosted runner, and slower runners passed 20.
-    timeout-minutes: 30
+    # The whole job takes 23 to 25 minutes on a hosted runner, and slower runners passed 30.
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: backend
