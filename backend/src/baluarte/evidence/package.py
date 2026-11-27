@@ -13,6 +13,11 @@ the same manifest and ``SHA256SUMS``. What differs:
   seed (:mod:`baluarte.evidence.sampling`), so the same request gives the same sample.
 - ``change_evidence.jsonl``: every observation recorded for each sampled change, oldest first,
   each with ``digest_valid`` recomputed now.
+- ``change_sets.csv`` and ``change_set_items.csv`` (format v2, roadmap M14.6): the template
+  change sets active in the period (created, decided or run in it) that touch a project in
+  scope, with requester, approvers, executors, rationale, template versions, scope, timestamps
+  and the controls their settings support; and each change or skip with its before and after
+  values and result. People appear as ``user:<id>``.
 - The manifest's ``evidence_package`` member records the period, the evaluation run, the scope,
   the seed, the algorithm, the population size and the sampled IDs, and which projects' change
   history starts after the period does.
@@ -60,8 +65,9 @@ from baluarte.evidence.observations import verify
 from baluarte.integrations.gitlab.settings import GitLabSettings
 from baluarte.logs import redact_value
 from baluarte.scope.exclusions import coverage, justification_sha256
+from baluarte.templates import records
 
-FORMAT = "baluarte.evidence-package/v1"
+FORMAT = "baluarte.evidence-package/v2"
 MAX_SAMPLE = 500
 MAX_GROUPS = 50
 # Projects whose change history starts after the period does, listed by path; beyond, a count.
@@ -84,6 +90,49 @@ PACKAGE_COLUMNS: dict[str, tuple[str, ...]] = {
         "observation_id",
         "payload_digest",
         "sampled",
+    ),
+    "change_sets": (
+        "id",
+        "title",
+        "state",
+        "rationale",
+        "source_kind",
+        "template_versions",
+        "selection",
+        "sensitive",
+        "targets",
+        "changes",
+        "skipped",
+        "requested_by",
+        "created_at",
+        "first_approved_by",
+        "first_approved_at",
+        "decided_by",
+        "decided_at",
+        "decision_note",
+        "development_decision",
+        "runs",
+        "cancelled_by",
+        "cancelled_at",
+        "finished_at",
+        "controls",
+        "digest",
+    ),
+    "change_set_items": (
+        "change_set_id",
+        "project_gitlab_id",
+        "project_path",
+        "setting",
+        "kind",
+        "before",
+        "after",
+        "reason",
+        "status",
+        "attempts",
+        "message",
+        "finished_at",
+        "rollback_status",
+        "rolled_back_at",
     ),
     "change_sample": (
         "position",
@@ -143,6 +192,13 @@ policies.csv           The exact policy versions referenced, with their YAML and
 exceptions.csv         Policy exceptions in force or pending at some point in the period.
 collection_errors.csv  Projects and groups in scope that are missing, inaccessible or failed.
 collection_runs.csv    Collection and evaluation runs started in the period.
+change_sets.csv        Template change sets active in the period that touch a project in
+                       scope: who requested, approved and ran each (never an approver outside
+                       development mode), why, the template versions and scope, and the
+                       controls their settings support.
+change_set_items.csv   Each change of those sets (kind change) with its before and after
+                       values and its result, and each setting skipped (kind skipped) with why,
+                       such as an approved template exception.
 {report}manifest.json          Every file with its SHA-256 and row count, and evidence_package: the
                        period, evaluation run, seed, sampling algorithm and sampled IDs.
 SHA256SUMS             SHA-256 of every file, including manifest.json.
@@ -392,7 +448,138 @@ class EvidencePackage(EvidenceExport):
             [],
         )
         counts["change_sample"] = len(self.sampled)
+        self._load_change_sets()
+        counts["change_sets"] = len(self._sets)
+        counts["change_set_items"] = sum(len(rows) for rows in self._set_rows.values())
         return counts
+
+    # Change sets (M14.6) ----------------------------------------------------------------------
+
+    def _load_change_sets(self) -> None:
+        """The change sets active in the period, restricted to projects in scope."""
+        in_scope = set(self.db.scalars(select(GitLabProject.id).where(*self._project_scope())))
+        rows: dict[int, list[dict[str, Any]]] = {}
+        sets = []
+        active = records.active_between(self.db, self.request.period_from, self.to)
+        items = records.items_of(self.db, [row.id for row in active])
+        progress = {(i.change_set_id, i.project_id, i.setting): i for i in items}
+        for row in active:
+            if row.instance_id != self.instance_id:
+                continue
+            found = []
+            for target in row.document.get("targets", []):
+                project = target["project"]
+                if project["id"] not in in_scope:
+                    continue
+                for change in target.get("changes", []):
+                    item = progress.get((row.id, project["id"], change["key"]))
+                    found.append(
+                        {
+                            "change_set_id": row.id,
+                            "project_gitlab_id": project["gitlab_id"],
+                            "project_path": project["path"],
+                            "setting": change["key"],
+                            "kind": "change",
+                            "before": _dumps(change["before"]),
+                            "after": _dumps(change["after"]),
+                            "reason": None,
+                            "status": item.status if item else "not_applied",
+                            "attempts": item.attempts if item else 0,
+                            "message": item.message if item else None,
+                            "finished_at": _ts(item.finished_at) if item else None,
+                            "rollback_status": item.rollback_status if item else None,
+                            "rolled_back_at": _ts(item.rolled_back_at) if item else None,
+                        }
+                    )
+                for skip in target.get("skipped", []):
+                    found.append(
+                        {
+                            "change_set_id": row.id,
+                            "project_gitlab_id": project["gitlab_id"],
+                            "project_path": project["path"],
+                            "setting": skip["key"],
+                            "kind": "skipped",
+                            "before": None,
+                            "after": None,
+                            "reason": f"{skip['code']}: {skip['reason']}",
+                            "status": "skipped",
+                            "attempts": 0,
+                            "message": None,
+                            "finished_at": None,
+                            "rollback_status": None,
+                            "rolled_back_at": None,
+                        }
+                    )
+            if found:
+                sets.append(row)
+                rows[row.id] = found
+        self._sets = sets
+        self._set_rows = rows
+        self._set_runs = records.runs_of(self.db, [row.id for row in sets])
+
+    def change_sets(self) -> Iterator[dict[str, Any]]:
+        mapping = effective_mapping(self.db, self.to)
+
+        def user(user_id: int | None) -> str | None:
+            return f"user:{user_id}" if user_id is not None else None
+
+        for row in self._sets:
+            source = row.document.get("source", {})
+            kind = (
+                "effective"
+                if source.get("effective")
+                else "topics"
+                if source.get("topics")
+                else "template"
+                if source.get("template")
+                else "settings"
+            )
+            links = records.control_links(mapping, records.settings_of(row.document))
+            yield _safe(
+                {
+                    "id": row.id,
+                    "title": row.title,
+                    "state": row.state,
+                    "rationale": row.rationale,
+                    "source_kind": kind,
+                    "template_versions": ";".join(records.template_versions(row.document)),
+                    "selection": _dumps(row.document.get("selection")),
+                    "sensitive": row.sensitive,
+                    "targets": row.targets,
+                    "changes": row.changes,
+                    "skipped": row.skipped,
+                    "requested_by": user(row.created_by_user_id) or "system",
+                    "created_at": _ts(row.created_at),
+                    "first_approved_by": user(row.first_approved_by_user_id),
+                    "first_approved_at": _ts(row.first_approved_at),
+                    "decided_by": user(row.decided_by_user_id),
+                    "decided_at": _ts(row.decided_at),
+                    "decision_note": row.decision_note,
+                    "development_decision": row.development_decision,
+                    "runs": _dumps(
+                        [
+                            {
+                                "kind": run.kind,
+                                "by": user(run.user_id),
+                                "started_at": _ts(run.started_at),
+                                "stage_targets": run.stage_targets,
+                                "development_execution": run.development_execution,
+                            }
+                            for run in self._set_runs.get(row.id, [])
+                        ]
+                    ),
+                    "cancelled_by": user(row.cancelled_by_user_id),
+                    "cancelled_at": _ts(row.cancelled_at),
+                    "finished_at": _ts(row.finished_at),
+                    "controls": ";".join(f"{link.framework}:{link.control_id}" for link in links),
+                    "digest": row.digest,
+                }
+            )
+
+    def change_set_items(self) -> Iterator[dict[str, Any]]:
+        for row in self._sets:
+            for item in self._set_rows[row.id]:
+                yield _safe(item)
 
     # Rows -----------------------------------------------------------------------------------
 
@@ -560,6 +747,8 @@ class EvidencePackage(EvidenceExport):
             ("changes", self.changes),
             ("change_sample", self.change_sample),
             ("change_evidence", self.change_evidence),
+            ("change_sets", self.change_sets),
+            ("change_set_items", self.change_set_items),
             *found[at:],
         ]
 

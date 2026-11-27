@@ -32,6 +32,8 @@ import {
 } from "./format";
 
 const DEFAULT_DAYS = 30;
+const FIX_RATIONALE =
+  "Put these projects back to the values their assigned templates set: collected evidence shows them drifting.";
 
 /** Builds a change set from each chosen project's own templates and opens it for review. */
 export function FixDriftButton({
@@ -55,7 +57,13 @@ export function FixDriftButton({
     setFailure(null);
     try {
       const created = await createChangeSet(
-        { title, selection, effective: true, expires_in_hours: 72 },
+        {
+          title,
+          rationale: FIX_RATIONALE,
+          selection,
+          effective: true,
+          expires_in_hours: 72,
+        },
         token,
       );
       void navigate(`/governance/change-sets?open=${String(created.id)}`);

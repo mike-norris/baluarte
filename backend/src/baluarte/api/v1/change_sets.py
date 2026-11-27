@@ -31,7 +31,7 @@ from baluarte.db.models import (
     TemplateChangeSet,
 )
 from baluarte.policy.evaluation.project import capability_statuses, collection_contexts
-from baluarte.templates import change_sets, execute
+from baluarte.templates import change_sets, execute, records
 from baluarte.templates.change_sets import (
     DEFAULT_HOURS,
     MAX_NOTE,
@@ -231,6 +231,14 @@ class TopicsIn(BaseModel):
 
 class ChangeSetIn(BaseModel):
     title: Annotated[str, Field(min_length=1, max_length=200)]
+    rationale: Annotated[
+        str,
+        Field(
+            min_length=change_sets.MIN_RATIONALE,
+            max_length=change_sets.MAX_RATIONALE,
+            description="Why the change is wanted; recorded with the set and never changed",
+        ),
+    ]
     selection: Selection
     template: Annotated[
         str | None, Field(description="A template version, name@version", max_length=80)
@@ -304,6 +312,27 @@ class ChangeSetSummary(BaseModel):
     rollback_started_at: datetime | None
     # Why the last run stopped before its stage was done.
     halt_reason: str | None
+    # Why the change is wanted (M14.6); None for sets created before it was recorded.
+    rationale: str | None
+
+
+class RunOut(BaseModel):
+    """One apply, continue or rollback, with who started it: never an approver of the set
+    outside development mode (``development_execution``)."""
+
+    id: int
+    kind: Literal["apply", "continue", "rollback"]
+    user: UserRef
+    started_at: datetime
+    stage_targets: int | None
+    development_execution: bool
+
+
+class ControlOut(BaseModel):
+    framework: str
+    control_id: str
+    # The settings of the set whose rule type supports the control.
+    settings: list[str]
 
 
 class ChangeItemOut(BaseModel):
@@ -354,6 +383,12 @@ class ChangeSetOut(ChangeSetSummary):
     write_refusals: list[str]
     # Each applied change that was not rolled back, checked against evidence collected since.
     verification: list[VerificationOut]
+    # Every run that wrote or was to write to the provider, oldest first.
+    runs: list[RunOut]
+    # The controls the changed settings support, through the mapping in force.
+    controls: list[ControlOut]
+    # The template versions the values came from.
+    template_versions: list[str]
 
 
 class ChangeSetList(BaseModel):
@@ -437,6 +472,7 @@ def _summaries(
                 "rollback_by": user(row.rollback_by_user_id),
                 "rollback_started_at": row.rollback_started_at,
                 "halt_reason": row.halt_reason,
+                "rationale": row.rationale,
             }
         )
     return found
@@ -454,6 +490,18 @@ def _out(db: Session, row: TemplateChangeSet) -> ChangeSetOut:
     )
     instance = db.get(GitLabInstance, row.instance_id)
     checked = verify(db, instance, items) if instance is not None else []
+    runs = records.runs_of(db, [row.id]).get(row.id, [])
+    names = (
+        dict(
+            db.execute(
+                select(AppUser.id, AppUser.display_name).where(
+                    AppUser.id.in_({run.user_id for run in runs})
+                )
+            ).all()
+        )
+        if runs
+        else {}
+    )
     return ChangeSetOut(
         **summary,
         document=row.document,
@@ -461,6 +509,22 @@ def _out(db: Session, row: TemplateChangeSet) -> ChangeSetOut:
         irreversible=[Irreversible(**found) for found in execute.irreversible_changes(row)],
         write_refusals=execute.write_refusals(db, row),
         verification=[VerificationOut(**vars(found)) for found in checked],
+        runs=[
+            RunOut(
+                id=run.id,
+                kind=run.kind,  # type: ignore[arg-type]
+                user=UserRef(user_id=run.user_id, display_name=names.get(run.user_id)),
+                started_at=run.started_at,
+                stage_targets=run.stage_targets,
+                development_execution=run.development_execution,
+            )
+            for run in runs
+        ],
+        controls=[
+            ControlOut(framework=c.framework, control_id=c.control_id, settings=list(c.settings))
+            for c in records.controls_of(db, row)
+        ],
+        template_versions=records.template_versions(row.document),
     )
 
 
@@ -543,6 +607,7 @@ def create_change_set(
             body.expires_in_hours,
             principal.user_id,
             principal.actor,
+            body.rationale,
         )
     except TemplateInvalid as invalid:
         raise _invalid(invalid) from None
@@ -737,7 +802,11 @@ def continue_change_set(
     db: Annotated[Session, Depends(database)],
 ) -> ChangeSetOut:
     row = _locked(db, change_set_id)
-    return _run(db, row, lambda: execute.resume(db, row, body.more_targets, principal.actor))
+    return _run(
+        db,
+        row,
+        lambda: execute.resume(db, row, body.more_targets, principal.user_id, principal.actor),
+    )
 
 
 @router.post(

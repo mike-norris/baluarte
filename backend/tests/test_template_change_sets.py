@@ -44,7 +44,11 @@ SETTINGS = {
 
 
 def create(engine: Engine, user_id: int, **body: Any) -> Any:
-    payload = {"title": "Tighten platform", "selection": {"projects": [SITE, API, LEGACY]}}
+    payload = {
+        "title": "Tighten platform",
+        "rationale": "Align the platform projects with the service template.",
+        "selection": {"projects": [SITE, API, LEGACY]},
+    }
     payload.update(body)
     if not {"template", "settings", "effective", "topics"} & payload.keys():
         payload["settings"] = SETTINGS
@@ -150,7 +154,12 @@ def test_requests_are_validated(migrated_engine: Engine, world: int) -> None:
     assert nobody.status_code == 422
     auditor = client(migrated_engine, ana, Role.AUDITOR).post(
         "/api/v1/template-change-sets",
-        json={"title": "x", "selection": {"projects": [SITE]}, "settings": SETTINGS},
+        json={
+            "title": "x",
+            "rationale": "Align the platform projects with the service template.",
+            "selection": {"projects": [SITE]},
+            "settings": SETTINGS,
+        },
     )
     assert auditor.status_code == 403
 

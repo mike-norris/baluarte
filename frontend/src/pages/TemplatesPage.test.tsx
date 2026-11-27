@@ -502,6 +502,8 @@ describe("TemplatesPage drift", () => {
     await screen.findByText("No change sets yet");
     expect(bodyOf(calls, "POST /api/v1/template-change-sets")).toEqual({
       title: "Fix template drift in platform/backend/svc",
+      rationale:
+        "Put these projects back to the values their assigned templates set: collected evidence shows them drifting.",
       selection: { projects: ["platform/backend/svc"] },
       effective: true,
       expires_in_hours: 72,

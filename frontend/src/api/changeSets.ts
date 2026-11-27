@@ -147,6 +147,26 @@ export interface ChangeSetSummary {
   rollback_by: UserRef | null;
   rollback_started_at: string | null;
   halt_reason: string | null;
+  /** Why the change is wanted; null for sets created before it was recorded. */
+  rationale: string | null;
+}
+
+/** One apply, continue or rollback, and who started it: never an approver of the set outside
+ * development mode. */
+export interface ChangeRun {
+  id: number;
+  kind: "apply" | "continue" | "rollback";
+  user: UserRef;
+  started_at: string;
+  stage_targets: number | null;
+  development_execution: boolean;
+}
+
+/** A control the set's changed settings support, through the mapping in force. */
+export interface ChangeControl {
+  framework: string;
+  control_id: string;
+  settings: string[];
 }
 
 export type VerificationStatus = "verified" | "drift" | "awaiting_collection" | "unknown";
@@ -169,10 +189,18 @@ export interface ChangeSet extends ChangeSetSummary {
   irreversible: { project: string; setting: string; why: string }[];
   write_refusals: WriteRefusal[];
   verification: Verification[];
+  runs: ChangeRun[];
+  controls: ChangeControl[];
+  template_versions: string[];
 }
+
+export const MIN_RATIONALE = 20;
+export const MAX_RATIONALE = 2000;
 
 export interface ChangeSetRequest {
   title: string;
+  /** Why the change is wanted, 20 to 2,000 characters; recorded and never changed. */
+  rationale: string;
   selection: Selection;
   template?: string;
   settings?: Record<string, unknown>;

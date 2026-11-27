@@ -9,6 +9,15 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Change set records (step M14.6, finishing configuration templates): a change set now needs a
+  rationale (20 to 2,000 characters, never changed), and records each apply, continue and
+  rollback with who started it. Whoever approved a set can no longer apply, continue or roll it
+  back; the database enforces this, and development mode lets an approver do it while recording
+  that. The change set page shows the record: why, who requested, approved and ran it, the
+  template versions and the controls its settings support. Audit-period evidence packages
+  (format `baluarte.evidence-package/v2`) add `change_sets.csv` and `change_set_items.csv` for the
+  sets active in the period, with each change's result and each skip (such as an approved
+  exception), and `baluarte-verify-export` checks that no approver ran a set. Migration `0049`.
 - Pipeline starter approval (release governance step RG.5): the baseline rule
   `gitlab.deployment.triggerer_cannot_approve` fails when GitLab lets whoever started a pipeline,
   such as a release tag's creator, approve its deployments, and is unsupported without deployment

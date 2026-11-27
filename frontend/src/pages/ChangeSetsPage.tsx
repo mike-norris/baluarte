@@ -10,10 +10,13 @@ import {
   getChangeSet,
   listChangeSets,
   listSavedSelections,
+  MAX_RATIONALE,
+  MIN_RATIONALE,
   previewSelection,
   runChangeSet,
   saveSelection,
   type ChangeItem,
+  type ChangeRun,
   type ChangeSet,
   type ChangeSetState,
   type ChangeSetSummary,
@@ -108,6 +111,7 @@ function usePermissions() {
     userId: user?.user_id ?? null,
     canPlan: permissions.includes("changes:plan"),
     canApprove: permissions.includes("changes:approve"),
+    development: user?.development_mode === true,
   };
 }
 
@@ -269,6 +273,7 @@ function BuildForm({
     listSavedSelections(signal),
   );
   const [title, setTitle] = useState("");
+  const [rationale, setRationale] = useState("");
   const [form, setForm] = useState<SelectionForm>(EMPTY);
   const [kind, setKind] = useState<"template" | "settings" | "effective" | "topics">("template");
   const [topicKeys, setTopicKeys] = useState("");
@@ -338,6 +343,7 @@ function BuildForm({
       const created = await createChangeSet(
         {
           title: title.trim(),
+          rationale: rationale.trim(),
           selection,
           ...(kind === "template"
             ? { template: template.trim() }
@@ -360,8 +366,8 @@ function BuildForm({
         Build a change set
       </h2>
       <p className="text-secondary">
-        Building reads only stored evidence; nothing changes on the provider. Applying approved sets
-        comes in a later release.
+        Building reads only stored evidence; nothing changes on the provider. Applying an approved
+        set is a separate step, by someone who did not approve it.
       </p>
       <label className="form-label">
         Title
@@ -375,6 +381,25 @@ function BuildForm({
           }}
         />
       </label>
+      <div>
+        <label className="form-label" htmlFor={`${id}-rationale`}>
+          Why this change is wanted
+        </label>
+        <textarea
+          id={`${id}-rationale`}
+          className="form-control"
+          rows={2}
+          maxLength={MAX_RATIONALE}
+          aria-describedby={`${id}-rationale-hint`}
+          value={rationale}
+          onChange={(event) => {
+            setRationale(event.target.value);
+          }}
+        />
+        <p id={`${id}-rationale-hint`} className="form-hint mb-0">
+          {`Recorded with the set and never changed; at least ${String(MIN_RATIONALE)} characters.`}
+        </p>
+      </div>
       {saved.data && saved.data.selections.length > 0 && (
         <div>
           <span className="form-label">Saved selections</span>
@@ -576,6 +601,7 @@ function BuildForm({
             busy ||
             empty ||
             !title.trim() ||
+            rationale.trim().length < MIN_RATIONALE ||
             (kind === "template" && !template.trim()) ||
             (kind === "settings" && !settings.trim()) ||
             (kind === "topics" && list(topicKeys).length === 0)
@@ -855,7 +881,7 @@ function EvidenceCheck({ checks }: { checks: Verification[] }) {
 }
 
 function Execution({ set, onChanged }: { set: ChangeSet; onChanged: (text: string) => void }) {
-  const { token, canApprove } = usePermissions();
+  const { token, canApprove, userId, development } = usePermissions();
   const [stage, setStage] = useState(String(Math.min(5, Math.max(1, set.changing_targets))));
   const [more, setMore] = useState("");
   const [acknowledged, setAcknowledged] = useState(false);
@@ -865,7 +891,12 @@ function Execution({ set, onChanged }: { set: ChangeSet; onChanged: (text: strin
   const startable = set.state === "approved";
   const executing = !["proposed", "rejected", "withdrawn", "expired"].includes(set.state);
   if (!canApprove || (!startable && !executing)) return null;
-  const blocked = set.write_refusals.length > 0;
+  // Whoever approved the set never applies, continues or rolls it back (outside development mode).
+  const approver =
+    userId !== null &&
+    [set.first_approved_by?.user_id, set.decided_by?.user_id].includes(userId) &&
+    !development;
+  const blocked = set.write_refusals.length > 0 || approver;
 
   async function act(run: (csrf: string) => Promise<ChangeSet>, done: string) {
     if (!token) return;
@@ -892,6 +923,12 @@ function Execution({ set, onChanged }: { set: ChangeSet; onChanged: (text: strin
               <li key={code}>{refusalLabels[code]}</li>
             ))}
           </ul>
+        </Notice>
+      )}
+      {approver && (
+        <Notice tone="info" title="Someone else runs it">
+          You approved this change set, so someone else with the permission applies, continues or
+          rolls it back.
         </Notice>
       )}
       {set.halt_reason && (
@@ -1035,6 +1072,70 @@ function Execution({ set, onChanged }: { set: ChangeSet; onChanged: (text: strin
   );
 }
 
+function person(ref: { display_name: string | null } | null): string {
+  return ref ? (ref.display_name ?? "someone") : "no one";
+}
+
+const runLabels: Record<ChangeRun["kind"], string> = {
+  apply: "Applied",
+  continue: "Continued",
+  rollback: "Rolled back",
+};
+
+/** Who asked for the change and why, who approved and who ran it, and the controls it supports. */
+function ChangeRecord({ set }: { set: ChangeSet }) {
+  return (
+    <section aria-labelledby={`record-${String(set.id)}`} className="stack-1">
+      <h3 id={`record-${String(set.id)}`} className="h4">
+        Record
+      </h3>
+      <dl className="row mb-0">
+        <dt className="col-sm-3">Why</dt>
+        <dd className="col-sm-9">{set.rationale ?? "Not recorded (created before M14.6)."}</dd>
+        <dt className="col-sm-3">Requested by</dt>
+        <dd className="col-sm-9">
+          {set.created_by_system ? "Baluarte (automatic proposal)" : person(set.created_by)}
+        </dd>
+        <dt className="col-sm-3">Approved by</dt>
+        <dd className="col-sm-9">
+          {[set.first_approved_by, set.decided_by]
+            .filter((ref) => ref !== null)
+            .map((ref) => person(ref))
+            .join(", ") || "Not yet"}
+        </dd>
+        <dt className="col-sm-3">Runs</dt>
+        <dd className="col-sm-9">
+          {set.runs.length === 0 ? (
+            "None yet"
+          ) : (
+            <ul className="list-unstyled mb-0">
+              {set.runs.map((run) => (
+                <li key={run.id}>
+                  {`${runLabels[run.kind]} by ${person(run.user)}, ${new Date(run.started_at).toLocaleString()}${run.stage_targets === null ? "" : ` (${String(run.stage_targets)} projects)`}${run.development_execution ? ", an approver, in development mode" : ""}`}
+                </li>
+              ))}
+            </ul>
+          )}
+        </dd>
+        {set.template_versions.length > 0 && (
+          <>
+            <dt className="col-sm-3">Templates</dt>
+            <dd className="col-sm-9">{set.template_versions.join(", ")}</dd>
+          </>
+        )}
+        <dt className="col-sm-3">Controls</dt>
+        <dd className="col-sm-9">
+          {set.controls.length === 0
+            ? "None mapped"
+            : set.controls
+                .map((control) => `${control.framework} ${control.control_id}`)
+                .join(", ")}
+        </dd>
+      </dl>
+    </section>
+  );
+}
+
 function ChangeSetDetail({
   id,
   version,
@@ -1081,6 +1182,7 @@ function ChangeSetDetail({
         </Notice>
       )}
       <DigestDisplay value={set.digest} />
+      <ChangeRecord set={set} />
       <Decisions set={set} onChanged={onChanged} />
       <Execution set={set} onChanged={onChanged} />
       <Progress items={set.items} />

@@ -11,7 +11,7 @@ Roadmap milestone M14 ([ROADMAP.md](ROADMAP.md#m14--configuration-templates-and-
 | M14.3 Change sets | Target selection by hierarchy, owner, provider, tags, business unit, policy and compliance status, and saved collections; a change set with the exact targets and before and after values from evidence; checks for permissions, capabilities, conflicting baselines and exceptions; warnings for changes that weaken protection, remove access or disrupt work; approval of the set, with a second approval for sensitive changes (migration `0040`) | Done |
 | M14.4 Execution | Staged rollout to a first set of targets; background jobs with per-target progress, rate-limit handling, retries, cancellation and resumption; each setting read again before it is changed, concurrent changes flagged, previous values kept, rollback where the provider allows it and irreversible steps disclosed; behind its own switch and write token, off by default (migration `0041`) | Done |
 | M14.5 Alignment and tags | Manual remediation of drift as a change set; settings verified against collected evidence after each change; automatic remediation per template assignment, off by default; Baluarte tags synchronized to GitLab topics or GitHub topics only when asked | Done (migrations `0046` and `0047`) |
-| M14.6 Records and acceptance | Requester, approver, executor, rationale, template version, scope, timestamps, before and after values and per-target results recorded, linked to controls and in exports; the bulk governance workflow end to end, with a partial failure and an exception that stay visible | Planned |
+| M14.6 Records and acceptance | Requester, approver, executor, rationale, template version, scope, timestamps, before and after values and per-target results recorded, linked to controls and in exports; the bulk governance workflow end to end, with a partial failure and an exception that stay visible; whoever applies, continues or rolls back a set is never one of its approvers (migration `0049`) | Done |
 
 ## Template format
 
@@ -151,7 +151,7 @@ Applying an approved change set writes to GitLab. It is refused unless **all** o
 - no other set of the connection is applying or rolling back;
 - changes that cannot be fully undone are acknowledged. Removing a branch protection is one: rollback protects the branch again with the recorded role levels, but not per-user or per-group access or its other options.
 
-Applying, continuing, cancelling and rolling back need `changes:approve`.
+Applying, continuing, cancelling and rolling back need `changes:approve`. **Whoever approved a set never applies, continues or rolls it back** (decided 2026-11-25 and 2026-11-27): someone else with the permission must, so every write to the provider is made by a third person. The refusal is `approver` (409), and the database enforces it too ([Records](#records)). Development mode lets an approver run it, and the run records that. Cancelling writes nothing, so an approver may cancel.
 
 **Stages.** Starting names how many projects the first stage covers. A background job applies their changes and the set becomes `paused`, or `finished` when no project remains; **Continue** adds more projects, or all that remain.
 
@@ -162,6 +162,24 @@ Applying, continuing, cancelling and rolling back need `changes:approve`.
 **Rolling back** a paused, cancelled or finished set undoes its applied changes in reverse order, each only while GitLab still shows the value written (otherwise `not_rolled_back`), and verifies each by reading back. Project discovery is queued after every run so drift and findings follow from evidence. Every write, every change's outcome and every run are audited (`template_change_set.apply_started`, `.write`, `.item`, `.paused`, `.continued`, `.finished`, `.halted`, `.cancelled`, `.rollback_started`, `.item_rolled_back`, `.rolled_back`). Change items, like the set, are never edited or deleted (a database trigger enforces this).
 
 **Evidence check.** Reading a setting back after writing it shows the write took; the discovery queued after every run gives a second, independent check from the evidence drift and findings rest on. Each applied change that was not rolled back is shown as `verified` (evidence collected after the write shows the value written), `drift` (it shows another value: changed again, or the write did not hold), `awaiting_collection` (nothing collected since the write) or `unknown` (the evidence cannot tell). It is computed on request from stored evidence (`verification` on a change set).
+
+## Records
+
+Roadmap M14.6. A change set is its own record, from rows that are never edited or deleted:
+
+| What | Where |
+|---|---|
+| Requester and rationale | `created_by` (or `created_by_system` for an automatic proposal) and `rationale`: why the change is wanted, 20 to 2,000 characters, required when a set is built and never changed (a trigger refuses an update). Sets built before migration `0049` have none. |
+| Approvers | `first_approved_by` (a sensitive set's first approval) and `decided_by`, with their times, notes and `approved_digest` |
+| Executors | `runs`: one `template_change_run` row per apply, continue or rollback, with who started it, when and how many targets the stages then allowed. A trigger refuses a run started by one of the set's approvers, unless `development_execution` (development mode), and refuses any change or deletion. |
+| Template version and scope | The document's `source` (a template version, settings, each project's effective settings or topics) and `selection`; `template_versions` lists every template version the values came from |
+| Timestamps | Created, approved, apply started, finished, cancelled, rollback started and ended, and each change's `finished_at` and `rolled_back_at` |
+| Before, after and results | The document's changes and skips per project, and each change item's status, attempts, message and rollback |
+| Controls | `controls`: each control the changed settings support, through the rule type that judges each setting and the control mapping in force ([CONTROL_MAPPING.md](CONTROL_MAPPING.md)). Topics support none. |
+
+The change set page shows them under **Record**. The audit-period evidence package ([AUDIT_EVIDENCE.md](AUDIT_EVIDENCE.md#evidence-package-for-an-audit-period)) exports the sets active in its period that touch a project in its scope, in `change_sets.csv` and `change_set_items.csv` (package format `baluarte.evidence-package/v2`). People appear there as `user:<id>`, free text passes through the export redactor, and `baluarte-verify-export` checks that every item belongs to a listed set and that no run was started by one of the set's approvers outside development mode.
+
+**Acceptance.** The bulk workflow end to end is a test (`tests/test_change_set_records.py`): a template exception is approved for one project's setting; a change set fixes the drift of two projects from their effective settings and skips that setting as `excepted`; two people approve it and a third applies it; GitLab refuses one write, so that change is `failed` and the others are applied; the set finishes. The failure stays visible in the set's progress and drift, the exception in drift, and both in the evidence package, which verifies offline.
 
 ## API
 
@@ -184,13 +202,13 @@ Applying, continuing, cancelling and rolling back need `changes:approve`.
 | `POST /api/v1/template-selections`, `DELETE /api/v1/template-selections/{id}` | `changes:plan` + CSRF | Body `{name, selection}`. 409 when the name is taken |
 | `GET /api/v1/template-change-sets` | `findings:read` | Newest first, at most 200; `state` filter |
 | `GET /api/v1/template-change-sets/{id}` | `findings:read` | A change set with its document, each change's progress and the evidence check of applied changes |
-| `POST /api/v1/template-change-sets` | `changes:plan` + CSRF | Body `{title, selection, template \| settings \| effective \| topics, expires_in_hours}`, exactly one source; `topics` is `{keys: [...]}`, 1 to 20 tag keys. 201; 422 for an empty selection, no matching project, more than 500, unknown template, invalid settings, no template in force (`effective`) or nothing to change |
+| `POST /api/v1/template-change-sets` | `changes:plan` + CSRF | Body `{title, rationale, selection, template \| settings \| effective \| topics, expires_in_hours}`, `rationale` 20 to 2,000 characters, exactly one source; `topics` is `{keys: [...]}`, 1 to 20 tag keys. 201; 422 for an empty selection, no matching project, more than 500, unknown template, invalid settings, no template in force (`effective`) or nothing to change |
 | `POST /api/v1/template-change-sets/{id}/approve` | `changes:approve` + CSRF | Body `{digest, note?}`. 403 for the creator or a repeated approver; 409 when not proposed, the digest differs or the set is stale |
 | `POST /api/v1/template-change-sets/{id}/reject` | `changes:approve` + CSRF | Body `{note}` |
 | `POST /api/v1/template-change-sets/{id}/withdraw` | `changes:plan` + CSRF | Only the creator |
-| `POST /api/v1/template-change-sets/{id}/apply` | `changes:approve` + CSRF | Body `{stage_targets, acknowledge_irreversible?}`. 409 with the reasons when writes are off, no token is stored, the set is not approved, expired or stale, not on the primary connection, another set is running, or irreversible changes are not acknowledged |
-| `POST /api/v1/template-change-sets/{id}/continue` | `changes:approve` + CSRF | Body `{more_targets?}`; only a paused set |
+| `POST /api/v1/template-change-sets/{id}/apply` | `changes:approve` + CSRF | Body `{stage_targets, acknowledge_irreversible?}`. 409 with the reasons when writes are off, no token is stored, the set is not approved, expired or stale, not on the primary connection, another set is running, or irreversible changes are not acknowledged, or `approver` when the caller approved the set |
+| `POST /api/v1/template-change-sets/{id}/continue` | `changes:approve` + CSRF | Body `{more_targets?}`; only a paused set; never by an approver |
 | `POST /api/v1/template-change-sets/{id}/cancel` | `changes:approve` + CSRF | Only an applying or paused set |
-| `POST /api/v1/template-change-sets/{id}/rollback` | `changes:approve` + CSRF | A paused, cancelled or finished set, or a rollback that stopped |
+| `POST /api/v1/template-change-sets/{id}/rollback` | `changes:approve` + CSRF | A paused, cancelled or finished set, or a rollback that stopped; never by an approver |
 | `GET`, `PUT`, `DELETE /api/v1/settings/template-write-token` | `settings:manage`, + CSRF to change | Never returns the token; `writes_enabled` is the switch |
 | `GET /api/v1/templates/effective/{project_id}` | `findings:read` | The project's effective settings with provenance and provider support, and the ancestry |

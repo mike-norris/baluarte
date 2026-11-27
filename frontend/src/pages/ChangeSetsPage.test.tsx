@@ -29,6 +29,7 @@ const approver: CurrentUser = {
 };
 
 const created = "2026-11-24T15:00:00Z";
+const WHY = "Bring the platform projects in line with the template.";
 const summary: ChangeSetSummary = {
   id: 7,
   connection_id: 1,
@@ -64,9 +65,13 @@ const summary: ChangeSetSummary = {
   rollback_by: null,
   rollback_started_at: null,
   halt_reason: null,
+  rationale: "Bring the platform projects in line with the template.",
 };
 const changeSet: ChangeSet = {
   ...summary,
+  runs: [],
+  controls: [{ framework: "soc2", control_id: "CC8.1", settings: ["default_branch_protected"] }],
+  template_versions: ["service@1"],
   items: [],
   irreversible: [],
   write_refusals: [],
@@ -239,6 +244,7 @@ describe("ChangeSetsPage", () => {
     const build = within(form).getByRole("button", { name: "Build change set" });
     expect(build).toBeDisabled();
     await user.type(within(form).getByLabelText("Title"), "Tighten platform");
+    await user.type(within(form).getByLabelText("Why this change is wanted"), WHY);
     await user.type(within(form).getByLabelText("Groups"), "platform");
     await user.click(within(form).getByRole("checkbox", { name: "drift" }));
     await user.click(within(form).getByRole("button", { name: "Preview projects" }));
@@ -251,6 +257,7 @@ describe("ChangeSetsPage", () => {
     await screen.findByText("Built change set Tighten platform: 2 changes.");
     expect(bodyOf(calls, CREATE)).toEqual({
       title: "Tighten platform",
+      rationale: WHY,
       selection: { groups: ["platform"], drift: ["drift"] },
       template: "service@1",
       expires_in_hours: 72,
@@ -298,6 +305,7 @@ describe("ChangeSetsPage", () => {
 
     const form = await screen.findByRole("form", { name: "Build a change set" });
     await user.type(within(form).getByLabelText("Title"), "Fix drift");
+    await user.type(within(form).getByLabelText("Why this change is wanted"), WHY);
     await user.click(within(form).getByRole("checkbox", { name: "drift" }));
     await user.click(
       within(form).getByRole("radio", { name: "Each project's templates (fix drift)" }),
@@ -306,6 +314,7 @@ describe("ChangeSetsPage", () => {
     await screen.findByText("Built change set Tighten platform: 2 changes.");
     expect(bodyOf(calls, CREATE)).toEqual({
       title: "Fix drift",
+      rationale: WHY,
       selection: { drift: ["drift"] },
       effective: true,
       expires_in_hours: 72,
@@ -365,6 +374,7 @@ describe("ChangeSetsPage", () => {
 
     const form = await screen.findByRole("form", { name: "Build a change set" });
     await user.type(within(form).getByLabelText("Title"), "Team topics");
+    await user.type(within(form).getByLabelText("Why this change is wanted"), WHY);
     await user.type(within(form).getByLabelText("Groups"), "platform");
     await user.click(within(form).getByRole("radio", { name: "Tags to GitLab topics" }));
     const build = within(form).getByRole("button", { name: "Build change set" });
@@ -374,6 +384,7 @@ describe("ChangeSetsPage", () => {
     await screen.findByText(/Built change set Tighten platform/);
     expect(bodyOf(calls, CREATE)).toEqual({
       title: "Team topics",
+      rationale: WHY,
       selection: { groups: ["platform"] },
       topics: { keys: ["team", "tier"] },
       expires_in_hours: 72,
@@ -502,5 +513,60 @@ describe("ChangeSetsPage", () => {
     expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Roll back" }));
     await screen.findByText("Started rolling back change set Tighten platform.");
+  });
+
+  it("shows the record: why, who requested, approved and ran it, and the controls", async () => {
+    const user = userEvent.setup();
+    api(approver, {
+      "GET /api/v1/template-change-sets/7": () =>
+        json({
+          ...changeSet,
+          state: "finished",
+          decided_by: { user_id: 3, display_name: "Cy" },
+          runs: [
+            {
+              id: 1,
+              kind: "apply",
+              user: { user_id: 2, display_name: "Bea" },
+              started_at: created,
+              stage_targets: 1,
+              development_execution: false,
+            },
+          ],
+        }),
+    });
+    renderPage();
+
+    const list = await screen.findByRole("table", { name: "Change sets" });
+    await user.click(within(list).getByRole("button", { name: "Open Tighten platform" }));
+    const record = await screen.findByRole("region", { name: "Record" });
+    expect(within(record).getByText(WHY)).toBeInTheDocument();
+    expect(within(record).getByText("Ana")).toBeInTheDocument();
+    expect(within(record).getByText("Cy")).toBeInTheDocument();
+    expect(within(record).getByText(/Applied by Bea/)).toBeInTheDocument();
+    expect(within(record).getByText("service@1")).toBeInTheDocument();
+    expect(within(record).getByText("soc2 CC8.1")).toBeInTheDocument();
+  });
+
+  it("leaves applying to someone other than the approvers", async () => {
+    const user = userEvent.setup();
+    api(approver, {
+      [LIST]: () => json({ change_sets: [{ ...summary, state: "approved" }] }),
+      "GET /api/v1/template-change-sets/7": () =>
+        json({
+          ...changeSet,
+          state: "approved",
+          approvals_needed: 0,
+          decided_by: { user_id: 2, display_name: "Bea" },
+        }),
+    });
+    renderPage();
+
+    const list = await screen.findByRole("table", { name: "Change sets" });
+    await user.click(within(list).getByRole("button", { name: "Open Tighten platform" }));
+    expect(await screen.findByText("Someone else runs it")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Apply change set Tighten platform" }),
+    ).toBeDisabled();
   });
 });

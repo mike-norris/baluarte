@@ -261,6 +261,7 @@ Inventory fields (paths, states) and a finding's severity are today's: the inven
 | `changes.csv` | Every change that landed in the period on a monitored project, with its outcome and `sampled`. |
 | `change_sample.csv` | The sampled merge requests and direct pushes, in ID order. |
 | `change_evidence.jsonl` | Every version of each sampled change, oldest first, with `digest_valid`. |
+| `change_sets.csv`, `change_set_items.csv` | Template change sets active in the period that touch a project in scope, with who requested, approved and ran each, why, and the controls they support; and each change or skip with its result ([CONFIGURATION_TEMPLATES.md](CONFIGURATION_TEMPLATES.md#records)). Format v2. |
 | `observations.jsonl`, `policies.csv`, `exceptions.csv`, `collection_errors.csv`, `collection_runs.csv` | As in the scoped export, for the period. |
 | `manifest.json`, `SHA256SUMS` | As in the scoped export; the manifest adds `evidence_package`. |
 
@@ -270,7 +271,7 @@ The manifest's `evidence_package`:
 
 ```json
 {
-  "format": "baluarte.evidence-package/v1",
+  "format": "baluarte.evidence-package/v2",
   "period": {"from": "2026-07-01T00:00:00Z", "to": "2026-10-01T00:00:00Z"},
   "evaluation_run": {"id": 61, "finished_at": "2026-09-30T22:04:11Z"},
   "scope": {"from": "...", "to": "...", "framework": "soc2", "control_id": "CC8.1", "groups": ["acme/payments"]},

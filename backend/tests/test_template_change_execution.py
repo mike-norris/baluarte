@@ -220,6 +220,7 @@ def approved(engine: Engine, settings: dict[str, Any], projects: list[str]) -> d
         SETS,
         json={
             "title": "Raise approvals",
+            "rationale": "Align the platform projects with the service template.",
             "selection": {"projects": projects},
             "settings": settings,
         },
@@ -595,6 +596,7 @@ def topics_set(engine: Engine, projects: list[str]) -> dict[str, Any]:
         SETS,
         json={
             "title": "Team topics",
+            "rationale": "Align the platform projects with the service template.",
             "selection": {"projects": projects},
             "topics": {"keys": ["team"]},
         },

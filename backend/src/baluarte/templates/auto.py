@@ -39,6 +39,10 @@ logger = logging.getLogger(__name__)
 
 SYSTEM_ACTOR = "system:template-auto-remediation"
 TITLE = "Fix template drift (proposed automatically)"
+RATIONALE = (
+    "Proposed automatically: these projects drift from template settings whose assignments "
+    "have automatic remediation on, and this set puts them back to the effective values."
+)
 OPEN = ("proposed", "approved", "applying", "paused", "rolling_back")
 
 
@@ -103,5 +107,5 @@ def propose(db: Session, instance: GitLabInstance) -> TemplateChangeSet | None:
     if _rejected_before(db, instance.id, fingerprint(document)) is not None:
         return None
     return change_sets.create(
-        db, instance, TITLE, selection, source, DEFAULT_HOURS, None, SYSTEM_ACTOR
+        db, instance, TITLE, selection, source, DEFAULT_HOURS, None, SYSTEM_ACTOR, RATIONALE
     )
