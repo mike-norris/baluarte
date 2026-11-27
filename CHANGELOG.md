@@ -9,6 +9,15 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Control assessments (step M15.3): an assessor's conclusion about a control for a period
+  (effective, partially effective, not effective or not tested) with a narrative, citing
+  accepted evidence items, observations, changes, template change sets or the control's
+  automated status, each with a rationale and the digest of what was cited. Someone other than
+  the assessor approves or rejects it (`assessments:review`); approved assessments never change,
+  and a later one supersedes. The control page shows the latest approved assessment beside the
+  automated status, and says when they disagree. Retention keeps what an assessment cites. New
+  page Evidence, Assessments; new permissions `assessments:write` and `assessments:review`.
+  Migration `0052`.
 - Evidence items (step M15.2): files (PDF, images, text, CSV, JSON and Office documents, up to
   25 MiB, judged by their content and stored once by SHA-256 in the database) and links, each
   linked to controls in a framework version, with an owner, period, freshness date and an

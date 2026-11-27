@@ -11,10 +11,12 @@ import {
   type FrameworkId,
   type MappingChange,
 } from "../api/controls";
+import { conclusionLabels } from "../api/assessments";
 import { findingsHref } from "../api/evaluations";
 import { useLoad } from "../api/useLoad";
 import { useAsOf } from "../asof/context";
 import { AsOfResult } from "../asof/AsOfResult";
+import { conclusionTones } from "../assessments/format";
 import { PastReadOnly } from "../asof/PastReadOnly";
 import { useAuth } from "../auth/context";
 import { ErrorMessage } from "../components/ErrorMessage";
@@ -365,6 +367,40 @@ function Actions({
 
 /** The organization's own description of the control, for its own use: never the standard's
  * text. Those who can change baselines may edit it; every version is kept. */
+/** The latest approved assessment beside the automated status; a disagreement is shown, never
+ * reconciled. */
+function PersonAssessment({ control }: { control: ControlDetail }) {
+  const latest = control.assessment;
+  return (
+    <section aria-labelledby="assessment-title" className="card card-body mb-3">
+      <h2 id="assessment-title" className="card-title">
+        Assessed by a person
+      </h2>
+      {latest ? (
+        <>
+          <p className="mb-1">
+            <Badge tone={conclusionTones[latest.conclusion]}>
+              {conclusionLabels[latest.conclusion]}
+            </Badge>{" "}
+            {`for ${latest.period_start} to ${latest.period_end} (${latest.framework_version}), by ${latest.assessor}, approved by ${latest.reviewed_by ?? "a reviewer"}.`}
+          </p>
+          {latest.disagrees && (
+            <p className="text-warning mb-1">
+              This conclusion and the automated status disagree. Both stand; neither changes the
+              other.
+            </p>
+          )}
+          <Link to="/assessments">See assessments</Link>
+        </>
+      ) : (
+        <p className="mb-0">
+          No approved assessment yet. <Link to="/assessments">Assess this control</Link>
+        </p>
+      )}
+    </section>
+  );
+}
+
 function OwnDescription({
   control,
   canWrite,
@@ -547,6 +583,7 @@ export function ControlDetailPage() {
         </p>
       )}
       <AsOfResult answer={control} />
+      <PersonAssessment control={control} />
       <fieldset disabled={past} className="d-contents">
         <OwnDescription
           key={control.description ?? ""}

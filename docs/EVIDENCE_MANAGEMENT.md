@@ -12,7 +12,7 @@ Automated results and human assessments stay separate. A rule result says what B
 |---|---|---|
 | M15.1 | Framework versions as data: each framework edition a row, its controls rows, the mapping and every record pinned to a version; catalogue text limited to what its licence allows (migration `0050`) | Done |
 | M15.2 | Evidence items: uploaded files (stored in the database, 25 MB each, by SHA-256) and external references, with owner, control links, review status, freshness, retention and access (migration `0051`) | Done |
-| M15.3 | Control assessments: an assessor's conclusion for a control and period, citing uploaded and collected evidence, approved by a separate reviewer before it counts | Planned |
+| M15.3 | Control assessments: an assessor's conclusion for a control and period, citing uploaded and collected evidence, approved by a separate reviewer before it counts (migration `0052`) | Done |
 | M15.4 | Evidence gaps: missing, stale, inaccessible and incomplete evidence per control and period, on a page and through the API | Planned |
 | M15.5 | Finding owners and deadlines (per-severity defaults, editable with a reason, overdue shown and notified); exceptions reassessed before they expire | Planned |
 | M15.6 | Exports and acceptance: assessments and evidence items in the evidence package and the register export, files verified offline by checksum; a control assessed by a person with uploaded and collected evidence, exported and verified | Planned |
@@ -58,7 +58,7 @@ As built (M15.2):
 - `evidence_item` holds the item and `evidence_item_control` the controls it supports, each pinned to its framework version ([framework versions](#framework-versions-m151)). Triggers let a draft change or be deleted, a submitted item only be accepted or rejected, and a decided item change only in its link check and, through retention, lose its file. Control links change only while the item is a draft.
 - **Uploads** are sent as the raw request body (`Content-Type: application/octet-stream`, the name in `filename`); nginx allows 26 MiB on that path only and the API refuses more than 25 MiB (413). The type is judged from the content: `%PDF-`, the PNG and JPEG signatures, an Office Open XML package whose parts match its `.docx`, `.xlsx` or `.pptx` name, or UTF-8 text without NUL bytes named `.txt`, `.md`, `.log`, `.csv` or `.json` (JSON must parse). Anything else, HTML included, is refused (422 `file_type`).
 - **Link checks** run only when `BALUARTE_EVIDENCE_CHECK_HOSTS` (Compose; `evidence.checkHosts` in the chart) lists the link's host and the link is https. A check fetches once with a 10-second timeout and no redirects, and records `reachable` (2xx) or `unreachable`, the HTTP status and the SHA-256 of the body (up to 25 MiB). Decided items keep recording checks.
-- **Retention** (the daily `retention.expire` job) removes the file of an accepted or rejected item whose evidence ended before the evidence period (`valid_until`, else the end of its period, else the day it was added); the item keeps `removed_sha256` and `file_removed_at`. The stored file is deleted only through `baluarte_expire_captured_file`, a SECURITY DEFINER function that refuses while any item or collected observation still cites it. Counts are in the `retention.expired` audit event (`evidence_item_file`, `captured_file`). From M15.3, items cited by an approved assessment are kept.
+- **Retention** (the daily `retention.expire` job) removes the file of an accepted or rejected item whose evidence ended before the evidence period (`valid_until`, else the end of its period, else the day it was added); the item keeps `removed_sha256` and `file_removed_at`. The stored file is deleted only through `baluarte_expire_captured_file`, a SECURITY DEFINER function that refuses while any item or collected observation still cites it. Counts are in the `retention.expired` audit event (`evidence_item_file`, `captured_file`). Since M15.3, an item's file is kept while an assessment still in force cites it.
 - Audit events: `evidence_item.added`, `edited`, `file_attached`, `deleted`, `submitted`, `accepted`, `rejected` and `checked`.
 
 | Method and path | Permission | Notes |
@@ -82,6 +82,30 @@ As built (M15.2):
 - Approved assessments never change. A later assessment of the same control and period supersedes the earlier one, and both stay in the record.
 - Permissions: `assessments:write` (analysts, auditors, admins) and `assessments:review` (auditors, admins).
 - The control's page shows the automated status and the latest approved assessment side by side; they may disagree, and the disagreement is shown, not reconciled.
+
+As built (M15.3):
+
+- **Evidence, Assessments** lists assessments newest first; opening one shows its narrative, citations and review. Those with `assessments:write` start one there, cite evidence, and submit or delete their own drafts; reviewers approve, or reject with a note.
+- `control_assessment` holds the assessment, pinned to the framework version's control ([framework versions](#framework-versions-m151)); `assessment_citation` holds what it cites. Triggers let a draft change or be deleted, a submitted assessment only be approved or rejected, and a decided one never change; citations are added or removed only while the assessment is a draft.
+- A **citation** is one of: an accepted `evidence_item`, an `observation`, a `change_record` (a change on a default branch), a template `change_set`, or `control_status`, the control's automated status taken when cited (status, evaluation run and counts, stored as a snapshot). Its `digest` is the item's file SHA-256 (or the link's last check), the observation's payload digest (for a change, its observation's), the change set's digest, or the SHA-256 of the snapshot. Restricted evidence items can be cited only by those who may read them.
+- Submitting needs at least one citation. `supersedes_id` names an approved assessment of the same control and version; it counts as superseded once the later one is approved, and an assessment is superseded at most once.
+- **Retention** keeps any observation or change an assessment cites, and the file of an evidence item cited by an assessment still in force: a draft, a submitted one, or an approved one not yet superseded.
+- The control page's **Assessed by a person** card shows the latest approved assessment in any version that no other supersedes, with `disagrees` when it says effective while the automated status is not met, or not effective while met.
+- Audit events: `control_assessment.created`, `edited`, `deleted`, `cited`, `uncited`, `submitted`, `approved` and `rejected`.
+
+| Method and path | Permission | Notes |
+|---|---|---|
+| `GET /api/v1/assessments` | `evidence:read` | Newest first, at most 500, with citations; `state` and `control` (`framework:control_id`, any version) filters |
+| `GET /api/v1/assessments/{id}` | `evidence:read` | One assessment |
+| `POST /api/v1/assessments` | `assessments:write` + CSRF | Body `{framework, control_id, version?, period_start, period_end, conclusion, narrative, supersedes_id?}`; 201 with a draft; 422 for an unknown control or a bad period; 409 for a `supersedes_id` that is not approved, of another control, or already superseded |
+| `PUT /api/v1/assessments/{id}` | `assessments:write` + CSRF | Replace a draft's period, conclusion and narrative; only the assessor (403), only a draft (409) |
+| `DELETE /api/v1/assessments/{id}` | `assessments:write` + CSRF | A draft, by its assessor; its citations go with it. 204 |
+| `POST /api/v1/assessments/{id}/citations` | `assessments:write` + CSRF | Body `{kind, target_id?, rationale}`; `target_id` for every kind but `control_status`. 409 `not_accepted` for an evidence item not accepted |
+| `DELETE /api/v1/assessments/{id}/citations/{citation_id}` | `assessments:write` + CSRF | Only on a draft, by its assessor |
+| `POST /api/v1/assessments/{id}/submit` | `assessments:write` + CSRF | 409 `no_evidence` without a citation |
+| `POST /api/v1/assessments/{id}/approve`, `/reject` | `assessments:review` + CSRF | Body `{note?}`; a rejection needs the note. 403 for one's own outside development mode |
+
+`GET /api/v1/controls/{framework}/{control_id}` adds `assessment`: the latest approved assessment's ID, framework version, conclusion, period, assessor, reviewer and `disagrees`, or null.
 
 ## Evidence gaps (M15.4)
 

@@ -34,10 +34,13 @@ from baluarte.db.models import (
     MAX_JUSTIFICATION,
     MIN_JUSTIFICATION,
     AppUser,
+    ControlAssessment,
     ControlMappingChange,
     EvaluationRun,
 )
+from baluarte.evidence import assessments
 from baluarte.evidence.as_of import RunRef, run_ref
+from baluarte.evidence.items import ControlRef
 from baluarte.policy.changes import MAX_NOTE, review_required
 from baluarte.workspaces import current_connection_id
 
@@ -161,6 +164,20 @@ class ChangeOut(BaseModel):
     decision_note: str | None
 
 
+class AssessmentSummary(BaseModel):
+    id: int
+    framework_version: str
+    conclusion: Literal["effective", "partially_effective", "not_effective", "not_tested"]
+    period_start: date
+    period_end: date
+    assessor: str
+    reviewed_by: str | None
+    reviewed_at: datetime | None
+    # The conclusion and the automated status point opposite ways: effective while not met, or
+    # not effective while met.
+    disagrees: bool
+
+
 class ControlDetail(ControlOut):
     # The current version of the control's framework, and the organization's own description
     # of the control in it (null when none is in force).
@@ -173,6 +190,9 @@ class ControlDetail(ControlOut):
     changes: list[ChangeOut]
     as_of: datetime | None = None
     evaluation_run: RunRef | None = None
+    # The latest approved assessment of the control in any version (roadmap M15.3), shown beside
+    # the automated status and never reconciled with it.
+    assessment: AssessmentSummary | None = None
 
 
 class ChangePage(BaseModel):
@@ -438,6 +458,7 @@ def read_control(
     row = versions.control_row(db, in_force.id, control_id)
     described = versions.descriptions(db, [row.id]) if row is not None else {}
     own = described.get(row.id) if row is not None else None
+    latest = assessments.latest_approved(db, ControlRef(framework, control_id))
     return ControlDetail(
         **control_out(found).model_dump(by_alias=True),
         framework_version=in_force.version,
@@ -454,6 +475,23 @@ def read_control(
         changes=change_out(db, history, as_of),
         as_of=as_of,
         evaluation_run=_run(db, current.evaluation_run_id),
+        assessment=_assessment(db, latest, found.status) if latest is not None else None,
+    )
+
+
+def _assessment(db: Session, row: ControlAssessment, automated: str) -> AssessmentSummary:
+    label = assessments.labels(db, [row.framework_control_id])[row.framework_control_id]
+    return AssessmentSummary(
+        id=row.id,
+        framework_version=label.version,
+        conclusion=row.conclusion,  # type: ignore[arg-type]
+        period_start=row.period_start,
+        period_end=row.period_end,
+        assessor=row.assessor,
+        reviewed_by=row.reviewed_by,
+        reviewed_at=row.reviewed_at,
+        disagrees=(row.conclusion == "effective" and automated == "not_met")
+        or (row.conclusion == "not_effective" and automated == "met"),
     )
 
 
