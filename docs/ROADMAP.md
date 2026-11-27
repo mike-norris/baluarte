@@ -144,6 +144,8 @@ Acceptance: a tag-gated release with a group-level deployment approval passes; o
 
 ### M15 — Assessments and evidence management
 
+Decided 2026-11-27 ([ADR-0018](architecture/ADR-0018-assessments-and-evidence.md)); steps and status in [EVIDENCE_MANAGEMENT.md](EVIDENCE_MANAGEMENT.md).
+
 - Framework versions as data, with licensing respected for catalogue text.
 - Human assessments of controls, separate from automated rule results, with assessor, period, conclusion and evidence.
 - Evidence uploads and external references, validated and stored with access controls, retention and checksums; review status and freshness per evidence item; reports of missing, stale, inaccessible and incomplete evidence.

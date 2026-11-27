@@ -21,6 +21,7 @@ Record a decision here when it changes or establishes a foundational choice: run
 | [ADR-0015](ADR-0015-auditable-issue-register.md) | The auditable issue register: selection, visible exclusion, append-only decisions | Accepted |
 | [ADR-0016](ADR-0016-configuration-templates.md) | Configuration templates: exact values for settings Baluarte reads, pinned inheritance, nearest-wins precedence, change sets | Accepted |
 | [ADR-0017](ADR-0017-release-governance.md) | Release governance: declared release practices, separation of duties as GitLab records it, audit release exports | Accepted |
+| [ADR-0018](ADR-0018-assessments-and-evidence.md) | Assessments and evidence management: framework versions as data, evidence items stored in the database, assessor and reviewer, finding deadlines | Accepted |
 
 ## Template
 
