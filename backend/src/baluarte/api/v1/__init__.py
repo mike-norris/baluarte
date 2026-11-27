@@ -7,6 +7,7 @@ sign-in redirects and first-run setup are public; setup needs the one-time setup
 from fastapi import APIRouter, Depends
 
 from baluarte.api.v1 import (
+    assessments,
     audit_events,
     audit_shipping,
     auth,
@@ -96,6 +97,7 @@ protected.include_router(compliance.router)
 protected.include_router(controls.router)
 protected.include_router(frameworks.router)
 protected.include_router(evidence_items.router)
+protected.include_router(assessments.router)
 protected.include_router(labels.router)
 protected.include_router(manager.router)
 protected.include_router(tags.router)

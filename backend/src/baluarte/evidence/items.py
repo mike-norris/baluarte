@@ -30,9 +30,9 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 import httpx
-from sqlalchemy import func, select, text
+from sqlalchemy import ColumnElement, exists, func, select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import InstrumentedAttribute, Session, aliased
 
 from baluarte.audit import record
 from baluarte.controls import versions
@@ -41,7 +41,9 @@ from baluarte.db.models import (
     MAX_EVIDENCE_DESCRIPTION,
     MAX_EVIDENCE_FILE_BYTES,
     MAX_EVIDENCE_URL,
+    AssessmentCitation,
     CapturedFile,
+    ControlAssessment,
     EvidenceItem,
     EvidenceItemControl,
     FrameworkControl,
@@ -508,12 +510,27 @@ def check(
 # --- retention ---------------------------------------------------------------------------------
 
 
+def cited_in_force(
+    item_id: "ColumnElement[int] | InstrumentedAttribute[int]",
+) -> ColumnElement[bool]:
+    """Whether an assessment still in force cites the item: a draft, a submitted one, or an
+    approved one no approved assessment supersedes (roadmap M15.3)."""
+    later = aliased(ControlAssessment)
+    return exists().where(
+        AssessmentCitation.evidence_item_id == item_id,
+        ControlAssessment.id == AssessmentCitation.assessment_id,
+        ControlAssessment.state != "rejected",
+        ~exists().where(later.supersedes_id == ControlAssessment.id, later.state == "approved"),
+    )
+
+
 def expire_files(db: Session, cutoff: date) -> dict[str, int]:
     """Remove the files of reviewed items whose evidence ended before ``cutoff`` (their
     ``valid_until``, else the end of their period, else the day they were added), keeping the
-    item and the file's SHA-256. A stored file is deleted only when no other item and no
-    collected observation still cites it (``baluarte_expire_captured_file``, migration
-    0051). Called by the retention job; the caller commits."""
+    item and the file's SHA-256, unless an assessment in force cites the item (``cited_in_force``).
+    A stored file is deleted only when no other item and no collected observation still cites it
+    (``baluarte_expire_captured_file``, migration 0051). Called by the retention job; the caller
+    commits."""
     ended = func.coalesce(
         EvidenceItem.valid_until, EvidenceItem.period_end, func.date(EvidenceItem.added_at)
     )
@@ -523,6 +540,7 @@ def expire_files(db: Session, cutoff: date) -> dict[str, int]:
                 EvidenceItem.state.in_(("accepted", "rejected")),
                 EvidenceItem.file_sha256.is_not(None),
                 ended < cutoff,
+                ~cited_in_force(EvidenceItem.id),
             )
         )
     )

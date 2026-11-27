@@ -1666,6 +1666,116 @@ class EvidenceItemControl(Base):
     framework_control_id: Mapped[int] = mapped_column(ForeignKey("framework_control.id"))
 
 
+ASSESSMENT_CONCLUSIONS = ("effective", "partially_effective", "not_effective", "not_tested")
+ASSESSMENT_STATES = ("draft", "submitted", "approved", "rejected")
+CITATION_KINDS = ("evidence_item", "observation", "change_record", "change_set", "control_status")
+ASSESSMENT_NARRATIVE = (20, 8000)
+MAX_CITATION_RATIONALE = 2000
+
+
+class ControlAssessment(Base):
+    """A person's conclusion about a control for a period (roadmap M15.3,
+    docs/EVIDENCE_MANAGEMENT.md#control-assessments-m153), kept apart from automated results.
+
+    ``draft`` -> ``submitted`` -> ``approved`` or ``rejected`` by a reviewer other than the
+    assessor (development mode excepted, recorded in ``development_review``); only an approved
+    assessment counts. A trigger lets a draft change and be deleted, a submitted assessment only
+    be decided, and nothing change after; a later assessment ``supersedes`` an approved one.
+    """
+
+    __tablename__ = "control_assessment"
+    __table_args__ = (
+        Index("ix_control_assessment_control", "workspace_id", "framework_control_id", "id"),
+        one_of("conclusion", ASSESSMENT_CONCLUSIONS),
+        one_of("state", ASSESSMENT_STATES),
+        CheckConstraint(
+            f"length(narrative) BETWEEN {ASSESSMENT_NARRATIVE[0]} AND {ASSESSMENT_NARRATIVE[1]}",
+            name="narrative_length",
+        ),
+        CheckConstraint("period_end >= period_start", name="period_order"),
+        CheckConstraint(
+            "(state IN ('approved', 'rejected')) = (reviewed_at IS NOT NULL) "
+            "AND (reviewed_at IS NULL) = (reviewed_by_user_id IS NULL)",
+            name="reviewed_when_decided",
+        ),
+        CheckConstraint(
+            "(state = 'draft') = (submitted_at IS NULL)", name="submitted_unless_draft"
+        ),
+        CheckConstraint(
+            "reviewed_by_user_id IS NULL OR reviewed_by_user_id <> assessor_user_id "
+            "OR development_review",
+            name="reviewed_by_another_user",
+        ),
+        CheckConstraint(
+            "NOT development_review OR reviewed_by_user_id = assessor_user_id",
+            name="development_review_by_assessor",
+        ),
+        CheckConstraint(
+            "state <> 'rejected' OR length(review_note) > 0", name="rejection_explained"
+        ),
+    )
+
+    id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"))
+    framework_control_id: Mapped[int] = mapped_column(ForeignKey("framework_control.id"))
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    conclusion: Mapped[str] = mapped_column(Text)
+    narrative: Mapped[str] = mapped_column(Text)
+    state: Mapped[str] = mapped_column(Text, server_default="draft")
+    supersedes_id: Mapped[int | None] = mapped_column(ForeignKey("control_assessment.id"))
+    assessor: Mapped[str] = mapped_column(Text)
+    assessor_user_id: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = utc_now()
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reviewed_by: Mapped[str | None] = mapped_column(Text)
+    reviewed_by_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    review_note: Mapped[str | None] = mapped_column(Text)
+    development_review: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+
+
+class AssessmentCitation(Base):
+    """One piece of evidence an assessment cites, with why: an accepted evidence item, a
+    collected observation, a change on a default branch, a template change set, or the control's
+    automated status as it stood (``snapshot``). ``digest`` fixes what was cited: the item's file
+    or check SHA-256, the observation's (or the change's observation's) payload digest, the change
+    set's digest, or the snapshot's. Added or removed only while the assessment is a draft (a
+    trigger); retention keeps cited observations and changes, and the files of evidence items
+    cited by an assessment still in force."""
+
+    __tablename__ = "assessment_citation"
+    __table_args__ = (
+        Index("ix_assessment_citation_assessment", "assessment_id", "id"),
+        one_of("kind", CITATION_KINDS),
+        CheckConstraint(
+            f"length(rationale) BETWEEN 1 AND {MAX_CITATION_RATIONALE}", name="rationale_length"
+        ),
+        CheckConstraint(
+            "(kind = 'evidence_item') = (evidence_item_id IS NOT NULL) "
+            "AND (kind = 'observation') = (observation_id IS NOT NULL) "
+            "AND (kind = 'change_record') = (change_record_id IS NOT NULL) "
+            "AND (kind = 'change_set') = (change_set_id IS NOT NULL) "
+            "AND (kind = 'control_status') = (snapshot IS NOT NULL)",
+            name="one_target",
+        ),
+    )
+
+    id: Mapped[int] = pk()
+    assessment_id: Mapped[int] = mapped_column(
+        ForeignKey("control_assessment.id", ondelete="CASCADE")
+    )
+    kind: Mapped[str] = mapped_column(Text)
+    evidence_item_id: Mapped[int | None] = mapped_column(ForeignKey("evidence_item.id"))
+    observation_id: Mapped[int | None] = mapped_column(ForeignKey("observation.id"))
+    change_record_id: Mapped[int | None] = mapped_column(ForeignKey("change_record.id"))
+    change_set_id: Mapped[int | None] = mapped_column(ForeignKey("template_change_set.id"))
+    snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True))
+    digest: Mapped[str | None] = mapped_column(Text)
+    rationale: Mapped[str] = mapped_column(Text)
+    cited_at: Mapped[datetime] = utc_now()
+
+
 class ControlMappingChange(Base):
     """An organization's change to the control mapping, with its justification.
 

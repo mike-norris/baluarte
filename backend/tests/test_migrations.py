@@ -80,6 +80,8 @@ TABLES = {
     "framework_control_description",
     "evidence_item",
     "evidence_item_control",
+    "control_assessment",
+    "assessment_citation",
     "time_cursor",
     "time_entry",
     "user_recovery_code",

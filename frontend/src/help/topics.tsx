@@ -1277,6 +1277,36 @@ export const helpTopics: readonly HelpTopic[] = [
     ),
   },
   {
+    slug: "assessments",
+    title: "Control assessments",
+    summary: "A person's conclusion about a control, citing evidence, approved by someone else.",
+    group: "Evidence and audits",
+    paths: ["/assessments"],
+    body: (
+      <>
+        <p>
+          Baluarte's automated status says what it observed. An assessment says what a person
+          concluded. In <Link to="/assessments">Evidence, Assessments</Link>, assess a control for a
+          period: choose a conclusion (effective, partially effective, not effective or not tested)
+          and say what was tested and how.
+        </p>
+        <p>
+          Then cite the evidence, each with why it supports the conclusion: accepted evidence items,
+          collected observations, changes, template change sets, or the control&apos;s automated
+          status as it stands. Baluarte records a SHA-256 of what was cited, so an export can show
+          it is unchanged, and retention keeps what an assessment still relies on.
+        </p>
+        <p>
+          Submit the draft, and someone else with review permission approves or rejects it; only an
+          approved assessment counts, and it never changes. A later assessment of the same control
+          supersedes it, and both stay. The control&apos;s page shows the latest approved assessment
+          beside the automated status. When they disagree, both are shown; neither changes the
+          other.
+        </p>
+      </>
+    ),
+  },
+  {
     slug: "audit-log",
     title: "Audit log and Baluarte's own compliance",
     summary: "Who did what in Baluarte, and how Baluarte itself meets your frameworks.",

@@ -134,6 +134,21 @@ export interface ControlDetail extends Control, AsOfAnswer {
   framework_version?: string;
   /** The organization's own description of the control, or null. */
   description?: string | null;
+  /** The latest approved assessment of the control, shown beside the automated status. */
+  assessment?: AssessmentSummary | null;
+}
+
+export interface AssessmentSummary {
+  id: number;
+  framework_version: string;
+  conclusion: "effective" | "partially_effective" | "not_effective" | "not_tested";
+  period_start: string;
+  period_end: string;
+  assessor: string;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  /** The conclusion and the automated status point opposite ways. */
+  disagrees: boolean;
 }
 
 /** The organization's description of a control as the API returns it after a change. */

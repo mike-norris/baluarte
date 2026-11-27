@@ -28,6 +28,10 @@ class Permission(StrEnum):
     EVIDENCE_MANAGE = "evidence:manage"
     # Accept or reject submitted evidence items (never one's own) and read restricted ones.
     EVIDENCE_REVIEW = "evidence:review"
+    # Assess a control: write, edit and submit one's own draft assessments (roadmap M15.3).
+    ASSESSMENTS_WRITE = "assessments:write"
+    # Approve or reject submitted assessments, never one's own.
+    ASSESSMENTS_REVIEW = "assessments:review"
     POLICY_WRITE = "policy:write"
     # Ask for a time-limited waiver of a failing rule.
     EXCEPTION_REQUEST = "exception:request"
@@ -77,11 +81,14 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = {
         Permission.TAGS_WRITE,
         Permission.REGISTER_WRITE,
         Permission.EVIDENCE_MANAGE,
+        Permission.ASSESSMENTS_WRITE,
     },
     Role.AUDITOR: _READ
     | {
         Permission.EVIDENCE_MANAGE,
         Permission.EVIDENCE_REVIEW,
+        Permission.ASSESSMENTS_WRITE,
+        Permission.ASSESSMENTS_REVIEW,
         Permission.EVIDENCE_EXPORT,
         Permission.EVIDENCE_PACKAGE,
         Permission.AUDIT_LOG_READ,

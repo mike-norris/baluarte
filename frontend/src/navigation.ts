@@ -3,6 +3,7 @@ import {
   IconCertificate,
   IconChartHistogram,
   IconChecklist,
+  IconClipboardCheck,
   IconClockCheck,
   IconFileExport,
   IconGitMerge,
@@ -186,6 +187,13 @@ export const navItems: readonly NavItem[] = [
     description: "Files and links people add for controls, reviewed by someone else.",
     group: "Evidence",
     icon: IconPaperclip,
+  },
+  {
+    path: "/assessments",
+    label: "Assessments",
+    description: "People's conclusions about controls, citing evidence, approved by a reviewer.",
+    group: "Evidence",
+    icon: IconClipboardCheck,
   },
   {
     path: "/evidence",
