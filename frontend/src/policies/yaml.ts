@@ -190,6 +190,14 @@ export interface ReleaseRule {
   description: string;
 }
 
+/** Whoever starts a pipeline, such as a tag's creator, may not approve its deployments. */
+export interface TriggererRule {
+  enabled: boolean;
+  id: string;
+  severity: Severity;
+  description: string;
+}
+
 export const MIN_WINDOW_DAYS = 1;
 export const MAX_WINDOW_DAYS = 365;
 export const DEFAULT_WINDOW_DAYS = 90;
@@ -216,6 +224,8 @@ export interface BaselineForm {
   deployed: DeployedRule;
   /** Off unless added, and not recommended: it needs a release practice assigned. */
   release: ReleaseRule;
+  /** Off unless added, and not recommended: deployment approvals need GitLab Premium. */
+  triggerer: TriggererRule;
 }
 
 export const VISIBILITY_TYPE = "gitlab.project.visibility";
@@ -230,6 +240,7 @@ export const REVIEWED_TYPE = "gitlab.change.reviewed";
 export const PIPELINE_TYPE = "gitlab.change.pipeline_passed";
 export const DEPLOYED_TYPE = "gitlab.change.deployed_after_review";
 export const RELEASE_TYPE = "gitlab.release.follows_practice";
+export const TRIGGERER_TYPE = "gitlab.deployment.triggerer_cannot_approve";
 
 /** The scan rule as "Add rule" first shows it. */
 export function offScanRule(): ScanRule {
@@ -354,6 +365,16 @@ export function offReleaseRule(): ReleaseRule {
   };
 }
 
+/** The pipeline-triggerer rule as "Add rule" first shows it. */
+export function offTriggererRule(): TriggererRule {
+  return {
+    enabled: false,
+    id: "starter-cannot-approve",
+    severity: "high",
+    description: "",
+  };
+}
+
 export const ruleKeys = [
   "visibility",
   "branch",
@@ -367,6 +388,7 @@ export const ruleKeys = [
   "pipeline",
   "deployed",
   "release",
+  "triggerer",
 ] as const;
 export type RuleKey = (typeof ruleKeys)[number];
 
@@ -383,6 +405,7 @@ export const ruleKeyTypes: Record<RuleKey, string> = {
   pipeline: PIPELINE_TYPE,
   deployed: DEPLOYED_TYPE,
   release: RELEASE_TYPE,
+  triggerer: TRIGGERER_TYPE,
 };
 
 /** Whether the recommended baseline also switches on the two GitLab security policy rules. */
@@ -433,6 +456,7 @@ export function recommendedBaseline(
     pipeline: on(offPipelineRule()),
     deployed: on(offDeployedRule()),
     release: offReleaseRule(),
+    triggerer: offTriggererRule(),
   };
 }
 
@@ -492,6 +516,7 @@ export function emptyBaseline(): BaselineForm {
     pipeline: offPipelineRule(),
     deployed: offDeployedRule(),
     release: offReleaseRule(),
+    triggerer: offTriggererRule(),
   };
 }
 
@@ -720,6 +745,15 @@ function accessRuleDocuments(form: BaselineForm): Record<string, unknown>[] {
       window_days: release.windowDays,
       severity: release.severity,
       description: release.description.trim() || null,
+    });
+  }
+  const { triggerer } = form;
+  if (triggerer.enabled) {
+    rules.push({
+      id: triggerer.id,
+      type: TRIGGERER_TYPE,
+      severity: triggerer.severity,
+      description: triggerer.description.trim() || null,
     });
   }
   return rules;
@@ -1056,6 +1090,13 @@ export function fromDocument(document: unknown): BaselineForm | null {
         severity,
         description: text(rule.description),
       };
+    } else if (rule.type === TRIGGERER_TYPE && !form.triggerer.enabled) {
+      form.triggerer = {
+        enabled: true,
+        id: rule.id,
+        severity,
+        description: text(rule.description),
+      };
     } else {
       return null;
     }
@@ -1251,6 +1292,14 @@ export function readableRules(document: unknown): ReadableRule[] {
       return {
         id,
         sentence: `Every production release ${over} followed the project's release practice`,
+        detail: description,
+        severity,
+      };
+    }
+    if (rule.type === TRIGGERER_TYPE) {
+      return {
+        id,
+        sentence: "Whoever starts a pipeline cannot approve its deployments",
         detail: description,
         severity,
       };

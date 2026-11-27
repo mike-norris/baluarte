@@ -11,7 +11,9 @@ never ``aligned``. Templates name exact values, which the probes check from both
 - ``merge_requests.min_approvals: n``: aligned when requiring ``n`` passes and requiring
   ``n + 1`` fails, so a project needing more approvals than the template drifts too;
 - ``security_features``: aligned when every listed feature is enabled;
-- ``labels_consistent: true``: aligned when no label drift reaches the project.
+- ``labels_consistent: true``: aligned when no label drift reaches the project;
+- ``deployments.forbid_pipeline_triggerer_approval``: a boolean, judged by
+  ``gitlab.deployment.triggerer_cannot_approve``.
 
 An approved, unexpired template exception for the project and setting turns ``drift`` into
 ``excepted``; it never hides ``unknown`` or ``unsupported``.
@@ -39,6 +41,7 @@ from baluarte.policy.evaluation.project import (
 )
 from baluarte.policy.schema import (
     DefaultBranchProtectedRule,
+    DeploymentTriggererApprovalRule,
     GitHubSecurityFeaturesRule,
     LabelsConsistentRule,
     MergeRequestApprovalsRule,
@@ -102,6 +105,15 @@ def _visibility(value: str) -> Rule:
     )
 
 
+TRIGGERER_KEY = "deployments.forbid_pipeline_triggerer_approval"
+
+
+def _triggerer() -> Rule:
+    return DeploymentTriggererApprovalRule(
+        id="template-deployments", type="gitlab.deployment.triggerer_cannot_approve"
+    )
+
+
 def _approvals(min_approvals: int, flag: str | None = None) -> Rule:
     fields: dict[str, Any] = {
         "id": "template-merge-requests",
@@ -156,6 +168,8 @@ class _Judge:
         if key.startswith("merge_requests."):
             flag = key.removeprefix("merge_requests.")
             return self.exact(_approvals(0, flag), value, flag.replace("_", " ").capitalize())
+        if key == TRIGGERER_KEY:
+            return self.exact(_triggerer(), value, "Pipeline triggerer approval being forbidden")
         if key == "security_features":
             features: Rule = GitHubSecurityFeaturesRule(
                 id="template-security-features",
@@ -206,6 +220,8 @@ class _Judge:
             return self._approvals_required()
         if key.startswith("merge_requests."):
             return self._holds(_approvals(0, key.removeprefix("merge_requests.")))
+        if key == TRIGGERER_KEY:
+            return self._holds(_triggerer())
         if key == "security_features":
             enabled: list[str] = []
             last = Current(None, "unsupported", "", None)
@@ -272,7 +288,15 @@ def judge_for(
 ) -> "_Judge":
     """A judge for ``project``'s stored evidence, for callers outside this module."""
     context = project_context(
-        db, project, ancestry, collections, capabilities, None, instance.provider, labels=labels
+        db,
+        project,
+        ancestry,
+        collections,
+        capabilities,
+        None,
+        instance.provider,
+        labels=labels,
+        release=instance.provider == "gitlab",
     )
     return _Judge(context, instance.provider)
 
@@ -327,6 +351,8 @@ def project_drift(
             now,
             instance.provider,
             labels=any(s.key == "labels_consistent" for s in effective.settings),
+            release=instance.provider == "gitlab"
+            and any(s.key == TRIGGERER_KEY for s in effective.settings),
         )
         judge = _Judge(context, instance.provider)
         waivers = open_for_project(db, project.id)

@@ -870,6 +870,13 @@ export const helpTopics: readonly HelpTopic[] = [
           pipelines and tests, the protections in force and the pipeline&apos;s reports. It never
           holds source code, and <code>baluarte-verify-export</code> checks it offline.
         </p>
+        <p>
+          GitLab can let whoever starts a pipeline approve its deployments, so a tag&apos;s creator
+          could approve their own release. The rule{" "}
+          <code>gitlab.deployment.triggerer_cannot_approve</code> fails when it does, and the
+          template setting <code>deployments.forbid_pipeline_triggerer_approval</code> turns it off
+          through a change set.
+        </p>
       </>
     ),
   },

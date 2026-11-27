@@ -44,6 +44,14 @@ class TemplateWriter(GitLabWriter):
             raise ValueError("visibility is private, internal or public")
         return self._send("PUT", f"/projects/{project_id}", {"visibility": visibility})
 
+    def set_pipeline_trigger_approval(self, project_id: int, allowed: bool) -> WriteResult:
+        """Whether whoever starts a pipeline may approve its deployments (RG.5)."""
+        return self._send(
+            "PUT",
+            f"/projects/{project_id}",
+            {"allow_pipeline_trigger_approve_deployment": "true" if allowed else "false"},
+        )
+
     def set_topics(self, project_id: int, topics: list[str]) -> WriteResult:
         if not all(isinstance(topic, str) and topic.strip() for topic in topics):
             raise ValueError("topics are non-empty strings")

@@ -71,7 +71,7 @@ def test_controls_are_unique_with_short_paraphrased_titles() -> None:
     assert len(keys) == len(set(keys))
     assert {c.framework for c in CONTROLS} == set(FRAMEWORK_IDS)
     assert all(0 < len(c.title) <= 70 and c.area for c in CONTROLS)
-    assert MAPPING_VERSION == "2026.11.2"
+    assert MAPPING_VERSION == "2026.11.3"
 
 
 def test_a_failure_outranks_manual_but_not_not_applicable() -> None:

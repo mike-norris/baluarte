@@ -187,4 +187,28 @@ describe("change rule cards", () => {
     expect(latest.reviewed.enabled).toBe(false);
     expect(screen.getByRole("button", { name: "Add rule: changes reviewed" })).toBeInTheDocument();
   });
+
+  it("adds and removes the pipeline starter approval rule", async () => {
+    const user = userEvent.setup();
+    let latest = emptyBaseline();
+    render(
+      <Editor
+        seen={(form) => {
+          latest = form;
+        }}
+      />,
+    );
+
+    await user.click(
+      screen.getByRole("button", {
+        name: "Add rule: pipeline starters cannot approve deployments",
+      }),
+    );
+    const card = screen.getByRole("region", { name: "Pipeline starter approval rule" });
+    expect(card).toHaveTextContent("GitLab Premium or Ultimate");
+    expect(latest.triggerer.enabled).toBe(true);
+
+    await user.click(within(card).getByRole("button", { name: "Remove rule" }));
+    expect(latest.triggerer.enabled).toBe(false);
+  });
 });

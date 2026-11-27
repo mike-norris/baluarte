@@ -140,6 +140,16 @@ describe("observed value summaries", () => {
     );
   });
 
+  it("says whether a pipeline's starter may approve its deployments", () => {
+    const type = "gitlab.deployment.triggerer_cannot_approve";
+    expect(observedSummary(type, { allowed: true })).toBe(
+      "Whoever starts a pipeline may approve its deployments.",
+    );
+    expect(observedSummary(type, { allowed: false })).toBe(
+      "Whoever starts a pipeline may not approve its deployments.",
+    );
+  });
+
   it("leaves other rule types to the generic rendering", () => {
     expect(observedSummary("gitlab.project.visibility", "private")).toBeNull();
     expect(observedSummary("gitlab.branch.default_protected", { protected: true })).toBeNull();

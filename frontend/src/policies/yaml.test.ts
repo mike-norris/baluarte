@@ -366,3 +366,21 @@ describe("the release practice rule", () => {
     ]);
   });
 });
+
+describe("the pipeline starter approval rule", () => {
+  it("is off in the recommended baseline, since deployment approvals need GitLab Premium", () => {
+    expect(recommendedBaseline({ securityPolicies: true }).triggerer.enabled).toBe(false);
+  });
+
+  it("round-trips through the form and reads as a sentence", () => {
+    const form = basicBaseline();
+    form.triggerer = { ...form.triggerer, enabled: true, severity: "critical" };
+    const document = toDocument(form);
+    expect(fromDocument(document)).toEqual(form);
+    expect(toYaml(form)).toContain("type: gitlab.deployment.triggerer_cannot_approve");
+    expect(readableRules(document).at(-1)?.sentence).toBe(
+      "Whoever starts a pipeline cannot approve its deployments",
+    );
+    expect(formProblems(form)).toEqual([]);
+  });
+});

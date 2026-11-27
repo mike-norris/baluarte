@@ -154,6 +154,13 @@ function securityFeatures(observed: Payload): string | null {
   return `On GitHub: ${parts.join(", ")}.`;
 }
 
+function triggerer(observed: Payload): string | null {
+  if (observed.allowed === true) return "Whoever starts a pipeline may approve its deployments.";
+  if (observed.allowed === false)
+    return "Whoever starts a pipeline may not approve its deployments.";
+  return null;
+}
+
 function twoFactor(observed: Payload): string | null {
   const groups = records(observed.groups);
   const enforcedBy = observed.enforced_by;
@@ -222,6 +229,8 @@ export function observedSummary(ruleType: string, observed: unknown): string | n
       return changes(observed);
     case "gitlab.release.follows_practice":
       return releases(observed);
+    case "gitlab.deployment.triggerer_cannot_approve":
+      return triggerer(observed);
     default:
       return null;
   }

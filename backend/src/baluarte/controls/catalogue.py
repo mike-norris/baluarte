@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from baluarte.compliance.catalogue import ISO27001, NIST, SOC2, FrameworkId
 from baluarte.policy.schema import RULE_TYPES
 
-MAPPING_VERSION = "2026.11.2"
+MAPPING_VERSION = "2026.11.3"
 # The edition of each framework the catalogue's controls are taken from.
 EDITIONS: dict[str, str] = {
     "soc2": "AICPA Trust Services Criteria (2017, points of focus revised 2022)",
@@ -290,6 +290,14 @@ DEFAULT_MAPPING: tuple[DefaultPair, ...] = tuple(
                 ): "Releases follow the declared path to production with a separate approval.",
                 (NIST, "CM-3"): "Releases are approved by someone other than their author.",
                 (NIST, "AC-5"): "The release creator, approver and deployer are different people.",
+            },
+        ),
+        *_pairs(
+            "gitlab.deployment.triggerer_cannot_approve",
+            {
+                (SOC2, "CC8.1"): "A release's creator cannot also give its deployment approval.",
+                (ISO27001, "A.8.32"): "GitLab enforces a separate approver for each release.",
+                (NIST, "AC-5"): "GitLab keeps the person who starts a release from approving it.",
             },
         ),
     ]

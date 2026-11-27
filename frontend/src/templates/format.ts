@@ -15,6 +15,7 @@ export const settingLabels: Record<string, string> = {
   "merge_requests.forbid_committer_approval": "Committers cannot approve",
   "merge_requests.reset_approvals_on_push": "Approvals reset on push",
   "merge_requests.forbid_override": "Approval rules cannot be overridden per merge request",
+  "deployments.forbid_pipeline_triggerer_approval": "Pipeline starters cannot approve deployments",
   security_features: "Security features enabled",
   labels_consistent: "Labels follow the taxonomy",
   topics: "Topics",
