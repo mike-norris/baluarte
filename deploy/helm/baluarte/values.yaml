@@ -220,6 +220,12 @@ timeTracking:
 issueRegister:
   attachmentMaxBytes: 20971520
 
+# Evidence items people add (docs/EVIDENCE_MANAGEMENT.md). Links are checked only over https and
+# only to these hosts; empty means no link is ever fetched. Uploaded files (at most 25 MiB each)
+# are stored in PostgreSQL.
+evidence:
+  checkHosts: []
+
 # Key that seals the GitLab token and OIDC client secret entered in the web UI (ADR-0008):
 # 32 random bytes, base64-encoded. With existingSecret empty the chart generates one on install,
 # keeps it across upgrades and leaves it behind on uninstall. Back it up with the database:

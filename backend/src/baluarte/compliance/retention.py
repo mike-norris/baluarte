@@ -17,7 +17,9 @@ The ``retention.expire`` job runs once a day (``RetentionSchedule``) and, in one
   while audit shipping is on, never one the destination has not received
   (``baluarte.compliance.shipping``);
 * backup runs older than the evidence period, except the latest successful one;
-* notifications and their deliveries older than the audit period, unless still being sent.
+* notifications and their deliveries older than the audit period, unless still being sent;
+* the files of reviewed evidence items whose evidence ended before the evidence period (the
+  item and the file's SHA-256 stay), and stored files nothing else cites any more.
 
 Legal hold deletes nothing. Every run is audited as ``retention.expired`` with the cutoffs, the
 counts and, for audit events, the first and last IDs and a SHA-256 over their digests.
@@ -35,6 +37,7 @@ from sqlalchemy.orm import Session
 from baluarte import audit
 from baluarte.compliance import operations
 from baluarte.compliance.shipping import oldest_unshipped
+from baluarte.evidence import items as evidence_items
 from baluarte.jobs import queue
 from baluarte.jobs.queue import ClaimedJob
 from baluarte.timetracking import settings as time_settings
@@ -216,6 +219,7 @@ def expire(db: Session) -> dict[str, Any]:
         row = db.execute(
             text("SELECT * FROM baluarte_expire_audit(:cutoff)"), {"cutoff": cutoffs["audit"]}
         ).one()
+        details["deleted"].update(evidence_items.expire_files(db, cutoffs["evidence"].date()))
         details["deleted"]["audit_event"] = row.deleted
         details["audit_events"] = {
             "deleted": row.deleted,

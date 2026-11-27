@@ -37,10 +37,12 @@ def test_every_role_has_permissions() -> None:
                 Permission.REMEDIATION_PLAN,
                 Permission.CHANGES_PLAN,
                 Permission.EVIDENCE_PACKAGE,
+                Permission.EVIDENCE_MANAGE,
             },
             {
                 Permission.SETTINGS_MANAGE,
                 Permission.EVIDENCE_EXPORT,
+                Permission.EVIDENCE_REVIEW,
                 Permission.AUDIT_LOG_READ,
                 Permission.EXCEPTION_APPROVE,
                 Permission.REMEDIATION_APPROVE,
@@ -54,6 +56,8 @@ def test_every_role_has_permissions() -> None:
                 Permission.EVIDENCE_PACKAGE,
                 Permission.AUDIT_LOG_READ,
                 Permission.EVIDENCE_READ,
+                Permission.EVIDENCE_MANAGE,
+                Permission.EVIDENCE_REVIEW,
             },
             {
                 Permission.POLICY_WRITE,

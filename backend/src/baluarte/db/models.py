@@ -1530,6 +1530,142 @@ class FrameworkControlDescription(Base):
     added_at: Mapped[datetime] = utc_now()
 
 
+EVIDENCE_ITEM_KINDS = ("file", "reference")
+EVIDENCE_ITEM_STATES = ("draft", "submitted", "accepted", "rejected")
+EVIDENCE_CHECK_STATUSES = ("reachable", "unreachable")
+# Bounds of an evidence item's text, and the largest file it may carry (25 MiB).
+EVIDENCE_TITLE = (3, 200)
+MAX_EVIDENCE_DESCRIPTION = 4000
+MAX_EVIDENCE_URL = 2000
+MAX_EVIDENCE_FILE_BYTES = 25 * 1024 * 1024
+
+
+class EvidenceItem(Base):
+    """Evidence a person adds (roadmap M15.2, docs/EVIDENCE_MANAGEMENT.md#evidence-items-m152):
+    an uploaded file (stored once in ``captured_file`` by its SHA-256) or a reference to a
+    document elsewhere, with the controls it supports, the period it covers and how long it
+    stays fresh (``valid_until``).
+
+    ``draft`` -> ``submitted`` -> ``accepted`` or ``rejected``, reviewed by someone other than
+    whoever added it (development mode excepted, recorded in ``development_review``). A trigger
+    lets a draft change and be deleted, a submitted item only be decided, and a decided item
+    change only in its reference check and, through retention, lose its file; a correction is a
+    new item that ``supersedes`` an accepted one.
+    """
+
+    __tablename__ = "evidence_item"
+    __table_args__ = (
+        Index("ix_evidence_item_workspace", "workspace_id", "state", "id"),
+        one_of("kind", EVIDENCE_ITEM_KINDS),
+        one_of("state", EVIDENCE_ITEM_STATES),
+        one_of("check_status", EVIDENCE_CHECK_STATUSES),
+        sha256_hex("file_sha256"),
+        sha256_hex("check_sha256"),
+        sha256_hex("removed_sha256"),
+        CheckConstraint(
+            f"length(title) BETWEEN {EVIDENCE_TITLE[0]} AND {EVIDENCE_TITLE[1]}",
+            name="title_length",
+        ),
+        CheckConstraint(
+            f"length(description) <= {MAX_EVIDENCE_DESCRIPTION}", name="description_length"
+        ),
+        CheckConstraint(
+            f"url IS NULL OR (length(url) <= {MAX_EVIDENCE_URL} AND url ~ '^https?://')",
+            name="url_form",
+        ),
+        CheckConstraint("(kind = 'reference') = (url IS NOT NULL)", name="reference_has_url"),
+        CheckConstraint(
+            "kind = 'file' OR (file_sha256 IS NULL AND file_removed_at IS NULL)",
+            name="file_only_for_files",
+        ),
+        CheckConstraint(
+            "state = 'draft' OR kind = 'reference' OR file_sha256 IS NOT NULL "
+            "OR file_removed_at IS NOT NULL",
+            name="submitted_with_file",
+        ),
+        CheckConstraint(
+            f"size_bytes IS NULL OR size_bytes BETWEEN 1 AND {MAX_EVIDENCE_FILE_BYTES}",
+            name="size_bounds",
+        ),
+        CheckConstraint(
+            "period_start IS NULL OR period_end IS NULL OR period_end >= period_start",
+            name="period_order",
+        ),
+        CheckConstraint(
+            "(state IN ('accepted', 'rejected')) = (reviewed_at IS NOT NULL) "
+            "AND (reviewed_at IS NULL) = (reviewed_by_user_id IS NULL)",
+            name="reviewed_when_decided",
+        ),
+        CheckConstraint(
+            "(state = 'draft') = (submitted_at IS NULL)", name="submitted_unless_draft"
+        ),
+        CheckConstraint(
+            "reviewed_by_user_id IS NULL OR reviewed_by_user_id <> added_by_user_id "
+            "OR development_review",
+            name="reviewed_by_another_user",
+        ),
+        CheckConstraint(
+            "NOT development_review OR reviewed_by_user_id = added_by_user_id",
+            name="development_review_by_adder",
+        ),
+        CheckConstraint(
+            "state <> 'rejected' OR length(review_note) > 0", name="rejection_explained"
+        ),
+    )
+
+    id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"))
+    kind: Mapped[str] = mapped_column(Text)
+    title: Mapped[str] = mapped_column(Text)
+    description: Mapped[str] = mapped_column(Text, server_default="")
+    owner_user_id: Mapped[int] = mapped_column(BigInteger)
+    period_start: Mapped[date | None] = mapped_column(Date)
+    period_end: Mapped[date | None] = mapped_column(Date)
+    valid_until: Mapped[date | None] = mapped_column(Date)
+    # Visible only to reviewers (``evidence:review``) and whoever added it.
+    restricted: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+    state: Mapped[str] = mapped_column(Text, server_default="draft")
+    supersedes_id: Mapped[int | None] = mapped_column(ForeignKey("evidence_item.id"))
+    file_sha256: Mapped[str | None] = mapped_column(ForeignKey("captured_file.sha256"))
+    filename: Mapped[str | None] = mapped_column(Text)
+    content_type: Mapped[str | None] = mapped_column(Text)
+    size_bytes: Mapped[int | None] = mapped_column(BigInteger)
+    # Set when retention removed the file; its SHA-256 stays in ``removed_sha256``.
+    file_removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    removed_sha256: Mapped[str | None] = mapped_column(Text)
+    url: Mapped[str | None] = mapped_column(Text)
+    check_status: Mapped[str | None] = mapped_column(Text)
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    check_http_status: Mapped[int | None] = mapped_column(Integer)
+    check_sha256: Mapped[str | None] = mapped_column(Text)
+    added_by: Mapped[str] = mapped_column(Text)
+    added_by_user_id: Mapped[int] = mapped_column(BigInteger)
+    added_at: Mapped[datetime] = utc_now()
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    reviewed_by: Mapped[str | None] = mapped_column(Text)
+    reviewed_by_user_id: Mapped[int | None] = mapped_column(BigInteger)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    review_note: Mapped[str | None] = mapped_column(Text)
+    development_review: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
+
+
+class EvidenceItemControl(Base):
+    """A control an evidence item supports, in a framework version. Added or removed only while
+    the item is a draft (a trigger)."""
+
+    __tablename__ = "evidence_item_control"
+    __table_args__ = (
+        UniqueConstraint("evidence_item_id", "framework_control_id"),
+        Index("ix_evidence_item_control_control", "framework_control_id"),
+    )
+
+    id: Mapped[int] = pk()
+    evidence_item_id: Mapped[int] = mapped_column(
+        ForeignKey("evidence_item.id", ondelete="CASCADE")
+    )
+    framework_control_id: Mapped[int] = mapped_column(ForeignKey("framework_control.id"))
+
+
 class ControlMappingChange(Base):
     """An organization's change to the control mapping, with its justification.
 

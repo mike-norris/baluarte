@@ -34,6 +34,9 @@ x-app-env: &app-env
   # settings) be applied with their own write token (docs/CONFIGURATION_TEMPLATES.md).
   # Off by default.
   BALUARTE_TEMPLATE_WRITES: ${BALUARTE_TEMPLATE_WRITES:-false}
+  # Comma-separated hosts whose evidence links may be checked over https
+  # (docs/EVIDENCE_MANAGEMENT.md). Empty by default: no link is fetched.
+  BALUARTE_EVIDENCE_CHECK_HOSTS: ${BALUARTE_EVIDENCE_CHECK_HOSTS:-}
   # false hides time per person everywhere (docs/TIME_TRACKING.md). On by default.
   BALUARTE_TIME_PER_PERSON: ${BALUARTE_TIME_PER_PERSON:-true}
 

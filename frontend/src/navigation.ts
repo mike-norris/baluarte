@@ -11,6 +11,7 @@ import {
   IconInbox,
   IconLayoutDashboard,
   IconListDetails,
+  IconPaperclip,
   IconScale,
   IconBuildingCommunity,
   IconPlugConnected,
@@ -178,6 +179,13 @@ export const navItems: readonly NavItem[] = [
       "Auditable issues: selection rules, inclusions and exclusions, and why each is listed.",
     group: "Evidence",
     icon: IconListDetails,
+  },
+  {
+    path: "/evidence-items",
+    label: "Evidence items",
+    description: "Files and links people add for controls, reviewed by someone else.",
+    group: "Evidence",
+    icon: IconPaperclip,
   },
   {
     path: "/evidence",

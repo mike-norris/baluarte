@@ -33,6 +33,8 @@ Roles come from the identity provider's groups claim (`BALUARTE_OIDC_ADMIN_GROUP
 | `changes:plan` (build template change sets and save selections; withdraw one's own set) | yes | yes | no | no |
 | `changes:approve` (approve or reject a change set, never one's own; apply, continue, cancel and roll back approved sets) | yes | no | no | no |
 | `evidence:export` | yes | no | yes | no |
+| `evidence:manage` (add evidence items, edit and submit one's own drafts, check references; [EVIDENCE_MANAGEMENT.md](EVIDENCE_MANAGEMENT.md#evidence-items-m152)) | yes | yes | yes | no |
+| `evidence:review` (accept or reject submitted evidence items, never one's own; read restricted items) | yes | no | yes | no |
 | `audit_log:read` | yes | no | yes | no |
 | `settings:manage` (includes running GitLab diagnostics) | yes | no | no | no |
 | `jobs:read` | yes | no | no | no |

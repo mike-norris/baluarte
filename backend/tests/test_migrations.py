@@ -78,6 +78,8 @@ TABLES = {
     "framework_version",
     "framework_control",
     "framework_control_description",
+    "evidence_item",
+    "evidence_item_control",
     "time_cursor",
     "time_entry",
     "user_recovery_code",
