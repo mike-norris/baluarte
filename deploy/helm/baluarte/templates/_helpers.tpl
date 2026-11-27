@@ -330,6 +330,12 @@ docs/CONFIGURATION_TEMPLATES.md). */}}
   value: {{ dig "attachmentMaxBytes" 20971520 (.Values.issueRegister | default dict) | int64 | toString | quote }}
 {{- end }}
 
+{{/* API: the hosts whose evidence links may be checked (docs/EVIDENCE_MANAGEMENT.md). */}}
+{{- define "baluarte.evidenceEnv" -}}
+- name: BALUARTE_EVIDENCE_CHECK_HOSTS
+  value: {{ join "," (dig "checkHosts" list (.Values.evidence | default dict)) | quote }}
+{{- end }}
+
 {{/* API and worker: whether time per person is shown (docs/TIME_TRACKING.md). */}}
 {{- define "baluarte.timeTrackingEnv" -}}
 - name: BALUARTE_TIME_PER_PERSON

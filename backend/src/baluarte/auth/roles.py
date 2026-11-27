@@ -23,6 +23,11 @@ class Permission(StrEnum):
     EVIDENCE_EXPORT = "evidence:export"
     # Build an audit-period evidence package with a reproducible sample of changes.
     EVIDENCE_PACKAGE = "evidence:package"
+    # Add evidence items (uploads and references), edit and submit one's own drafts, and check
+    # references (roadmap M15.2).
+    EVIDENCE_MANAGE = "evidence:manage"
+    # Accept or reject submitted evidence items (never one's own) and read restricted ones.
+    EVIDENCE_REVIEW = "evidence:review"
     POLICY_WRITE = "policy:write"
     # Ask for a time-limited waiver of a failing rule.
     EXCEPTION_REQUEST = "exception:request"
@@ -71,9 +76,12 @@ ROLE_PERMISSIONS: Mapping[Role, frozenset[Permission]] = {
         Permission.TIME_READ,
         Permission.TAGS_WRITE,
         Permission.REGISTER_WRITE,
+        Permission.EVIDENCE_MANAGE,
     },
     Role.AUDITOR: _READ
     | {
+        Permission.EVIDENCE_MANAGE,
+        Permission.EVIDENCE_REVIEW,
         Permission.EVIDENCE_EXPORT,
         Permission.EVIDENCE_PACKAGE,
         Permission.AUDIT_LOG_READ,

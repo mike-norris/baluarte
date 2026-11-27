@@ -11,7 +11,7 @@ Automated results and human assessments stay separate. A rule result says what B
 | Step | Delivers | Status |
 |---|---|---|
 | M15.1 | Framework versions as data: each framework edition a row, its controls rows, the mapping and every record pinned to a version; catalogue text limited to what its licence allows (migration `0050`) | Done |
-| M15.2 | Evidence items: uploaded files (stored in the database, 25 MB each, by SHA-256) and external references, with owner, control links, review status, freshness, retention and access | Planned |
+| M15.2 | Evidence items: uploaded files (stored in the database, 25 MB each, by SHA-256) and external references, with owner, control links, review status, freshness, retention and access (migration `0051`) | Done |
 | M15.3 | Control assessments: an assessor's conclusion for a control and period, citing uploaded and collected evidence, approved by a separate reviewer before it counts | Planned |
 | M15.4 | Evidence gaps: missing, stale, inaccessible and incomplete evidence per control and period, on a page and through the API | Planned |
 | M15.5 | Finding owners and deadlines (per-severity defaults, editable with a reason, overdue shown and notified); exceptions reassessed before they expire | Planned |
@@ -51,6 +51,28 @@ As built (M15.1):
 - **Review status:** `draft` → `submitted` → `accepted` or `rejected`, reviewed by someone other than the person who added it. An accepted item never changes; a correction is a new item that supersedes it.
 - **Retention:** evidence follows `evidence_retention_days` ([COMPLIANCE.md](COMPLIANCE.md)); an item cited by an approved assessment is kept while the assessment is. Files are removed only by the retention job, recorded in the audit log.
 - **Access:** reading needs `evidence:read`; adding, `evidence:manage` (analysts, auditors, admins); reviewing, `evidence:review` (auditors, admins). An item may be marked restricted, visible only to those with `evidence:review`.
+
+As built (M15.2):
+
+- **Evidence, Evidence items** lists items newest first with their state and freshness; opening one shows its controls, file or link, last check and review. Those with `evidence:manage` add items there and upload, submit or delete their own drafts; reviewers accept, or reject with a note.
+- `evidence_item` holds the item and `evidence_item_control` the controls it supports, each pinned to its framework version ([framework versions](#framework-versions-m151)). Triggers let a draft change or be deleted, a submitted item only be accepted or rejected, and a decided item change only in its link check and, through retention, lose its file. Control links change only while the item is a draft.
+- **Uploads** are sent as the raw request body (`Content-Type: application/octet-stream`, the name in `filename`); nginx allows 26 MiB on that path only and the API refuses more than 25 MiB (413). The type is judged from the content: `%PDF-`, the PNG and JPEG signatures, an Office Open XML package whose parts match its `.docx`, `.xlsx` or `.pptx` name, or UTF-8 text without NUL bytes named `.txt`, `.md`, `.log`, `.csv` or `.json` (JSON must parse). Anything else, HTML included, is refused (422 `file_type`).
+- **Link checks** run only when `BALUARTE_EVIDENCE_CHECK_HOSTS` (Compose; `evidence.checkHosts` in the chart) lists the link's host and the link is https. A check fetches once with a 10-second timeout and no redirects, and records `reachable` (2xx) or `unreachable`, the HTTP status and the SHA-256 of the body (up to 25 MiB). Decided items keep recording checks.
+- **Retention** (the daily `retention.expire` job) removes the file of an accepted or rejected item whose evidence ended before the evidence period (`valid_until`, else the end of its period, else the day it was added); the item keeps `removed_sha256` and `file_removed_at`. The stored file is deleted only through `baluarte_expire_captured_file`, a SECURITY DEFINER function that refuses while any item or collected observation still cites it. Counts are in the `retention.expired` audit event (`evidence_item_file`, `captured_file`). From M15.3, items cited by an approved assessment are kept.
+- Audit events: `evidence_item.added`, `edited`, `file_attached`, `deleted`, `submitted`, `accepted`, `rejected` and `checked`.
+
+| Method and path | Permission | Notes |
+|---|---|---|
+| `GET /api/v1/evidence-items` | `evidence:read` | Newest first, at most 500; `state` and `control` (`framework:control_id`, any version) filters; restricted items only for reviewers and whoever added them. `checks_enabled` says whether any host may be checked |
+| `GET /api/v1/evidence-items/{id}` | `evidence:read` | One item; 404 when restricted from the caller |
+| `POST /api/v1/evidence-items` | `evidence:manage` + CSRF | Body `{kind, title, description?, owner_user_id?, period_start?, period_end?, valid_until?, restricted?, controls: [{framework, control_id, version?}], url?, supersedes_id?}`. 201 with a draft; 422 for an unknown control or a bad address; 409 when `supersedes_id` is not accepted |
+| `PUT /api/v1/evidence-items/{id}` | `evidence:manage` + CSRF | Replace a draft's fields and controls; only whoever added it (403), only a draft (409) |
+| `PUT /api/v1/evidence-items/{id}/file?filename=` | `evidence:manage` + CSRF | The raw file; 413 over 25 MiB, 422 empty or not an allowed type |
+| `GET /api/v1/evidence-items/{id}/file` | `evidence:read` | Always `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff`, `Cache-Control: private, no-store` and `Digest: sha-256=` |
+| `DELETE /api/v1/evidence-items/{id}` | `evidence:manage` + CSRF | A draft, by whoever added it. 204 |
+| `POST /api/v1/evidence-items/{id}/submit` | `evidence:manage` + CSRF | Needs the file (file items) and at least one control |
+| `POST /api/v1/evidence-items/{id}/accept`, `/reject` | `evidence:review` + CSRF | Body `{note?}`; a rejection needs the note. 403 for one's own outside development mode |
+| `POST /api/v1/evidence-items/{id}/check` | `evidence:manage` + CSRF | 409 `check_not_allowed` unless https and an allowed host |
 
 ## Control assessments (M15.3)
 

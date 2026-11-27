@@ -42,7 +42,10 @@ SCRAM_ITERATIONS = 4096
 INSERT_ONLY_TABLES = ("audit_event",)
 READ_ONLY_TABLES = ("alembic_version",)
 # The only functions the app role may call beyond the PUBLIC defaults.
-APP_FUNCTIONS = ("baluarte_expire_audit(timestamptz)",)
+APP_FUNCTIONS = (
+    "baluarte_expire_audit(timestamptz)",
+    "baluarte_expire_captured_file(text)",
+)
 # The backup service reads everything and may only add rows here.
 # The tables the backup service reports to: its backup runs and its restore tests.
 BACKUP_REPORT_TABLES = ("backup_run", "restore_run")

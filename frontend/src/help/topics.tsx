@@ -1246,6 +1246,37 @@ export const helpTopics: readonly HelpTopic[] = [
     ),
   },
   {
+    slug: "evidence-items",
+    title: "Evidence items",
+    summary: "Files and links people add for controls, reviewed by someone else, and kept fresh.",
+    group: "Evidence and audits",
+    paths: ["/evidence-items"],
+    body: (
+      <>
+        <p>
+          Some evidence Baluarte cannot collect: change board minutes, a policy document, a
+          screenshot of a setting outside GitLab. In{" "}
+          <Link to="/evidence-items">Evidence, Evidence items</Link>, add it as a file (PDF, image,
+          text, CSV, JSON, Word, Excel or PowerPoint, up to 25 MiB) or as a link, and name the
+          controls it supports.
+        </p>
+        <p>
+          An item starts as a draft that only you can change. Submit it, and someone else with
+          review permission accepts or rejects it; an accepted item never changes, and a correction
+          is a new item that supersedes it. Set <strong>Fresh until</strong> to the day the evidence
+          stops counting; after that it shows as stale. A restricted item is seen only by reviewers
+          and by you.
+        </p>
+        <p>
+          Files are stored once by their SHA-256 and always downloaded, never shown in the browser.
+          Links are checked only when the deployment allows their host. After the evidence retention
+          period, retention removes an old item&apos;s file but keeps the item and the file&apos;s
+          SHA-256.
+        </p>
+      </>
+    ),
+  },
+  {
     slug: "audit-log",
     title: "Audit log and Baluarte's own compliance",
     summary: "Who did what in Baluarte, and how Baluarte itself meets your frameworks.",

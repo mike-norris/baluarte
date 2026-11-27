@@ -9,6 +9,15 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Evidence items (step M15.2): files (PDF, images, text, CSV, JSON and Office documents, up to
+  25 MiB, judged by their content and stored once by SHA-256 in the database) and links, each
+  linked to controls in a framework version, with an owner, period, freshness date and an
+  optional restriction to reviewers. A draft is submitted and then accepted or rejected by
+  someone else (`evidence:review`); decided items never change, and corrections supersede
+  them. Links are checked only against hosts listed in `BALUARTE_EVIDENCE_CHECK_HOSTS`
+  (`evidence.checkHosts` in the chart). Retention removes old items' files but keeps the record.
+  New page Evidence, Evidence items; new permissions `evidence:manage` and `evidence:review`.
+  Migration `0051`.
 - Framework versions as data (step M15.1): each framework edition and its controls are stored,
   one version per framework is current, and control mapping changes and issue mappings record
   the version they were made against (shown in the API and the register export). A later
