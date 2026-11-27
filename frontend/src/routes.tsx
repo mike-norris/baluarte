@@ -84,6 +84,7 @@ const pages: Partial<Record<string, ReactNode>> = {
   "/register": page(() => import("./pages/RegisterPage"), "RegisterPage"),
   "/evidence-items": page(() => import("./pages/EvidenceItemsPage"), "EvidenceItemsPage"),
   "/assessments": page(() => import("./pages/AssessmentsPage"), "AssessmentsPage"),
+  "/evidence-gaps": page(() => import("./pages/EvidenceGapsPage"), "EvidenceGapsPage"),
   "/workspaces": page(() => import("./pages/WorkspacesPage"), "WorkspacesPage"),
   "/connections": page(() => import("./pages/ConnectionsPage"), "ConnectionsPage"),
   "/settings": page(() => import("./pages/SettingsPage"), "SettingsPage"),

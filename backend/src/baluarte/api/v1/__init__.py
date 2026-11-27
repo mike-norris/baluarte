@@ -17,6 +17,7 @@ from baluarte.api.v1 import (
     connections,
     controls,
     evaluations,
+    evidence_gaps,
     evidence_items,
     exceptions,
     exports,
@@ -98,6 +99,7 @@ protected.include_router(controls.router)
 protected.include_router(frameworks.router)
 protected.include_router(evidence_items.router)
 protected.include_router(assessments.router)
+protected.include_router(evidence_gaps.router)
 protected.include_router(labels.router)
 protected.include_router(manager.router)
 protected.include_router(tags.router)

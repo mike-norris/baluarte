@@ -9,6 +9,10 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Evidence gaps (step M15.4): for a framework and a period, each control with missing, stale,
+  inaccessible or incomplete evidence and why, on the new page Evidence, Evidence gaps and at
+  `GET /api/v1/evidence-gaps`. Worked out from evidence items, collected results and
+  assessments as they stand; nothing is stored and there is no migration.
 - Control assessments (step M15.3): an assessor's conclusion about a control for a period
   (effective, partially effective, not effective or not tested) with a narrative, citing
   accepted evidence items, observations, changes, template change sets or the control's

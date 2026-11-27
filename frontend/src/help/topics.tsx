@@ -1307,6 +1307,43 @@ export const helpTopics: readonly HelpTopic[] = [
     ),
   },
   {
+    slug: "evidence-gaps",
+    title: "Evidence gaps",
+    summary: "Which controls lack evidence for a period, and why.",
+    group: "Evidence and audits",
+    paths: ["/evidence-gaps"],
+    body: (
+      <>
+        <p>
+          Before an audit, <Link to="/evidence-gaps">Evidence, Evidence gaps</Link> shows each
+          control of a framework for a period with what its evidence lacks:
+        </p>
+        <ul>
+          <li>
+            <strong>Missing:</strong> no accepted evidence item and no collected result.
+          </li>
+          <li>
+            <strong>Stale:</strong> every accepted item stopped being fresh before the period ended,
+            or the collected evidence is older than its freshness window.
+          </li>
+          <li>
+            <strong>Inaccessible:</strong> an assessment cites a link whose last check failed, or a
+            file retention removed.
+          </li>
+          <li>
+            <strong>Incomplete:</strong> no approved assessment covers the period, or one cites
+            nothing.
+          </li>
+        </ul>
+        <p>
+          Items and assessments count when their own period overlaps the one chosen; an item without
+          a period counts for any. Controls you decided are not applicable show no gaps. The report
+          is worked out from the records as they stand and is not stored.
+        </p>
+      </>
+    ),
+  },
+  {
     slug: "audit-log",
     title: "Audit log and Baluarte's own compliance",
     summary: "Who did what in Baluarte, and how Baluarte itself meets your frameworks.",

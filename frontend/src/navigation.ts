@@ -5,6 +5,7 @@ import {
   IconChecklist,
   IconClipboardCheck,
   IconClockCheck,
+  IconFileAlert,
   IconFileExport,
   IconGitMerge,
   IconHelp,
@@ -194,6 +195,13 @@ export const navItems: readonly NavItem[] = [
     description: "People's conclusions about controls, citing evidence, approved by a reviewer.",
     group: "Evidence",
     icon: IconClipboardCheck,
+  },
+  {
+    path: "/evidence-gaps",
+    label: "Evidence gaps",
+    description: "Controls with missing, stale, inaccessible or incomplete evidence for a period.",
+    group: "Evidence",
+    icon: IconFileAlert,
   },
   {
     path: "/evidence",
