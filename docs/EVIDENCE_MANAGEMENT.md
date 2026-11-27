@@ -13,7 +13,7 @@ Automated results and human assessments stay separate. A rule result says what B
 | M15.1 | Framework versions as data: each framework edition a row, its controls rows, the mapping and every record pinned to a version; catalogue text limited to what its licence allows (migration `0050`) | Done |
 | M15.2 | Evidence items: uploaded files (stored in the database, 25 MB each, by SHA-256) and external references, with owner, control links, review status, freshness, retention and access (migration `0051`) | Done |
 | M15.3 | Control assessments: an assessor's conclusion for a control and period, citing uploaded and collected evidence, approved by a separate reviewer before it counts (migration `0052`) | Done |
-| M15.4 | Evidence gaps: missing, stale, inaccessible and incomplete evidence per control and period, on a page and through the API | Planned |
+| M15.4 | Evidence gaps: missing, stale, inaccessible and incomplete evidence per control and period, on a page and through the API | Done |
 | M15.5 | Finding owners and deadlines (per-severity defaults, editable with a reason, overdue shown and notified); exceptions reassessed before they expire | Planned |
 | M15.6 | Exports and acceptance: assessments and evidence items in the evidence package and the register export, files verified offline by checksum; a control assessed by a person with uploaded and collected evidence, exported and verified | Planned |
 
@@ -117,6 +117,18 @@ For a framework version and period, each control in scope is reported with:
 | `stale` | Every accepted item's `valid_until` is before the end of the period, or collected evidence is older than its freshness window |
 | `inaccessible` | A cited reference failed its last check, or a cited file is gone (removed by retention) |
 | `incomplete` | An assessment cites draft or rejected items, has no evidence, or the period has no approved assessment |
+
+As built (M15.4):
+
+- **Evidence, Evidence gaps** shows, for a framework and a period (the last full quarter by default), a count per gap and each control with its gaps, why each applies, its accepted and fresh items, its collected results and its approved assessment. It lists controls with a gap unless asked for all. Nothing is stored; the report is worked out from the records as they stand.
+- An evidence item counts when it is accepted, not superseded, and its own period overlaps the one asked for (an item without a period counts for any); items count for a control by its ID in any version of the framework. An assessment counts when it is of a control in the version asked for, its period overlaps, and it is in force (not rejected, not superseded by an approved one).
+- **Collected evidence** is the control's results in the evaluation run in force at the end of the period. It is stale when that run finished more than two collection intervals (a day when collection is not scheduled) before the end of the period, or before now if the period has not ended.
+- `missing`: no item and no collected result. `stale`: every item's `valid_until` is before the end of the period, or the collected evidence is stale. `inaccessible`: an assessment in force cites a link whose last check failed, or a file retention removed. `incomplete`: no approved assessment covers the period, or one in force cites nothing. Since only accepted items can be cited (M15.3), a citation of a draft or rejected item cannot occur.
+- Controls the organization decided are not applicable are listed without gaps.
+
+| Method and path | Permission | Notes |
+|---|---|---|
+| `GET /api/v1/evidence-gaps?framework=&period_start=&period_end=&version=` | `evidence:read` | The current framework version unless `version` is given. Returns `summary` (controls per gap), the evaluation run and when it finished, and per control `gaps`, `reasons`, `accepted_items`, `fresh_items`, `collected_results`, `assessment_id` and `conclusion`. 422 for a period that ends before it starts or is longer than three years, or an unknown version |
 
 ## Finding owners and deadlines (M15.5)
 
