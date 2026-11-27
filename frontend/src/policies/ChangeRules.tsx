@@ -8,6 +8,7 @@ import {
   offPipelineRule,
   offReleaseRule,
   offReviewedRule,
+  offTriggererRule,
   type BaselineForm,
   type RuleKey,
 } from "./yaml";
@@ -40,7 +41,7 @@ export function ChangeRules({
   /** Rules switched on by "Add recommended rules". */
   added?: readonly RuleKey[];
 }) {
-  const { reviewed, pipeline, deployed, release } = form;
+  const { reviewed, pipeline, deployed, release, triggerer } = form;
   const add: { label: string; on: () => void }[] = [];
   if (!reviewed.enabled) {
     add.push({
@@ -71,6 +72,14 @@ export function ChangeRules({
       label: "Add rule: releases follow their practice",
       on: () => {
         onChange({ ...form, release: { ...offReleaseRule(), enabled: true } });
+      },
+    });
+  }
+  if (!triggerer.enabled) {
+    add.push({
+      label: "Add rule: pipeline starters cannot approve deployments",
+      on: () => {
+        onChange({ ...form, triggerer: { ...offTriggererRule(), enabled: true } });
       },
     });
   }
@@ -218,6 +227,30 @@ export function ChangeRules({
             value={release.severity}
             onChange={(severity) => {
               onChange({ ...form, release: { ...release, severity } });
+            }}
+          />
+        </Card>
+      )}
+
+      {triggerer.enabled && (
+        <Card
+          label="Pipeline starter approval rule"
+          added={added.includes("triggerer")}
+          title="Whoever starts a pipeline cannot approve its deployments"
+          onRemove={() => {
+            onChange({ ...form, triggerer: offTriggererRule() });
+          }}
+        >
+          <p className={help}>
+            Checks the GitLab project setting that lets whoever started a pipeline approve its
+            deployments. For a tag pipeline that is the tag&apos;s creator, so with the setting on
+            they can approve their own release. Deployment approvals need GitLab Premium or
+            Ultimate; elsewhere the result is unsupported.
+          </p>
+          <SeveritySelect
+            value={triggerer.severity}
+            onChange={(severity) => {
+              onChange({ ...form, triggerer: { ...triggerer, severity } });
             }}
           />
         </Card>

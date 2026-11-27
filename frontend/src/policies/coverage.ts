@@ -15,6 +15,7 @@ import {
   REVIEWED_TYPE,
   SCAN_TYPE,
   TOKENS_TYPE,
+  TRIGGERER_TYPE,
   TWO_FACTOR_TYPE,
   VISIBILITY_TYPE,
 } from "./yaml";
@@ -102,6 +103,11 @@ export const ruleTypeInfo: Record<string, { name: string; proves: string }> = {
     name: "Releases follow practice",
     proves:
       "Each production release followed its release practice, with separate creator, approver and deployer.",
+  },
+  [TRIGGERER_TYPE]: {
+    name: "Pipeline starter cannot approve",
+    proves:
+      "GitLab stops whoever starts a pipeline, such as a tag's creator, approving its deployment.",
   },
   [SCAN_TYPE]: {
     name: "Scan execution policy",

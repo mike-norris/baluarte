@@ -29,10 +29,16 @@ class MergeRequests(_Strict):
         return self
 
 
+class Deployments(_Strict):
+    # Whoever starts a pipeline (for a tag, its creator) may not approve its deployments.
+    forbid_pipeline_triggerer_approval: bool
+
+
 class Settings(_Strict):
     visibility: Visibility | None = None
     default_branch_protected: bool | None = None
     merge_requests: MergeRequests | None = None
+    deployments: Deployments | None = None
     security_features: (
         Annotated[list[SecurityFeature], Field(min_length=1, max_length=4)] | None
     ) = None
@@ -73,6 +79,7 @@ SETTING_KEYS = (
     "merge_requests.forbid_committer_approval",
     "merge_requests.reset_approvals_on_push",
     "merge_requests.forbid_override",
+    "deployments.forbid_pipeline_triggerer_approval",
     "security_features",
     "labels_consistent",
 )
@@ -86,6 +93,7 @@ RULE_TYPE = {
     "merge_requests.forbid_committer_approval": "gitlab.project.merge_request_approvals",
     "merge_requests.reset_approvals_on_push": "gitlab.project.merge_request_approvals",
     "merge_requests.forbid_override": "gitlab.project.merge_request_approvals",
+    "deployments.forbid_pipeline_triggerer_approval": "gitlab.deployment.triggerer_cannot_approve",
     "security_features": "github.repository.security_features",
     "labels_consistent": "gitlab.labels.consistent",
 }
@@ -128,6 +136,10 @@ SUPPORT: dict[str, dict[str, Held]] = {
         "gitlab": _GITLAB_APPROVALS,
         "github": ("unsupported", "GitHub has no equivalent setting."),
     },
+    "deployments.forbid_pipeline_triggerer_approval": {
+        "gitlab": ("plan", "Deployment approvals need GitLab Premium or Ultimate."),
+        "github": ("unsupported", "GitHub has no equivalent setting."),
+    },
     "security_features": {
         "gitlab": ("unsupported", "A GitHub setting; GitLab security scanning is set by policies."),
         "github": ("supported", "Code scanning needs GitHub Advanced Security."),
@@ -148,10 +160,10 @@ def flatten(settings: Settings | dict[str, Any] | None) -> dict[str, Any]:
     for key, value in data.items():
         if value is None:
             continue
-        if key == "merge_requests" and isinstance(value, dict):
+        if key in ("merge_requests", "deployments") and isinstance(value, dict):
             for field, inner in value.items():
                 if inner is not None:
-                    flat[f"merge_requests.{field}"] = inner
+                    flat[f"{key}.{field}"] = inner
         else:
             flat[key] = list(value) if isinstance(value, (list, tuple)) else value
     return flat

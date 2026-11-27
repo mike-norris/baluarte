@@ -313,6 +313,53 @@
       "title": "DefaultBranchProtectedRule",
       "type": "object"
     },
+    "DeploymentTriggererApprovalRule": {
+      "additionalProperties": false,
+      "description": "Passes when whoever started a pipeline (for a tag, its creator) may not approve its\ndeployments: GitLab's project setting ``allow_pipeline_trigger_approve_deployment`` is off\n(docs/RELEASE_GOVERNANCE.md).",
+      "properties": {
+        "id": {
+          "description": "Unique within the baseline; named in findings.",
+          "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
+          "title": "Id",
+          "type": "string"
+        },
+        "severity": {
+          "default": "medium",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "type": {
+          "const": "gitlab.deployment.triggerer_cannot_approve",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "type"
+      ],
+      "title": "DeploymentTriggererApprovalRule",
+      "type": "object"
+    },
     "GitHubSecurityFeaturesRule": {
       "additionalProperties": false,
       "description": "Passes when every feature in ``features`` is on for the GitHub repository: secret\nscanning, push protection and Dependabot security updates as the repository reports them, and\ncode scanning when its default branch has a code scanning analysis.",
@@ -901,6 +948,7 @@
                 "gitlab.change.deployed_after_review": "#/$defs/ChangeDeployedAfterReviewRule",
                 "gitlab.change.pipeline_passed": "#/$defs/ChangePipelinePassedRule",
                 "gitlab.change.reviewed": "#/$defs/ChangeReviewedRule",
+                "gitlab.deployment.triggerer_cannot_approve": "#/$defs/DeploymentTriggererApprovalRule",
                 "gitlab.group.two_factor_required": "#/$defs/TwoFactorRequiredRule",
                 "gitlab.labels.consistent": "#/$defs/LabelsConsistentRule",
                 "gitlab.project.access_tokens": "#/$defs/AccessTokensRule",
@@ -949,6 +997,9 @@
               },
               {
                 "$ref": "#/$defs/ReleaseFollowsPracticeRule"
+              },
+              {
+                "$ref": "#/$defs/DeploymentTriggererApprovalRule"
               },
               {
                 "$ref": "#/$defs/LabelsConsistentRule"

@@ -10,7 +10,7 @@ Roadmap milestone **Release governance** ([ROADMAP.md](ROADMAP.md#release-govern
 | RG.2 Release practices | Presets and custom practices with parameters, assigned to the connection, a group or a project (nearest wins); a Release practices page listing which groups and projects follow which practice, and what their releases actually show | Done |
 | RG.3 Release checks | Each production release judged against its practice: protected ref, approvals required and given before deploying, tag creator not an approver, deployer not an approver, optional merge-request review; findings, the auditor report and evidence packages | Done |
 | RG.4 Audit release export | One package per production release: the release, its notes and GitLab release evidence, its merge requests with approvals, pipelines and tests, who created, approved and deployed it, the protections in force, and small pipeline reports (test reports, SBOM, security scans) with checksums; verified offline | Done |
-| RG.5 Settings | `deployments.forbid_pipeline_triggerer_approval` as a template setting, aligned by change sets; templates for merge-request review into the default branch documented as the way to close that gap | Planned |
+| RG.5 Settings | `deployments.forbid_pipeline_triggerer_approval` as a template setting, aligned by change sets; templates for merge-request review into the default branch documented as the way to close that gap | Done |
 
 ## Practices
 
@@ -102,6 +102,39 @@ Read with the read-only token, after project discovery:
 - For each production deployment (already collected): `GET /projects/:id/deployments/:id` for `approvals`, `approval_summary` and `user`, then the tag pipeline's `user` and `source`, and `GET /projects/:id/releases/:tag` for the release (notes, author, evidences, asset links).
 
 Only usernames are stored.
+
+## Settings (RG.5)
+
+GitLab's project setting **Allow pipeline triggerer to approve deployment** (`allow_pipeline_trigger_approve_deployment`) lets whoever started a pipeline approve its deployments. For a tag pipeline that is the tag's creator, so with the setting on a release's creator can approve their own release. RG.3 catches that after the fact; RG.5 keeps it from happening.
+
+**The rule.** `gitlab.deployment.triggerer_cannot_approve` (no options) passes when the setting is off and fails when it is on. The value comes from the `pipeline_trigger_approval` part of the project's release protections observation (RG.1), read with change evidence, so the rule follows the `changes` collection's freshness. It is `unknown` when the protections were never read or that part could not be read, and `unsupported` when GitLab answered without the setting: deployment approvals need GitLab Premium or Ultimate. A result rests on that observation, whose digest is checked and whose value is rebuilt before a `pass` or `fail` is stored; the observation counts even when another of its parts was not read (`partial`). It maps to SOC 2 CC8.1, ISO/IEC 27001 A.8.32 and NIST AC-5 (mapping version `2026.11.3`). The baseline editor offers it under the change rules, off by default; it is GitLab only.
+
+**The template setting.** `deployments.forbid_pipeline_triggerer_approval: true` in a configuration template ([CONFIGURATION_TEMPLATES.md](CONFIGURATION_TEMPLATES.md)) says the setting should be off. Drift is judged by the rule above. A change set shows the setting's value before and after from that evidence and warns that turning it off makes someone else approve each release (or, the other way, that it lets a release's creator approve it). A baseline that uses the rule blocks a change set that would allow it again. Applying writes `PUT /projects/:id` with `allow_pipeline_trigger_approve_deployment`, after reading it again, with the template write token (Maintainer); rolling back writes the previous value. Template writes stay off unless `BALUARTE_TEMPLATE_WRITES` is on.
+
+### Closing the merge-request gap
+
+A tag practice judges the release, not how its changes reached the default branch: a tag can be cut from a commit that was pushed straight to the default branch or merged without review. The practice's `require_merge_request_review` judges that per release from evidence; a template keeps it from happening, by setting what GitLab enforces on merge requests into the default branch:
+
+```yaml
+apiVersion: baluarte.io/v1alpha1
+kind: ConfigurationTemplate
+metadata:
+  name: tag-releases
+  description: Reviewed changes, released by protected tag with a separate approver
+spec:
+  settings:
+    default_branch_protected: true       # no direct pushes
+    merge_requests:
+      min_approvals: 1                   # every merge request needs an approval
+      forbid_author_approval: true       # not by its author
+      forbid_committer_approval: true    # nor by anyone who committed to it
+      reset_approvals_on_push: true      # a later push needs approval again
+      forbid_override: true              # a merge request cannot lower its own rules
+    deployments:
+      forbid_pipeline_triggerer_approval: true   # the tag's creator cannot approve the release
+```
+
+Assign it where the tag practice is assigned, and drift shows each project that differs; a change set aligns them. The merge request settings need GitLab Premium or Ultimate for approval rules. Protected tags and protected environments (who may create a release tag, how many approvals a deployment needs) are not template settings yet: Baluarte reads them (RG.1) and the release checks judge them (RG.3), but they are still set in GitLab.
 
 ## Audit release export (RG.4)
 

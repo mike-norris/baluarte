@@ -56,11 +56,13 @@ from baluarte.integrations.gitlab.branches import PROTECTION_SOURCE
 from baluarte.integrations.gitlab.changes import CHANGE_READ_SOURCE, parse_time
 from baluarte.integrations.gitlab.labels import PROJECT_SOURCE as LABELS_SOURCE
 from baluarte.integrations.gitlab.projects import PROJECT_SOURCES
+from baluarte.integrations.gitlab.release_protections import RELEASE_PROTECTION_SOURCE
 from baluarte.integrations.gitlab.security_policies import PROJECT_SOURCE as SECURITY_POLICY_SOURCE
 from baluarte.policy.assignments import Resolution
 from baluarte.policy.evaluation import changes as change_rules
 from baluarte.policy.evaluation import labels as label_rules
 from baluarte.policy.evaluation.access import ACCESS_SOURCES
+from baluarte.policy.evaluation.deployments import value_of as triggerer_value
 from baluarte.policy.evaluation.engine import ChangeEntry
 from baluarte.policy.evaluation.github import VISIBILITY_SOURCE as GITHUB_VISIBILITY_SOURCE
 from baluarte.policy.evaluation.model import RuleResult, UnknownReason
@@ -119,6 +121,13 @@ EVIDENCE: Mapping[str, Evidence] = {
     GITHUB_SECURITY_SOURCE: Evidence((GITHUB_SECURITY_SOURCE,), _whole),
     GITHUB_BRANCH_SOURCE: Evidence((GITHUB_BRANCH_SOURCE,), _whole),
     GITHUB_ORG_SOURCE: Evidence((GITHUB_ORG_SOURCE,), _whole, target="organization"),
+    # RG.5: the pipeline-triggerer approval setting, one part of the release protections; the
+    # observation is "partial" when another part was not read.
+    RELEASE_PROTECTION_SOURCE: Evidence(
+        (RELEASE_PROTECTION_SOURCE,),
+        lambda payload, _result: triggerer_value(payload),
+        ("ok", "partial"),
+    ),
 }
 
 

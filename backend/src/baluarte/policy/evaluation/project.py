@@ -47,6 +47,8 @@ from baluarte.policy.evaluation.changes import (
     RELEASE_RULE_TYPE,
 )
 from baluarte.policy.evaluation.default_branch import DEFAULT_BRANCH_PROTECTED
+from baluarte.policy.evaluation.deployments import RULE_TYPE as TRIGGERER_RULE_TYPE
+from baluarte.policy.evaluation.deployments import TRIGGERER_CANNOT_APPROVE
 from baluarte.policy.evaluation.engine import (
     BranchProtection,
     ChangeEntry,
@@ -88,6 +90,7 @@ EVALUATORS: Mapping[str, RuleEvaluator] = {
         *ACCESS_EVALUATORS,
         *CHANGE_EVALUATORS,
         LABELS_CONSISTENT,
+        TRIGGERER_CANNOT_APPROVE,
     )
 }
 
@@ -400,7 +403,7 @@ def evaluate_project(
         provider,
         changes=bool(types & set(CHANGE_RULE_TYPES)),
         labels=LABELS_RULE_TYPE in types,
-        release=provider == "gitlab" and RELEASE_RULE_TYPE in types,
+        release=provider == "gitlab" and bool({RELEASE_RULE_TYPE, TRIGGERER_RULE_TYPE} & types),
     )
     evaluators = PROVIDER_EVALUATORS[provider]
     results: list[RuleResult] = []

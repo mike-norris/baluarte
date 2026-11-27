@@ -50,6 +50,7 @@ from baluarte.policy.evaluation.project import capability_statuses, collection_c
 from baluarte.policy.loader import parse_policy
 from baluarte.policy.schema import (
     DefaultBranchProtectedRule,
+    DeploymentTriggererApprovalRule,
     MergeRequestApprovalsRule,
     ProjectVisibilityRule,
     Rule,
@@ -243,6 +244,11 @@ _BOOLEAN_WORDING: dict[str, tuple[str, str]] = {
         "Lets merge requests change their approval rules.",
         "Merge requests can no longer change their approval rules.",
     ),
+    "deployments.forbid_pipeline_triggerer_approval": (
+        "Lets whoever started a pipeline, such as a tag's creator, approve its deployments.",
+        "Whoever starts a pipeline, such as a tag's creator, can no longer approve its "
+        "deployments: someone else must approve each release.",
+    ),
 }
 
 
@@ -281,6 +287,12 @@ def _conflict(baselines: Sequence[_Baseline], key: str, after: Any) -> str | Non
             and after is False
         ):
             return f"{where} requires the default branch to be protected."
+        if (
+            key == "deployments.forbid_pipeline_triggerer_approval"
+            and isinstance(rule, DeploymentTriggererApprovalRule)
+            and after is False
+        ):
+            return f"{where} forbids the pipeline's starter approving its deployments."
         if isinstance(rule, MergeRequestApprovalsRule) and key.startswith("merge_requests."):
             field = key.removeprefix("merge_requests.")
             if field == "min_approvals" and after < rule.min_approvals:

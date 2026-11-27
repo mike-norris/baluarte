@@ -32,6 +32,8 @@ spec:
       forbid_committer_approval: false
       reset_approvals_on_push: true
       forbid_override: true
+    deployments:
+      forbid_pipeline_triggerer_approval: true   # a pipeline's starter cannot approve its deployments
     security_features: [secret_scanning, secret_scanning_push_protection]
     labels_consistent: true       # the workspace's label taxonomy (LABELS.md); only true
 ```
@@ -48,6 +50,7 @@ spec:
 | `merge_requests.min_approvals`, `reset_approvals_on_push` | `gitlab.project.merge_request_approvals` | Depends on the plan (approval rules: Premium) | Depends on the plan, as branch protection |
 | `merge_requests.forbid_author_approval` | same | Depends on the plan | Always holds: GitHub never lets an author approve |
 | `merge_requests.forbid_committer_approval`, `forbid_override` | same | Depends on the plan | Unsupported: no equivalent |
+| `deployments.forbid_pipeline_triggerer_approval` | `gitlab.deployment.triggerer_cannot_approve` | Depends on the plan (deployment approvals: Premium) | Unsupported: no equivalent |
 | `security_features` | `github.repository.security_features` | Unsupported: a GitHub setting | Supported; code scanning depends on GitHub Advanced Security |
 | `labels_consistent` | `gitlab.labels.consistent` | Supported | Supported |
 
@@ -142,7 +145,7 @@ Automatic remediation **proposes only**. After every successful evaluation, when
 Applying an approved change set writes to GitLab. It is refused unless **all** of these hold:
 
 - `BALUARTE_TEMPLATE_WRITES=true` for the deployment (Helm: `gitlab.templateWrites`), off by default;
-- a **template write token** is stored on the Settings page. It is separate from the read-only token and the label and remediation write tokens, because a change set can widen visibility or remove a protection when two people approved that. Visibility needs the Owner role; protections, approval settings and topics need Maintainer, with the `api` scope;
+- a **template write token** is stored on the Settings page. It is separate from the read-only token and the label and remediation write tokens, because a change set can widen visibility or remove a protection when two people approved that. Visibility needs the Owner role; protections, approval settings, topics and whether a pipeline's starter may approve its deployments ([RELEASE_GOVERNANCE.md](RELEASE_GOVERNANCE.md#settings-rg5)) need Maintainer, with the `api` scope;
 - the set is approved and has not expired, and built again from today's evidence it still gives the same changes;
 - its connection is the primary GitLab connection, which the token belongs to (GitHub sets are not applied yet);
 - no other set of the connection is applying or rolling back;

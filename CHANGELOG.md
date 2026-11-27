@@ -9,6 +9,16 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Pipeline starter approval (release governance step RG.5): the baseline rule
+  `gitlab.deployment.triggerer_cannot_approve` fails when GitLab lets whoever started a pipeline,
+  such as a release tag's creator, approve its deployments, and is unsupported without deployment
+  approvals (Premium or Ultimate). The template setting
+  `deployments.forbid_pipeline_triggerer_approval` holds it: drift is judged by the rule, and
+  change sets turn the project setting off (or back), read again before writing and rolled back
+  on request, under the template write switch. It maps to SOC 2 CC8.1, ISO/IEC 27001 A.8.32 and
+  NIST AC-5 (control mapping version `2026.11.3`), and the baseline editor offers it, off by
+  default. The release governance guide shows a template that closes the merge-request gap of
+  tag releases.
 - Audit release export (release governance step RG.4): **Governance, Releases** lists recorded
   production releases with who started, approved and deployed each, and builds an audit release
   for one: a ZIP with the release, its notes, the practice and judgment, the release protections

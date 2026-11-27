@@ -86,6 +86,14 @@ class DefaultBranchProtectedRule(_Rule):
     required: bool
 
 
+class DeploymentTriggererApprovalRule(_Rule):
+    """Passes when whoever started a pipeline (for a tag, its creator) may not approve its
+    deployments: GitLab's project setting ``allow_pipeline_trigger_approve_deployment`` is off
+    (docs/RELEASE_GOVERNANCE.md)."""
+
+    type: Literal["gitlab.deployment.triggerer_cannot_approve"]
+
+
 Scan = Literal[
     "secret_detection", "sast", "sast_iac", "dependency_scanning", "container_scanning", "dast"
 ]
@@ -312,6 +320,7 @@ Rule = Annotated[
     | ChangePipelinePassedRule
     | ChangeDeployedAfterReviewRule
     | ReleaseFollowsPracticeRule
+    | DeploymentTriggererApprovalRule
     | LabelsConsistentRule
     | GitHubSecurityFeaturesRule,
     Field(discriminator="type"),
@@ -329,6 +338,7 @@ RULE_TYPES = (
     "gitlab.change.pipeline_passed",
     "gitlab.change.deployed_after_review",
     "gitlab.release.follows_practice",
+    "gitlab.deployment.triggerer_cannot_approve",
     "gitlab.labels.consistent",
     "github.repository.security_features",
 )

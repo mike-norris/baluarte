@@ -214,6 +214,18 @@ The capability status comes from the instance's latest capability snapshot (`cap
 - **`unknown`:** every other probe status (`forbidden`, `not_found`, `error`, `skipped`), a missing probe, a missing snapshot, or a failed detection. Detection cannot prove a feature is missing: a 404 may mean a hidden sample project and a 403 a token limit.
 - **`unsupported`:** the engine supports it, but no probe produces it today. Protected branches exist in every edition.
 
+## `gitlab.deployment.triggerer_cannot_approve`
+
+| | |
+| --- | --- |
+| Value | `pipeline_trigger_approval` from the project's latest release protections observation (source `GET release protections`), read with change evidence. It shares the changes collection's freshness. |
+| Passes when | `allowed` is `false`: whoever starts a pipeline cannot approve its deployments. |
+| Fails when | `allowed` is `true`. |
+| Unsupported when | GitLab answered without the setting: deployment approvals need GitLab Premium or Ultimate. |
+| Unknown when | The release protections were never read, or that part was denied or failed (`value_unknown`). |
+
+The observation backs the value when its status is `ok` or `partial` (another part not read); its digest is checked and the value rebuilt before a `pass` or `fail` is stored. See [RELEASE_GOVERNANCE.md](RELEASE_GOVERNANCE.md#settings-rg5).
+
 ## Change rules
 
 `gitlab.change.reviewed`, `gitlab.change.pipeline_passed`, `gitlab.change.deployed_after_review` and `gitlab.release.follows_practice` judge a window of a project's recorded changes (collection kind `changes`). A failing change fails the rule; a change that cannot be judged, a listing that could not be read, or a window that starts before the project's collected history makes it `unknown`. The stored result lists every change observation it rests on (`observation_ids`) with their combined `evidence_digest`; each digest is checked and the value rebuilt before a `pass` or `fail` is stored. The release rule also records the practice in force and rests on the project's release protections observation, whose digest is checked too. See [CHANGE_EVIDENCE.md](CHANGE_EVIDENCE.md) and [RELEASE_GOVERNANCE.md](RELEASE_GOVERNANCE.md).

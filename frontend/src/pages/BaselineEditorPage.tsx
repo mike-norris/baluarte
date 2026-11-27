@@ -168,6 +168,10 @@ function YamlHelp() {
           <code className="font-monospace">window_days</code>; it needs a release practice assigned.
         </li>
         <li>
+          Rule <code className="font-monospace">gitlab.deployment.triggerer_cannot_approve</code>{" "}
+          with no settings; it needs GitLab Premium or Ultimate.
+        </li>
+        <li>
           Each rule has a unique <code className="font-monospace">id</code> and an optional{" "}
           <code className="font-monospace">severity</code> (low, medium, high or critical) and{" "}
           <code className="font-monospace">description</code>.

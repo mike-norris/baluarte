@@ -97,8 +97,17 @@ FLAGS: dict[str, tuple[str, bool]] = {
         False,
     ),
 }
+# Template setting -> GitLab's project setting, which says the opposite.
+TRIGGERER = "deployments.forbid_pipeline_triggerer_approval"
 APPLICABLE = frozenset(
-    {"visibility", "default_branch_protected", "merge_requests.min_approvals", "topics", *FLAGS}
+    {
+        "visibility",
+        "default_branch_protected",
+        "merge_requests.min_approvals",
+        "topics",
+        TRIGGERER,
+        *FLAGS,
+    }
 )
 
 REFUSALS = {
@@ -191,6 +200,11 @@ def read_live(client: GitLabClient, item: TemplateChangeItem) -> Live:
         if not isinstance(topics, list):
             return Live(problem="GitLab did not report the project's topics.")
         return Live(sorted({t for t in topics if isinstance(t, str)}))
+    if key == TRIGGERER:
+        allowed = project.get("allow_pipeline_trigger_approve_deployment")
+        if not isinstance(allowed, bool):
+            return Live(problem="GitLab did not report whether the pipeline's starter may approve.")
+        return Live(not allowed)
     branch = project.get("default_branch")
     if not isinstance(branch, str) or not branch:
         return Live(problem="The project has no default branch.")
@@ -256,6 +270,8 @@ def forward(
         return (lambda: writer.set_visibility(gitlab_id, after)), previous
     if key == "topics":
         return (lambda: writer.set_topics(gitlab_id, list(after))), previous
+    if key == TRIGGERER:
+        return (lambda: writer.set_pipeline_trigger_approval(gitlab_id, not after)), previous
     if key == "default_branch_protected":
         branch = live.detail["branch"]
         if after:
@@ -294,6 +310,8 @@ def backward(writer: TemplateWriter, item: TemplateChangeItem, live: Live) -> Wr
         return lambda: writer.set_visibility(gitlab_id, before)
     if key == "topics":
         return lambda: writer.set_topics(gitlab_id, list(before))
+    if key == TRIGGERER:
+        return lambda: writer.set_pipeline_trigger_approval(gitlab_id, not before)
     if key == "default_branch_protected":
         branch = live.detail["branch"]
         if item.after:  # it was protected by this set: remove that protection
