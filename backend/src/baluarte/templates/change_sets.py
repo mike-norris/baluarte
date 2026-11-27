@@ -95,6 +95,9 @@ class ChangeSetRefused(Exception):
     """The request is invalid: unknown template, empty settings or too many targets."""
 
 
+MIN_RATIONALE = 20
+MAX_RATIONALE = 2000
+
 # --- the source of the wanted values ---
 
 
@@ -607,10 +610,16 @@ def create(
     hours: int,
     user_id: int | None,
     actor: str,
+    rationale: str,
 ) -> TemplateChangeSet:
     """Build and store a proposed set. ``user_id`` is None when Baluarte proposes it itself."""
     if not 1 <= hours <= MAX_CHANGE_SET_HOURS:
         raise ChangeSetRefused(f"A change set lasts 1 to {MAX_CHANGE_SET_HOURS} hours")
+    rationale = rationale.strip()
+    if not MIN_RATIONALE <= len(rationale) <= MAX_RATIONALE:
+        raise ChangeSetRefused(
+            f"Say why the change is wanted in {MIN_RATIONALE} to {MAX_RATIONALE} characters"
+        )
     expire_due(db)
     document = build(db, instance, selection, source)
     counted = totals(document)
@@ -632,6 +641,7 @@ def create(
         sensitive=counted.sensitive,
         created_by_user_id=user_id,
         created_by_system=user_id is None,
+        rationale=rationale,
         created_at=now,
         expires_at=now + timedelta(hours=hours),
     )

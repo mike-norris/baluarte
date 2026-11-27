@@ -5,7 +5,9 @@ Roadmap M14.4; see docs/CONFIGURATION_TEMPLATES.md#execution.
 Applying is refused unless ``BALUARTE_TEMPLATE_WRITES`` is true, a template write token is stored,
 the set is approved and unexpired, its connection is the primary GitLab connection (the token
 belongs to it), no other set of that connection is applying or rolling back, the set is not
-stale, and every change that cannot be fully undone is acknowledged.
+stale, and every change that cannot be fully undone is acknowledged. Whoever applies, continues
+or rolls back a set is never one of its approvers (M14.6); each such run is a
+``template_change_run`` row, and its trigger refuses an approver outside development mode.
 
 **Stages.** Starting names how many targets the first stage covers; the
 ``gitlab.apply_template_change_set`` job applies their changes and the set becomes ``paused``
@@ -54,7 +56,12 @@ from sqlalchemy.orm import Session
 from baluarte import audit
 from baluarte.configuration.crypto import SecretUnavailable, load_secret_box
 from baluarte.connections import ConnectionRefused, is_primary, settings_for
-from baluarte.db.models import GitLabInstance, TemplateChangeItem, TemplateChangeSet
+from baluarte.db.models import (
+    GitLabInstance,
+    TemplateChangeItem,
+    TemplateChangeRun,
+    TemplateChangeSet,
+)
 from baluarte.integrations.gitlab.access import summarise_approvals
 from baluarte.integrations.gitlab.branches import matches
 from baluarte.integrations.gitlab.client import GitLabClient, GitLabError
@@ -63,7 +70,7 @@ from baluarte.integrations.gitlab.template_writer import TemplateWriter, WriteRe
 from baluarte.jobs import queue
 from baluarte.jobs.queue import ClaimedJob
 from baluarte.policy.evaluation.access import COUNTED_RULE_TYPES, required_approvals
-from baluarte.settings import ConfigurationError
+from baluarte.settings import ConfigurationError, development_mode
 from baluarte.templates.change_sets import current_state, stale_reason
 from baluarte.templates.write_token import TEMPLATE_WRITES
 from baluarte.templates.write_token import TOKEN as WRITE_TOKEN
@@ -121,6 +128,8 @@ REFUSALS = {
     "stale": "Today's evidence no longer gives the same change set.",
     "unacknowledged": "Some changes cannot be fully undone; acknowledge them to apply.",
     "nothing_left": "Every target has already been included.",
+    "approver": "Whoever approved a change set cannot apply, continue or roll it back; someone "
+    "else with the permission must.",
 }
 
 
@@ -890,6 +899,32 @@ def write_refusals(db: Session, row: TemplateChangeSet) -> list[str]:
     return reasons
 
 
+def approved_by(row: TemplateChangeSet, user_id: int) -> bool:
+    """Whether ``user_id`` gave one of the set's approvals."""
+    return user_id in (row.first_approved_by_user_id, row.decided_by_user_id)
+
+
+def run_refusals(row: TemplateChangeSet, user_id: int) -> list[str]:
+    """Why ``user_id`` may not start a run of the set (M14.6); development mode allows an
+    approver, and the run records it."""
+    return ["approver"] if approved_by(row, user_id) and not development_mode() else []
+
+
+def _record_run(
+    db: Session, row: TemplateChangeSet, kind: str, user_id: int, stage: int | None
+) -> TemplateChangeRun:
+    run = TemplateChangeRun(
+        workspace_id=row.workspace_id,
+        change_set_id=row.id,
+        kind=kind,
+        user_id=user_id,
+        stage_targets=stage,
+        development_execution=approved_by(row, user_id),
+    )
+    db.add(run)
+    return run
+
+
 def _enqueue(db: Session, row: TemplateChangeSet, kind: str) -> None:
     row.runs = row.runs + 1
     queue.enqueue(
@@ -910,7 +945,7 @@ def start(
     actor: str,
 ) -> TemplateChangeSet:
     state = current_state(db, row)
-    reasons = write_refusals(db, row)
+    reasons = write_refusals(db, row) + run_refusals(row, user_id)
     if state == "expired":
         reasons.append("expired")
     elif state != "approved":
@@ -931,6 +966,7 @@ def start(
     row.applied_by_user_id = user_id
     row.apply_started_at = now
     row.stage_targets = max(1, min(stage_targets, total))
+    run = _record_run(db, row, "apply", user_id, row.stage_targets)
     _enqueue(db, row, APPLY_CHANGE_SET)
     db.flush()
     audit.record(
@@ -945,20 +981,22 @@ def start(
             "stage_targets": row.stage_targets,
             "targets": total,
             "irreversible": len(irreversible_changes(row)),
+            "run_id": run.id,
+            "development_execution": run.development_execution,
         },
     )
     return row
 
 
 def resume(
-    db: Session, row: TemplateChangeSet, more_targets: int | None, actor: str
+    db: Session, row: TemplateChangeSet, more_targets: int | None, user_id: int, actor: str
 ) -> TemplateChangeSet:
     """Continue a paused set: ``more_targets`` more targets, or all that remain."""
     if row.state != "paused":
         raise ApplyRefused(
             ["not_approved"], f"Only a paused set continues; this one is {row.state}."
         )
-    reasons = write_refusals(db, row)
+    reasons = write_refusals(db, row) + run_refusals(row, user_id)
     total = changing_targets(row)
     if row.stage_targets >= total and not db.scalar(
         select(func.count())
@@ -975,6 +1013,7 @@ def resume(
     row.stage_targets = max(row.stage_targets, target)
     row.state = "applying"
     row.halt_reason = None
+    run = _record_run(db, row, "continue", user_id, row.stage_targets)
     _enqueue(db, row, APPLY_CHANGE_SET)
     db.flush()
     audit.record(
@@ -983,7 +1022,12 @@ def resume(
         action="template_change_set.continued",
         resource_type="template_change_set",
         resource_id=str(row.id),
-        details={"change_set_id": row.id, "stage_targets": row.stage_targets},
+        details={
+            "change_set_id": row.id,
+            "stage_targets": row.stage_targets,
+            "run_id": run.id,
+            "development_execution": run.development_execution,
+        },
     )
     return row
 
@@ -1033,7 +1077,7 @@ def start_rollback(
             "Only a paused, cancelled or finished set, or a rollback that stopped, can be "
             f"rolled back; this one is {row.state}.",
         )
-    reasons = write_refusals(db, row)
+    reasons = write_refusals(db, row) + run_refusals(row, user_id)
     if reasons:
         raise ApplyRefused(reasons)
     now = _now(db)
@@ -1050,6 +1094,7 @@ def start_rollback(
         item.status = "cancelled"
         item.message = "Not applied: the set was rolled back."
         item.finished_at = now
+    run = _record_run(db, row, "rollback", user_id, None)
     _enqueue(db, row, ROLLBACK_CHANGE_SET)
     db.flush()
     audit.record(
@@ -1058,6 +1103,11 @@ def start_rollback(
         action="template_change_set.rollback_started",
         resource_type="template_change_set",
         resource_id=str(row.id),
-        details={"change_set_id": row.id, "restarted": restart},
+        details={
+            "change_set_id": row.id,
+            "restarted": restart,
+            "run_id": run.id,
+            "development_execution": run.development_execution,
+        },
     )
     return row

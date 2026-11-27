@@ -220,6 +220,7 @@ def test_a_change_set_forbids_it(migrated_engine: Engine, world: int) -> None:
         SETS,
         json={
             "title": "Separate approvers",
+            "rationale": "Align the platform projects with the service template.",
             "selection": {"projects": [API, SITE]},
             "settings": FORBID,
         },

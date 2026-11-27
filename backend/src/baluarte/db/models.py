@@ -860,6 +860,10 @@ class TemplateChangeSet(Base):
             "NOT (created_by_system AND development_decision)",
             name="system_sets_not_development",
         ),
+        CheckConstraint(
+            "rationale IS NULL OR length(rationale) BETWEEN 20 AND 2000",
+            name="rationale_length",
+        ),
     )
 
     id: Mapped[int] = pk()
@@ -902,6 +906,39 @@ class TemplateChangeSet(Base):
     rollback_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Why the last run stopped before its stage was done (writes switched off, no token).
     halt_reason: Mapped[str | None] = mapped_column(Text)
+    # Why the change is wanted (M14.6): 20 to 2,000 characters, never changed. None only for
+    # sets created before migration 0049.
+    rationale: Mapped[str | None] = mapped_column(Text)
+
+
+CHANGE_RUN_KINDS = ("apply", "continue", "rollback")
+
+
+class TemplateChangeRun(Base):
+    """Who started each run that writes to the provider for a change set (roadmap M14.6).
+
+    One row per apply, continue or rollback. Its user is never one of the set's approvers; a
+    trigger (migration 0049) refuses the row otherwise, unless ``development_execution``
+    (development mode only, ``baluarte.settings``), and refuses any change or ``DELETE``.
+    """
+
+    __tablename__ = "template_change_run"
+    __table_args__ = (
+        Index("ix_template_change_run_change_set", "change_set_id", "id"),
+        one_of("kind", CHANGE_RUN_KINDS),
+        CheckConstraint("stage_targets IS NULL OR stage_targets >= 1", name="stage_positive"),
+    )
+
+    id: Mapped[int] = pk()
+    workspace_id: Mapped[int] = mapped_column(ForeignKey("workspace.id"), index=True)
+    change_set_id: Mapped[int] = mapped_column(ForeignKey("template_change_set.id"))
+    kind: Mapped[str] = mapped_column(Text)
+    user_id: Mapped[int] = mapped_column(ForeignKey("app_user.id"))
+    started_at: Mapped[datetime] = utc_now()
+    # The targets the stages allow after an apply or continue; None for a rollback.
+    stage_targets: Mapped[int | None] = mapped_column(Integer)
+    # Development mode only: an approver of the set started the run.
+    development_execution: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
 
 
 class TemplateChangeItem(Base):

@@ -74,6 +74,7 @@ TABLES = {
     "restore_run",
     "saved_selection",
     "template_change_item",
+    "template_change_run",
     "time_cursor",
     "time_entry",
     "user_recovery_code",

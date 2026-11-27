@@ -806,7 +806,9 @@ export const helpTopics: readonly HelpTopic[] = [
         <p>
           Someone other than its creator approves a set; one that weakens protection or removes
           access needs two such people. Approval is refused if the evidence has moved since the set
-          was built.
+          was built. Whoever approved it never applies, continues or rolls it back: someone else
+          does. Each set records why it was wanted, who asked, approved and ran it, and the controls
+          its settings support, and evidence packages include it.
         </p>
         <p>
           An approved set is applied in stages only when the deployment turns template writes on and

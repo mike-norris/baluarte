@@ -47,9 +47,13 @@ REQUIRED = {
     "baluarte.evidence-export/v4": {"zip": "exceptions.csv", "json": "exceptions"},
     "baluarte.evidence-export/v5": {"zip": "exceptions.csv", "json": "exceptions"},
     "baluarte.evidence-package/v1": {"zip": "exceptions.csv"},
+    "baluarte.evidence-package/v2": {"zip": "exceptions.csv"},
 }
 # What an audit-period package must hold besides the exceptions.
 PACKAGE_FILES = ("changes.csv", "change_sample.csv", "change_evidence.jsonl")
+# What a package of format v2 also holds: template change sets (M14.6).
+CHANGE_SET_FILES = ("change_sets.csv", "change_set_items.csv")
+PACKAGE_V2 = "baluarte.evidence-package/v2"
 # The change kinds the sample is drawn from (baluarte.evidence.sampling).
 SAMPLED_KINDS = ("merge_request", "direct_push")
 # What an issue register export must hold.
@@ -165,6 +169,8 @@ def verify_zip(archive: zipfile.ZipFile, report: Report) -> tuple[dict[str, Any]
     ]
     if isinstance(manifest.get("evidence_package"), dict):
         verify_package(contents, manifest["evidence_package"], report)
+        if manifest.get("export_format") == PACKAGE_V2:
+            verify_change_sets(contents, report)
     if isinstance(manifest.get("register_export"), dict):
         verify_register(contents, observations, report)
     if isinstance(manifest.get("release_export"), dict):
@@ -186,6 +192,27 @@ def _jsonl(data: bytes) -> list[Any]:
 
 def _csv_rows(data: bytes) -> list[dict[str, str]]:
     return list(csv.DictReader(io.StringIO(data.decode("utf-8"), newline="")))
+
+
+def verify_change_sets(contents: dict[str, bytes], report: Report) -> None:
+    """Every change set item belongs to a listed change set, and every run was started by
+    someone other than the set's approvers unless marked as a development execution."""
+    for name in CHANGE_SET_FILES:
+        if not report.check(name in contents, f"{name}: required by an evidence package v2"):
+            return
+    sets = {row["id"]: row for row in _csv_rows(contents["change_sets.csv"])}
+    for item in _csv_rows(contents["change_set_items.csv"]):
+        report.check(
+            item["change_set_id"] in sets,
+            f"change_set_items.csv: item of change set {item['change_set_id']} without its set",
+        )
+    for ident, row in sets.items():
+        approvers = {row["first_approved_by"], row["decided_by"]} - {""}
+        for run in json.loads(row["runs"] or "[]"):
+            report.check(
+                run.get("development_execution") is True or run.get("by") not in approvers,
+                f"change set {ident}: a {run.get('kind')} run was started by an approver",
+            )
 
 
 def verify_package(contents: dict[str, bytes], package: dict[str, Any], report: Report) -> None:

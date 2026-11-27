@@ -452,7 +452,7 @@ def test_the_package_holds_results_changes_and_a_reproducible_sample(
     } <= names
     manifest = json.loads(archive.read("manifest.json"))
     assert manifest["manifest_format"] == "baluarte.evidence-manifest/v7"
-    assert manifest["export_format"] == "baluarte.evidence-package/v1"
+    assert manifest["export_format"] == "baluarte.evidence-package/v2"
     evidence_package = manifest["evidence_package"]
     sample = evidence_package["sample"]
     population = [
