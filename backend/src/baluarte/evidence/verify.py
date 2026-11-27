@@ -14,6 +14,8 @@ Standard library only and no database, so an auditor can run it anywhere (also a
 - for an issue register export, every ``files/<sha256>`` against its name, every attachment a
   capture cites present or listed as missing, and the index consistent: each mapping's issue,
   cited items and capture are in the package
+- for an audit release, every ``reports/<sha256>`` against its name and ``reports.csv``, and every
+  observation ``release.json`` and ``merge_requests.csv`` cite present in ``observations.jsonl``
 
 Packages of an older export format are still accepted: a v1 export (before exceptions) is checked
 against what its own manifest lists, and only a v2 or later export must contain the exceptions.
@@ -60,6 +62,15 @@ REGISTER_FILES = (
     "files.csv",
     "gaps.csv",
     "redactions.csv",
+)
+# What an audit release must hold.
+RELEASE_FILES = (
+    "README.txt",
+    "release.json",
+    "merge_requests.csv",
+    "observations.jsonl",
+    "reports.csv",
+    "gaps.csv",
 )
 # The members of a JSON export that are neither sections nor the manifest.
 METADATA = ("format", "export_id", "generated_at", "instance", "scope", "freshness")
@@ -156,6 +167,8 @@ def verify_zip(archive: zipfile.ZipFile, report: Report) -> tuple[dict[str, Any]
         verify_package(contents, manifest["evidence_package"], report)
     if isinstance(manifest.get("register_export"), dict):
         verify_register(contents, observations, report)
+    if isinstance(manifest.get("release_export"), dict):
+        verify_release(contents, observations, report)
     return manifest, observations
 
 
@@ -263,6 +276,42 @@ def verify_register(contents: dict[str, bytes], observations: list[Any], report:
             row["mapping_id"] in mappings,
             f"mapping_evidence.csv: item of mapping {row['mapping_id']} not in the index",
         )
+
+
+def verify_release(contents: dict[str, bytes], observations: list[Any], report: Report) -> None:
+    """Reports against their names and listing, and every cited observation present."""
+    for name in RELEASE_FILES:
+        if not report.check(name in contents, f"{name}: required by an audit release"):
+            return
+    stored = {}
+    for name, data in contents.items():
+        if name.startswith("reports/"):
+            sha = name[len("reports/") :]
+            report.check(sha == sha256(data), f"{name}: content does not match its name")
+            stored[sha] = data
+    fetched = {}
+    for row in _csv_rows(contents["reports.csv"]):
+        if row["status"] == "fetched":
+            fetched[row["sha256"]] = row
+            if report.check(
+                row["sha256"] in stored,
+                f"reports.csv: {row['sha256']} fetched but reports/{row['sha256']} missing",
+            ):
+                report.check(
+                    int(row["size_bytes"]) == len(stored[row["sha256"]]),
+                    f"reports/{row['sha256']}: size differs from reports.csv",
+                )
+    for sha in stored:
+        report.check(sha in fetched, f"reports/{sha}: not listed as fetched in reports.csv")
+    present = {observation.get("id") for observation in observations}
+    release = json.loads(contents["release.json"])
+    cited = [release.get("deployment", {}).get("observation_id")]
+    protections = release.get("protections")
+    if isinstance(protections, dict):
+        cited.append(protections.get("observation_id"))
+    cited += [int(row["observation_id"]) for row in _csv_rows(contents["merge_requests.csv"])]
+    for ident in cited:
+        report.check(ident in present, f"observation {ident}: cited but not in the package")
 
 
 def verify_json(document: dict[str, Any], report: Report) -> tuple[dict[str, Any], list[Any]]:
@@ -395,7 +444,8 @@ def main(argv: list[str] | None = None) -> int:
         print(
             "NOTE the manifest itself was not checked: pass --manifest-sha256 with the value from "
             "the export's completion audit event (evidence.export_completed, or "
-            "register.export_completed for an issue register export)"
+            "register.export_completed for an issue register export, release.export_completed "
+            "for an audit release)"
         )
     verdict = "FAILED" if report.failures else "OK"
     print(f"{verdict}: {report.passed} checks passed, {len(report.failures)} failed")

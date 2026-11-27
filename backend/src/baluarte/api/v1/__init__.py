@@ -34,6 +34,7 @@ from baluarte.api.v1 import (
     register,
     register_exports,
     register_mappings,
+    release_exports,
     release_practices,
     remediation,
     reviews,
@@ -99,6 +100,7 @@ protected.include_router(issue_plans.router)
 protected.include_router(reviews.router)
 protected.include_router(templates.router)
 protected.include_router(release_practices.router)
+protected.include_router(release_exports.router)
 protected.include_router(template_drift.router)
 protected.include_router(change_sets.router)
 

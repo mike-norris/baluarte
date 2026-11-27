@@ -9,6 +9,7 @@ import {
   CHANGES_VIEW,
   GOVERNANCE,
   RELEASE_PRACTICES_VIEW,
+  RELEASES_VIEW,
   SECURITY_POLICIES_VIEW,
   TEMPLATES_VIEW,
 } from "./format";
@@ -21,6 +22,7 @@ const tabs = [
   { to: TEMPLATES_VIEW, label: "Templates" },
   { to: CHANGE_SETS_VIEW, label: "Change sets" },
   { to: RELEASE_PRACTICES_VIEW, label: "Release practices" },
+  { to: RELEASES_VIEW, label: "Releases" },
   { to: CHANGES_VIEW, label: "Changes" },
 ] as const;
 

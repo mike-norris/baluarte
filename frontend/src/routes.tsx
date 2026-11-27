@@ -20,6 +20,7 @@ import {
   GOVERNANCE,
   SECURITY_POLICIES_VIEW,
   RELEASE_PRACTICES_VIEW,
+  RELEASES_VIEW,
   TEMPLATES_VIEW,
   CHANGE_SETS_VIEW,
 } from "./policies/format";
@@ -236,6 +237,10 @@ export const routes: RouteObject[] = [
           {
             path: RELEASE_PRACTICES_VIEW,
             element: page(() => import("./pages/ReleasePracticesPage"), "ReleasePracticesPage"),
+          },
+          {
+            path: RELEASES_VIEW,
+            element: page(() => import("./pages/ReleasesPage"), "ReleasesPage"),
           },
           {
             path: CHANGES_VIEW,
