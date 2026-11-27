@@ -672,6 +672,61 @@
       "title": "ProjectVisibilityRule",
       "type": "object"
     },
+    "ReleaseFollowsPracticeRule": {
+      "additionalProperties": false,
+      "description": "Passes when every production deployment in the window followed the project's release\npractice (docs/RELEASE_GOVERNANCE.md): a ref the practice expects, for a tag a protected one,\nthe deployment approvals it requires given before it finished, no approval by whoever\nstarted the release or by the deployer unless the practice allows it, and, when the\npractice requires it, a reviewed change.",
+      "properties": {
+        "id": {
+          "description": "Unique within the baseline; named in findings.",
+          "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$",
+          "title": "Id",
+          "type": "string"
+        },
+        "severity": {
+          "default": "medium",
+          "enum": [
+            "low",
+            "medium",
+            "high",
+            "critical"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Description"
+        },
+        "type": {
+          "const": "gitlab.release.follows_practice",
+          "title": "Type",
+          "type": "string"
+        },
+        "window_days": {
+          "default": 90,
+          "description": "Judge the changes of the last this many days, up to the evaluation.",
+          "maximum": 365,
+          "minimum": 1,
+          "title": "Window Days",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "type"
+      ],
+      "title": "ReleaseFollowsPracticeRule",
+      "type": "object"
+    },
     "Scope": {
       "additionalProperties": false,
       "properties": {
@@ -852,6 +907,7 @@
                 "gitlab.project.merge_request_approvals": "#/$defs/MergeRequestApprovalsRule",
                 "gitlab.project.privileged_members": "#/$defs/PrivilegedMembersRule",
                 "gitlab.project.visibility": "#/$defs/ProjectVisibilityRule",
+                "gitlab.release.follows_practice": "#/$defs/ReleaseFollowsPracticeRule",
                 "gitlab.security_policy.approval": "#/$defs/SecurityPolicyApprovalRule",
                 "gitlab.security_policy.scan_execution": "#/$defs/SecurityPolicyScanExecutionRule"
               },
@@ -890,6 +946,9 @@
               },
               {
                 "$ref": "#/$defs/ChangeDeployedAfterReviewRule"
+              },
+              {
+                "$ref": "#/$defs/ReleaseFollowsPracticeRule"
               },
               {
                 "$ref": "#/$defs/LabelsConsistentRule"

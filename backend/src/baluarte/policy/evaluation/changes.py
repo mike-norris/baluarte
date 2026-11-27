@@ -7,6 +7,11 @@
   a clean test report when ``require_tests``. A change with no pipeline fails.
 - ``gitlab.change.deployed_after_review``: every successful production deployment in the window
   deployed a commit of a merge request reviewed by someone other than its author.
+- ``gitlab.release.follows_practice``: every production deployment in the window to the
+  practice's environments followed the project's release practice
+  (``baluarte.releases.checks``, docs/RELEASE_GOVERNANCE.md). The practice in force and the
+  project's release protections observation are recorded in the value, so it can be rebuilt; no
+  practice makes the value unknown.
 
 The window is the ``window_days`` up to the evaluation. Each change is judged from its own
 observation (``baluarte.changes.assess``). A change that fails makes the rule fail; otherwise a
@@ -37,8 +42,13 @@ from baluarte.policy.schema import (
     ChangeDeployedAfterReviewRule,
     ChangePipelinePassedRule,
     ChangeReviewedRule,
+    ReleaseFollowsPracticeRule,
     Rule,
 )
+from baluarte.releases import checks as release_checks
+from baluarte.releases.practices import PracticeSettings
+
+RELEASE_RULE_TYPE = "gitlab.release.follows_practice"
 
 MAX_LISTED = 50
 # The longest window a rule may ask for; changes this far back are loaded.
@@ -47,6 +57,7 @@ CHANGE_RULE_TYPES = (
     "gitlab.change.reviewed",
     "gitlab.change.pipeline_passed",
     "gitlab.change.deployed_after_review",
+    RELEASE_RULE_TYPE,
 )
 
 
@@ -74,10 +85,17 @@ def _expected_deployed(rule: Rule) -> dict[str, Any]:
     return {"window_days": rule.window_days}
 
 
+def _expected_release(rule: Rule) -> dict[str, Any]:
+    if not isinstance(rule, ReleaseFollowsPracticeRule):
+        raise TypeError(f"not a ReleaseFollowsPracticeRule: {rule.type}")
+    return {"window_days": rule.window_days}
+
+
 EXPECTED: Mapping[str, Callable[[Rule], dict[str, Any]]] = {
     "gitlab.change.reviewed": _expected_reviewed,
     "gitlab.change.pipeline_passed": _expected_pipeline,
     "gitlab.change.deployed_after_review": _expected_deployed,
+    RELEASE_RULE_TYPE: _expected_release,
 }
 # The kinds of change each rule judges, and the listing that must be complete to see them all.
 KINDS: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
@@ -87,6 +105,7 @@ KINDS: Mapping[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
         ("merge_requests", "commits"),
     ),
     "gitlab.change.deployed_after_review": (("deployment",), ("deployments",)),
+    RELEASE_RULE_TYPE: (("deployment",), ("deployments",)),
 }
 
 
@@ -122,9 +141,13 @@ def summarise(
     read: Mapping[str, Any],
     entries: Sequence[ChangeEntry],
     window: tuple[Any, Any],
+    release: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """The observed value of a change rule over ``entries`` (every change loaded, oldest first)
     in ``window``; None when the window starts before the project's history does.
+
+    ``release`` is the release rule's practice (``Resolved.as_dict``), and the project's release
+    protections observation as ``protections`` (its payload) and ``protections_observation_id``.
 
     The store rebuilds it from the stored observations, so it must depend only on its arguments.
     """
@@ -132,6 +155,8 @@ def summarise(
     since = parse_time(read.get("history_since"))
     if since is None or start < since:
         return None
+    if rule_type == RELEASE_RULE_TYPE:
+        return _summarise_releases(expected, read, entries, window, release or {})
     kinds, listings = KINDS[rule_type]
     default_branch = read.get("default_branch")
     payloads = [entry.payload for entry in entries if isinstance(entry.payload, dict)]
@@ -195,7 +220,7 @@ def evidence_entries(
     start, end = window
     kinds, _ = KINDS[rule_type]
     used = [e for e in entries if e.kind in kinds and start <= e.changed_at <= end]
-    if rule_type == "gitlab.change.deployed_after_review":
+    if rule_type in ("gitlab.change.deployed_after_review", RELEASE_RULE_TYPE):
         payloads = {id(e.payload): e for e in entries if isinstance(e.payload, dict)}
         shas = by_sha(reversed([e.payload for e in entries if isinstance(e.payload, dict)]))
         for deployment in list(used):
@@ -217,8 +242,26 @@ def _observe(rule_type: str) -> Callable[[Rule, ProjectFacts], Any]:
         if history is None or read is None:
             return None
         expected = EXPECTED[rule_type](rule)
+        release: dict[str, Any] | None = None
+        if rule_type == RELEASE_RULE_TYPE:
+            facts = project.release
+            if facts is None or facts.practice is None:
+                return None
+            protections = facts.protections
+            release = {
+                "practice": facts.practice,
+                "protections": protections.payload if protections is not None else None,
+                "protections_observation_id": (
+                    protections.observation_id if protections is not None else None
+                ),
+            }
         return summarise(
-            rule_type, expected, read, history.entries, window(history, expected["window_days"])
+            rule_type,
+            expected,
+            read,
+            history.entries,
+            window(history, expected["window_days"]),
+            release,
         )
 
     return observe
@@ -258,6 +301,15 @@ def _decide(what: str) -> Callable[[Rule, Any], tuple[bool, str]]:
     return judge
 
 
+def _unknown_release(project: ProjectFacts) -> str:
+    if project.release is None or project.release.practice is None:
+        return (
+            f"No release practice applies to project {project.path}; assign one in Governance, "
+            "Release practices."
+        )
+    return _unknown(project)
+
+
 def _unknown(project: ProjectFacts) -> str:
     history = project.changes
     if history is None or history.read is None:
@@ -285,7 +337,7 @@ def _evaluator(rule_type: str, what: str) -> RuleEvaluator:
         observe=lambda project: None,
         observe_rule=_observe(rule_type),
         judge=_decide(what),
-        value_unknown=_unknown,
+        value_unknown=_unknown_release if rule_type == RELEASE_RULE_TYPE else _unknown,
         observed_at=lambda project: (
             project.changes.read.collected_at
             if project.changes is not None and project.changes.read is not None
@@ -300,4 +352,88 @@ CHANGE_PIPELINE_PASSED = _evaluator("gitlab.change.pipeline_passed", "changes")
 CHANGE_DEPLOYED_AFTER_REVIEW = _evaluator(
     "gitlab.change.deployed_after_review", "production deployments"
 )
-CHANGE_EVALUATORS = (CHANGE_REVIEWED, CHANGE_PIPELINE_PASSED, CHANGE_DEPLOYED_AFTER_REVIEW)
+RELEASE_FOLLOWS_PRACTICE = _evaluator(RELEASE_RULE_TYPE, "production releases")
+CHANGE_EVALUATORS = (
+    CHANGE_REVIEWED,
+    CHANGE_PIPELINE_PASSED,
+    CHANGE_DEPLOYED_AFTER_REVIEW,
+    RELEASE_FOLLOWS_PRACTICE,
+)
+
+
+def _summarise_releases(
+    expected: Mapping[str, Any],
+    read: Mapping[str, Any],
+    entries: Sequence[ChangeEntry],
+    window: tuple[Any, Any],
+    release: Mapping[str, Any],
+) -> dict[str, Any]:
+    start, end = window
+    practice = release.get("practice")
+    if not isinstance(practice, dict):
+        raise ValueError("the release rule needs the practice in force")
+    settings = PracticeSettings.model_validate(practice["settings"])
+    protections = release.get("protections")
+    default_branch = read.get("default_branch")
+    payloads = [entry.payload for entry in entries if isinstance(entry.payload, dict)]
+    shas = by_sha(reversed(payloads))
+    counts = {"pass": 0, "fail": 0, "unknown": 0}
+    failing: list[dict[str, Any]] = []
+    failing_reasons: list[str] = []
+    unknown_reasons: list[str] = []
+    total = 0
+    for entry in entries:
+        payload = entry.payload or {}
+        if entry.kind != "deployment" or not (start <= entry.changed_at <= end):
+            continue
+        if payload.get("environment") not in settings.environments:
+            continue
+        total += 1
+        judged = release_checks.judge(
+            payload,
+            settings,
+            protections if isinstance(protections, dict) else None,
+            shas,
+            default_branch,
+        )
+        counts[judged.verdict] += 1
+        if judged.verdict == "fail":
+            if len(failing) < MAX_LISTED:
+                failing.append(
+                    {
+                        "id": entry.change_id,
+                        "kind": entry.kind,
+                        "iid": None,
+                        "sha": payload.get("sha"),
+                        "title": None,
+                        "ref": payload.get("ref"),
+                        "started_by": judged.started_by,
+                        "approvers": judged.approvers,
+                        "deployer": judged.deployer,
+                    }
+                )
+                failing_reasons.append("; ".join(r for r in judged.reasons))
+        elif judged.verdict == "unknown" and len(unknown_reasons) < MAX_LISTED:
+            unknown_reasons.append("; ".join(judged.reasons))
+    found = read.get("listed")
+    listed: Mapping[str, Any] = found if isinstance(found, dict) else {}
+    gaps = (
+        []
+        if listed.get("deployments") == "ok"
+        else [f"deployments could not be listed ({listed.get('deployments')})"]
+    )
+    return {
+        "window_days": expected["window_days"],
+        "from": iso(start),
+        "to": iso(end),
+        "practice": practice,
+        "protections_observation_id": release.get("protections_observation_id"),
+        "changes": total,
+        "passed": counts["pass"],
+        "failed": counts["fail"],
+        "unknown": counts["unknown"],
+        "failing": failing,
+        "failing_total": counts["fail"],
+        "gaps": gaps,
+        "reasons": (failing_reasons or unknown_reasons)[:5],
+    }

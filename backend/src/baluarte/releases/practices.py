@@ -334,12 +334,17 @@ class Deployment:
     finished_at: datetime
 
 
-def ref_kind(deployment: Deployment, default_branch: str | None) -> RefKind:
-    if deployment.tag is True:
+def kind_of(ref: str | None, tag: bool | None, default_branch: str | None) -> RefKind:
+    """What a deployment deployed: a tag, the default branch, another branch, or not known."""
+    if tag is True:
         return "tag"
-    if deployment.tag is None or deployment.ref is None or default_branch is None:
+    if tag is None or ref is None or default_branch is None:
         return "unknown"
-    return "default_branch" if deployment.ref == default_branch else "branch"
+    return "default_branch" if ref == default_branch else "branch"
+
+
+def ref_kind(deployment: Deployment, default_branch: str | None) -> RefKind:
+    return kind_of(deployment.ref, deployment.tag, default_branch)
 
 
 def expected(settings: PracticeSettings, kind: RefKind, ref: str | None) -> bool | None:
@@ -421,22 +426,100 @@ def _deployments(db: Session, instance_id: int, since: datetime) -> dict[int, li
     return found
 
 
+@dataclass(frozen=True)
+class Resolved:
+    """The practice in force for a project, and the connection, group or project that decided."""
+
+    practice: ReleasePractice
+    settings: PracticeSettings
+    decided_by: Target
+
+    def as_dict(self) -> dict[str, Any]:
+        """The practice as a rule result records it, so the result can be rebuilt."""
+        return {
+            "name": self.practice.name,
+            "preset": self.practice.preset,
+            "settings": self.settings.model_dump(),
+            "decided_by": {
+                "target_type": self.decided_by.target_type,
+                "target_id": self.decided_by.target_id,
+                "path": self.decided_by.path,
+            },
+        }
+
+
+class _Assignments:
+    """Every practice and assignment of one connection, and its groups, loaded once."""
+
+    def __init__(self, db: Session, instance: GitLabInstance) -> None:
+        self.practices = {p.id: p for p in db.scalars(select(ReleasePractice))}
+        self.assigned = {
+            (a.target_type, a.target_id): a
+            for a in db.scalars(
+                select(ReleasePracticeAssignment).where(
+                    ReleasePracticeAssignment.instance_id == instance.id
+                )
+            )
+        }
+        self.groups = {
+            g.gitlab_id: g
+            for g in db.scalars(select(GitLabGroup).where(GitLabGroup.instance_id == instance.id))
+        }
+        self.root = Target(
+            target_type="instance", target_id=instance.id, path=instance.base_url, state=None
+        )
+
+    def path(self, project: GitLabProject) -> list[Target]:
+        """The project, its groups up to the top level, then the connection."""
+        found = [
+            Target(
+                target_type="project",
+                target_id=project.gitlab_id,
+                path=project.path_with_namespace,
+                state=project.state,
+            )
+        ]
+        gitlab_id = project.namespace_gitlab_id if project.namespace_kind != "user" else None
+        seen: set[int] = set()
+        while gitlab_id is not None and gitlab_id not in seen:
+            seen.add(gitlab_id)
+            group = self.groups.get(gitlab_id)
+            if group is None:
+                break
+            found.append(
+                Target(
+                    target_type="group",
+                    target_id=group.gitlab_id,
+                    path=group.full_path,
+                    state=group.state,
+                )
+            )
+            gitlab_id = group.parent_gitlab_id
+        return [*found, self.root]
+
+    def resolve(self, project: GitLabProject) -> Resolved | None:
+        for level in self.path(project):
+            assignment = self.assigned.get((level.target_type, level.target_id))
+            if assignment is None:
+                continue
+            practice = self.practices[assignment.practice_id]
+            return Resolved(
+                practice=practice,
+                settings=PracticeSettings.model_validate(practice.settings),
+                decided_by=level,
+            )
+        return None
+
+
+def resolve(db: Session, instance: GitLabInstance, project: GitLabProject) -> Resolved | None:
+    """The practice in force for ``project``: the nearest assignment on its path."""
+    return _Assignments(db, instance).resolve(project)
+
+
 def overview(db: Session, instance: GitLabInstance) -> list[ProjectPractice]:
     """Every active project in monitoring scope with its practice, who decided it, and what its
     production deployments in the last ``WINDOW_DAYS`` show."""
-    practices = {p.id: p for p in db.scalars(select(ReleasePractice))}
-    assigned = {
-        (a.target_type, a.target_id): a
-        for a in db.scalars(
-            select(ReleasePracticeAssignment).where(
-                ReleasePracticeAssignment.instance_id == instance.id
-            )
-        )
-    }
-    groups = {
-        g.gitlab_id: g
-        for g in db.scalars(select(GitLabGroup).where(GitLabGroup.instance_id == instance.id))
-    }
+    loaded = _Assignments(db, instance)
     scope = coverage(db, instance.id)
     projects = db.scalars(
         select(GitLabProject)
@@ -449,54 +532,23 @@ def overview(db: Session, instance: GitLabInstance) -> list[ProjectPractice]:
     ).all()
     now: datetime = db.execute(select(func.now())).scalar_one()
     deployed = _deployments(db, instance.id, now - timedelta(days=WINDOW_DAYS))
-    root = Target(target_type="instance", target_id=instance.id, path=instance.base_url, state=None)
     out = []
     for project in projects:
-        path = [
-            Target(
-                target_type="project",
-                target_id=project.gitlab_id,
-                path=project.path_with_namespace,
-                state=project.state,
-            )
-        ]
-        gitlab_id = project.namespace_gitlab_id if project.namespace_kind != "user" else None
-        seen: set[int] = set()
-        while gitlab_id is not None and gitlab_id not in seen:
-            seen.add(gitlab_id)
-            group = groups.get(gitlab_id)
-            if group is None:
-                break
-            path.append(
-                Target(
-                    target_type="group",
-                    target_id=group.gitlab_id,
-                    path=group.full_path,
-                    state=group.state,
-                )
-            )
-            gitlab_id = group.parent_gitlab_id
-        path.append(root)
-        decided = next(
-            (
-                (level, assigned[(level.target_type, level.target_id)])
-                for level in path
-                if (level.target_type, level.target_id) in assigned
-            ),
-            None,
+        found = loaded.resolve(project)
+        status, observed = observe(
+            found.settings if found else None,
+            deployed.get(project.id, []),
+            project.default_branch,
         )
-        practice = practices.get(decided[1].practice_id) if decided else None
-        settings = PracticeSettings.model_validate(practice.settings) if practice else None
-        status, observed = observe(settings, deployed.get(project.id, []), project.default_branch)
         out.append(
             ProjectPractice(
                 project_id=project.id,
                 gitlab_id=project.gitlab_id,
                 path=project.path_with_namespace,
                 default_branch=project.default_branch,
-                practice=practice.name if practice else None,
-                preset=practice.preset if practice else None,
-                decided_by=decided[0] if decided else None,
+                practice=found.practice.name if found else None,
+                preset=found.practice.preset if found else None,
+                decided_by=found.decided_by if found else None,
                 status=status,
                 observed=observed,
             )

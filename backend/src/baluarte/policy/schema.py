@@ -242,6 +242,17 @@ class ChangeDeployedAfterReviewRule(_Rule):
     window_days: WindowDays = 90
 
 
+class ReleaseFollowsPracticeRule(_Rule):
+    """Passes when every production deployment in the window followed the project's release
+    practice (docs/RELEASE_GOVERNANCE.md): a ref the practice expects, for a tag a protected one,
+    the deployment approvals it requires given before it finished, no approval by whoever
+    started the release or by the deployer unless the practice allows it, and, when the
+    practice requires it, a reviewed change."""
+
+    type: Literal["gitlab.release.follows_practice"]
+    window_days: WindowDays = 90
+
+
 IgnorableDrift = Literal[
     "missing", "misplaced", "misnamed", "color", "description", "duplicate", "unknown_label"
 ]
@@ -300,6 +311,7 @@ Rule = Annotated[
     | ChangeReviewedRule
     | ChangePipelinePassedRule
     | ChangeDeployedAfterReviewRule
+    | ReleaseFollowsPracticeRule
     | LabelsConsistentRule
     | GitHubSecurityFeaturesRule,
     Field(discriminator="type"),
@@ -316,6 +328,7 @@ RULE_TYPES = (
     "gitlab.change.reviewed",
     "gitlab.change.pipeline_passed",
     "gitlab.change.deployed_after_review",
+    "gitlab.release.follows_practice",
     "gitlab.labels.consistent",
     "github.repository.security_features",
 )

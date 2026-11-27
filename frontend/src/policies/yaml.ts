@@ -181,6 +181,15 @@ export interface DeployedRule {
   description: string;
 }
 
+/** Every production release in the window followed the project's release practice. */
+export interface ReleaseRule {
+  enabled: boolean;
+  id: string;
+  windowDays: number;
+  severity: Severity;
+  description: string;
+}
+
 export const MIN_WINDOW_DAYS = 1;
 export const MAX_WINDOW_DAYS = 365;
 export const DEFAULT_WINDOW_DAYS = 90;
@@ -205,6 +214,8 @@ export interface BaselineForm {
   reviewed: ReviewedRule;
   pipeline: PipelineRule;
   deployed: DeployedRule;
+  /** Off unless added, and not recommended: it needs a release practice assigned. */
+  release: ReleaseRule;
 }
 
 export const VISIBILITY_TYPE = "gitlab.project.visibility";
@@ -218,6 +229,7 @@ export const TOKENS_TYPE = "gitlab.project.access_tokens";
 export const REVIEWED_TYPE = "gitlab.change.reviewed";
 export const PIPELINE_TYPE = "gitlab.change.pipeline_passed";
 export const DEPLOYED_TYPE = "gitlab.change.deployed_after_review";
+export const RELEASE_TYPE = "gitlab.release.follows_practice";
 
 /** The scan rule as "Add rule" first shows it. */
 export function offScanRule(): ScanRule {
@@ -332,6 +344,16 @@ export function offDeployedRule(): DeployedRule {
 }
 
 /** The rule switches of the form, one per rule type the form can show. */
+export function offReleaseRule(): ReleaseRule {
+  return {
+    enabled: false,
+    id: "releases-follow-practice",
+    windowDays: DEFAULT_WINDOW_DAYS,
+    severity: "high",
+    description: "",
+  };
+}
+
 export const ruleKeys = [
   "visibility",
   "branch",
@@ -344,6 +366,7 @@ export const ruleKeys = [
   "reviewed",
   "pipeline",
   "deployed",
+  "release",
 ] as const;
 export type RuleKey = (typeof ruleKeys)[number];
 
@@ -359,6 +382,7 @@ export const ruleKeyTypes: Record<RuleKey, string> = {
   reviewed: REVIEWED_TYPE,
   pipeline: PIPELINE_TYPE,
   deployed: DEPLOYED_TYPE,
+  release: RELEASE_TYPE,
 };
 
 /** Whether the recommended baseline also switches on the two GitLab security policy rules. */
@@ -408,6 +432,7 @@ export function recommendedBaseline(
     reviewed: on(offReviewedRule()),
     pipeline: on(offPipelineRule()),
     deployed: on(offDeployedRule()),
+    release: offReleaseRule(),
   };
 }
 
@@ -466,6 +491,7 @@ export function emptyBaseline(): BaselineForm {
     reviewed: offReviewedRule(),
     pipeline: offPipelineRule(),
     deployed: offDeployedRule(),
+    release: offReleaseRule(),
   };
 }
 
@@ -686,6 +712,16 @@ function accessRuleDocuments(form: BaselineForm): Record<string, unknown>[] {
       description: deployed.description.trim() || null,
     });
   }
+  const { release } = form;
+  if (release.enabled) {
+    rules.push({
+      id: release.id,
+      type: RELEASE_TYPE,
+      window_days: release.windowDays,
+      severity: release.severity,
+      description: release.description.trim() || null,
+    });
+  }
   return rules;
 }
 
@@ -727,6 +763,7 @@ export function formProblems(form: BaselineForm): string[] {
     form.reviewed,
     form.pipeline,
     form.deployed,
+    form.release,
   ];
   if (!rules.some((rule) => rule.enabled)) {
     problems.push("Rules: turn on at least one rule.");
@@ -798,6 +835,9 @@ export function formProblems(form: BaselineForm): string[] {
       MIN_WINDOW_DAYS,
       MAX_WINDOW_DAYS,
     );
+  }
+  if (form.release.enabled) {
+    range("Release practice window", form.release.windowDays, MIN_WINDOW_DAYS, MAX_WINDOW_DAYS);
   }
   return problems;
 }
@@ -926,7 +966,11 @@ export function fromDocument(document: unknown): BaselineForm | null {
         severity,
         description: text(rule.description),
       };
-    } else if (rule.type === MEMBERS_TYPE && !form.members.enabled && isWhole(rule.max_privileged)) {
+    } else if (
+      rule.type === MEMBERS_TYPE &&
+      !form.members.enabled &&
+      isWhole(rule.max_privileged)
+    ) {
       const inactive = flag(rule.forbid_inactive_accounts, false);
       if (inactive === null) return null;
       form.members = {
@@ -947,7 +991,11 @@ export function fromDocument(document: unknown): BaselineForm | null {
         severity,
         description: text(rule.description),
       };
-    } else if (rule.type === TOKENS_TYPE && !form.tokens.enabled && isWhole(rule.max_lifetime_days)) {
+    } else if (
+      rule.type === TOKENS_TYPE &&
+      !form.tokens.enabled &&
+      isWhole(rule.max_lifetime_days)
+    ) {
       const unused = optionalWhole(rule.max_unused_days);
       if (unused === undefined) return null;
       form.tokens = {
@@ -992,6 +1040,16 @@ export function fromDocument(document: unknown): BaselineForm | null {
       const window = windowDays(rule.window_days);
       if (window === undefined) return null;
       form.deployed = {
+        enabled: true,
+        id: rule.id,
+        windowDays: window,
+        severity,
+        description: text(rule.description),
+      };
+    } else if (rule.type === RELEASE_TYPE && !form.release.enabled) {
+      const window = windowDays(rule.window_days);
+      if (window === undefined) return null;
+      form.release = {
         enabled: true,
         id: rule.id,
         windowDays: window,
@@ -1097,7 +1155,9 @@ export function readableRules(document: unknown): ReadableRule[] {
     const detail = (...parts: (string | null)[]) => parts.filter(Boolean).join(" ") || null;
     if (rule.type === PROJECT_APPROVALS_TYPE && isWhole(rule.min_approvals)) {
       const settings = [
-        rule.forbid_author_approval === true ? "authors can't approve their own merge requests" : null,
+        rule.forbid_author_approval === true
+          ? "authors can't approve their own merge requests"
+          : null,
         rule.forbid_committer_approval === true ? "committers can't approve" : null,
         rule.reset_approvals_on_push === true ? "a new push removes approvals" : null,
         rule.forbid_override === true ? "a merge request can't change its approval rules" : null,
@@ -1183,6 +1243,14 @@ export function readableRules(document: unknown): ReadableRule[] {
       return {
         id,
         sentence: `Every production deployment ${over} deployed a reviewed change`,
+        detail: description,
+        severity,
+      };
+    }
+    if (rule.type === RELEASE_TYPE) {
+      return {
+        id,
+        sentence: `Every production release ${over} followed the project's release practice`,
         detail: description,
         severity,
       };

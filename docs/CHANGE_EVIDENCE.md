@@ -104,6 +104,7 @@ A failure outranks unknown, and unknown outranks pass. `reasons` explains the de
 | `gitlab.change.reviewed` | Every merge request and direct push in the window passes review. Options: `window_days` (1-365, default 90), `min_approvals` (1-20, default 1), `forbid_self_approval` (default true), `allow_direct_push` (default false). |
 | `gitlab.change.pipeline_passed` | Every merge request and direct push in the window passes the pipeline check. Options: `window_days`, `require_tests` (default false). |
 | `gitlab.change.deployed_after_review` | Every production deployment in the window deployed a reviewed change. Option: `window_days`. |
+| `gitlab.release.follows_practice` | Every production release in the window followed the project's release practice ([RELEASE_GOVERNANCE.md](RELEASE_GOVERNANCE.md#release-checks-rg3)). Option: `window_days`. |
 
 The window is the `window_days` up to the evaluation. The rules are judged per project, from its stored change observations; they never call GitLab.
 

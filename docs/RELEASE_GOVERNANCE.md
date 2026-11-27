@@ -8,7 +8,7 @@ Roadmap milestone **Release governance** ([ROADMAP.md](ROADMAP.md#release-govern
 |---|---|---|
 | RG.1 Release evidence | Protected tags, protected environments (project and groups) and the self-approval setting per project; each production deployment with its tag, approvals, deployer, tag pipeline user and GitLab release; a tag deployment no longer fails because its ref is not the default branch | Done |
 | RG.2 Release practices | Presets and custom practices with parameters, assigned to the connection, a group or a project (nearest wins); a Release practices page listing which groups and projects follow which practice, and what their releases actually show | Done |
-| RG.3 Release checks | Each production release judged against its practice: protected ref, approvals required and given before deploying, tag creator not an approver, deployer not an approver, optional merge-request review; findings, the auditor report and evidence packages | Planned |
+| RG.3 Release checks | Each production release judged against its practice: protected ref, approvals required and given before deploying, tag creator not an approver, deployer not an approver, optional merge-request review; findings, the auditor report and evidence packages | Done |
 | RG.4 Audit release export | One package per production release: the release, its notes and GitLab release evidence, its merge requests with approvals, pipelines and tests, who created, approved and deployed it, the protections in force, and small pipeline reports (test reports, SBOM, security scans) with checksums; verified offline | Planned |
 | RG.5 Settings | `deployments.forbid_pipeline_triggerer_approval` as a template setting, aligned by change sets; templates for merge-request review into the default branch documented as the way to close that gap | Planned |
 
@@ -60,6 +60,25 @@ This compares refs only; approvals and people are judged by the release checks (
 | `GET /release-practices/projects?status=&practice=` | `findings:read` | Each project's practice, who decided it, and what its releases show |
 
 Writes need the `X-CSRF-Token` header.
+
+## Release checks (RG.3)
+
+The baseline rule `gitlab.release.follows_practice` (option `window_days`, 1–365, default 90) judges every production deployment in the window to the practice's environments against the practice in force for the project. Each release is checked for:
+
+| Check | Fails when | Unknown when |
+|---|---|---|
+| Ref | The practice does not expect the ref deployed (for example a branch under a tag practice) | GitLab did not say whether a tag or a branch was deployed |
+| Protected tag (tag practices) | The tag matches no protected tag pattern | The protected tags were not read |
+| Approvals (when `required_approvals` > 0) | Fewer distinct approvers than required gave approval before the deployment finished | The approvals were not read, or GitLab did not report them (Premium or Ultimate) |
+| Creator not an approver (unless `creator_may_approve`) | Whoever started the release approved it | GitLab did not record who started it |
+| Deployer not an approver (unless `deployer_may_approve`) | The deployer approved it | GitLab did not record the deployer |
+| Merge-request review (when `require_merge_request_review`) | The change shipped was not reviewed by someone other than its author | The change shipped is not recorded |
+
+A project with no practice assigned is `unknown`, never `pass`; a project with no production releases in the window passes. A failing result lists each failing release with its ref and the people GitLab records: who started it, who approved it and who deployed it.
+
+The result records the practice in force (name, preset, settings and where it was assigned) and the release protections observation it used. Before a `pass` or `fail` is stored, every deployment and change observation it rests on and that protections observation have their digests checked and the value is rebuilt from them, as for the change rules. Findings, the auditor report and evidence packages include it like any other rule. It maps to SOC 2 CC8.1, ISO/IEC 27001 A.8.32 and NIST CM-3 and AC-5 (mapping version `2026.11.2`). The rule is GitLab only; on GitHub it is `unsupported`.
+
+The baseline editor offers it under the change rules; the recommended baseline leaves it off, since it needs a practice assigned first.
 
 ## Who did what
 

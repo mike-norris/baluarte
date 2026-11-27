@@ -6,6 +6,7 @@ import {
   MIN_WINDOW_DAYS,
   offDeployedRule,
   offPipelineRule,
+  offReleaseRule,
   offReviewedRule,
   type BaselineForm,
   type RuleKey,
@@ -39,7 +40,7 @@ export function ChangeRules({
   /** Rules switched on by "Add recommended rules". */
   added?: readonly RuleKey[];
 }) {
-  const { reviewed, pipeline, deployed } = form;
+  const { reviewed, pipeline, deployed, release } = form;
   const add: { label: string; on: () => void }[] = [];
   if (!reviewed.enabled) {
     add.push({
@@ -62,6 +63,14 @@ export function ChangeRules({
       label: "Add rule: deployments reviewed",
       on: () => {
         onChange({ ...form, deployed: { ...offDeployedRule(), enabled: true } });
+      },
+    });
+  }
+  if (!release.enabled) {
+    add.push({
+      label: "Add rule: releases follow their practice",
+      on: () => {
+        onChange({ ...form, release: { ...offReleaseRule(), enabled: true } });
       },
     });
   }
@@ -179,6 +188,36 @@ export function ChangeRules({
             value={deployed.severity}
             onChange={(severity) => {
               onChange({ ...form, deployed: { ...deployed, severity } });
+            }}
+          />
+        </Card>
+      )}
+
+      {release.enabled && (
+        <Card
+          label="Release practice rule"
+          added={added.includes("release")}
+          title="Every production release followed the project's release practice"
+          onRemove={() => {
+            onChange({ ...form, release: offReleaseRule() });
+          }}
+        >
+          <WindowDays
+            value={release.windowDays}
+            onChange={(windowDays) => {
+              onChange({ ...form, release: { ...release, windowDays } });
+            }}
+          />
+          <p className={help}>
+            Each release to the practice&apos;s environments is checked against the practice
+            assigned in Governance, Release practices: where it came from, its approvals, and that
+            whoever started or deployed it didn&apos;t approve it. With no practice assigned the
+            result is unknown.
+          </p>
+          <SeveritySelect
+            value={release.severity}
+            onChange={(severity) => {
+              onChange({ ...form, release: { ...release, severity } });
             }}
           />
         </Card>

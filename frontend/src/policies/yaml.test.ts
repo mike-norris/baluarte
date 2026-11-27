@@ -345,3 +345,24 @@ describe("GitLab security policy rules", () => {
     ]);
   });
 });
+
+describe("the release practice rule", () => {
+  it("is off in the recommended baseline, since it needs a practice assigned", () => {
+    expect(recommendedBaseline({ securityPolicies: true }).release.enabled).toBe(false);
+  });
+
+  it("round-trips through the form, is checked and reads as a sentence", () => {
+    const form = basicBaseline();
+    form.release = { ...form.release, enabled: true, windowDays: 30 };
+    const document = toDocument(form);
+    expect(fromDocument(document)).toEqual(form);
+    expect(toYaml(form)).toContain("type: gitlab.release.follows_practice");
+    expect(readableRules(document).at(-1)?.sentence).toBe(
+      "Every production release over the last 30 days followed the project's release practice",
+    );
+    form.release.windowDays = 400;
+    expect(formProblems(form)).toEqual([
+      "Release practice window: enter a whole number from 1 to 365.",
+    ]);
+  });
+});
