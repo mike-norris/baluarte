@@ -9,6 +9,14 @@ the API or the database schema; the release notes say how to upgrade.
 
 ### Added
 
+- Audit release export (release governance step RG.4): **Governance, Releases** lists recorded
+  production releases with who started, approved and deployed each, and builds an audit release
+  for one: a ZIP with the release, its notes, the practice and judgment, the release protections
+  in force, the merge requests since the previous production release with approvals, pipelines
+  and tests, every observation it rests on, and the release pipeline's reports (test report,
+  SBOM, security scans) read from GitLab read-only, at most 10 MB each and 50 MB per release, the
+  rest listed with why. Never source code. `baluarte-verify-export` checks it offline; it is
+  audited as `release.export_created` and `release.export_completed`. Needs `evidence:package`.
 - Release checks (release governance step RG.3): the baseline rule
   `gitlab.release.follows_practice` judges each production release against the project's
   release practice: the ref it expects, a protected tag for a tag practice, the required

@@ -9,7 +9,7 @@ Roadmap milestone **Release governance** ([ROADMAP.md](ROADMAP.md#release-govern
 | RG.1 Release evidence | Protected tags, protected environments (project and groups) and the self-approval setting per project; each production deployment with its tag, approvals, deployer, tag pipeline user and GitLab release; a tag deployment no longer fails because its ref is not the default branch | Done |
 | RG.2 Release practices | Presets and custom practices with parameters, assigned to the connection, a group or a project (nearest wins); a Release practices page listing which groups and projects follow which practice, and what their releases actually show | Done |
 | RG.3 Release checks | Each production release judged against its practice: protected ref, approvals required and given before deploying, tag creator not an approver, deployer not an approver, optional merge-request review; findings, the auditor report and evidence packages | Done |
-| RG.4 Audit release export | One package per production release: the release, its notes and GitLab release evidence, its merge requests with approvals, pipelines and tests, who created, approved and deployed it, the protections in force, and small pipeline reports (test reports, SBOM, security scans) with checksums; verified offline | Planned |
+| RG.4 Audit release export | One package per production release: the release, its notes and GitLab release evidence, its merge requests with approvals, pipelines and tests, who created, approved and deployed it, the protections in force, and small pipeline reports (test reports, SBOM, security scans) with checksums; verified offline | Done |
 | RG.5 Settings | `deployments.forbid_pipeline_triggerer_approval` as a template setting, aligned by change sets; templates for merge-request review into the default branch documented as the way to close that gap | Planned |
 
 ## Practices
@@ -105,10 +105,33 @@ Only usernames are stored.
 
 ## Audit release export (RG.4)
 
-A package per production release, never source code:
+**Governance, Releases** lists recorded production releases, newest first, with who started, approved and deployed each as GitLab records them. **Export audit release** builds one ZIP for one release, for an auditor. It never holds source code.
 
-- `release.json`: tag, commit, environment, deployment, times, the three roles, and the protections in force at the time;
-- release notes and GitLab's release evidence file;
-- the merge requests the release contains since the previous production release, with approvals, pipelines and test results;
-- reports from the release pipeline's jobs, fetched by type (`junit`, `cyclonedx`, `sast`, `dependency_scanning`, `secret_detection`, `container_scanning`): each at most 10 MB and 50 MB per release, anything larger listed with its size and not fetched;
-- a manifest with SHA-256 checksums, verified offline with `baluarte-verify-export`.
+| File | What it holds |
+|---|---|
+| `README.txt` | The release, who did what, the practice and judgment, counts, gaps and how to verify |
+| `release.json` | The deployment (environment, ref, tag, commit, pipeline, times), the roles (who started it, each approval with its time and comment, the deployer), the GitLab release (name, author, times, release evidence SHA-256 and links), the practice in force and the release judged against it as the release checks judge it, the release protections in force, the previous production release, and the range of changes |
+| `release_notes.md` | The GitLab release's notes, when it has some |
+| `merge_requests.csv` | The merge requests and direct pushes since the previous production release of the same environment: author, who merged, who approved, self-approval, review and overall outcome, pipeline and tests, and which one the release shipped |
+| `observations.jsonl` | Every observation the package rests on (the deployment, each change, the protections), with its `payload_digest` |
+| `reports.csv`, `reports/<sha256>` | The release pipeline's reports, each stored once by its SHA-256, or listed with why it was not fetched |
+| `gaps.csv` | What is missing or could not be judged |
+| `manifest.json`, `SHA256SUMS` | Every file's SHA-256, bytes and rows; the summary; limitations |
+
+**The range of changes.** Baluarte does not read git history. The changes are those merged into the default branch after the change the previous production release shipped, up to the one this release shipped, by merge time (`changes.basis` `shipped_commits`). When either shipped change is not recorded, the range uses deployment times instead (`deployment_times`) and a gap says so. The first recorded release starts from the project's recorded history. A redeploy of what an earlier release shipped lists the change it shipped, with the gap `nothing_new`. At most 500 changes are listed.
+
+**Reports.** The release pipeline's jobs are read from GitLab, read-only, when the package is built (unless `include_reports` is false). Every report artifact of type `junit`, `cyclonedx`, `sast`, `dependency_scanning`, `secret_detection` or `container_scanning` is listed with its size:
+
+- `junit`: GitLab's parsed test report for the pipeline, fetched once as `test_report.json`.
+- Other types: GitLab's REST API does not serve a report artifact by type, so the file is read out of the job's artifacts archive when the job also keeps it there (`artifacts:paths`). Only the file named like the report is read; nothing else in the archive is copied.
+- Each report is at most 10 MB, and a release at most 50 MB in all. Anything larger, expired, served by redirect (object storage), or kept only as a report artifact is listed in `reports.csv` and `gaps.csv` with why, never silently left out.
+
+GitLab's release evidence file is served only through its web interface, so the package records its SHA-256 and collection time from the release instead of the file.
+
+**Verifying.** `baluarte-verify-export <file> --manifest-sha256 <value>` checks it offline like any export. It also checks each `reports/<sha256>` against its name and `reports.csv`, and that every observation `release.json` and `merge_requests.csv` cite is in the package. The manifest hash is in the `release.export_completed` audit event, and `GET /api/v1/releases/exports/{export_id}` returns it.
+
+| Method and path | Permission | What it does |
+|---|---|---|
+| `GET /releases?connection_id=&project_id=&limit=` | `findings:read` | Recorded production releases, newest first, with who started, approved and deployed each |
+| `POST /releases/exports` | `evidence:package` | Build the audit release of `change_id` (a production deployment); `include_reports` (default true). 422 `release_unknown` or `not_a_release`. Audited as `release.export_created` and `release.export_completed` |
+| `GET /releases/exports/{export_id}` | `evidence:package` | The export's sizes and hashes, from the audit log |

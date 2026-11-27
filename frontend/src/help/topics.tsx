@@ -828,7 +828,7 @@ export const helpTopics: readonly HelpTopic[] = [
     title: "Release practices",
     summary: "How projects are meant to reach production, and whether their releases do.",
     group: "Govern",
-    paths: ["/governance/release-practices"],
+    paths: ["/governance/release-practices", "/governance/releases"],
     body: (
       <>
         <p>
@@ -860,6 +860,15 @@ export const helpTopics: readonly HelpTopic[] = [
           it did not expect), is not known, or has no releases. The deployer is who GitLab records
           on the deployment: a deploy job that runs automatically after approval is recorded as
           whoever started the pipeline, for a tag its creator.
+        </p>
+        <p>
+          The baseline rule <code>gitlab.release.follows_practice</code> judges each release against
+          its practice, including who approved it. <strong>Releases</strong> lists recorded
+          production releases with who started, approved and deployed each, and{" "}
+          <strong>Export audit release</strong> builds a package of one release for an auditor: the
+          release, its notes, the merge requests since the previous release with their approvals,
+          pipelines and tests, the protections in force and the pipeline&apos;s reports. It never
+          holds source code, and <code>baluarte-verify-export</code> checks it offline.
         </p>
       </>
     ),

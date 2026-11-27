@@ -59,6 +59,7 @@ export const SECURITY_POLICIES_VIEW = "/governance/gitlab-security-policies";
 export const CHANGES_VIEW = "/governance/changes";
 export const TEMPLATES_VIEW = "/governance/templates";
 export const RELEASE_PRACTICES_VIEW = "/governance/release-practices";
+export const RELEASES_VIEW = "/governance/releases";
 export const CHANGE_SETS_VIEW = "/governance/change-sets";
 
 /** A person named in a change: their display name, else the recorded actor. */
